@@ -14,7 +14,7 @@ The tools root holds `tools/wtt.py`, `schema/test-plan.schema.json`, `docs/test-
 1. Try `wtt/` beside this file. `make install-skill` puts it there with a private Python at `.venv/` beside this file. Call the root `$WTT` and the Python `$PY` (`.venv/bin/python` beside this file). Read `$WTT/VERSION` and tell the author which tools version you use.
 2. Else try two folders up from this file (the skill runs inside the checkout). Call that root `$WTT`; use `$WTT/.venv/bin/python` as `$PY` if it exists, else `python3`.
 3. If neither is a root, ask: "Where is your TestThat checkout?" Say that `make install-skill` in it sets up the skill for use anywhere. Do not draft until you have a root. Do not use the working directory; it may belong to another addon.
-4. Read `$WTT/docs/test-plan.md`, the format spec and the schema. Read `reference.md` and `example.yaml` beside this file.
+4. Read `$WTT/docs/test-plan.md`, the format spec and the schema. Read `reference.md` and `example.yaml` beside this file. Read `$WTT/docs/debug-logging.md` before the evidence question; if it is missing, say so and go on.
 
 ## 1. Interview
 
@@ -30,6 +30,7 @@ Ask in this order. Ask one topic at a time, say why it matters, and offer a reco
    - What is the debug-log SavedVariable name, its path inside it, and its format (`strings` or `entries`)? Check `LOGS` in `wtt.py` and the addon source first, then confirm with the author.
    - Which behaviors already write a log line? Read the addon source for the lines. Do not invent lines.
    - Which scope items write nothing? Those need a player check (see item 8).
+   - If the addon has no debug log at all, say so once and recommend adding one. Point to `$WTT/docs/debug-logging.md` for the pattern and what a good line looks like. Ask: add one now, or draft with player checks? Either way, draft player checks, never invent log lines, and mark each step that would become a log assertion once the log exists (`notes: Becomes a log assertion once <addon> logs <event>.`).
 8. **Human eye.** For each changed behavior with no log line: can the author accept a player check, or should the addon gain a log line? List suggestions and let the author accept them all or decide one by one. What needs combat, a protected action, or a second client?
 9. **Reload and state.** Which steps need `/reload`? Which checks survive a reload and which are per attempt or per session? What setup and cleanup does each step need?
 10. **Return path.** Remind the author the result comes back by `/wtt export`, then `/reload`, then `wtt.py collect` and `report`. The tool needs the WoW SavedVariables path; ask for it only if the author wants to harvest now. A local config file for paths is not available yet.
@@ -61,7 +62,7 @@ Then ask: "Accept all suggestions, or go through the plan step by step?" Step by
 
 ## 5. Gaps
 
-For every step that has no log evidence, offer to open an issue in the addon's repository: `gh issue create`, with the gap, the code involved and a possible log line. No personal names. Ask first; never open it unasked.
+For every step that has no log evidence, offer to open an issue in the addon's repository: `gh issue create`, with the gap, the code involved and a possible log line. If the addon has no debug log, offer one issue for the log facility (the pattern in `$WTT/docs/debug-logging.md`) plus one issue per needed line, each naming the steps it unlocks. No personal names. Ask first; never open it unasked.
 
 ## Finish
 

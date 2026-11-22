@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3
+
+New: **Debug logging guide.** A new guide tells addon authors what a good debug log looks like.
+Changed: The test plan skill now helps an addon that has no debug log. It recommends adding one and marks the steps that need it.
+
 ## 0.3.2
 
 Changed: **make install-skill** now installs the plan tools and a private Python with the skill. The skill works without a TestThat checkout.
