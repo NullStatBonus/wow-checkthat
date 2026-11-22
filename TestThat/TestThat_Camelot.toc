@@ -6,6 +6,8 @@
 ## SavedVariables: TestThatDB
 ## OptionalDeps: KeepThat, DontDoThat, ClosestVendor
 ## Category: Development
+## X-Curse-Project-ID: 1824610
+## X-Wago-ID: qGYB3eNg
 
 # Load order: libraries, Locales, Core, Model, Debug, UI, Options. Both TOC files list the same files in the same order (make check).
 
