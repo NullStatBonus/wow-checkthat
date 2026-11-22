@@ -169,7 +169,7 @@ class PlanSkill(unittest.TestCase):
             with open(os.path.join(self.SKILL, name), encoding="utf-8") as f:
                 return f.read()
         text = read("SKILL.md")
-        for rel in ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md",
+        for rel in ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
                     "openspec/specs/test-plan-format/spec.md", "TestThat/Model/Plan.lua"):
             self.assertIn(rel, text + read("reference.md"))
             self.assertTrue(os.path.exists(os.path.join(ROOT, rel)), rel)
@@ -180,7 +180,7 @@ class PlanSkill(unittest.TestCase):
 
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "wtt-test-plan")
-    BUNDLE = ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md",
+    BUNDLE = ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "TestThat/Model/Plan.lua", "requirements.txt")
 
     def make(self, dest, **env):

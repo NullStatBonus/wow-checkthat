@@ -19,6 +19,15 @@ Sources: `schema/test-plan.schema.json`, `openspec/specs/test-plan-format/spec.m
 - No step asks the player to read a log line.
 - Steps with no log evidence use `verify: [player]`; the gap is listed for an issue.
 
+## Evidence quality
+Judge each log assertion against `docs/debug-logging.md`.
+- The line states one fact with the values that prove it, and the code writes it at the decision point.
+- A refusal, skip or failure has its own line, so `absent` and negative steps can pass or fail.
+- The assertion matches the stable part of the line, not changing values.
+- A required assertion backs an unconditional line.
+- No startup line (such as `hooked ...`) stands in for a step result.
+- Steps that wait for a missing log line carry a `notes` entry saying which line.
+
 ## Commands (`validate` warns about misses)
 - Every slash command in step text appears in `action.commands`.
 - Each command is in the addon's allow list, or is `/reload`, `/reloadui` or `/console scriptErrors 0|1`.

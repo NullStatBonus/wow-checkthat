@@ -19,7 +19,7 @@ test-py:
 # Install the wtt-test-plan skill with everything it runs, outside this checkout: the skill text,
 # a bundle of the plan tools (same layout as the checkout), and a private Python with PyYAML and
 # jsonschema. SKILL_DIR changes the target; SKILL_NO_VENV=1 skips the pip step (tests).
-BUNDLE := tools/wtt.py schema/test-plan.schema.json docs/test-plan.md openspec/specs/test-plan-format/spec.md TestThat/Model/Plan.lua requirements.txt
+BUNDLE := tools/wtt.py schema/test-plan.schema.json docs/test-plan.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md TestThat/Model/Plan.lua requirements.txt
 
 install-skill:
 	@root=$$(pwd -P); mkdir -p "$(SKILL_DIR)" || exit 1; dest=$$(cd "$(SKILL_DIR)" && pwd -P); \
