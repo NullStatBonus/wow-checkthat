@@ -94,7 +94,9 @@ class Compile(unittest.TestCase):
 class Plans(unittest.TestCase):
     def test_shipped_plans_validate(self):
         for n in ("keepthat", "dontdothat", "closestvendor", "selftest"):
-            self.assertEqual(wtt.validate(wtt.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))), [], n)
+            plan = wtt.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
+            self.assertEqual(wtt.validate(plan), [], n)
+            self.assertEqual(wtt.warnings(plan), [], n)
 
 
 class NativeText(unittest.TestCase):
@@ -125,26 +127,15 @@ class SamplePlans(unittest.TestCase):
             steps = sum(len(s["steps"]) for s in plan["sections"])
             self.assertLessEqual(steps, 8, n)
         for path in glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml")):
-            self.assertEqual(wtt.validate(wtt.load_yaml(path)), [], path)
+            plan = wtt.load_yaml(path)
+            self.assertEqual(wtt.validate(plan), [], path)
+            self.assertEqual(wtt.warnings(plan), [], path)
 
 
 class PlanSkill(unittest.TestCase):
     SKILL = os.path.join(ROOT, "skills", "wtt-test-plan")
 
-    @staticmethod
-    def missing_commands(plan):
-        """Slash commands named in step text (colored or not) that the step's commands lack."""
-        known = {c for cmds in wtt.SLASH.values() for c in cmds} | set(wtt.BUILTIN) | {"/console"}
-        out = []
-        for sec in plan["sections"]:
-            for st in sec["steps"]:
-                text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", st["action"].get("text", ""))
-                have = st["action"].get("commands", [])
-                for m in re.finditer(r"(?<![\w/])(/[A-Za-z]+(?: [A-Za-z0-9]+)*)", text):
-                    word = m.group(1).split(" ")[0].lower()
-                    if word in known and not any(m.group(1).lower().startswith(h.lower()) or h.lower().startswith(m.group(1).lower()) for h in have):
-                        out.append((st["id"], m.group(1)))
-        return out
+    missing_commands = staticmethod(wtt.warnings)
 
     def test_example_plan_validates_and_lists_named_commands(self):
         plan = wtt.load_yaml(os.path.join(self.SKILL, "example.yaml"))
@@ -157,6 +148,21 @@ class PlanSkill(unittest.TestCase):
             self.assertEqual(self.missing_commands(plan), [("x", "/cvn test sell")], text)
             plan["sections"][0]["steps"][0]["action"]["commands"] = ["/cvn test sell"]
             self.assertEqual(self.missing_commands(plan), [], text)
+
+    def test_validate_warns_but_still_succeeds(self):
+        import contextlib, io
+        plan = good()
+        plan["sections"][0]["steps"][1]["action"]["text"] = "Type |cff99ccff/kt debug on|r."
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "p.yaml")
+            import yaml
+            with open(p, "w") as f:
+                yaml.safe_dump(plan, f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = wtt.main(["validate", p])
+        self.assertEqual(rc, 0)
+        self.assertIn("warning: a.2: command named in text but not in commands: /kt debug on", out.getvalue())
 
     def test_skill_points_at_files_that_exist(self):
         def read(name):
@@ -174,30 +180,60 @@ class PlanSkill(unittest.TestCase):
 
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "wtt-test-plan")
+    BUNDLE = ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md",
+              "openspec/specs/test-plan-format/spec.md", "TestThat/Model/Plan.lua", "requirements.txt")
 
-    def make(self, dest):
-        return subprocess.run(["make", "install-skill", "SKILL_DIR=" + dest], cwd=ROOT, capture_output=True, text=True)
+    def make(self, dest, **env):
+        return subprocess.run(["make", "install-skill", "SKILL_DIR=" + dest], cwd=ROOT, capture_output=True, text=True,
+                              env=dict(os.environ, **env))
 
-    def test_install_copies_files_stamps_checkout_and_replaces_stale_copy(self):
+    def test_install_copies_skill_and_bundle_and_replaces_stale_copy(self):
         with tempfile.TemporaryDirectory() as d:
             dest = os.path.join(d, "wtt-test-plan")
             os.makedirs(dest)
             with open(os.path.join(dest, "stale.txt"), "w") as f:
                 f.write("old")
-            self.assertEqual(self.make(d).returncode, 0)
+            self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
             self.assertFalse(os.path.exists(os.path.join(dest, "stale.txt")))
+            self.assertFalse(os.path.exists(os.path.join(dest, ".wtt-root")))
             for name in os.listdir(self.SRC):
                 with open(os.path.join(self.SRC, name), "rb") as a, open(os.path.join(dest, name), "rb") as b:
                     self.assertEqual(a.read(), b.read(), name)
-            with open(os.path.join(dest, ".wtt-root"), encoding="utf-8") as f:
-                self.assertEqual(os.path.realpath(f.read().strip()), os.path.realpath(ROOT))
-            self.assertFalse(os.path.exists(os.path.join(self.SRC, ".wtt-root")))
+            for rel in self.BUNDLE:
+                with open(os.path.join(ROOT, rel), "rb") as a, open(os.path.join(dest, "wtt", rel), "rb") as b:
+                    self.assertEqual(a.read(), b.read(), rel)
+            with open(os.path.join(ROOT, "TestThat", "TestThat_Vanilla.toc"), encoding="utf-8") as f:
+                version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
+            with open(os.path.join(dest, "wtt", "VERSION"), encoding="utf-8") as f:
+                self.assertEqual(f.read().strip(), version)
+            self.assertEqual([n for n in os.listdir(d) if n.startswith(".wtt-test-plan.")], [])
+
+    def test_installed_tools_run_without_the_checkout(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
+            dest = os.path.join(d, "wtt-test-plan")
+            r = subprocess.run([sys.executable, os.path.join(dest, "wtt", "tools", "wtt.py"), "validate",
+                                os.path.join(dest, "example.yaml")], capture_output=True, text=True, cwd=d)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("ok", r.stdout)
+
+    def test_failed_dependency_install_keeps_the_earlier_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = os.path.join(d, "wtt-test-plan")
+            os.makedirs(dest)
+            with open(os.path.join(dest, "keep.txt"), "w") as f:
+                f.write("old")
+            r = self.make(d, PIP_INDEX_URL="http://127.0.0.1:9/simple", PIP_RETRIES="0", PIP_TIMEOUT="1",
+                          PIP_DISABLE_PIP_VERSION_CHECK="1")
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("installing PyYAML and jsonschema failed", r.stderr + r.stdout)
+            self.assertTrue(os.path.exists(os.path.join(dest, "keep.txt")))
             self.assertEqual([n for n in os.listdir(d) if n.startswith(".wtt-test-plan.")], [])
 
     def test_install_refuses_a_folder_inside_the_checkout(self):
         inside = os.path.join(ROOT, "skills")
         before = sorted(os.listdir(self.SRC))
-        r = self.make(inside)
+        r = self.make(inside, SKILL_NO_VENV="1")
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(sorted(os.listdir(self.SRC)), before)
         self.assertTrue(os.path.exists(os.path.join(self.SRC, "SKILL.md")))

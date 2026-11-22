@@ -17,26 +17,30 @@ The skill SHALL ask the author for the scope source (current branch, a diff or t
 - **THEN** it suggests `plans/` and accepts another path
 
 ### Requirement: Skill finds the plan tools from any install
-The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` from the checkout path recorded at install, else from its own location. A path SHALL count as the checkout only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the TestThat path and SHALL NOT assume the working directory is the TestThat repository.
+The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` in the bundle installed beside it, else in the checkout two folders above it. A path SHALL count as a root only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the TestThat path and SHALL NOT assume the working directory is the TestThat repository.
 
 #### Scenario: Installed to the user's skills folder
-- **WHEN** the author ran `make install-skill` and starts the skill in another addon repository
-- **THEN** the skill reads the recorded checkout path and finds the tools without asking
+- **WHEN** the author ran `make install-skill`, then removed or moved the checkout, and starts the skill in another addon repository
+- **THEN** the skill finds the bundled tools and drafts without asking for a path
 
 #### Scenario: Path unknown
-- **WHEN** no recorded path exists and the tools are not beside the skill
+- **WHEN** no bundle exists beside the skill and the tools are not in a checkout above it
 - **THEN** the skill asks for the TestThat checkout path before drafting
 
 ### Requirement: Make installs the skill for the user
-`make install-skill` SHALL copy the skill folder into the user's skills folder, replace an earlier copy, and record the checkout path there. `SKILL_DIR` SHALL change the target folder. The install SHALL NOT write the recorded path into the repository, SHALL refuse a target folder inside the checkout, and SHALL keep the earlier copy if the new copy fails.
+`make install-skill` SHALL copy the skill folder and a bundle of the plan tools and format files into the user's skills folder, create a private Python environment there with the tools' dependencies, and replace an earlier copy. `SKILL_DIR` SHALL change the target folder. The install SHALL NOT change system Python, SHALL refuse a target folder inside the checkout, SHALL keep the earlier copy if any step fails, and SHALL stamp the bundle with the addon version.
 
 #### Scenario: Install and update
 - **WHEN** the author runs `make install-skill SKILL_DIR=<dir>` twice
-- **THEN** `<dir>/wtt-test-plan` holds the current skill files and the checkout path
+- **THEN** `<dir>/wtt-test-plan` holds the current skill files, the bundle and a working private Python
 
 #### Scenario: Target inside the checkout
 - **WHEN** `SKILL_DIR` points inside the checkout
 - **THEN** the install fails and the skill source stays unchanged
+
+#### Scenario: Dependencies cannot be installed
+- **WHEN** the package download fails
+- **THEN** the install fails with a message naming the step and the earlier installed copy stays unchanged
 
 ### Requirement: Evidence follows the target addon's log
 The skill SHALL build assertions from the debug log the target addon already writes, using the SavedVariable name and format the author gives or the addon source shows. Where no log line proves a step, the skill SHALL use a player check and offer to open an issue for the missing log line.
@@ -62,3 +66,10 @@ After the draft the skill SHALL show coverage gaps and checklist findings, and S
 #### Scenario: Step-by-step review
 - **WHEN** the author chooses step by step
 - **THEN** the skill shows each step with its findings and applies only the changes the author accepts
+
+### Requirement: Skill validates with the bundled Python
+The skill SHALL run the plan tools with the private Python in its own folder and SHALL report the bundle's version stamp with the validation result.
+
+#### Scenario: Validate a draft
+- **WHEN** the skill validates a draft
+- **THEN** it runs the bundled `wtt.py` with the private Python and reports the bundle version

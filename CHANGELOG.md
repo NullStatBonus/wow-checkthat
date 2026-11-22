@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+Changed: **make install-skill** now installs the plan tools and a private Python with the skill. The skill works without a TestThat checkout.
+Changed: The skill now suggests saving plans in the repository you work in.
+
+## 0.3.1
+
+New: **Plan lint.** The plan checker now warns when step text names a slash command that the step does not list.
+
 ## 0.3.0
 
 New: **Test plan skill.** Addon authors can ask an agent to draft a test plan for their changes.

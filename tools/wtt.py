@@ -102,6 +102,26 @@ def validate(plan):
     return errs
 
 
+def warnings(plan):
+    """(step id, command) for each allowed slash command that step text names but the step's commands lack."""
+    known = set(SLASH.get(plan.get("addon"), [c for cmds in SLASH.values() for c in cmds])) | set(BUILTIN) | {"/console"}
+    out = []
+    for sec in plan["sections"]:
+        for st in sec["steps"]:
+            if st["action"].get("kind") == "copy-slash":
+                continue  # its text is the command and already has a copy box
+            text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", st["action"].get("text", ""))
+            have = [h.lower() for h in st["action"].get("commands", [])]
+            for m in re.finditer(r"(?<![\w/])(/[A-Za-z]+(?: [A-Za-z0-9]+)*)", text):
+                cmd = m.group(1).lower()
+                if cmd.split(" ")[0] in known and not any(cmd.startswith(h) or h.startswith(cmd) for h in have):
+                    out.append((st["id"], m.group(1)))
+    return out
+
+def print_warnings(plan):
+    for sid, cmd in warnings(plan):
+        print("warning: %s: command named in text but not in commands: %s" % (sid, cmd))
+
 def merge_sections(plan):
     """Compile section requirements, setup and clients into each step."""
     out = copy.deepcopy(plan)
@@ -481,9 +501,12 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.cmd == "validate":
-        errs = validate(load_yaml(a.plan))
+        plan = load_yaml(a.plan)
+        errs = validate(plan)
         for e in errs:
             print("error:", e)
+        if not errs:
+            print_warnings(plan)
         print("ok" if not errs else "%d errors" % len(errs))
         return 1 if errs else 0
     if a.cmd == "compile":
@@ -514,6 +537,8 @@ def main(argv=None):
         errs = validate(plan)
         for e in errs:
             print("error:", e)
+        if not errs:
+            print_warnings(plan)
         print("%d sections, %d steps" % (len(plan["sections"]), sum(len(s["steps"]) for s in plan["sections"])))
         return 1 if errs else 0
     if a.cmd == "sv2json":

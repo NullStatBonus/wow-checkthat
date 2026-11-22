@@ -19,7 +19,7 @@ Sources: `schema/test-plan.schema.json`, `openspec/specs/test-plan-format/spec.m
 - No step asks the player to read a log line.
 - Steps with no log evidence use `verify: [player]`; the gap is listed for an issue.
 
-## Commands (checked by hand; `validate` does not)
+## Commands (`validate` warns about misses)
 - Every slash command in step text appears in `action.commands`.
 - Each command is in the addon's allow list, or is `/reload`, `/reloadui` or `/console scriptErrors 0|1`.
 - No `/script`, `/run` or `/dump`. The card shows four command lines; keep a step to four.

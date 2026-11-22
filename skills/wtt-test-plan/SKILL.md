@@ -9,13 +9,11 @@ Turn a scope of work into a plan TestThat can run. Ask before you assume. Read t
 
 ## 0. Locate the tools
 
-The TestThat root holds `tools/wtt.py`, `schema/test-plan.schema.json`, `docs/test-plan.md` and `openspec/specs/test-plan-format/spec.md`.
+The tools root holds `tools/wtt.py`, `schema/test-plan.schema.json`, `docs/test-plan.md`, `openspec/specs/test-plan-format/spec.md` and `TestThat/Model/Plan.lua`. A path counts as the root only when all five exist under it.
 
-A path counts as the root only when all four files above exist under it.
-
-1. Try the path in `.wtt-root` beside this file. `make install-skill` writes it. If it is stale (a file is missing), say so and go on.
-2. Try two folders up from this file (the skill runs inside the checkout).
-3. If neither is a root, ask: "Where is your TestThat checkout?" Do not draft until you have one. Do not use the working directory; it may belong to another addon. Call the root `$WTT`.
+1. Try `wtt/` beside this file. `make install-skill` puts it there with a private Python at `.venv/` beside this file. Call the root `$WTT` and the Python `$PY` (`.venv/bin/python` beside this file). Read `$WTT/VERSION` and tell the author which tools version you use.
+2. Else try two folders up from this file (the skill runs inside the checkout). Call that root `$WTT`; use `$WTT/.venv/bin/python` as `$PY` if it exists, else `python3`.
+3. If neither is a root, ask: "Where is your TestThat checkout?" Say that `make install-skill` in it sets up the skill for use anywhere. Do not draft until you have a root. Do not use the working directory; it may belong to another addon.
 4. Read `$WTT/docs/test-plan.md`, the format spec and the schema. Read `reference.md` and `example.yaml` beside this file.
 
 ## 1. Interview
@@ -24,7 +22,7 @@ Ask in this order. Ask one topic at a time, say why it matters, and offer a reco
 
 1. **Scope.** "What is in scope: the current branch, a diff (which range), or this session?" Read it. List what changed and what could break. Show the list and ask the author to correct it. If an OpenSpec change exists, use its proposal, specs and tasks as the checklist.
 2. **Addon.** Which addon does the plan test, and which slash prefix does it use? Check it is in `Plan.SLASH` in `$WTT/TestThat/Model/Plan.lua` and `SLASH` in `wtt.py`. If not, stop: a plan for that addon needs a TestThat change first. Say so.
-3. **Output.** "Where should I write the plan?" Suggest `plans/` in the TestThat checkout. Accept any path. Ask for the file name. Suggest `<addon>.yaml`; add the locale for non-English plans (for example `<addon>.deDE.yaml`).
+3. **Output.** "Where should I write the plan?" Suggest `plans/` in the repository you are working in. Accept any path. Ask for the file name. Suggest `<addon>.yaml`; add the locale for non-English plans (for example `<addon>.deDE.yaml`).
 4. **Locale.** Which client locale will the plan run on? Write the plan for that locale only. Authors keep one plan per locale. Do not translate. Player-visible text in the plan uses the strings that locale shows.
 5. **Depth.** Sample (a handful of steps) or release plan (full coverage)? What is the riskiest part of the scope? What must never break?
 6. **Clients.** Which clients are in scope: `classic-era`, `forever-camelot`, or both? Which steps are for one client only?
@@ -51,7 +49,7 @@ Write YAML to the chosen path. Follow `example.yaml` for shape and the schema fo
 
 ## 3. Validate
 
-Run `python3 $WTT/tools/wtt.py validate <plan>`. Use `$WTT/.venv/bin/python` if the system Python lacks PyYAML and jsonschema. Report every problem with its step id and fix it. `validate` does not catch a slash command named in text but missing from `commands`; check that by hand.
+Run `$PY $WTT/tools/wtt.py validate <plan>`. Report every problem with its step id and fix it. `validate` warns (without failing) about a slash command named in text but missing from `commands`; fix each warning.
 
 ## 4. Review
 
