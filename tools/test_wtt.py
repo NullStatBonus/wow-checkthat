@@ -159,5 +159,40 @@ class Collect(unittest.TestCase):
             self.assertIn("screenshots: a__in.jpg", wtt.report_text(wtt.latest_runs(dest), dest))
 
 
+class Safety(unittest.TestCase):
+    def test_run_ids_cannot_leave_the_runs_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            run = {"runId": "../../evil", "revision": 1, "steps": {}}
+            wtt.write_revision(d, run)
+            self.assertFalse(os.path.exists(os.path.join(d, "evil")))
+            self.assertFalse(os.path.exists(os.path.join(os.path.dirname(d), "evil")))
+            self.assertTrue(any(f.startswith("r1") for _, _, fs in os.walk(os.path.join(d, "runs")) for f in fs))
+
+    def test_a_different_run_with_the_same_id_and_revision_is_a_conflict(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = {"runId": "R-1", "revision": 2, "steps": {"x": {"verdict": "pass"}}}
+            self.assertEqual(wtt.write_revision(d, a), "new")
+            self.assertEqual(wtt.write_revision(d, dict(a)), "same")
+            b = {"runId": "R-1", "revision": 2, "steps": {"x": {"verdict": "fail"}}}
+            self.assertEqual(wtt.write_revision(d, b), "conflict")
+            with open(os.path.join(d, "runs", "R-1", "r2.json")) as fh:
+                self.assertEqual(json.load(fh)["steps"]["x"]["verdict"], "pass", "the first copy is kept")
+
+    def test_decode_stops_a_zip_bomb(self):
+        raw = b"\0" * (wtt.MAX_INFLATED + 10)
+        c = zlib.compressobj(9, zlib.DEFLATED, -15)
+        packed = c.compress(raw) + c.flush()
+        import base64
+        s = "!WTT1!%08x!%s" % (zlib.adler32(raw) & 0xFFFFFFFF, base64.b64encode(packed).decode())
+        with self.assertRaises(ValueError):
+            wtt.decode(s)
+
+    def test_title_and_requirement_text_are_checked_for_markdown(self):
+        p = good(); p["title"] = "Run `x`"; p["requirements"]["r"]["text"] = "needs **it**"
+        self.assertTrue(any("markdown" in e for e in wtt.validate(p)))
+        wtt.nativize(p)
+        self.assertNotIn("`", p["title"]); self.assertNotIn("**", p["requirements"]["r"]["text"])
+
+
 if __name__ == "__main__":
     unittest.main()

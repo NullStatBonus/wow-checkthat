@@ -15,6 +15,7 @@ function App.Init(db, env, opts)
     db.runs = db.runs or {}
     db.log = db.log or { entries = {} }
     db.ui = db.ui or {}
+    db.ui.shareReload = nil -- a reload request lasts until the next load
     App.db = db
     if ns.Log then
         ns.Log.Bind(db.log, (opts and opts.debug) or function() return db.log.enabled end, function() return now(App) end)
@@ -100,15 +101,37 @@ function App.UseRecent(digest)
 end
 
 -- Import a pasted string. Returns plan table or nil + error text. Nothing is stored on failure.
+-- Validator messages are technical English kept for the debug log; the player sees one of these sentences.
+local function planReason(first)
+    first = tostring(first)
+    if first:find("^markdown") then return L["A text in the plan uses backticks or stars. Plans use game color codes."] end
+    if first:find("not allowed") then return L["The plan has a command that TestThat does not allow."] end
+    if first:find("addon not supported") then return L["This plan is for an addon this TestThat does not support."] end
+    if first:find("format version") then return L["This string needs a newer TestThat."] end
+    return L["The plan has a missing or wrong field. Export it again from the plan file."]
+end
+
+local function sameTable(a, b)
+    local x, y = ns.Json.Encode(a), ns.Json.Encode(b)
+    return x ~= nil and x == y
+end
+
 function App.ImportPlan(str)
-    local tbl, err, digest = ns.Codec.Decode(str)
+    local ok, tbl, err, digest = pcall(ns.Codec.Decode, str)
+    if not ok then App.Log("import crashed: " .. tostring(tbl)); return nil, L["The string could not be read. %s"]:format(readError("damaged")) end
     if not tbl then App.Log("import failed: " .. tostring(err)); return nil, L["The string could not be read. %s"]:format(readError(err)) end
-    if tbl.kind ~= "plan" then return nil, L["This string holds %s, not a plan."]:format(tostring(tbl.kind)) end
-    local errs = ns.Plan.Validate(tbl)
+    if type(tbl) ~= "table" then return nil, L["The string could not be read. %s"]:format(readError("damaged")) end
+    if tbl.kind ~= "plan" then return nil, L["This string holds %s, not a plan."]:format(tostring(tbl.kind):gsub("[^%w ]", "")) end
+    local vok, errs = pcall(ns.Plan.Validate, tbl)
+    if not vok then errs = { "validator error: " .. tostring(errs) } end
     if #errs > 0 then
         App.Log("import rejected: " .. errs[1])
-        return nil, L["The plan is not valid (%d problems). First: %s"]:format(#errs, errs[1])
+        return nil, L["The plan is not valid (%d problems). %s"]:format(#errs, planReason(errs[1]))
     end
+    -- The checksum is only 32 bits: never let a different plan take over a stored one that a run depends on.
+    local key, n = digest, 1
+    while App.db.planStore[key] and not sameTable(App.db.planStore[key], tbl) do n = n + 1; key = digest .. "-" .. n end
+    digest = key
     App.db.plans[tbl.addon] = { plan = tbl, digest = digest }
     App.db.planStore[digest] = tbl -- runs keep the exact plan they started with
     App.RememberRecent(tbl, digest)
@@ -167,6 +190,10 @@ function App.Copyables(step, plan)
     return out
 end
 
+-- The card has this many copy boxes. A macro with more lines is not offered as one button: it would run
+-- commands the tester cannot see.
+App.MAX_COPY = 4
+
 -- The macro text a secure button or the "WTT" macro would run, or nil. Always re-checked against the allow list.
 function App.MacroText(step, plan)
     local a = step.action
@@ -176,7 +203,11 @@ function App.MacroText(step, plan)
     elseif a.kind == "copy-slash" then text = a.text
     elseif a.kind == "reload" then text = "/reload"
     elseif type(a.commands) == "table" and #a.commands > 0 then text = table.concat(a.commands, "\n") end -- manual step with commands: Run does them in order
-    if text and ns.Plan.MacroAllowed(text, ns.Plan.SLASH[plan.addon]) then return text end
+    if text and ns.Plan.MacroAllowed(text, ns.Plan.SLASH[plan.addon]) then
+        local lines = 0
+        for line in (text .. "\n"):gmatch("(.-)\n") do if line ~= "" then lines = lines + 1 end end
+        if lines <= App.MAX_COPY then return text end
+    end
 end
 
 -- Section intro for the card, shown on the first step of a section that has no verdicts yet.

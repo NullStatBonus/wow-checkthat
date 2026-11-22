@@ -6,12 +6,19 @@ ns.Run = Run
 -- partial: "mostly works". It is gated by evidence like pass and moves on like pass; the report lists it with its note.
 local VERDICTS = { pass = true, partial = true, fail = true, skip = true }
 
+-- A short tag from the character name keeps run ids from two testers (two databases) apart.
+function Run.Tag(s)
+    local h = 5381
+    for i = 1, #(s or "") do h = (h * 33 + s:byte(i)) % 4294967296 end
+    return ("%04x"):format(h % 65536)
+end
+
 -- ctx: { plan, client, build, character, now, env }
 function Run.New(ctx)
     local steps, inapplicable = ns.Plan.Steps(ctx.plan, ctx.client)
     local run = {
         kind = "results", wtt = 1,
-        runId = ("%s-%d"):format(ctx.plan.addon, ctx.now),
+        runId = ("%s-%d-%s"):format(ctx.plan.addon, ctx.now, Run.Tag(ctx.character)),
         revision = 0, addon = ctx.plan.addon, planDigest = ctx.planDigest, planTitle = ctx.plan.title,
         client = ctx.client, build = ctx.build, character = ctx.character,
         started = ctx.now, order = {}, steps = {}, current = 1,
@@ -39,7 +46,11 @@ function Run.Blocked(ctx, step)
     for _, r in ipairs(step.requires or {}) do
         local def = ctx.plan.requirements and ctx.plan.requirements[r]
         if def and def.probe then
-            local a = { kind = "state", probe = def.probe, name = def.name, path = def.path, op = def.op or "exists", value = def.value }
+            local op, value = def.op, def.value
+            if op == nil then -- addon-loaded answers true or false, so "exists" would pass for an unloaded addon
+                if def.probe == "addon-loaded" then op, value = "eq", true else op = "exists" end
+            end
+            local a = { kind = "state", probe = def.probe, name = def.name, path = def.path, op = op, value = value }
             if ns.Evidence.CheckState(a, ctx.env) ~= "pass" then missing[#missing + 1] = def.text or r end
         end
     end
@@ -58,14 +69,16 @@ function Run.Begin(run, ctx, id)
     return a
 end
 
--- Index of the first pending step after position `from`, else the first pending step anywhere, else nil.
+-- A step is open until it has a result; one stuck on missing evidence (unverified) is still open.
+local function isOpen(run, n)
+    local v = run.steps[run.order[n]].verdict
+    return v == "pending" or v == "unverified"
+end
+
+-- Index of the first open step after position `from`, else the first open step anywhere, else nil.
 function Run.NextPending(run, from)
-    for n = from + 1, #run.order do
-        if run.steps[run.order[n]].verdict == "pending" then return n end
-    end
-    for n = 1, from do
-        if run.steps[run.order[n]].verdict == "pending" then return n end
-    end
+    for n = from + 1, #run.order do if isOpen(run, n) then return n end end
+    for n = 1, from do if isOpen(run, n) then return n end end
 end
 
 -- Move the viewed step back or forth. The results screen (one past the last step) is reachable only when nothing is pending.
@@ -150,13 +163,18 @@ end
 
 -- A copy for export: open-attempt snapshots are bulky bookkeeping and stay behind.
 function Run.Export(run)
-    local function copy(v, key)
+    local function copy(v)
         if type(v) ~= "table" then return v end
         local o = {}
-        for k, x in pairs(v) do if k ~= "snapshots" then o[k] = copy(x) end end
+        for k, x in pairs(v) do o[k] = copy(x) end
         return o
     end
-    return copy(run)
+    local out = copy(run)
+    -- Only the attempt records carry snapshots; a step may legitimately be named "snapshots".
+    for _, rec in pairs(out.steps or {}) do
+        for _, a in ipairs(rec.attempts or {}) do a.snapshots = nil end
+    end
+    return out
 end
 
 -- Undo the most recent verdict in commit order, dropping any retry attempt opened after it.
@@ -173,6 +191,7 @@ end
 function Run.Counts(run)
     local c = { pass = 0, partial = 0, fail = 0, skip = 0, unverified = 0, pending = 0, inapplicable = 0 }
     for _, rec in pairs(run.steps) do c[rec.verdict] = (c[rec.verdict] or 0) + 1 end
+    c.open = c.pending + c.unverified
     return c
 end
 

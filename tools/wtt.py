@@ -134,6 +134,33 @@ def encode(obj):
     return "%s%08x!%s" % (PREFIX, zlib.adler32(js) & 0xFFFFFFFF, base64.b64encode(packed).decode("ascii"))
 
 
+MAX_INFLATED = 2000000  # TestThat/Model/Codec.lua LIMITS.inflated
+
+
+def safe_name(s):
+    """One safe filename component: no separators, no dots at the start, never empty."""
+    s = re.sub(r"[^A-Za-z0-9._-]", "_", str(s)).lstrip(".")
+    return s or "_"
+
+
+def write_revision(dest, run):
+    """Store one run revision. Refuse a path outside dest and a different run that reuses an id and revision.
+    Returns "new", "same" or "conflict"."""
+    base = os.path.realpath(os.path.join(dest, "runs"))
+    rp = os.path.realpath(os.path.join(base, safe_name(run["runId"])))
+    if os.path.dirname(rp) != base:
+        raise ValueError("run id leaves the runs folder")
+    os.makedirs(rp, exist_ok=True)
+    rj = os.path.join(rp, "r%d.json" % int(run.get("revision", 0)))
+    text = json.dumps(run, indent=1, sort_keys=True)
+    if os.path.exists(rj):
+        with open(rj) as fh:
+            return "same" if fh.read() == text else "conflict"
+    with open(rj, "w") as fh:
+        fh.write(text)
+    return "new"
+
+
 def decode(s):
     s = s.strip()
     m = re.match(r"^!WTT(\d+)!([0-9a-fA-F]{8})!(.+)$", s, re.S)
@@ -141,7 +168,11 @@ def decode(s):
         raise ValueError("not a WTT string")
     if m.group(1) != "1":
         raise ValueError("unsupported version " + m.group(1))
-    raw = zlib.decompress(base64.b64decode("".join(m.group(3).split())), -15)
+    # Stop inflating at the same cap the addon uses: a tiny string must not expand without limit.
+    d = zlib.decompressobj(-15)
+    raw = d.decompress(base64.b64decode("".join(m.group(3).split()), validate=True), MAX_INFLATED + 1)
+    if len(raw) > MAX_INFLATED or d.unconsumed_tail:
+        raise ValueError("decoded data too large")
     if "%08x" % (zlib.adler32(raw) & 0xFFFFFFFF) != m.group(2).lower():
         raise ValueError("checksum mismatch")
     return json.loads(raw.decode("utf-8"))
@@ -171,6 +202,11 @@ def native(s):
 
 def display_fields(plan):
     """Yield (container, key, kind) for every player-visible text field."""
+    if "title" in plan:
+        yield plan, "title", "plain"
+    for req in (plan.get("requirements") or {}).values():
+        if isinstance(req, dict) and "text" in req:
+            yield req, "text", "rich"
     for k in ("preamble", "handoff"):
         if k in plan:
             yield plan, k, "rich"
@@ -339,13 +375,15 @@ def cmd_collect(a):
                 print("skip %s: %s" % (f, e), file=sys.stderr); continue
             runs = (db.get("global") or {}).get("runs") or db.get("runs") or {}
             for rid, run in runs.items():
-                rp = os.path.join(dest, "runs", rid)
-                os.makedirs(rp, exist_ok=True)
-                rj = os.path.join(rp, "r%d.json" % run.get("revision", 0))
-                if not os.path.exists(rj):
-                    with open(rj, "w") as fh:
-                        fh.write(json.dumps(run, indent=1, sort_keys=True))
+                run = dict(run); run.setdefault("runId", rid)
+                try:
+                    res = write_revision(dest, run)
+                except (ValueError, OSError, TypeError) as e:
+                    print("skip run %r: %s" % (rid, e), file=sys.stderr); continue
+                if res == "new":
                     new_runs += 1
+                elif res == "conflict":
+                    print("warning: run %s revision %s already stored with different content; kept the first (two testers may share an id)" % (rid, run.get("revision")), file=sys.stderr)
     new_shots = collect_shots(dest, getattr(a, "shots", None))
     print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
 
@@ -372,7 +410,7 @@ def collect_shots(dest, shots_dir):
                 end = at.get("finished") or start + 900
                 for mt, name, p in files:
                     if start - 2 <= mt <= end + 2:
-                        out = os.path.join(dest, "runs", rid, "shots", "%s__%s" % (sid, name))
+                        out = os.path.join(dest, "runs", safe_name(rid), "shots", "%s__%s" % (safe_name(sid), safe_name(name)))
                         if not os.path.exists(out):
                             os.makedirs(os.path.dirname(out), exist_ok=True)
                             shutil.copyfile(p, out); copied += 1
@@ -493,9 +531,14 @@ def main(argv=None):
         run = decode(s)
         if run.get("kind") != "results":
             print("not a results string", file=sys.stderr); return 1
-        rp = os.path.join(a.dest, "runs", run["runId"]); os.makedirs(rp, exist_ok=True)
-        open(os.path.join(rp, "r%d.json" % run.get("revision", 0)), "w").write(json.dumps(run, indent=1, sort_keys=True))
-        print("imported", run["runId"], "rev", run.get("revision")); return 0
+        try:
+            res = write_revision(a.dest, run)
+        except (ValueError, OSError, TypeError, KeyError) as e:
+            print("not imported:", e, file=sys.stderr); return 1
+        if res == "conflict":
+            print("not imported: run %s revision %s is already stored with different content" % (run["runId"], run.get("revision")), file=sys.stderr)
+            return 1
+        print("imported" if res == "new" else "already imported", run["runId"], "rev", run.get("revision")); return 0
     if a.cmd == "report":
         runs = latest_runs(a.dest)
         txt = report_text(runs, a.dest)

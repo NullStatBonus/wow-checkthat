@@ -63,13 +63,25 @@ function Plan.Validate(plan)
     local function checkText(box, key, where)
         if md(box[key]) then errs[#errs + 1] = "markdown in " .. where .. " " .. key .. ": use color codes, not backticks or **" end
     end
-    checkText(plan, "preamble", "plan"); checkText(plan, "handoff", "plan")
+    checkText(plan, "title", "plan"); checkText(plan, "preamble", "plan"); checkText(plan, "handoff", "plan")
+    if type(plan.requirements) == "table" then
+        for name, def in pairs(plan.requirements) do
+            if type(def) == "table" then checkText(def, "text", "requirement " .. tostring(name)) end
+        end
+    end
     for _, sec in ipairs(type(plan.sections) == "table" and plan.sections or {}) do
-        checkText(sec, "title", "section"); checkText(sec, "intro", "section")
-        for _, st in ipairs(type(sec.steps) == "table" and sec.steps or {}) do
-            local w = "step " .. tostring(st.id)
-            for _, k in ipairs({ "title", "setup", "expect", "notes", "reviewer" }) do checkText(st, k, w) end
-            if type(st.action) == "table" then checkText(st.action, "text", w) end
+        if type(sec) == "table" then
+            checkText(sec, "title", "section"); checkText(sec, "intro", "section"); checkText(sec, "setup", "section")
+            for _, st in ipairs(type(sec.steps) == "table" and sec.steps or {}) do
+                if type(st) == "table" then
+                    local w = "step " .. tostring(st.id)
+                    for _, k in ipairs({ "title", "setup", "expect", "notes", "reviewer" }) do checkText(st, k, w) end
+                    if type(st.action) == "table" then checkText(st.action, "text", w) end
+                    for _, a in ipairs(type(st.assertions) == "table" and st.assertions or {}) do
+                        if type(a) == "table" then checkText(a, "label", w) end
+                    end
+                end
+            end
         end
     end
     if plan.kind ~= "plan" then errs[#errs + 1] = "kind must be plan" end
@@ -91,7 +103,9 @@ function Plan.Validate(plan)
     if type(plan.sections) ~= "table" or #plan.sections == 0 then errs[#errs + 1] = "no sections"; return errs end
     local seen = {}
     for _, sec in ipairs(plan.sections) do
-        for _, st in ipairs(sec.steps or {}) do
+        if type(sec) ~= "table" or type(sec.steps) ~= "table" then errs[#errs + 1] = "section without a steps list"; return errs end
+        for _, st in ipairs(sec.steps) do
+            if type(st) ~= "table" then errs[#errs + 1] = "step is not a table"; return errs end
             local w = "step " .. tostring(st.id)
             if not isStr(st.id) then errs[#errs + 1] = "step without id"
             elseif seen[st.id] then errs[#errs + 1] = "duplicate step id " .. st.id

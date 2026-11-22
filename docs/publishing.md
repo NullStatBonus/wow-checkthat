@@ -22,6 +22,10 @@ Releases are built by [BigWigsMods/packager](https://github.com/BigWigsMods/pack
 2. Commit, then tag the commit `vX.Y.Z` (the version without the `v` must equal the TOC version) and push the tag.
 3. The workflow runs `make test` and `make check`, checks the tag against both TOC versions with `sh tools/check-version.sh "$GITHUB_REF_NAME"`, then packages and uploads to CurseForge and Wago, then creates the GitHub release with the zip attached.
 
+## Listing page
+
+Upload screenshots on CurseForge and Wago with the text from `docs/listing.md`: the checklist card on a step with live checks, the plan-ready screen with the Recent plans button, and the settings window. Use the tags Development, Utility and Testing where the site offers them.
+
 ## How the package is laid out
 
 - The addon lives in `TestThat/` inside the repository, so `.pkgmeta` moves it to the top of the zip and ignores everything else (tests, tools, docs, openspec, captures and screenshots).

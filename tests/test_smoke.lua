@@ -137,4 +137,45 @@ test("smoke: importing a plan opens the window with a Start button", function()
     b.onChoose(b.choices[1].id)
     T.ok(_G.TestThatCard.shown); T.eq(ns.App.db.ui.lastImport, "DontDoThat")
 end)
+
+test("smoke: a note stays with its step attempt", function()
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    ns.App.Start("KeepThat"); ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.TestThatCard
+    card.note:SetText("note for step one")
+    ns.Card.Go(1)
+    T.eq(card.note:GetText(), "", "moving to another step clears the draft")
+end)
+test("smoke: a reload request on the last step shows Reload on the results screen", function()
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    local run = ns.App.Start("KeepThat")
+    for _ = 1, 20 do ns.Card.Refresh(); if not select(3, ns.App.Current()) then break end; ns.App.Verdict("skip") end
+    ns.App.db.ui.shareReload = run.runId
+    ns.Card.Refresh()
+    T.ok(_G.TestThatCard.reload.shown, "Reload offered on the results screen")
+    ns.App.db.ui.shareReload = nil; ns.Card.Refresh()
+    T.ok(not _G.TestThatCard.reload.shown, "and gone once the request is cleared")
+    -- a request from another run, or a stale one from before a reload, is ignored
+    ns.App.db.ui.shareReload = "some-other-run"; ns.Card.Refresh()
+    T.ok(not _G.TestThatCard.reload.shown)
+    ns.App.Init(ns.App.db, ns.App.env)
+    T.eq(ns.App.db.ui.shareReload, nil, "loading again clears a pending reload request")
+end)
+test("smoke: the Run button is built out of combat only and hidden by a state driver", function()
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    ns.App.Start("KeepThat")
+    local card = _G.TestThatCard
+    local driven
+    rawset(_G, "RegisterStateDriver", function(f, state, cond) driven = { f, state, cond } end)
+    card.secure = false
+    rawset(_G, "InCombatLockdown", function() return true end)
+    T.ok(pcall(ns.Card.Refresh), "refresh in combat does not raise")
+    T.ok(card.secure == false, "no protected frame is built in combat")
+    rawset(_G, "InCombatLockdown", function() return false end)
+    ns.Card.Refresh()
+    T.ok(card.secure, "built after combat")
+    T.ok(driven and driven[2] == "visibility" and driven[3]:find("[combat] hide", 1, true), "hidden for the whole of combat")
+    rawset(_G, "RegisterStateDriver", nil)
+end)
+
 finish()

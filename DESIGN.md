@@ -52,19 +52,19 @@ Settings use the shared Default profile. A checkbox in Advanced switches to a ch
 ## 3. The checklist card
 
 - Importing a plan opens the window with the plan title, its step count and Start run. The import screen has a text box and a "Recent plans" dropdown (up to 8, newest first); choosing one needs no paste.
-- Layout, top to bottom: header (step number, collapse, close), a 3 unit progress bar filled by resolved steps, the step title (largest text), Setup / Do / Expect in a 62 unit label column, the step's commands in read-only boxes beside Do with Run all next to the first, an amber evidence line only when evidence is missing, a labelled note field, and a pinned row of Pass, Partial (mostly works), Fail, Skip and Undo (24 high; Reload joins the row only when a step asks for it). The secure button is labelled Run and sits inside the card beside the first command. After a reload a green "Reloaded" line shows under the title.
+- Layout, top to bottom: header (step number, collapse, close), a 3 unit progress bar filled by resolved steps, the step title (largest text), Setup / Do / Expect in a 62 unit label column, the step's commands in read-only boxes beside Do with Run next to the first, an amber evidence line only when evidence is missing, a labelled note field, and a pinned row of Pass, Partial (mostly works), Fail, Skip and Undo (24 high; Reload joins the row only when a step asks for it). The secure button is labelled Run and sits inside the card beside the first command. After a reload a green "Reloaded" line shows under the title.
 - Under the title a banner says who checks the step: green TESTTHAT CHECKS THIS STEP (the required checks are listed below Expect and tick live with the stock ReadyCheck icons) or gold YOU CONFIRM THIS STEP. < and > in the header move between steps; a finished step shows what was recorded with a Redo button.
 - Fonts are stock Blizzard: GameFontHighlightLarge (title), GameFontHighlight #DDDDDD (Do, Expect), GameFontHighlightSmall #AAAAAA (header, labels, hints). Amber means missing evidence only.
 - Collapsed, the card is a 280 wide strip with the step title and number. When the run is complete it shows passed, partial, failed and skipped counts, the plan handoff, Export results and Main window (the card start screen with Start run and Import a plan; there is no Reload here).
 - Default position right of center, 380 wide; draggable; the position is saved; Lock position stops dragging; Reset position restores it.
 - Fill is pure black at the chosen opacity; nothing is drawn at 0. Text opacity is separate.
 - One step at a time: Setup, Do (with copy boxes, one command per box), Expect, Next. Pass, Fail, Skip and Undo stay in fixed places. A note box sits beside them.
-- The secure Run button is its own top-level frame, shown and re-pointed only out of combat.
+- The secure Run button is its own top-level frame, created, changed and shown only out of combat. A state driver hides it for the whole of combat.
 - Evidence capture arms when the step appears, before the player acts.
 
 ## 4. Commands and diagnostics
 
-The common vocabulary: `settings [page]`, `help [topic]`, `status [topic]`, `get`, `set`, `debug on|off`, `log`, `log clear`. TestThat adds the runner commands (`import`, `start`, `pass`, `fail`, `skip`, `undo`, `export`, `macro`, `reload`).
+The common vocabulary: `settings [page]`, `help [topic]`, `status [topic]`, `get`, `set`, `debug on|off`, `log`, `log clear`. TestThat adds the runner commands (`import`, `start`, `pass`, `partial`, `fail`, `skip`, `undo`, `back`, `next`, `export`, `macro`, `reload`).
 
 UI and commands share validators in `Core/Settings.lua`. Unknown keys, bad values and surplus input are rejected without writes. TestThat's public keys are `card.scale`, `card.background-opacity`, `card.text-opacity` and `card.locked`. The report lists every saved setting, the run status, failures and the recorded lines.
 

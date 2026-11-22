@@ -30,7 +30,7 @@ sections:
     action:
       kind: copy-slash
       text: /wtt debug on
-    expect: Chat says "debug on".
+    expect: Chat says "Debug recording is on.".
     verify:
     - player
     - assertions
@@ -44,7 +44,7 @@ sections:
     action:
       kind: secure-macro
       macro: status
-      text: Click Run all on the card.
+      text: Click Run on the card.
     expect: Chat shows a status line with your pass count.
     verify:
     - player

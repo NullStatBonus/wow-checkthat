@@ -37,6 +37,7 @@ end
 -- boundary cannot be located (treat as unverified).
 function Evidence.NewLines(snapshot, current)
     if not current then return nil end
+    if snapshot and snapshot.unavailable then return nil end -- the log could not be read when the step opened
     if not snapshot or #snapshot == 0 then return current end
     local n = #snapshot
     local k = math.min(12, n) -- a long tail: startup blocks repeat every session, so a short one is ambiguous
@@ -78,6 +79,7 @@ function Evidence.CheckLog(a, snapshots, plan, env)
     if not current then return "unverified", "log not readable (is debug on and the addon loaded?)" end
     local lines = current
     if a.scope ~= "session" then
+        if snapshots and snapshots[a.source] and snapshots[a.source].unavailable then return "unverified", "log was not readable when the step opened" end
         lines = Evidence.NewLines(snapshots and snapshots[a.source], current)
         if not lines then return "unverified", "log rolled over; evidence lost" end
     end
@@ -113,13 +115,16 @@ function Evidence.Probe(a, env)
     elseif a.probe == "global-value" then
         local root = env[a.name]
         if a.path == nil then return root end
-        return type(root) == "table" and walk(root, a.path) or nil
+        if type(root) ~= "table" then return nil end
+        return walk(root, a.path) -- a stored false stays false
     elseif a.probe == "frame-shown" then
-        local f = env[a.name]
-        if type(f) ~= "table" or type(f.IsShown) ~= "function" then return nil end
-        local ok, shown = pcall(f.IsShown, f)
+        local ok, shown = pcall(function()
+            local f = env[a.name]
+            if type(f) ~= "table" or type(f.IsShown) ~= "function" then return nil end
+            return f:IsShown() and true or false
+        end)
         if not ok then return nil end
-        return shown and true or false
+        return shown
     end
 end
 
@@ -129,6 +134,9 @@ function Evidence.CheckSequence(a, snapshots, plan, env)
     if not src then return "unverified", "unknown log source" end
     local current = Evidence.ReadLog(src, env)
     if not current then return "unverified", "log not readable (is debug on and the addon loaded?)" end
+    if a.scope ~= "session" and snapshots and snapshots[a.source] and snapshots[a.source].unavailable then
+        return "unverified", "log was not readable when the step opened"
+    end
     local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[a.source], current)
     if not lines then return "unverified", "log rolled over; evidence lost" end
     local want = 1
@@ -174,6 +182,7 @@ end
 
 function Evidence.Snapshot(plan, env)
     local snaps = {}
-    for name, src in pairs(plan.logs or {}) do snaps[name] = Evidence.ReadLog(src, env) or {} end
+    -- An unreadable log is not an empty one: marking it keeps old lines from counting as new later.
+    for name, src in pairs(plan.logs or {}) do snaps[name] = Evidence.ReadLog(src, env) or { unavailable = true } end
     return snaps
 end

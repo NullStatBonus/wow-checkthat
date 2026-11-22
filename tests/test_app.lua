@@ -170,4 +170,38 @@ test("status line", function()
     boot(); App.ImportPlan(assert(ns.Codec.Encode(plan()))); App.Start("KeepThat")
     T.ok(App.Status():find("2 left"), App.Status())
 end)
+
+test("a macro with more lines than copy boxes is not offered as one button", function()
+    boot()
+    local p = plan()
+    local step = p.sections[1].steps[2]
+    step.action = { kind = "manual", text = "do", commands = { "/kt log", "/kt log", "/kt log", "/kt log" } }
+    T.ok(App.MacroText(step, p) ~= nil, "four lines fit")
+    step.action.commands[5] = "/kt log"
+    T.ok(App.MacroText(step, p) == nil, "five lines hide commands the tester cannot see")
+end)
+test("a different plan with the same checksum does not replace a stored plan", function()
+    local db = boot()
+    local a = plan(); local sa = assert(ns.Codec.Encode(a))
+    local digest = sa:match("^!WTT1!(%x+)!")
+    T.ok(App.ImportPlan(sa))
+    local other = plan(); other.title = "Other"; other.sections[1].steps[1].id = "kt.x"
+    db.planStore[digest] = other                          -- simulate a collision with a different stored plan
+    T.ok(App.ImportPlan(sa))
+    T.ok(db.plans.KeepThat.digest ~= digest, "new key allocated")
+    T.eq(db.planStore[digest].title, "Other", "stored plan untouched")
+end)
+test("import errors are player sentences; damaged data never raises", function()
+    boot()
+    local bad = plan(); bad.macros[1].text = "/run x"
+    local v, err = App.ImportPlan(assert(ns.Codec.Encode(bad)))
+    T.ok(v == nil and err:find("does not allow"), err)
+    T.ok(not err:find("macro not allowed"), "no raw validator text")
+    local ok, r, e2 = pcall(App.ImportPlan, "!WTT1!00000000!====")
+    T.ok(ok and r == nil and e2, "damaged string")
+    local md = plan(); md.title = "A `x`"
+    local _, e3 = App.ImportPlan(assert(ns.Codec.Encode(md)))
+    T.ok(e3:find("backticks"), e3)
+end)
+
 finish()
