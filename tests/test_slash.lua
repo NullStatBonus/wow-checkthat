@@ -61,4 +61,25 @@ test("runner commands", function()
     T.ok(run("start Nothing")[1]:find("Usage"))
     T.ok(run("zzz")[1]:find("Unknown command"))
 end)
+
+test("start shows the card and undo refreshes it", function()
+    ns.App.Init({}, { time = function() return 1 end, UnitName = function() return "T" end, GetRealmName = function() return "R" end })
+    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "t", sections = { { id = "s", title = "S", steps = {
+        { id = "a", title = "A", action = { kind = "manual", text = "x" }, expect = "e", verify = { "player" } } } } } }
+    ns.App.db.plans.KeepThat = { plan = p, digest = "d" }
+    called.card = nil
+    run("start KeepThat"); T.eq(called.card[1], true, "show, not toggle")
+    ns.App.Begin(); ns.App.Verdict("skip")
+    called.card = nil
+    T.eq(run("undo")[1], "Undone."); T.eq(called.card[1], true, "card refreshed after undo")
+    called.card = nil
+    T.eq(run("undo")[1], "Nothing to undo."); T.ok(called.card == nil)
+end)
+
+
+test("text from a plan is escaped for chat", function()
+    T.eq(ns.Slash.Esc("a|cffff0000b|r"), "a||cffff0000b||r")
+    T.eq(ns.Slash.Esc("plain"), "plain")
+end)
+
 finish()

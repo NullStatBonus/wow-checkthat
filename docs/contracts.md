@@ -14,7 +14,7 @@ What a client or another addon provides, as measured or source-reviewed. Add a r
 
 | Area | Fact | Checked |
 | --- | --- | --- |
-| WoW Forever 1.60.1.71037 | `SecureActionButtonTemplate:SetPoint` to the card's command box fails: "Cannot anchor protected frames to regions". The Run all button is anchored to UIParent only, at coordinates read after layout. | 2026-11-22 |
+| WoW Forever 1.60.1.71037 | `SecureActionButtonTemplate:SetPoint` to the card's command box fails: "Cannot anchor protected frames to regions". The Run button is anchored to UIParent only, at coordinates read after layout. | 2026-11-22 |
 | WoW Forever 1.60.1.71037 | Self-test steps 1 to 4 passed with matched evidence, including resume after `/reload`. | 2026-11-22 |
 
 ## Source-reviewed
@@ -27,5 +27,4 @@ What a client or another addon provides, as measured or source-reviewed. Add a r
 ## Pending in-game
 
 - Macro slot limits per client.
-- `SecureActionButtonTemplate` behavior on WoW Forever.
 - Card layout at UI scales 100 and 150.

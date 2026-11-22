@@ -13,6 +13,9 @@ local ADDONS = { KeepThat = true, DontDoThat = true, ClosestVendor = true, TestT
 
 local function pageList() return L["Pages: home, plans, appearance, advanced, about."] end
 
+-- Chat reads | as an escape: text from a plan or a character name is shown with its bars doubled.
+function Slash.Esc(text) return (tostring(text):gsub("|", "||")) end
+
 function Slash.Print(text)
     if ns.addon then ns.addon:Print(text) elseif print then print(text) end
 end
@@ -81,7 +84,7 @@ function Slash.Run(args, deps)
         if not ADDONS[addon] then return { L["Usage: /wtt start <addon name>."] } end
         local run, err = App.Start(addon)
         if not run then return { err } end
-        deps.card()
+        deps.card(true) -- show, never toggle: an open card would hide the new run
         return { L["Started %s."]:format(run.runId) }
     elseif cmd == "pass" or cmd == "partial" or cmd == "fail" or cmd == "skip" then
         return deps.verdict(cmd, rest ~= "" and rest or nil)
@@ -90,7 +93,9 @@ function Slash.Run(args, deps)
         deps.card(true)
         return {}
     elseif cmd == "undo" then
-        return { App.Undo() and L["Undone."] or L["Nothing to undo."] }
+        if not App.Undo() then return { L["Nothing to undo."] } end
+        deps.card(true)
+        return { L["Undone."] }
     elseif cmd == "export" then deps.export(); return {}
     elseif cmd == "macro" then deps.macro(); return {}
     elseif cmd == "reload" then deps.reload(); return {}

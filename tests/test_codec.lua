@@ -28,4 +28,12 @@ test("codec tolerates wrapped body", function()
     local wrapped = body:gsub("(....................)", "%1\n")
     T.ok(ns.Codec.Decode(head .. wrapped) ~= nil)
 end)
+
+test("damaged base64 never raises", function()
+    for _, body in ipairs({ "====", "A===", "AA=A", "AAAA====", "==AA", "A=AA" }) do
+        local ok, tbl, err = pcall(ns.Codec.Decode, "!WTT1!00000000!" .. body)
+        T.ok(ok, "raised on " .. body); T.ok(tbl == nil and err, "rejected " .. body)
+    end
+end)
+
 finish()

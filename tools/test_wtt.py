@@ -1,4 +1,4 @@
-import json, os, subprocess, sys, tempfile, unittest, zlib
+import json, os, re, subprocess, sys, tempfile, unittest, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wtt
 
@@ -128,6 +128,81 @@ class SamplePlans(unittest.TestCase):
             self.assertEqual(wtt.validate(wtt.load_yaml(path)), [], path)
 
 
+class PlanSkill(unittest.TestCase):
+    SKILL = os.path.join(ROOT, "skills", "wtt-test-plan")
+
+    @staticmethod
+    def missing_commands(plan):
+        """Slash commands named in step text (colored or not) that the step's commands lack."""
+        known = {c for cmds in wtt.SLASH.values() for c in cmds} | set(wtt.BUILTIN) | {"/console"}
+        out = []
+        for sec in plan["sections"]:
+            for st in sec["steps"]:
+                text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", st["action"].get("text", ""))
+                have = st["action"].get("commands", [])
+                for m in re.finditer(r"(?<![\w/])(/[A-Za-z]+(?: [A-Za-z0-9]+)*)", text):
+                    word = m.group(1).split(" ")[0].lower()
+                    if word in known and not any(m.group(1).lower().startswith(h.lower()) or h.lower().startswith(m.group(1).lower()) for h in have):
+                        out.append((st["id"], m.group(1)))
+        return out
+
+    def test_example_plan_validates_and_lists_named_commands(self):
+        plan = wtt.load_yaml(os.path.join(self.SKILL, "example.yaml"))
+        self.assertEqual(wtt.validate(plan), [])
+        self.assertEqual(self.missing_commands(plan), [])
+
+    def test_missing_command_check_catches_colored_uncolored_and_other_codes(self):
+        for text in ("Enter |cff99ccff/cvn test sell|r.", "Enter /cvn test sell.", "Enter |cffffd100/cvn test sell|r."):
+            plan = {"sections": [{"steps": [{"id": "x", "action": {"text": text}}]}]}
+            self.assertEqual(self.missing_commands(plan), [("x", "/cvn test sell")], text)
+            plan["sections"][0]["steps"][0]["action"]["commands"] = ["/cvn test sell"]
+            self.assertEqual(self.missing_commands(plan), [], text)
+
+    def test_skill_points_at_files_that_exist(self):
+        def read(name):
+            with open(os.path.join(self.SKILL, name), encoding="utf-8") as f:
+                return f.read()
+        text = read("SKILL.md")
+        for rel in ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md",
+                    "openspec/specs/test-plan-format/spec.md", "TestThat/Model/Plan.lua"):
+            self.assertIn(rel, text + read("reference.md"))
+            self.assertTrue(os.path.exists(os.path.join(ROOT, rel)), rel)
+        for name in ("reference.md", "example.yaml"):
+            self.assertIn(name, text)
+            self.assertTrue(os.path.exists(os.path.join(self.SKILL, name)), name)
+
+
+class InstallSkill(unittest.TestCase):
+    SRC = os.path.join(ROOT, "skills", "wtt-test-plan")
+
+    def make(self, dest):
+        return subprocess.run(["make", "install-skill", "SKILL_DIR=" + dest], cwd=ROOT, capture_output=True, text=True)
+
+    def test_install_copies_files_stamps_checkout_and_replaces_stale_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = os.path.join(d, "wtt-test-plan")
+            os.makedirs(dest)
+            with open(os.path.join(dest, "stale.txt"), "w") as f:
+                f.write("old")
+            self.assertEqual(self.make(d).returncode, 0)
+            self.assertFalse(os.path.exists(os.path.join(dest, "stale.txt")))
+            for name in os.listdir(self.SRC):
+                with open(os.path.join(self.SRC, name), "rb") as a, open(os.path.join(dest, name), "rb") as b:
+                    self.assertEqual(a.read(), b.read(), name)
+            with open(os.path.join(dest, ".wtt-root"), encoding="utf-8") as f:
+                self.assertEqual(os.path.realpath(f.read().strip()), os.path.realpath(ROOT))
+            self.assertFalse(os.path.exists(os.path.join(self.SRC, ".wtt-root")))
+            self.assertEqual([n for n in os.listdir(d) if n.startswith(".wtt-test-plan.")], [])
+
+    def test_install_refuses_a_folder_inside_the_checkout(self):
+        inside = os.path.join(ROOT, "skills")
+        before = sorted(os.listdir(self.SRC))
+        r = self.make(inside)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(sorted(os.listdir(self.SRC)), before)
+        self.assertTrue(os.path.exists(os.path.join(self.SRC, "SKILL.md")))
+
+
 class Collect(unittest.TestCase):
     def test_sv2json_and_collect_dedupe(self):
         with tempfile.TemporaryDirectory() as d:
@@ -157,6 +232,41 @@ class Collect(unittest.TestCase):
             wtt.cmd_collect(args); wtt.cmd_collect(args)
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "R-1", "shots")), ["a__in.jpg"])
             self.assertIn("screenshots: a__in.jpg", wtt.report_text(wtt.latest_runs(dest), dest))
+
+
+class Safety(unittest.TestCase):
+    def test_run_ids_cannot_leave_the_runs_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            run = {"runId": "../../evil", "revision": 1, "steps": {}}
+            wtt.write_revision(d, run)
+            self.assertFalse(os.path.exists(os.path.join(d, "evil")))
+            self.assertFalse(os.path.exists(os.path.join(os.path.dirname(d), "evil")))
+            self.assertTrue(any(f.startswith("r1") for _, _, fs in os.walk(os.path.join(d, "runs")) for f in fs))
+
+    def test_a_different_run_with_the_same_id_and_revision_is_a_conflict(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = {"runId": "R-1", "revision": 2, "steps": {"x": {"verdict": "pass"}}}
+            self.assertEqual(wtt.write_revision(d, a), "new")
+            self.assertEqual(wtt.write_revision(d, dict(a)), "same")
+            b = {"runId": "R-1", "revision": 2, "steps": {"x": {"verdict": "fail"}}}
+            self.assertEqual(wtt.write_revision(d, b), "conflict")
+            with open(os.path.join(d, "runs", "R-1", "r2.json")) as fh:
+                self.assertEqual(json.load(fh)["steps"]["x"]["verdict"], "pass", "the first copy is kept")
+
+    def test_decode_stops_a_zip_bomb(self):
+        raw = b"\0" * (wtt.MAX_INFLATED + 10)
+        c = zlib.compressobj(9, zlib.DEFLATED, -15)
+        packed = c.compress(raw) + c.flush()
+        import base64
+        s = "!WTT1!%08x!%s" % (zlib.adler32(raw) & 0xFFFFFFFF, base64.b64encode(packed).decode())
+        with self.assertRaises(ValueError):
+            wtt.decode(s)
+
+    def test_title_and_requirement_text_are_checked_for_markdown(self):
+        p = good(); p["title"] = "Run `x`"; p["requirements"]["r"]["text"] = "needs **it**"
+        self.assertTrue(any("markdown" in e for e in wtt.validate(p)))
+        wtt.nativize(p)
+        self.assertNotIn("`", p["title"]); self.assertNotIn("**", p["requirements"]["r"]["text"])
 
 
 if __name__ == "__main__":

@@ -13,4 +13,4 @@ debug.txt
 Screenshot*.png
 screenshots/
 
-.claude/settings.local.json
+.claude/

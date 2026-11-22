@@ -29,12 +29,23 @@ function Adapter.Env()
 end
 
 function Adapter.Now() return call("time") end
+
+-- The addon's own version from the TOC ("unknown" when the client cannot say).
+function Adapter.Version()
+    local f = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    if type(f) ~= "function" then return "unknown" end
+    local ok, v = pcall(f, ns.name, "Version")
+    return ok and type(v) == "string" and v ~= "" and v or "unknown"
+end
+ns.version = Adapter.Version()
 -- Runs fn after sec seconds, if the client has timers.
 function Adapter.After(sec, fn)
     if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(sec, fn) end
 end
 function Adapter.InCombat() return call("InCombatLockdown") and true or false end
 function Adapter.Reload() return call("ReloadUI") end
+-- Hide a frame for the whole of combat, and show it again when combat ends (the owner re-checks it then).
+function Adapter.HideInCombat(frame) return call("RegisterStateDriver", frame, "visibility", "[combat] hide; show") end
 
 -- Macros the player can click. Never used in combat (callers check InCombat first).
 function Adapter.MacroIndex(name) return call("GetMacroIndexByName", name) or 0 end

@@ -1,6 +1,6 @@
 # CurseForge and Wago listing
 
-**Summary:** Walk through the in-game test plans for your addons, tick off each step, and collect evidence for review.
+**Summary:** Walk through in-game test plans for KeepThat, DontDoThat and ClosestVendor, tick off each step, and collect evidence for review.
 
 ## TestThat
 
@@ -8,14 +8,17 @@ TestThat turns a long manual test plan into a short checklist. A card shows one 
 
 ### Features
 
-- Import a plan as a pasted string. Export your results as a string.
-- Copy commands and a button you click to run a macro. No automated input.
-- Evidence from the addon's debug log, kept through `/reload`.
-- A settings window for card size, opacity and position. Shared or per-character settings.
-- Commands: `/wtt`, `/wtt settings`, `/wtt import`, `/wtt start <addon>`, `/wtt log`.
+- Import a plan from a pasted string, or pick a recent plan. Export your results as a string.
+- Copy each command from its own box, or click Run to run the step's commands. TestThat never sends input for you.
+- Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
+- See which steps TestThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
+- Keep your place through `/reload`.
+- Set card size, opacity and position. Use shared or per-character settings.
+- Commands: `/wtt`, `/wtt settings`, `/wtt import`, `/wtt start <addon>`, `/wtt export`, `/wtt log`.
 
 ### Good to know
 
 - Plans are made for KeepThat, DontDoThat and ClosestVendor. Other plans need the plan format in the project repository.
 - Results are saved when the game reloads or logs out.
-- Works on WoW Forever and Classic Era.
+- Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `TestThat` folder in `Interface/AddOns/`.
+- Run is not available in combat. TestThat shows it again when combat ends.

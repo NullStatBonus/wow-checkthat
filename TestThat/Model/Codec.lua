@@ -29,6 +29,7 @@ local function b64dec(s)
     for i = 1, #s, 4 do
         local a, b, c, d = s:byte(i, i + 3)
         local pc, pd = c == 61, d == 61
+        if a == 61 or b == 61 or (pc and not pd) then return nil end
         local n = b64idx[a] * 262144 + b64idx[b] * 4096 + (pc and 0 or b64idx[c]) * 64 + (pd and 0 or b64idx[d])
         out[#out + 1] = string.char(math.floor(n / 65536) % 256)
         if not pc then out[#out + 1] = string.char(math.floor(n / 256) % 256) end

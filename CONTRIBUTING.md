@@ -32,6 +32,8 @@ Behavior is specified in `openspec/specs/`. A change to behavior goes through an
 
 Plans live in `plans/*.yaml` and follow `schema/test-plan.schema.json`. `tools/wtt.py validate` checks one; `make build` compiles them to import strings.
 
+To draft a plan for a change, use the `wtt-test-plan` skill in `skills/wtt-test-plan/`. It asks about scope, addon, output path, locale, clients and logging, then drafts, validates and reviews the plan. Run `make install-skill` to copy it to `~/.claude/skills/` (set `SKILL_DIR` to use another folder). The install records this checkout, so the skill finds `tools/wtt.py` from any addon repository.
+
 ## Versions and releases
 
 - Bump `## Version:` in **both** TOC files to the same value when a change's specs are applied. Before 1.0.0 a new capability or user-visible feature raises the minor number and a fix to existing behavior raises the patch number.

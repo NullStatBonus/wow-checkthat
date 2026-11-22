@@ -37,7 +37,7 @@ end
 -- It is anchored to the screen (UIParent) only, at coordinates read from the first command box after layout.
 -- Never in combat; any failure is logged, never raised.
 function Card.PlaceSecure()
-    if not card or A.InCombat() then return end
+    if not card or A.InCombat() or not card.secure then return end
     local anchor = card.secureAnchor
     if not (anchor and anchor:IsShown()) then return end
     local right, top, bottom = anchor:GetRight(), anchor:GetTop(), anchor:GetBottom()
@@ -101,6 +101,7 @@ local function build()
     end)
     card.texts, card.rows = {}, {}
     card.secureAnchor = false
+    card.secure = false -- created out of combat by Card.EnsureSecure
     card.ticking = false
 
     -- Header: where we are, and the controls that always stay in the same place.
@@ -141,16 +142,8 @@ local function build()
 
     card.copies = {}
     for i = 1, 4 do card.copies[i] = copyBox(card); card.copies[i]:SetWidth(190) end
-    -- The secure button is its own top-level frame, so it never makes the card a protected parent:
-    -- the card can move, resize and hide in combat. It is only re-pointed and shown out of combat.
-    card.secure = CreateFrame("Button", "TestThatSecureButton", UIParent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
-    card.secure:SetSize(56, 24); card.secure:SetText(L["Run"])
-    card.secure:SetFrameStrata("DIALOG")
-    card.secure:SetAttribute("type", "macro")
-    card.secure:SetAttribute("useOnKeyDown", false)
-    card.secure:RegisterForClicks("AnyUp")
-    card.secure:Hide()
-    card:HookScript("OnHide", function() if not A.InCombat() then card.secure:Hide() end end)
+    Card.EnsureSecure()
+    card:HookScript("OnHide", function() if not A.InCombat() and card.secure then card.secure:Hide() end end)
     card:HookScript("OnShow", function() Card.Refresh() end)
 
     card.note = CreateFrame("EditBox", nil, card, "InputBoxTemplate")
@@ -218,12 +211,30 @@ local function build()
     Card.ApplyAppearance()
 end
 
+-- The secure button is its own top-level frame, so it never makes the card a protected parent: the card can
+-- move, resize and hide in combat. The button is created, changed and shown out of combat only. A state driver
+-- hides it for the whole of combat, so a stale macro can never be clicked.
+function Card.EnsureSecure()
+    if card.secure then return card.secure end
+    if A.InCombat() then return nil end
+    local s = CreateFrame("Button", "TestThatSecureButton", UIParent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+    s:SetSize(56, 24); s:SetText(L["Run"])
+    s:SetFrameStrata("DIALOG")
+    s:SetAttribute("type", "macro")
+    s:SetAttribute("useOnKeyDown", false)
+    s:RegisterForClicks("AnyUp")
+    A.HideInCombat(s)
+    s:Hide()
+    card.secure = s
+    return s
+end
+
 local function setMacro(step, plan)
     local body = App.MacroText(step, plan)
-    if A.InCombat() then card.pendingMacro = true; card.secure:SetAlpha(0.4); return end -- stale until combat ends
+    local s = Card.EnsureSecure()
+    if not s then card.pendingMacro = true; return end -- in combat: the button is hidden (state driver) and is set up after combat
     card.pendingMacro = nil
-    card.secure:SetAlpha(1)
-    if body then card.secure:SetAttribute("macrotext", body); card.secure:Show() else card.secure:SetAttribute("macrotext", ""); card.secure:Hide() end
+    if body and card:IsShown() then s:SetAttribute("macrotext", body); s:Show() else s:SetAttribute("macrotext", ""); s:Hide() end
 end
 
 -- A plan can ask for evidence to be shared at a point: a reload (logs reach saved variables) or the export string.
@@ -232,7 +243,8 @@ function Card.AfterVerdict(step)
     if step.share == "export" then Card.ExportNow()
     elseif step.share == "reload" then
         ns.Slash.Print(L["This plan asks for a reload now so the log reaches the saved file. Press Reload on the card."])
-        App.db.ui.shareReload = true
+        local run = App.Current()
+        App.db.ui.shareReload = run and run.runId or nil -- belongs to this run; cleared when the UI loads again
     end
 end
 
@@ -245,7 +257,7 @@ function Card.ImportPrompt()
     local function choose(digest)
         local plan, err = App.UseRecent(digest)
         if plan then
-            ns.Slash.Print(L["Using %s."]:format(plan.title))
+            ns.Slash.Print(L["Using %s."]:format(ns.Slash.Esc(plan.title)))
             Card.Show()
             if ns.Options and ns.Options.Notify then ns.Options.Notify() end
             Card.Refresh()
@@ -254,7 +266,7 @@ function Card.ImportPrompt()
     ns.Export.Prompt(L["Paste a plan string (it starts with !WTT1!), or pick a recent plan"], "", function(str)
         local plan, err = App.ImportPlan(str)
         if plan then
-            ns.Slash.Print(L["Imported %s."]:format(plan.title))
+            ns.Slash.Print(L["Imported %s."]:format(ns.Slash.Esc(plan.title)))
             App.db.ui.lastImport = plan.addon
             Card.Show() -- the window opens as soon as a plan is imported
         else ns.Slash.Print(L["Import failed. %s"]:format(err)) end
@@ -277,7 +289,7 @@ local function hideAll()
     for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "reload", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide()
-    if not A.InCombat() then card.secure:Hide() end
+    if not A.InCombat() and card.secure then card.secure:Hide() end
 end
 
 local function setText(f, str, color)
@@ -288,6 +300,7 @@ end
 
 function Card.Refresh()
     if not card then return end
+    if not card:IsShown() and card.secure and not A.InCombat() then card.secure:Hide() end
     local run, ctx, step = App.Current()
     hideAll()
     local collapsed = cfg().collapsed
@@ -319,7 +332,7 @@ function Card.Refresh()
     end
     local total = #run.order
     local c = ns.Run.Counts(run)
-    local resolved = total - (c.pending or 0)
+    local resolved = total - (c.open or c.pending or 0)
     card.barBack:Show(); card.barFill:Show()
     card.barFill:SetWidth(math.max(1, inner * (total > 0 and resolved / total or 0)))
     if collapsed then
@@ -341,6 +354,10 @@ function Card.Refresh()
         card.exportBtn:ClearAllPoints(); card.exportBtn:SetPoint("BOTTOMLEFT", 12, 12); card.exportBtn:Show()
         card.mainBtn:ClearAllPoints(); card.mainBtn:SetPoint("LEFT", card.exportBtn, "RIGHT", 6, 0); card.mainBtn:Show()
         card.undo:Show()
+        if App.db.ui.shareReload == run.runId then -- the last step asked for a reload so the log reaches the saved file
+            card.reload:ClearAllPoints(); card.reload:SetPoint("BOTTOMLEFT", 12, 42); card.reload:Show()
+            y = y + 30
+        end
         card:SetHeight(y + 36); return
     end
     local rec0 = run.steps[step.id]
@@ -437,9 +454,11 @@ function Card.Refresh()
     local hint = {}
     if step.screenshot then hint[#hint + 1] = L["Press Print Screen while the result is on screen."] end
     if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Press Reload when done. This step resumes after."] end
-    if App.db.ui.shareReload then hint[#hint + 1] = L["Reload now so Claude can read the log."] end
+    if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Reload now so Claude can read the log."] end
     if #hint > 0 then place(card.hint, 12, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
     y = y + 6
+    local noteKey = run.runId .. "/" .. step.id .. "/" .. #rec0.attempts
+    if card.noteKey ~= noteKey then card.note:SetText(""); card.noteKey = noteKey end -- a note belongs to one step attempt
     card.noteLabel:Show(); place(card.noteLabel, 12, y + 3)
     place(card.note, 62, y - 1); card.note:Show()
     y = y + 34
@@ -449,7 +468,7 @@ function Card.Refresh()
     setMacro(step, ctx.plan)
     Card.PlaceSecure()
     A.After(0.2, Card.PlaceSecure) -- layout settles a moment after the first show
-    local needReload = (step.reload == "after_action" and not reloaded) or step.action.kind == "reload" or App.db.ui.shareReload == true
+    local needReload = (step.reload == "after_action" and not reloaded) or step.action.kind == "reload" or App.db.ui.shareReload == run.runId
     card.reload:ClearAllPoints(); card.reload:SetPoint("RIGHT", card.undo, "LEFT", -6, 0)
     card.reload:SetShown(needReload)
     card:SetHeight(y + 40)

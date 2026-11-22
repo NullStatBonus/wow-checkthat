@@ -115,4 +115,37 @@ test("requirements block when probe fails", function()
     ctx.env.DB.debug = true
     T.eq(#R.Blocked(ctx, step), 0)
 end)
+
+test("an unverified step stays open: finishing the others does not complete the run", function()
+    local run, ctx = mk()
+    R.Begin(run, ctx, "a"); R.Verdict(run, ctx, "a", "pass")        -- no evidence: unverified
+    T.eq(run.steps.a.verdict, "unverified")
+    R.Goto(run, 1); R.Begin(run, ctx, "b"); R.Verdict(run, ctx, "b", "pass")
+    T.eq(R.CurrentId(run), "a", "the open step comes back")
+    T.eq(R.Counts(run).open, 1)
+end)
+test("export keeps a step that is named snapshots", function()
+    local run, ctx = mk()
+    ctx.plan.sections[1].steps[2].id = "snapshots"
+    run = R.New(ctx)
+    R.Begin(run, ctx, "snapshots"); R.Verdict(run, ctx, "snapshots", "pass")
+    local out = R.Export(run)
+    T.ok(out.steps.snapshots and out.steps.snapshots.verdict == "pass", "step survives the export")
+    T.ok(out.steps.a.attempts[1] == nil or out.steps.a.attempts[1].snapshots == nil)
+end)
+test("run ids differ per character", function()
+    local _, ctx = mk()
+    local r1 = R.New(ctx); ctx.character = "Other-Realm"; local r2 = R.New(ctx)
+    T.ok(r1.runId ~= r2.runId, r1.runId .. " vs " .. r2.runId)
+end)
+test("addon-loaded requirement defaults to loaded, not merely answered", function()
+    local run, ctx, env = mk()
+    ctx.plan.requirements = { dfl = { text = "DFL", probe = "addon-loaded", name = "DFL" } }
+    ctx.plan.sections[1].steps[2].requires = { "dfl" }
+    env.IsAddOnLoaded = function() return false end
+    T.eq(#R.Blocked(ctx, ctx.plan.sections[1].steps[2]), 1, "an unloaded addon blocks")
+    env.IsAddOnLoaded = function() return true end
+    T.eq(#R.Blocked(ctx, ctx.plan.sections[1].steps[2]), 0)
+end)
+
 finish()

@@ -12,6 +12,7 @@ manual-changelog:
 ignore:
   - .claude
   - .github
+  - skills
   - .venv
   - CLAUDE.md
   - AGENTS.md

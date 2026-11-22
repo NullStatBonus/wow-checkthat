@@ -90,4 +90,31 @@ test("pattern length capped", function()
     local en = env({ "x" })
     T.eq((E.CheckLog({ kind = "log", source = "s", pattern = string.rep("a", 300) }, {}, plan, en)), "unverified")
 end)
+
+test("an unreadable log at attempt start is not an empty baseline", function()
+    local snap = E.Snapshot(plan, {})                       -- addon data missing when the step opened
+    T.ok(snap.s.unavailable, "marked unavailable")
+    local en = env({ "old startup line" })                  -- later the log exists and holds an old line
+    local r, why = E.CheckLog({ kind = "log", source = "s", contains = "old startup" }, snap, plan, en)
+    T.eq(r, "unverified"); T.ok(why:find("not readable"), why)
+    T.eq((E.CheckLog({ kind = "log", source = "s", contains = "old startup", scope = "session" }, snap, plan, en)), "pass")
+    local empty = E.Snapshot(plan, env({}))                 -- a readable empty log is a valid baseline
+    T.ok(not empty.s.unavailable)
+    T.eq((E.CheckLog({ kind = "log", source = "s", contains = "new" }, empty, plan, env({ "new" }))), "pass")
+end)
+test("state probe keeps a stored false", function()
+    local en = { DB = { flags = { on = false } } }
+    local a = { kind = "state", probe = "global-value", name = "DB", path = "flags.on", op = "eq", value = false }
+    T.eq((E.CheckState(a, en)), "pass")
+    a.path = "flags.missing"
+    T.eq((E.CheckState(a, en)), "unverified", "a missing field stays unavailable")
+end)
+test("frame probe survives a throwing frame", function()
+    local en = setmetatable({}, { __index = function() error("boom") end })
+    local a = { kind = "state", probe = "frame-shown", name = "X", op = "eq", value = true }
+    T.eq((E.CheckState(a, en)), "unverified")
+    en = { X = { IsShown = function() error("boom") end } }
+    T.eq((E.CheckState(a, en)), "unverified")
+end)
+
 finish()

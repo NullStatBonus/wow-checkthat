@@ -28,7 +28,7 @@ The runner MAY show copy boxes for allowed commands, a button whose click is the
 
 #### Scenario: Combat
 - **WHEN** the player is in combat as a step changes
-- **THEN** the secure button keeps its old text until combat ends
+- **THEN** the secure button is hidden for the whole of combat, is never built or changed in combat, and is set up again for the current step when combat ends
 
 #### Scenario: Card in combat
 - **WHEN** the player drags or collapses the card in combat
@@ -37,6 +37,14 @@ The runner MAY show copy boxes for allowed commands, a button whose click is the
 #### Scenario: Existing macro
 - **WHEN** the player already has a macro named WTT that the runner did not create
 - **THEN** the runner leaves it alone and creates the macro under an unused name
+
+#### Scenario: Too many commands
+- **WHEN** a step lists more commands than the card has copy boxes
+- **THEN** the card offers no Run button, so no command runs unseen
+
+#### Scenario: Note stays with its step
+- **WHEN** the player types a note and moves to another step
+- **THEN** the note box is empty on the other step
 
 #### Scenario: Manual step with commands
 - **WHEN** a manual step lists commands and every command is on the allow list
@@ -137,7 +145,7 @@ While a step with required assertions is open, the card SHALL list each required
 - **THEN** the check turns green without any button press
 
 ### Requirement: Step navigation and redo
-The card SHALL have < and > buttons, and `/wtt back` and `/wtt next` SHALL do the same. A step already recorded SHALL show what was recorded and its note, with a Redo button; Redo SHALL open a fresh attempt. After a result the card SHALL go to the next pending step, wrapping to earlier pending steps, and show the results screen only when nothing is pending. The results screen SHALL be reachable by > only when nothing is pending, and < SHALL leave it.
+The card SHALL have < and > buttons, and `/wtt back` and `/wtt next` SHALL do the same. A step already recorded SHALL show what was recorded and its note, with a Redo button; Redo SHALL open a fresh attempt. After a result the card SHALL go to the next open step, wrapping to earlier open steps, and show the results screen only when nothing is open. A step that stayed unverified is open. The results screen SHALL be reachable by > only when nothing is pending, and < SHALL leave it.
 
 #### Scenario: Go back
 - **WHEN** the tester presses < on step 3
@@ -148,7 +156,7 @@ The card SHALL have < and > buttons, and `/wtt back` and `/wtt next` SHALL do th
 - **THEN** a fresh attempt opens and the verdict row returns
 
 ### Requirement: Results screen leads back to the main window
-The run-complete screen SHALL offer Export results and Main window. Main window SHALL return the floating card to its start screen, showing the finished run's plan with Start run and Import a plan, and SHALL NOT open the settings window. The screen SHALL NOT offer Reload; its text SHALL say the game saves evidence to disk when the player reloads or logs out.
+The run-complete screen SHALL offer Export results and Main window. Main window SHALL return the floating card to its start screen, showing the finished run's plan with Start run and Import a plan, and SHALL NOT open the settings window. The screen SHALL NOT offer Reload unless the last step asked for a reload share point; its text SHALL say the game saves evidence to disk when the player reloads or logs out.
 
 #### Scenario: Back to start
 - **WHEN** the run is complete and the player presses Main window

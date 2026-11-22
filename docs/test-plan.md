@@ -2,7 +2,7 @@
 
 `make test` covers the plan format, evidence checks, run logic, settings and commands against a fake game. This plan keeps only what needs a live client: drawing, protected buttons, reload resume and saved variables.
 
-Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`, then `/reload`. The same plan ships as `plans/selftest.yaml`: import `build/selftest.wtt` with `/wtt import` to run steps 3 to 6 inside TestThat itself. Each check is one action, a `Check:` line with what you should see, and a `Log:` line for the reviewer. Run each section on WoW Forever and on Classic Era.
+Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`, then `/reload`. The same plan ships as `plans/selftest.yaml`: import `build/selftest.wtt` with `/wtt import` to run the self-test steps inside TestThat itself. Each check is one action, a `Check:` line with what you should see, and a `Log:` line for the reviewer. Run each section on WoW Forever and on Classic Era.
 
 ## 1. Load
 
@@ -31,7 +31,7 @@ Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`
    Check: chat says "Debug recording is on."
    Log: `[wtt] debug on`.
 2. **Import opens the window.** Type `/wtt import`, paste the contents of `build/selftest.wtt`, press Import, then type `/wtt start TestThat`.
-   Check: the window opens at once with the plan title and a Start run button. After you select Start run (or type `/wtt start TestThat`) the card shows "Turn debug recording on" with a copy box, a progress bar and Pass, Fail, Skip and Undo at the bottom.
+   Check: the window opens at once with the plan title and a Start run button. After you select Start run (or type `/wtt start TestThat`) the card shows "Turn debug recording on" with a copy box, a progress bar and Pass, Partial, Fail, Skip and Undo at the bottom.
    Log: `[wtt] run started`.
 3. **Recent plans.** Type `/wtt import` again.
    Check: a "Recent plans" button lists the plan you imported. Choosing it opens the window with Start run and no paste.
@@ -45,6 +45,9 @@ Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`
 6. **Card in combat.** Start a fight with a training dummy. Drag, collapse and expand the card.
    Check: the card moves and collapses and no "action blocked" message shows.
    Log: none; on screen only.
+7. **Run in combat.** On a step with a Run button, start a fight with a training dummy and move to the next step with the card's > button.
+   Check: the Run button is hidden during the fight. After the fight it shows again and runs the commands of the new step.
+   Log: none; on screen only.
 
 ## 4. Evidence
 
@@ -56,7 +59,7 @@ Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`
    Log: none; on screen only.
 
 3. **Unverified without evidence.** Type `/wtt debug off`, repeat the first step of a run and press Pass.
-   Check: the card stays on the step and says the evidence is missing.
+   Check: the card stays on the step and says the evidence is missing. If you finish every other step, the card returns to this step instead of showing the run as complete.
    Log: none; on screen only.
 4. **Export.** Finish the run, type `/wtt export`, then `/reload`.
    Check: a box shows a string starting with `!WTT1!`. After the reload `WTF/Account/<account>/SavedVariables/TestThat.lua` holds the run.
