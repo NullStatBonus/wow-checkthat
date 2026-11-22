@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+Fixed: Steps that list commands, such as /reload, showed copy boxes but no Run button. They now show Run.
+Fixed: Main window on the finished-run screen opened the settings window. It now returns to the card start screen.
+New: **Addon icon.** TestThat now shows an icon in the AddOns list.
+
 ## 0.2.0
 
 Changed: The finished-run screen has a Main window button instead of Reload.

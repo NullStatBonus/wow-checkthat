@@ -38,6 +38,10 @@ The runner MAY show copy boxes for allowed commands, a button whose click is the
 - **WHEN** the player already has a macro named WTT that the runner did not create
 - **THEN** the runner leaves it alone and creates the macro under an unused name
 
+#### Scenario: Manual step with commands
+- **WHEN** a manual step lists commands and every command is on the allow list
+- **THEN** the card offers the Run button, which runs the commands in order when the player clicks
+
 #### Scenario: Copy boxes
 - **WHEN** a step offers a multi-line macro
 - **THEN** each command shows in its own read-only box, and typing, cutting or deleting reverts
@@ -144,8 +148,8 @@ The card SHALL have < and > buttons, and `/wtt back` and `/wtt next` SHALL do th
 - **THEN** a fresh attempt opens and the verdict row returns
 
 ### Requirement: Results screen leads back to the main window
-The run-complete screen SHALL offer Export results and Main window. Main window SHALL open the settings window on Home. The screen SHALL NOT offer Reload; its text SHALL say the game saves evidence to disk when the player reloads or logs out.
+The run-complete screen SHALL offer Export results and Main window. Main window SHALL return the floating card to its start screen, showing the finished run's plan with Start run and Import a plan, and SHALL NOT open the settings window. The screen SHALL NOT offer Reload; its text SHALL say the game saves evidence to disk when the player reloads or logs out.
 
 #### Scenario: Back to start
 - **WHEN** the run is complete and the player presses Main window
-- **THEN** the settings window opens on Home
+- **THEN** the card shows the plan ready with Start run and Import a plan, and no settings window opens

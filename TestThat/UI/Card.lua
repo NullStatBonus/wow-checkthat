@@ -184,7 +184,13 @@ local function build()
     card.reload = makeButton(card, L["Reload"], 66); card.reload:SetHeight(24)
     card.reload:SetScript("OnClick", function() App.Log("reload by player"); App.db.ui.shareReload = nil; A.Reload() end)
     card.mainBtn = makeButton(card, L["Main window"], 110); card.mainBtn:SetHeight(24)
-    card.mainBtn:SetScript("OnClick", function() ns.Options.Open("home") end)
+    card.mainBtn:SetScript("OnClick", function()
+        -- Back to the card's start screen: show the finished run's plan with Start run and Import a plan.
+        local run = App.Current()
+        local addon = run and App.db.plans[run.addon] and run.addon or App.db.ui.lastImport
+        if addon and App.db.plans[addon] then App.db.ui.pendingStart = addon end
+        Card.Refresh()
+    end)
     card.exportBtn = makeButton(card, L["Export results"], 110); card.exportBtn:SetHeight(24)
     card.exportBtn:SetScript("OnClick", function() Card.ExportNow() end)
 

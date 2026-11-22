@@ -150,6 +150,17 @@ test("reload mark on the open attempt", function()
     local rec = run.steps[step.id]
     T.ok(rec.attempts[#rec.attempts].reloaded)
 end)
+test("a manual step with allowed commands gets a Run macro; a disallowed one gets none", function()
+    local db = boot()
+    local p = plan()
+    local step = p.sections[1].steps[2]
+    step.action = { kind = "manual", text = "do", commands = { "/kt log", "/reload" } }
+    T.eq(App.MacroText(step, p), "/kt log\n/reload")
+    step.action.commands = { "/kt log", "/script x()" }
+    T.ok(App.MacroText(step, p) == nil, "one disallowed line removes the Run button")
+    step.action = { kind = "manual", text = "do" }
+    T.ok(App.MacroText(step, p) == nil, "no commands, no macro")
+end)
 test("copyables are one command per line", function()
     local p = plan()
     local c = App.Copyables(p.sections[1].steps[1], p)

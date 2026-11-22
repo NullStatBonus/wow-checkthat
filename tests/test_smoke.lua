@@ -79,7 +79,10 @@ test("smoke: importing a plan after a finished run restarts the flow", function(
     ns.Options.Open = function(page) opened = page end
     card.mainBtn.scripts.OnClick()
     ns.Options.Open = realOpen
-    T.eq(opened, "home", "Main window opens the Home page")
+    T.eq(opened, nil, "Main window stays on the floating card, not the settings window")
+    T.ok(card.start.shown and card.importAgain.shown, "Main window shows the start screen with Start run and Import a plan")
+    T.ok(not card.resume.shown and not card.exportBtn.shown, "a finished run has nothing to resume")
+    ns.App.db.ui.pendingStart = nil; ns.Card.Refresh()
     T.ok(not _G.TestThatCard.start.shown, "no Start button on the finished run")
     local f = io.open("build/dontdothat.wtt"); local s = f:read("*a"); f:close()
     ns.Card.ImportPrompt()

@@ -174,7 +174,8 @@ function App.MacroText(step, plan)
     if a.kind == "secure-macro" then
         for _, m in ipairs(plan.macros or {}) do if m.id == a.macro then text = m.text end end
     elseif a.kind == "copy-slash" then text = a.text
-    elseif a.kind == "reload" then text = "/reload" end
+    elseif a.kind == "reload" then text = "/reload"
+    elseif type(a.commands) == "table" and #a.commands > 0 then text = table.concat(a.commands, "\n") end -- manual step with commands: Run does them in order
     if text and ns.Plan.MacroAllowed(text, ns.Plan.SLASH[plan.addon]) then return text end
 end
 
