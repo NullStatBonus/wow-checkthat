@@ -52,6 +52,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 make test      # build, luajit tests, python tests
 ```
 
+### Plan-writing skill
+
+`make install-skill` installs the `wtt-test-plan` Claude Code skill to `~/.claude/skills/` (`SKILL_DIR=<dir>` changes the target). The install includes a copy of the plan tools and a private Python with PyYAML and jsonschema, so the skill works in any addon repository with no checkout. It needs Python 3 with `venv` and network access once. Run it again after the tools change; the skill reports the tools version it uses.
+
 Deploy: `Deploy-WowAddons.ps1` in the parent folder picks up `TestThat/` like the other addons.
 
 Requirements live in `openspec/`.
