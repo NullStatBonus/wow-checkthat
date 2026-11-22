@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+New: **Test plan skill.** Addon authors can ask an agent to draft a test plan for their changes.
+New: **make install-skill** copies the skill to your Claude Code skills folder.
+
 ## 0.2.2
 
 New: **Safer imports.** A damaged plan string now shows a clear message and keeps your current plan.
