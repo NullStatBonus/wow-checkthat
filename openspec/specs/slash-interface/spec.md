@@ -1,0 +1,31 @@
+# slash-interface Specification
+
+## Purpose
+The /wtt command vocabulary and the validated settings keys.
+
+## Requirements
+
+### Requirement: Common command vocabulary
+`/wtt` SHALL open the checklist. `settings [page]`, `help [topic]`, `status [topic]`, `get <key>`, `set <key> <value>`, `debug on|off`, `log` and `log clear` SHALL behave as in the sibling addons. Runner commands SHALL be `import`, `start <addon>`, `pass|fail|skip [note]`, `undo`, `export`, `macro` and `reload`.
+
+#### Scenario: Help topics
+- **WHEN** the player runs `/wtt help diagnostics`
+- **THEN** the debug and log commands are listed
+
+### Requirement: Validated settings keys
+Public keys SHALL be `card.scale` (50-200), `card.background-opacity` (0-100), `card.text-opacity` (0-100) and `card.locked` (on|off). The UI and the commands SHALL share validators. Unknown keys, bad values, missing arguments and surplus input SHALL be rejected without writes.
+
+#### Scenario: Bad value
+- **WHEN** the player runs `/wtt set card.scale 500`
+- **THEN** nothing is written and the valid range is shown
+
+#### Scenario: Good value
+- **WHEN** the player runs `/wtt set card.text-opacity 80`
+- **THEN** the setting is saved, the card updates, and one line confirms it
+
+### Requirement: Log clear needs confirmation
+`/wtt log clear` SHALL clear only the diagnostic log after confirmation and SHALL keep plans, runs and settings.
+
+#### Scenario: Clear
+- **WHEN** the player confirms `log clear`
+- **THEN** the log is empty and runs are unchanged

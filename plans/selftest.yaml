@@ -1,0 +1,80 @@
+wtt: 1
+kind: plan
+addon: TestThat
+title: TestThat self-test
+preamble: Open the card with /wtt. This plan checks the card, the copy boxes, the secure Run button, evidence
+  from the debug log, and reload resume.
+handoff: Reload or log out so the game saves the run, then run the harvest script. The report should show
+  four steps and no unverified evidence.
+logs:
+  debug:
+    global: TestThatDB
+    path: global.log.entries
+    format: entries
+requirements:
+  loaded:
+    text: TestThat is loaded
+    probe: addon-loaded
+    name: TestThat
+macros:
+- id: status
+  text: /wtt status
+sections:
+- id: s1
+  title: Card and evidence
+  requires:
+  - loaded
+  steps:
+  - id: self.debug
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /wtt debug on
+    expect: Chat says "debug on".
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[wtt] debug on'
+      label: Debug recording turned on
+  - id: self.secure
+    title: Run button
+    action:
+      kind: secure-macro
+      macro: status
+      text: Click Run all on the card.
+    expect: Chat shows a status line with your pass count.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[wtt] status requested'
+      label: Status requested through Run
+  - id: self.reload
+    title: Reload and resume
+    action:
+      kind: reload
+      text: Press Reload on the card.
+    expect: After the reload the card is back on this step and says "Reloaded".
+    verify:
+    - player
+    - assertions
+    reload: after_action
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[wtt%] resumed run '
+      label: Run resumed after the reload
+  - id: self.export
+    title: Export results
+    action:
+      kind: copy-slash
+      text: /wtt export
+    expect: A box shows a string starting with !WTT1!.
+    verify:
+    - player
+    screenshot: true

@@ -1,0 +1,136 @@
+-- Shared test setup. Each tests/test_*.lua starts with:
+--   local ns, test, T, finish, H = dofile("tests/harness.lua")()
+-- and ends with finish(). Run one file with: luajit tests/test_json.lua   (from the repository root).
+local H = {}
+local rawprint = print
+
+local function stubFrame(frames)
+    local f = { shown = true, scripts = {}, attrs = {} }
+    frames[#frames + 1] = f
+    return setmetatable(f, { __index = function(t, k)
+        if k == "SetScript" or k == "HookScript" then return function(self, ev, fn) self.scripts[ev] = fn end end
+        if k == "SetAttribute" then return function(self, a, v) self.attrs[a] = v end end
+        if k == "Show" then return function(self) self.shown = true end end
+        if k == "Hide" then return function(self) self.shown = false end end
+        if k == "IsShown" then return function(self) return self.shown end end
+        if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
+        if k == "GetStringHeight" then return function() return 40 end end
+        if k == "GetText" then return function(self) return self.text or "" end end
+        if k == "SetText" then return function(self, v) self.text = v end end
+        if k == "SetShown" then return function(self, v) self.shown = v end end
+        if k == "GetWidth" or k == "GetHeight" then return function() return 100 end end
+        if k == "CreateFontString" or k == "CreateTexture" or k == "CreateAnimationGroup" then return function() return stubFrame(frames) end end
+        return function() return stubFrame(frames) end -- chainable: GetNormalTexture():SetTexCoord() works
+    end })
+end
+
+-- A stub game client: enough API for the real Ace libraries and the addon files to load and run.
+function H.stubClient(opts)
+    opts = opts or {}
+    local st = { frames = {}, said = {}, combat = false, macros = {} }
+    _G.CreateFrame = function(_, name) local f = stubFrame(st.frames); if name then _G[name] = f end; return f end
+    _G.UIParent = stubFrame(st.frames)
+    _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) st.said[#st.said + 1] = m end }
+    _G.InCombatLockdown = function() return st.combat end
+    _G.GetBuildInfo = function() return "1.15.7", "63000", "x", opts.toc or 11507 end
+    _G.UnitName = function() return opts.name or "Tester" end
+    _G.GetRealmName = function() return "Realm" end
+    _G.ReloadUI = function() st.reloaded = true end
+    _G.GetMacroIndexByName = function(n) return st.macros[n] and 1 or 0 end
+    _G.GetMacroInfo = function(i) return "n", "i", st.macroBody end
+    _G.CreateMacro = function(n, _, body) st.macros[n] = true; st.macroBody = body end
+    _G.EditMacro = function(_, _, _, body) st.macroBody = body end
+    _G.SlashCmdList = {}
+    _G.StaticPopupDialogs = {}
+    _G.StaticPopup_Show = function(which) st.popup = _G.StaticPopupDialogs[which] end
+    _G.geterrorhandler = function() return function(e) error(e, 0) end end
+    _G.GetTime = function() return 1 end
+    _G.issecurevariable = function() return false end
+    _G.securecallfunction = function(f, ...) return f(...) end
+    _G.print = function(...) st.said[#st.said + 1] = table.concat({ ... }, " ") end
+    _G.strsplit = _G.strsplit or function(d, s, n) local out = {}; for part in (s .. d):gmatch("(.-)" .. d:gsub("%p", "%%%0")) do out[#out + 1] = part end; return unpack(out) end
+    _G.wipe = _G.wipe or function(t) for k in pairs(t) do t[k] = nil end return t end
+    _G.UnitFactionGroup = function() return "Alliance", "Alliance" end
+    _G.UnitClass = function() return "Warrior", "WARRIOR", 1 end
+    _G.UnitRace = function() return "Human", "Human", 1 end
+    _G.GetLocale = function() return "enUS" end
+    _G.strlenutf8 = function(s) return #s end
+    _G.GetCurrentRegion = _G.GetCurrentRegion or function() return 1 end
+    _G.GetCurrentRegionName = function() return "US" end
+    _G.UnitNameUnmodified = function() return opts.name or "Tester", nil end
+    _G.GetNormalizedRealmName = function() return "Realm" end
+    _G.IsLoggedIn = function() return true end
+    _G.tinsert, _G.tremove = table.insert, table.remove
+    _G.format = string.format
+    _G.max, _G.min, _G.floor = math.max, math.min, math.floor
+    return st
+end
+
+-- Loads TestThat/<name>.lua with the addon's own (name, ns) arguments.
+function H.module(ns, name)
+    local chunk = assert(loadfile("TestThat/" .. name .. ".lua"))
+    chunk("TestThat", ns)
+end
+
+-- Plain modules, in TOC order: everything that needs no frames.
+function H.plain(ns)
+    assert(loadfile("TestThat/Libs/LibStub/LibStub.lua"))()
+    assert(loadfile("TestThat/Libs/LibDeflate/LibDeflate.lua"))()
+    ns.LibDeflate = LibStub("LibDeflate")
+    for _, m in ipairs({ "Locales/enUS", "Core/Init", "Core/Adapter", "Core/Defaults", "Model/Json", "Model/Codec", "Model/Plan",
+        "Model/Evidence", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
+        H.module(ns, m)
+    end
+end
+
+-- Loads every file a TOC lists, in order, following embeds.xml Script/Include entries.
+function H.loadToc(ns, toc)
+    local dir = toc:match("^(.*)/[^/]+$")
+    local function run(path)
+        path = path:gsub("\\", "/")
+        if path:match("%.xml$") then
+            local f = assert(io.open(path)); local xml = f:read("*a"); f:close()
+            xml = xml:gsub("<!%-%-.-%-%->", "")
+            local base = path:match("^(.*)/[^/]+$")
+            for kind, rel in xml:gmatch('<(%a+) file="([^"]+)"') do
+                if kind == "Script" or kind == "Include" then run(base .. "/" .. rel) end
+            end
+        elseif path:match("%.lua$") then
+            local chunk = assert(loadfile(path))
+            chunk("TestThat", ns)
+        end
+    end
+    for line in io.lines(toc) do
+        line = line:gsub("\r", "")
+        if not line:match("^#") and line:match("%S") then run(dir .. "/" .. line) end
+    end
+end
+
+return function()
+    local ns = {}
+    local T, fails, pass = {}, 0, 0
+    function T.eq(a, b, msg)
+        if a ~= b then error(("%s: expected %s, got %s"):format(msg or "eq", tostring(b), tostring(a)), 2) end
+    end
+    function T.ok(v, msg) if not v then error(msg or "expected truthy", 2) end end
+    local function deepEq(a, b)
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return a == b end
+        for k, v in pairs(a) do if not deepEq(v, b[k]) then return false end end
+        for k in pairs(b) do if a[k] == nil then return false end end
+        return true
+    end
+    T.deepEq = deepEq
+    local pattern = arg and arg[1]
+    local function test(name, fn)
+        if pattern and not name:find(pattern, 1, true) then return end
+        local ok, err = pcall(fn)
+        if ok then pass = pass + 1 else fails = fails + 1; rawprint("FAIL " .. name .. ": " .. tostring(err)) end
+    end
+    local function finish()
+        rawprint(("%d passed, %d failed"):format(pass, fails))
+        os.exit(fails == 0 and 0 or 1)
+    end
+    ns.__plain = function() H.plain(ns) end
+    return ns, test, T, finish, H
+end

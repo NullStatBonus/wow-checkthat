@@ -1,0 +1,116 @@
+wtt: 1
+kind: plan
+addon: DontDoThat
+title: DontDoThat in-game test plan
+preamble: '|cff99ccffmake test|r covers the rules, prices, Tally, Savings, settings, migrations, commands,
+  the debug report and every guard against a fake game. The WoW Forever API facts the fixes rely on were
+  checked against Blizzard''s API documentation for build 1.60.1.70959 (wow-addon-api): no |cff99ccffGetNumTalentTabs|r;
+  the trait fields |cff99ccffcurrentRank|r, |cff99ccffactiveEntry|r, |cff99ccffdefinitionID|r and |cff99ccffspellID|r;
+  |cff99ccffC_MerchantFrame.GetItemInfo|r with |cff99ccffhasExtendedCost|r; |cff99ccffC_AuctionHouse.PlaceBid|r.
+  The Classic Era return positions (|cff99ccffGetMerchantItemInfo|r, |cff99ccffGetAuctionItemInfo|r, |cff99ccffGetInboxHeaderInfo|r)
+  and the Bids-tab list type were checked against Blizzard''s Era UI source: the Bids tab sets |cff99ccffAuctionFrame.type
+  = "bidder"|r and its Buyout button calls |cff99ccffPlaceAuctionBid(AuctionFrame.type, ...)|r.
+
+
+  This plan keeps only what needs a live client: server timing and taint. Each check is one action, a
+  |cff99ccffCheck:|r line with what you should see, and a |cff99ccffLog:|r line for the reviewer.
+
+
+  Setup: install the build and |cff99ccff/reload|r, then type |cff99ccff/ddt debug on|r. (Loading the
+  addon turns debug recording off, so turn it on after the reload.) Afterwards, |cff99ccff/reload|r once
+  more and send the saved variables (|cff99ccffWTF/Account/<account>/SavedVariables/DontDoThat.lua|r).'
+logs:
+  debug:
+    global: DontDoThatDB
+    path: global.log.entries
+    format: entries
+requirements:
+  addon-loaded:
+    text: DontDoThat is loaded
+    probe: addon-loaded
+    name: DontDoThat
+sections:
+- id: s1
+  title: Spend is counted when the gold leaves
+  steps:
+  - id: ddt.s1.1
+    title: On either client, at a vendor, buy armor
+    action:
+      kind: manual
+      text: On either client, at a vendor, buy armor or a weapon that costs more than 1 silver and choose
+        Buy anyway.
+    expect: Progress > "Spent on things the addon marked" goes up by the item's price.
+    verify:
+    - player
+    - assertions
+    - reviewer
+    reviewer: 'items: spend of <price> pending, then items: spent <price> counted.'
+    assertions:
+    - kind: log-sequence
+      source: debug
+      scope: attempt
+      sequence:
+      - pattern: '^items: spend of %d+ pending'
+      - pattern: '^items: spent %d+ counted'
+- id: s2
+  title: Trainer and beast training (Classic Era, Hunter)
+  steps:
+  - id: ddt.s2.1
+    title: At your class trainer, buy a marked spell
+    action:
+      kind: manual
+      text: At your class trainer, buy a marked spell with Buy anyway, then open Beast Training and train
+        a pet ability.
+    expect: both are learned, and no "blocked from an action" message shows.
+    verify:
+    - player
+    - reviewer
+    - assertions
+    reviewer: 'confirm: bought <spell> anyway and no confirm: prompts disabled line.'
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^confirm: bought .+ anyway$'
+      scope: attempt
+    - kind: log
+      source: debug
+      pattern: '^confirm: prompts disabled'
+      scope: attempt
+      absent: true
+    clients:
+    - classic-era
+- id: s3
+  title: Always Allow (either client)
+  steps:
+  - id: ddt.s3.1
+    title: At a vendor, buy armor or a weapon
+    action:
+      kind: manual
+      text: At a vendor, buy armor or a weapon that costs more than 1 silver and choose Always Allow.
+    expect: the question has three buttons, and the item is bought.
+    verify:
+    - player
+    - assertions
+    - reviewer
+    reviewer: 'items: always allowed <item ID> <name>.'
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^items: always allowed %d+ '
+      scope: attempt
+  - id: ddt.s3.2
+    title: Buy the same item again
+    action:
+      kind: manual
+      text: Buy the same item again.
+    expect: the item is bought without a question.
+    verify:
+    - player
+    - assertions
+    - reviewer
+    reviewer: 'items: vendor <name> ... -> passed through: allowed.'
+    assertions:
+    - kind: log
+      source: debug
+      contains: 'passed through: allowed'
+      diagnostic: true

@@ -1,0 +1,112 @@
+wtt: 1
+kind: plan
+addon: ClosestVendor
+title: ClosestVendor sample test plan
+preamble: A short sample of the ClosestVendor plan. Type /cvn debug on, then /reload, before the checks.
+  The full plan is in plans/full/closestvendor.yaml.
+logs:
+  debug:
+    global: ClosestVendorCharDB
+    path: log.entries
+    format: entries
+requirements:
+  addon-loaded:
+    text: ClosestVendor is loaded
+    probe: addon-loaded
+    name: ClosestVendor
+sections:
+- id: s0
+  title: Setup
+  steps:
+  - id: cv.s0.1
+    title: Copy ClosestVendor/ into the AddOns folder. Start the
+    action:
+      kind: manual
+      text: Copy |cff99ccffClosestVendor/|r into the AddOns folder. Start the game. Type |cff99ccff/console
+        scriptErrors 1|r, then |cff99ccff/reload|r.
+      commands:
+      - /console scriptErrors 1
+      - /reload
+    expect: no Lua error popup appears on login, and the addon is in the list (Esc, AddOns).
+    verify:
+    - player
+    reload: after_action
+  intro: 'Every item is pass/fail. The tester verifies the |cff99ccffCheck:|r line. The reviewer verifies
+    the |cff99ccffLog:|r line. Do this once, before the first section: type |cff99ccff/cvn debug on|r,
+    then |cff99ccff/reload|r. After the last check, type |cff99ccff/reload|r again so the game saves the
+    log. The reviewer reads |cff99ccffClosestVendorCharDB|r and |cff99ccffClosestVendorDB|r in |cff99ccffWTF/Account/<account>/<realm>/<character>/SavedVariables/ClosestVendor.lua|r.
+    A section that says "Setup" lists what only that section needs, such as a class, a profession or an
+    addon.'
+- id: s1
+  title: Settings page and commands
+  steps:
+  - id: cv.s1.1
+    title: Open Esc, Options, AddOns, Closest Vendor and look
+    action:
+      kind: manual
+      text: Open Esc, Options, AddOns, |cffffd100Closest Vendor|r and look at Home.
+    expect: 'Home lists the Warnings in order: Bag space, Durability and Professions (each a checkbox
+      and a slider), then Ammo, Reagents and Supplies (a checkbox only).'
+    verify:
+    - player
+- id: s2
+  title: The question
+  steps:
+  - id: cv.s2.1
+    title: Enter /cvn test sell
+    action:
+      kind: manual
+      text: Enter |cff99ccff/cvn test sell|r.
+      commands:
+      - /cvn test sell
+    expect: a question shows a vendor name and a zone.
+    verify:
+    - player
+    - assertions
+    - reviewer
+    assertions:
+    - kind: log
+      source: debug
+      contains: 'test command: sell'
+      label: Sell test command ran
+    reviewer: 'The log has "test command: sell". The original plan also expected "reminder: test", but
+      Controller.lua logs that line only for "/cvn test remind", so it is not asserted here.'
+  - id: cv.s2.2
+    title: Enter /cvn test repair
+    action:
+      kind: manual
+      text: Enter |cff99ccff/cvn test repair|r.
+      commands:
+      - /cvn test repair
+    expect: a question shows a vendor name and a zone.
+    verify:
+    - player
+    - reviewer
+    reviewer: '"test command: repair".'
+- id: s7
+  title: Report and debug log
+  steps:
+  - id: cv.s7.2
+    title: Enter /cvn debug on. Trigger a question. Enter
+    action:
+      kind: manual
+      text: Enter |cff99ccff/cvn debug on|r. Trigger a question. Enter |cff99ccff/cvn log|r.
+      commands:
+      - /cvn debug on
+      - /cvn log
+    expect: the log lists the events, the decision with the bag, durability and ammo values behind it,
+      the vendor found, and whether the question was shown and accepted.
+    verify:
+    - player
+    - reviewer
+    reviewer: '"debug log turned on", "trigger", "question shown:" and "accepted:" lines.'
+  - id: cv.s7.6
+    title: Enter /cvn log clear and confirm
+    action:
+      kind: manual
+      text: Enter |cff99ccff/cvn log clear|r and confirm.
+      commands:
+      - /cvn log clear
+    expect: the entries are gone.
+    verify:
+    - player

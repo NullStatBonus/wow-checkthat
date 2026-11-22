@@ -1,0 +1,34 @@
+## Interface: 11509
+## Title: TestThat
+## Notes: Walks you through the in-game test plans for KeepThat, DontDoThat and ClosestVendor and records evidence for review.
+## Version: 0.2.0
+## Author: NullStatBonus
+## SavedVariables: TestThatDB
+## OptionalDeps: KeepThat, DontDoThat, ClosestVendor
+## Category: Development
+
+# Load order: libraries, Locales, Core, Model, Debug, UI, Options. Both TOC files list the same files in the same order (make check).
+
+embeds.xml
+
+Locales\enUS.lua
+
+Core\Init.lua
+Core\Adapter.lua
+Core\Defaults.lua
+
+Model\Json.lua
+Model\Codec.lua
+Model\Plan.lua
+Model\Evidence.lua
+Model\Run.lua
+Model\App.lua
+
+Core\Settings.lua
+Debug\Log.lua
+Debug\Export.lua
+Core\Addon.lua
+Core\Slash.lua
+
+UI\Card.lua
+Options\Options.lua

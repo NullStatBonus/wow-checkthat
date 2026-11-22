@@ -1,0 +1,160 @@
+wtt: 1
+kind: plan
+addon: KeepThat
+title: KeepThat sample test plan
+preamble: A short sample of the KeepThat plan. Run it on WoW Forever and Classic Era; some steps are for
+  one client. Type /kt debug on, then /reload, before the checks. The full plan is in plans/full/keepthat.yaml.
+logs:
+  debug:
+    global: KeepThatDB
+    path: global.log
+    format: strings
+requirements:
+  addon-loaded:
+    text: KeepThat is loaded
+    probe: addon-loaded
+    name: KeepThat
+  dfl:
+    text: DFL Profession Journal is installed
+    probe: addon-loaded
+    name: DFLProfessionJournal
+sections:
+- id: s1
+  title: Setup
+  steps:
+  - id: kt.s1.1
+    title: No Lua errors
+    action:
+      kind: manual
+      text: Copy |cff99ccffKeepThat/|r into |cff99ccffInterface/AddOns/|r, turn on Lua errors (|cff99ccff/console
+        scriptErrors 1|r), and log in.
+      commands:
+      - /console scriptErrors 1
+    expect: no error window appears.
+    verify:
+    - player
+- id: s2
+  title: Tooltip line
+  steps:
+  - id: kt.s2.1
+    title: Endgame item
+    action:
+      kind: manual
+      text: Hover Arcanite Bar in your bags.
+    expect: 'the tooltip has exactly one KeepThat line. It starts |cff99ccffKeepThat: Endgame:|r, names
+      Blacksmithing, and "Endgame" is purple. It can end with how many you own.'
+    verify:
+    - player
+  intro: 'Run every check on |cffffd100both clients|r: Classic Era (the |cff99ccffOnTooltipSetItem|r path)
+    and WoW Forever (the |cff99ccffTooltipDataProcessor|r path). Use the default settings. Have Blacksmithing
+    on the character and Arcanite Bar in your bags.'
+- id: s4
+  title: Icon mask
+  steps:
+  - id: kt.s4.1
+    title: Blizzard bags and bank
+    action:
+      kind: manual
+      text: With Arcanite Bar in your bags and in the bank, and no bag addon installed, open the bank.
+    expect: both Arcanite Bar icons are purple, and the stack count and quality border stay readable.
+    verify:
+    - player
+    - reviewer
+    - assertions
+    reviewer: '[blizzard] hooked ... with the hooked bag and bank paths (ContainerFrame_Update on Classic
+      Era, ContainerFrame:UpdateItems on WoW Forever). Record the paths in docs/contracts.md for each
+      client.'
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[blizzard%] hooked '
+      scope: session
+      label: Bag and bank hooks started
+  - id: kt.s4.2
+    title: Merchant
+    action:
+      kind: manual
+      text: Turn on leveling marks. Open a trade supplies vendor that sells a marked material, such as
+        Crystal Vial, and turn to the vendor's next page.
+    expect: on each page, only the marked materials are tinted.
+    verify:
+    - player
+    - reviewer
+    - assertions
+    reviewer: '[merchant] hooked ....'
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[merchant%] hooked '
+      scope: session
+      label: Merchant hooks started
+  intro: 'Turn on the icon mask: |cff99ccff/kt|r > Icon mask. Keep "Show marks in" at its defaults.'
+- id: s6
+  title: Settings window
+  steps:
+  - id: kt.s6.7
+    title: Debug report window
+    action:
+      kind: manual
+      text: Type |cff99ccff/kt log|r, press Ctrl+A, then Ctrl+C.
+      commands:
+      - /kt log
+    expect: a window opens with the report, and Ctrl+C copies it.
+    verify:
+    - player
+    - reviewer
+    reviewer: the copied report starts with KeepThat <version>, client <client> and lists the settings,
+      the integration states and the failures.
+- id: s9
+  title: Leveling numbers
+  steps:
+  - id: kt.s9.1
+    title: Classic Era, collapsed Skills header
+    action:
+      kind: manual
+      text: Use a character with any profession; Cooking or First Aid count. On the Skills tab, collapse
+        the header the profession sits under (|cffffd100Professions|r, or |cffffd100Secondary Skills|r
+        for Cooking and First Aid), then type |cff99ccff/reload|r.
+      commands:
+      - /reload
+    expect: KeepThat reads the real skill rank while the header is collapsed.
+    verify:
+    - player
+    - reviewer
+    - assertions
+    reload: after_action
+    reviewer: '[skills] cooking=54; collapsed headers: Secondary Skills (your profession and rank).'
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[skills%] .*collapsed headers: [^(]'
+      scope: attempt
+      label: Skills line shows the collapsed header
+    clients:
+    - classic-era
+  - id: kt.s9.2
+    title: WoW Forever with DFL Profession Journal
+    action:
+      kind: manual
+      text: On the Integrations page, turn |cffffd100DFL Profession Journal|r off, then on again.
+    expect: Profession Journal's materials leave KeepThat's lists when it is off and come back when it
+      is on, with no reload.
+    verify:
+    - player
+    - reviewer
+    - assertions
+    reviewer: '[professionjournal] off: 0 materials listed, then [professionjournal] on: N materials listed
+      (...) with N above 0.'
+    assertions:
+    - kind: log-sequence
+      source: debug
+      scope: attempt
+      sequence:
+      - pattern: '^%[professionjournal%] off: 0 materials listed'
+      - pattern: '^%[professionjournal%] on: [1-9]%d* materials listed'
+      label: Profession Journal turned off, then on
+    clients:
+    - forever-camelot
+    requires:
+    - dfl
+  intro: The reviewer reads each result from its debug log, so there is nothing to look for on screen.

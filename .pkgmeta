@@ -1,0 +1,31 @@
+package-as: TestThat
+
+# The addon lives in TestThat/ inside the repository; move it to the top of the package.
+move-folders:
+  TestThat/TestThat: TestThat
+
+# The Ace3 libraries and LibDeflate are committed under TestThat/Libs, so nothing is fetched at package time.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - .claude
+  - .github
+  - .venv
+  - CLAUDE.md
+  - AGENTS.md
+  - CONTRIBUTING.md
+  - README.md
+  - DESIGN.md
+  - docs
+  - openspec
+  - tests
+  - tools
+  - plans
+  - schema
+  - build
+  - evidence
+  - evidence-src
+  - Makefile
+  - requirements.txt
