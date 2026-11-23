@@ -7,7 +7,7 @@ test: build test-lua test-py
 
 build:
 	@mkdir -p build
-	@for p in keepthat dontdothat closestvendor selftest checkthat-0.8; do $(PY) tools/ct.py compile plans/$$p.yaml -o build/$$p.ct || exit 1; done
+	@for p in keepthat dontdothat closestvendor selftest checkthat-0.8 checkthat-openrun.owner checkthat-openrun.viewer; do $(PY) tools/ct.py compile plans/$$p.yaml -o build/$$p.ct || exit 1; done
 
 # luajit tests/run.lua [pattern] runs a subset; each file also runs alone: luajit tests/test_json.lua
 test-lua:
@@ -34,15 +34,19 @@ install-skill:
 	fi; \
 	rm -rf "$$dest/ct-test-plan" "$$dest/ct-verify" && mv "$$tmp" "$$dest/ct-test-plan" && mv "$$tmp2" "$$dest/ct-verify" && echo "installed ct-test-plan and ct-verify to $$dest"
 
-# Build the Claude Code plugin (skills + tools bundle) into build/plugin. Load it with: claude --plugin-dir build/plugin
+# Build the Claude Code plugin (skills + tools bundle) into build/plugin. Skills are named plan and verify there, so the
+# commands read /checkthat:plan and /checkthat:verify. Load it with: claude --plugin-dir build/plugin
 PLUGIN_DIR ?= build/plugin
 
 build-plugin:
 	@rm -rf "$(PLUGIN_DIR)" && mkdir -p "$(PLUGIN_DIR)/.claude-plugin" "$(PLUGIN_DIR)/skills" || exit 1; \
-	cp -R skills/ct-test-plan skills/ct-verify "$(PLUGIN_DIR)/skills/" || { echo "build-plugin: copying the skills failed" >&2; exit 1; }; \
-	for f in $(BUNDLE); do mkdir -p "$(PLUGIN_DIR)/skills/ct-test-plan/ct/$$(dirname "$$f")" && cp "$$f" "$(PLUGIN_DIR)/skills/ct-test-plan/ct/$$f" || { echo "build-plugin: copying $$f failed" >&2; exit 1; }; done; \
+	for pair in ct-test-plan:plan ct-verify:verify; do src=$${pair%%:*}; dst=$${pair##*:}; \
+	  cp -R "skills/$$src" "$(PLUGIN_DIR)/skills/$$dst" || { echo "build-plugin: copying $$src failed" >&2; exit 1; }; \
+	  sed -e 's/ct-test-plan/plan/g' -e 's/ct-verify/verify/g' "skills/$$src/SKILL.md" > "$(PLUGIN_DIR)/skills/$$dst/SKILL.md" || exit 1; \
+	done; \
+	for f in $(BUNDLE); do mkdir -p "$(PLUGIN_DIR)/skills/plan/ct/$$(dirname "$$f")" && cp "$$f" "$(PLUGIN_DIR)/skills/plan/ct/$$f" || { echo "build-plugin: copying $$f failed" >&2; exit 1; }; done; \
 	ver=$$(sed -n 's/^## Version: *//p' CheckThat/CheckThat_Vanilla.toc); [ -n "$$ver" ] || exit 1; \
-	echo "$$ver" > "$(PLUGIN_DIR)/skills/ct-test-plan/ct/VERSION"; \
+	echo "$$ver" > "$(PLUGIN_DIR)/skills/plan/ct/VERSION"; \
 	printf '{\n  "name": "checkthat",\n  "version": "%s",\n  "description": "Draft CheckThat test plans and read finished runs back against them.",\n  "license": "MIT"\n}\n' "$$ver" > "$(PLUGIN_DIR)/.claude-plugin/plugin.json"; \
 	echo "built $(PLUGIN_DIR)"
 

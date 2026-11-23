@@ -1,0 +1,91 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: Open run on another character, viewer
+preamble: |-
+  This plan has a partner plan, |cff99ccffcheckthat-openrun.owner.yaml|r. Run both on one account, each on its own character. Run the owner plan first and leave its run open. Then log in with a second character and run this plan. Type |cff99ccff/ct debug on|r in the first step. This plan exports and then deletes the owner run, so run it last. Read both runs back with the verify skill afterward.
+handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run.
+logs:
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s0
+  title: Viewer character
+  requires:
+  - loaded
+  steps:
+  - id: vw.debug
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.".
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+  - id: vw.list
+    title: Find the owner run in the list
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct settings home|r and look under |cffffd100Past runs|r.
+      commands:
+      - /ct settings home
+    setup: The owner plan was run on another character of this account and its run is still open.
+    expect: The list shows a run of the owner character whose row does not end with "ended".
+    verify:
+    - player
+  - id: vw.other-run
+    title: Open run is not available for the owner run
+    action:
+      kind: manual
+      text: Pick the unfinished run of the owner character in the list.
+    expect: Open run is greyed out.
+    verify:
+    - player
+    notes: A greyed button writes no log line, so this stays a player check.
+    reviewer: Compare with checkthat-openrun.owner.yaml step or.open. The run picked here must be the run that step left open. It must belong to a different character than this run, and it must have no endedAt time.
+  - id: vw.export
+    title: Export the owner run
+    action:
+      kind: manual
+      text: With the owner run picked, select |cffffd100Export run|r.
+    expect: A box shows a string that starts with !CT1!. Close it with Escape. The step records itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 90
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run exported '
+      label: A run was exported
+  - id: vw.delete
+    title: Delete the owner run
+    action:
+      kind: manual
+      text: With the owner run picked, select |cffffd100Delete run|r. Read the question. Select |cffffd100Accept|r.
+    setup: Delete run removes the owner run from the saved file. The previous step exported it, so keep that string.
+    expect: The question names the owner run. After Accept the run is gone from the list.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log-sequence
+      source: debug
+      sequence:
+      - pattern: '^%[ct%] run delete asked '
+      - pattern: '^%[ct%] run deleted '
+      label: The question came, then the run was deleted

@@ -126,7 +126,7 @@ These checks run in a coding agent, not in the game. Run `make install-skill` fi
 5. **Two eligible runs.** Run `python3 tools/verify_fixture.py <folder> --ambiguous` and verify again.
    Check: the agent lists the two bank runs and asks which to use. It does not choose.
    Log: none; read the transcript.
-6. **Load the plugin.** Run `make build-plugin`, then start `claude --plugin-dir build/plugin` in an addon repository. Type `/checkthat:ct-test-plan`, then `/checkthat:ct-verify`.
+6. **Load the plugin.** Run `make build-plugin`, then start `claude --plugin-dir build/plugin` in an addon repository. Type `/checkthat:plan`, then `/checkthat:verify`.
    Check: both commands exist and start their skill. With no PyYAML in `python3`, the skill prints the command that creates an environment and stops.
    Log: none; read the transcript.
 7. **Offer at apply.** Finish the tasks of an OpenSpec change that alters a setting. Run `/opsx:apply` on it.

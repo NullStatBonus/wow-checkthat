@@ -1,0 +1,47 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: Open run on another character, owner
+preamble: |-
+  This plan has a partner plan, |cff99ccffcheckthat-openrun.viewer.yaml|r. Run both on one account, each on its own character. Run this plan first, on the owner character. Type |cff99ccff/ct debug on|r in the first step. Do not press End run on this plan: the viewer plan needs this run to stay open. Run the viewer plan on a second character afterward, then read both runs back with the verify skill.
+handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Keep this run open. Log in with the viewer character and run |cff99ccffcheckthat-openrun.viewer.yaml|r.
+logs:
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s0
+  title: Owner character
+  requires:
+  - loaded
+  steps:
+  - id: or.debug
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.".
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+  - id: or.open
+    title: Leave this run open
+    action:
+      kind: manual
+      text: Look at the card. Do not select |cffffd100End run|r.
+    expect: The card shows this plan's run as active.
+    verify:
+    - player
+    reviewer: The collected run of this plan must have no endedAt time. The partner plan checkthat-openrun.viewer.yaml step vw.other-run lists this run from another character.

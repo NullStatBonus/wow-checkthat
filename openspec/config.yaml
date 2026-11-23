@@ -34,7 +34,7 @@ schema: spec-driven
 operations:
   apply:
     guidance:
-      - When the change alters a setting, a slash command or other player-visible behavior, offer the ct-test-plan skill once, after the tasks are done, and wait for the answer. Do not start it unasked.
+      - When the change alters a setting, a slash command or other player-visible behavior, offer the test plan skill (ct-test-plan, or /checkthat:plan in the plugin) once, after the tasks are done, and wait for the answer. Do not start it unasked.
   archive:
     guidance:
-      - When the change altered player-visible behavior and no test plan covers it, offer the ct-test-plan skill once before archiving, and wait for the answer. Do not start it unasked.
+      - When the change altered player-visible behavior and no test plan covers it, offer the test plan skill (ct-test-plan, or /checkthat:plan in the plugin) once before archiving, and wait for the answer. Do not start it unasked.

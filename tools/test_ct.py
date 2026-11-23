@@ -168,6 +168,24 @@ class Plans(unittest.TestCase):
             self.assertEqual(ct.warnings(plan), [], n)
 
 
+class OpenRunPlans(unittest.TestCase):
+    PATHS = [os.path.join(ROOT, "plans", "checkthat-openrun.%s.yaml" % r) for r in ("owner", "viewer")]
+
+    def test_plans_validate_and_name_their_partners(self):
+        for p in self.PATHS:
+            plan = ct.load_yaml(p)
+            self.assertEqual(ct.validate(plan), [], p)
+            self.assertEqual(ct.warnings(plan), [], p)
+        self.assertEqual(PlanSkill.partner_problems(self.PATHS), [])
+
+    def test_every_step_has_one_action_and_no_step_asks_for_another_character(self):
+        for p in self.PATHS:
+            for sec in ct.load_yaml(p)["sections"]:
+                for s in sec["steps"]:
+                    self.assertEqual(len(s["action"].get("commands") or []) <= 1, True, s["id"])
+                    self.assertNotIn("log in", s["action"].get("text", "").lower(), s["id"])
+
+
 class NativeText(unittest.TestCase):
     def test_markdown_is_converted_to_native_codes_and_rejected_if_left(self):
         p = good()
@@ -499,15 +517,22 @@ class BuildPlugin(unittest.TestCase):
             with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as f:
                 version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
             self.assertEqual((manifest["name"], manifest["version"]), ("checkthat", version))
-            for skill in ("ct-test-plan", "ct-verify"):
-                with open(os.path.join(p, "skills", skill, "SKILL.md"), "rb") as a, open(os.path.join(ROOT, "skills", skill, "SKILL.md"), "rb") as b:
-                    self.assertEqual(a.read(), b.read(), skill)
-            ctdir = os.path.join(p, "skills", "ct-test-plan", "ct")
+            for src, dst in (("ct-test-plan", "plan"), ("ct-verify", "verify")):
+                with open(os.path.join(p, "skills", dst, "SKILL.md"), encoding="utf-8") as a, open(os.path.join(ROOT, "skills", src, "SKILL.md"), encoding="utf-8") as b:
+                    want = b.read().replace("ct-test-plan", "plan").replace("ct-verify", "verify")
+                    got = a.read()
+                self.assertEqual(got, want, dst)
+                self.assertTrue(got.startswith("---\nname: %s\n" % dst), dst)
+                self.assertNotIn("ct-test-plan", got); self.assertNotIn("ct-verify", got)
+                self.assertTrue(os.path.exists(os.path.join(p, "skills", dst, "ct")) == (dst == "plan"))
+            with open(os.path.join(p, "skills", "verify", "SKILL.md"), encoding="utf-8") as f:
+                self.assertIn("../plan/ct", f.read())
+            ctdir = os.path.join(p, "skills", "plan", "ct")
             for rel in InstallSkill.BUNDLE:
                 self.assertTrue(os.path.exists(os.path.join(ctdir, rel)), rel)
             with open(os.path.join(ctdir, "VERSION")) as f:
                 self.assertEqual(f.read().strip(), version)
-            self.assertFalse(os.path.exists(os.path.join(p, "skills", "ct-test-plan", ".venv")))
+            self.assertFalse(os.path.exists(os.path.join(p, "skills", "plan", ".venv")))
 
     def test_claude_validates_the_plugin(self):
         import shutil
@@ -526,7 +551,7 @@ class BuildPlugin(unittest.TestCase):
             shutil.copytree(os.path.join(d, "plugin"), copy)
             sib = os.path.join(d, "sibling"); os.makedirs(sib)
             verify_fixture.build(sib)
-            tool = os.path.join(copy, "skills", "ct-test-plan", "ct", "tools", "ct.py")
+            tool = os.path.join(copy, "skills", "plan", "ct", "tools", "ct.py")
             r = subprocess.run([sys.executable, tool, "collect", "--src", os.path.join(sib, "src"), "--dest", os.path.join(sib, "evidence")],
                                capture_output=True, text=True, cwd=sib)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
