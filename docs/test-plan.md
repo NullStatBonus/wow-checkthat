@@ -48,6 +48,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 7. **Run in combat.** On a step with a Run button, start a fight with a training dummy and move to the next step with the card's > button.
    Check: the Run button is hidden during the fight. After the fight it shows again and runs the commands of the new step.
    Log: none; on screen only.
+8. **End run.** Start a run and give the first step a result. Click the card title and choose End run, then answer No. Choose End run again and answer Yes.
+   Check: after No the run goes on unchanged. After Yes the card shows "Run ended" with Export results and Main window, and has no Undo or Resume. Starting the plan again opens a new run.
+   Log: `[ct] run ended`, and `/ct status run` ends with "(run ended)".
 
 ## 4. Evidence
 

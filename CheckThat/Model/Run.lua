@@ -107,6 +107,7 @@ end
 -- as a player's click. The gate turns it into fail (contradicting evidence) or unverified (missing evidence) at the timeout.
 -- Reads only; the card calls it from its refresh. Returns the attempt when it recorded a result.
 function Run.AutoSettle(run, ctx, id, note)
+    if run.endedAt then return nil end
     local step, rec = stepOf(ctx, id), run.steps[id]
     if not (step and step.auto and rec) then return nil end
     local a = rec.attempts[#rec.attempts]
@@ -133,6 +134,7 @@ end
 
 -- Evaluate assertions and record the verdict. Returns the attempt. `by` = "auto" marks a result the runner recorded.
 function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
+    if run.endedAt then return nil, "run ended" end
     if not VERDICTS[verdict] then return nil, "bad verdict" end
     local step = stepOf(ctx, id)
     local rec = run.steps[id]
@@ -180,6 +182,7 @@ end
 
 -- Undo the last verdict of a step, reopening it.
 function Run.Undo(run, ctx, id)
+    if run.endedAt then return false end
     local rec = run.steps[id]
     local a = rec and rec.attempts[#rec.attempts]
     if not a or not a.verdict then return false end
@@ -211,6 +214,7 @@ end
 
 -- Undo the most recent verdict in commit order, dropping any retry attempt opened after it.
 function Run.UndoLast(run, ctx)
+    if run.endedAt then return false end
     local h = run.history or {}
     local id = table.remove(h)
     if not id then return false end
@@ -227,4 +231,21 @@ function Run.Counts(run)
     return c
 end
 
-function Run.CurrentId(run) return run.order[run.current] end
+-- An ended run has no current step: the card shows its results and nothing can resume.
+function Run.CurrentId(run)
+    if run.endedAt then return nil end
+    return run.order[run.current]
+end
+
+-- End a run for good. Every verdict, attempt and note stays; open attempts drop their bulky log snapshots.
+-- Returns false when the run had already ended.
+function Run.End(run, now)
+    if run.endedAt then return false end
+    for _, rec in pairs(run.steps) do
+        local a = rec.attempts[#rec.attempts]
+        if a and not a.verdict then a.snapshots = nil end
+    end
+    run.endedAt = now
+    Run.Touch(run, now)
+    return true
+end

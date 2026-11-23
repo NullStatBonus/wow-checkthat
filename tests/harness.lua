@@ -15,6 +15,7 @@ local function stubFrame(frames)
         if k == "IsShown" then return function(self) return self.shown end end
         if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
         if k == "GetStringHeight" then return function() return 40 end end
+        if k == "GetStringWidth" then return function() return 80 end end
         if k == "GetText" then return function(self) return self.text or "" end end
         if k == "SetText" then return function(self, v) self.text = v end end
         if k == "SetShown" then return function(self, v) self.shown = v end end

@@ -226,4 +226,46 @@ test("an automatic result is logged, labelled and exported", function()
     T.eq(back.steps["kt.1"].attempts[1].by, "auto", "the results string says CheckThat recorded it")
 end)
 
+test("app end: keeps results, marks the export, blocks verdicts and undo", function()
+    local db, env = boot()
+    db.log.enabled = true
+    App.ImportPlan(assert(ns.Codec.Encode(plan())))
+    local run = assert(App.Start("KeepThat"))
+    T.ok(App.CanEnd())
+    App.Begin(); App.Verdict("skip")
+    T.ok(App.End("some-other-run") == nil, "a stale confirmation ends nothing")
+    T.eq(run.endedAt, nil)
+    T.ok(App.End(run.runId)); T.eq(run.endedAt, 1000)
+    local _, _, step = App.Current(); T.eq(step, nil, "no current step")
+    local a, err = App.Verdict("pass"); T.ok(a == nil and err:find("has ended"), err)
+    T.eq(App.Undo(), false)
+    T.ok(App.Status():find("run ended"), App.Status())
+    local ended, why = App.End(); T.ok(ended == nil and why:find("already ended"), why)
+    local c, why2 = App.CanEnd(); T.ok(c == nil and why2:find("already ended"))
+    local back = assert(ns.Codec.Decode(assert(App.Export())))
+    T.eq(back.endedAt, 1000); T.eq(back.steps["kt.1"].verdict, "skip"); T.eq(back.steps["kt.2"].verdict, "pending")
+    local logged = false
+    for _, e in ipairs(db.log.entries) do if e.msg:find("run ended " .. run.runId, 1, true) then logged = true end end
+    T.ok(logged, "the debug log records the end")
+end)
+test("app end with no run", function()
+    boot()
+    local run, err = App.CanEnd(); T.ok(run == nil and err:find("no run"))
+    local r2, e2 = App.End(); T.ok(r2 == nil and e2:find("no run"))
+end)
+test("context menu: MenuUtil, then UIDropDownMenu, then false", function()
+    local Ad = ns.Adapter
+    local clicked
+    local items = { { "End run...", function() clicked = true end } }
+    local saved = { MenuUtil = _G.MenuUtil, UDM_I = _G.UIDropDownMenu_Initialize }
+    _G.MenuUtil, _G.UIDropDownMenu_Initialize = nil, nil
+    T.eq(Ad.ContextMenu({}, items), false, "no menu API")
+    local made
+    _G.MenuUtil = { CreateContextMenu = function(owner, gen)
+        gen(owner, { CreateButton = function(_, text, fn) made = { text, fn } end }) end }
+    T.eq(Ad.ContextMenu({}, items), true); T.eq(made[1], "End run..."); made[2](); T.ok(clicked)
+    _G.MenuUtil = { CreateContextMenu = function() error("boom") end }
+    T.eq(Ad.ContextMenu({}, items), false, "a failing menu falls back")
+    _G.MenuUtil, _G.UIDropDownMenu_Initialize = saved.MenuUtil, saved.UDM_I
+end)
 finish()

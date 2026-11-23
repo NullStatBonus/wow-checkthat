@@ -66,6 +66,31 @@ function Adapter.CloseGameSettings()
     elseif _G.InterfaceOptionsFrame and _G.InterfaceOptionsFrame.Hide then pcall(_G.InterfaceOptionsFrame.Hide, _G.InterfaceOptionsFrame) end
 end
 
+-- A context menu at the cursor. items = { { text, onClick }, ... }. Returns false when the game has no menu API,
+-- so the caller can fall back to a plain action. Newer clients have MenuUtil; older ones have UIDropDownMenu.
+function Adapter.ContextMenu(owner, items)
+    if _G.MenuUtil and _G.MenuUtil.CreateContextMenu then
+        return (pcall(_G.MenuUtil.CreateContextMenu, owner, function(_, root)
+            for _, it in ipairs(items) do root:CreateButton(it[1], it[2]) end
+        end))
+    end
+    local g = _G
+    if g.UIDropDownMenu_Initialize and g.ToggleDropDownMenu and g.UIDropDownMenu_CreateInfo and g.CreateFrame and g.UIParent then
+        return (pcall(function()
+            g.CheckThatMenu = g.CheckThatMenu or g.CreateFrame("Frame", "CheckThatMenu", g.UIParent, "UIDropDownMenuTemplate")
+            g.UIDropDownMenu_Initialize(g.CheckThatMenu, function()
+                for _, it in ipairs(items) do
+                    local info = g.UIDropDownMenu_CreateInfo()
+                    info.text, info.func, info.notCheckable = it[1], it[2], true
+                    g.UIDropDownMenu_AddButton(info)
+                end
+            end, "MENU")
+            g.ToggleDropDownMenu(1, nil, g.CheckThatMenu, "cursor", 0, 0)
+        end))
+    end
+    return false
+end
+
 -- A native confirmation dialog. onAccept runs only on the player's click.
 function Adapter.Confirm(text, onAccept)
     if not (_G.StaticPopupDialogs and _G.StaticPopup_Show) then return false end

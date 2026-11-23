@@ -248,6 +248,7 @@ end
 
 function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
+    if run and run.endedAt then return nil, L["This run has ended. Start the plan again for a new run."] end
     if not step then return nil, L["There is no current step."] end
     local a, err = ns.Run.Verdict(run, ctx, step.id, verdict, note)
     if a then logResult(step, a) end
@@ -287,6 +288,24 @@ function App.Goto(delta)
     return ns.Run.Goto(run, delta)
 end
 
+-- The run /ct end and the card's End run act on: nil plus a sentence when there is none or it already ended.
+function App.CanEnd()
+    local run = App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    if not run then return nil, L["There is no run."] end
+    if run.endedAt then return nil, L["This run has already ended."] end
+    return run
+end
+
+-- End the current run. runId (optional) must still be the current run: a confirmation can outlive a change of run.
+function App.End(runId)
+    local run, err = App.CanEnd()
+    if not run then return nil, err end
+    if runId and run.runId ~= runId then return nil, L["There is no run."] end
+    ns.Run.End(run, now(App))
+    App.Log("run ended " .. run.runId)
+    return run
+end
+
 function App.Undo()
     local run, ctx = App.Current()
     if not run then return false end
@@ -304,6 +323,7 @@ function App.Status()
     local run = App.db.runs[App.db.currentByChar[App.Character()] or ""]
     if not run then return L["No run."] end
     local c = ns.Run.Counts(run)
-    return L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client (revision %d, saved on reload)"]:format(
+    local line = L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client (revision %d, saved on reload)"]:format(
         run.runId, c.pass, c.partial, c.fail, c.unverified, c.skip, c.pending, c.inapplicable, run.revision)
+    return run.endedAt and L["%s (run ended)"]:format(line) or line
 end
