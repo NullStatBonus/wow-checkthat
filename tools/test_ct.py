@@ -377,6 +377,13 @@ class LoadEnv(unittest.TestCase):
                     os.environ.pop(k, None)
 
 
+class PackageRoot(unittest.TestCase):
+    def test_no_script_at_the_top_of_the_repository(self):
+        # The packager ships every top-level file that .pkgmeta does not ignore, so a script here lands in the addon folder.
+        found = [n for n in os.listdir(ct.ROOT) if n.lower().endswith((".bat", ".cmd", ".ps1", ".sh", ".exe"))]
+        self.assertEqual(found, [])
+
+
 class Safety(unittest.TestCase):
     def test_run_ids_cannot_leave_the_runs_folder(self):
         with tempfile.TemporaryDirectory() as d:

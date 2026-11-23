@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+Fixed: The download held a Windows script in the CheckThat folder. The script is gone from the download.
+
 ## 0.8.0
 
 New: **Past runs.** Home lists your stored runs. Open a run, export it, or delete it.

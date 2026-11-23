@@ -41,7 +41,7 @@ Screenshots: set `screenshot: true` on a step; the card asks for Print Screen (t
 
 **First live run.** Build (`make build`), copy `CheckThat/` to `Interface/AddOns/` (the parent folder's `Deploy-WowAddons.ps1` does it), `/ct import` with the contents of `build/selftest.ct`, `/ct start CheckThat`. It exercises the card, copy boxes, the Run button, log evidence and reload resume with no sibling addon. Then `/ct export`, `/reload`, and harvest. Next: `build/dontdothat.ct`.
 
-**Harvest on Windows.** Double-click `Copy-CheckThatEvidence.bat` (it runs `tools/Copy-CheckThatEvidence.ps1`; `/reload` or log out first so the game writes the files). It copies CheckThat and the three addons' saved variables (including Era per-character files) and Screenshots into `evidence-src/`; then on the Mac run `.venv/bin/python tools/ct.py collect --src evidence-src` and `report` (they need LuaJIT, which the Windows PC does not have).
+**Harvest on Windows.** Double-click `tools/Copy-CheckThatEvidence.bat` (it runs `Copy-CheckThatEvidence.ps1` beside it; `/reload` or log out first so the game writes the files). It copies CheckThat and the three addons' saved variables (including Era per-character files) and Screenshots into `evidence-src/`; then on the Mac run `.venv/bin/python tools/ct.py collect --src evidence-src` and `report` (they need LuaJIT, which the Windows PC does not have).
 
 ## Commands
 
