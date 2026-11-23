@@ -97,7 +97,7 @@ function Options.Home(order)
         return out
     end
     add(g, "h_runs", { type = "header", name = L["Past runs"], hidden = noRuns })
-    note(g, "runsHelp", grey(L["Pick a run in the list. Select Open run to see it on the checklist. Select Export run to copy its results. Select Delete run to remove it."]), noRuns)
+    note(g, "runsHelp", grey(L["Pick a run in the list. Each row shows the pass, fail and open counts. Select Open run to see it on the checklist. Select Export run to copy its results. Select Delete run to remove it."]), noRuns)
     add(g, "runPick", { type = "select", width = "full", name = L["Run"], hidden = noRuns, values = runValues, sorting = runOrder,
         get = chosen, set = function(_, v) Options.state.run = v end })
     add(g, "runOpen", { type = "execute", name = L["Open run"], hidden = noRuns,

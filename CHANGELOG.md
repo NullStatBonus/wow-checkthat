@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2
+
+Fixed: **Past runs** showed an ended run and an unfinished run the same way. An ended run now ends with ", ended".
+Fixed: The **Past runs** list ran off the right edge of the window. Each row is now short.
+
 ## 0.8.1
 
 Fixed: The download held a Windows script in the CheckThat folder. The script is gone from the download.

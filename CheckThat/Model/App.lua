@@ -159,7 +159,18 @@ App.ShownId = shownId
 local function runText(run)
     local c = ns.Run.Counts(run)
     local when = run.started and App.env.date and App.env.date("%Y-%m-%d %H:%M", run.started) or tostring(run.started or "?")
-    return L["%s  %s (%s): %d pass, %d fail, %d open"]:format(when, tostring(run.planTitle or run.addon), tostring(run.character), c.pass, c.fail, c.open)
+    local fmt = run.endedAt and L["%s  %s (%s): %d pass, %d fail, %d open, ended"] or L["%s  %s (%s): %d pass, %d fail, %d open"]
+    return fmt:format(when, tostring(run.planTitle or run.addon), tostring(run.character), c.pass, c.fail, c.open)
+end
+
+-- A short row for the Runs dropdown: the pull-out grows with its longest row, so the text stays narrow.
+local function rowText(run)
+    local c = ns.Run.Counts(run)
+    local when = run.started and App.env.date and App.env.date("%m-%d %H:%M", run.started) or tostring(run.started or "?")
+    local title = tostring(run.planTitle or run.addon)
+    if #title > 24 then title = title:sub(1, 24):gsub("[\192-\255][\128-\191]*$", "") .. "..." end
+    local fmt = run.endedAt and L["%s  %s (%s): %d/%d/%d, ended"] or L["%s  %s (%s): %d/%d/%d"]
+    return fmt:format(when, title, tostring(run.character):match("^[^-]+") or "?", c.pass, c.fail, c.open)
 end
 
 function App.RunText(id)
@@ -172,7 +183,7 @@ function App.Runs()
     local out = {}
     local cur = App.db.currentByChar[App.Character()]
     for _, e in ipairs(sortedRuns()) do
-        out[#out + 1] = { id = e.id, ended = e.run.endedAt ~= nil, character = e.run.character, current = e.id == cur, text = runText(e.run) }
+        out[#out + 1] = { id = e.id, ended = e.run.endedAt ~= nil, character = e.run.character, current = e.id == cur, text = rowText(e.run) }
     end
     return out
 end
