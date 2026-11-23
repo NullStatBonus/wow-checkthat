@@ -56,6 +56,31 @@ test("the report window is the AceGUI frame the sibling addons use", function()
     T.eq(box.text, "line one\nline two", "typing is undone")
     T.eq(freed[1], frame, "a second report replaces the first window")
 end)
+test("the import window is the same frame, with a recent plans list and an Import button", function()
+    local gui = LibStub("AceGUI-3.0")
+    local create, release = gui.Create, gui.Release
+    local made, freed = {}, {}
+    gui.Create = function(_, kind)
+        local w = { kind = kind, callbacks = {}, args = {} }
+        setmetatable(w, { __index = function(t, k) return function(self, ...) self.args[k] = { ... } end end })
+        function w:SetCallback(n, fn) self.callbacks[n] = fn end
+        function w:AddChild(c) end
+        made[#made + 1] = w
+        return w
+    end
+    gui.Release = function(_, w) freed[#freed + 1] = w end
+    local got, chose
+    ns.Export.Prompt("Paste a plan", "", function(s) got = s end, "Import", nil, nil,
+        { choices = { { id = "A", text = "Plan A" }, { id = "B", text = "Plan B" } }, onChoose = function(id) chose = id end })
+    local frame, dd, box = made[1], made[2], made[3]
+    T.eq(frame.kind, "Frame"); T.eq(dd.kind, "Dropdown"); T.eq(box.kind, "MultiLineEditBox")
+    T.eq(frame.args.SetTitle[1], "Paste a plan")
+    T.eq(box.args.SetButtonText[1], "Import", "the box carries the Import button")
+    T.eq(dd.args.SetList[1].A, "Plan A"); T.eq(dd.args.SetList[2][2], "B", "plans keep their order")
+    box.callbacks.OnEnterPressed(box, "OnEnterPressed", "!CT1!abc")
+    gui.Create, gui.Release = create, release
+    T.eq(got, "!CT1!abc", "Import hands the text over"); T.eq(freed[#freed], frame, "and closes the window")
+end)
 test("the AceGUI frame draws above the card and the Run button", function()
     local gui = LibStub("AceGUI-3.0")
     local w = gui:Create("Frame")
