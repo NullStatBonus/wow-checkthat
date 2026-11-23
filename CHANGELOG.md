@@ -7,6 +7,7 @@ New: **Runs to keep.** Advanced sets how many runs CheckThat keeps. The oldest r
 New: Opening an ended run only views it. Your current run stays where it was.
 Changed: CheckThat saves less data for each step. It also deletes plan copies that no run uses.
 Fixed: A "must not appear" check could pass after the game log rolled over. It now stays unverified.
+Fixed: The debug log filled with "run button hidden" lines, about five each second. Checks for a missing line then stayed unverified. It now holds one line for each screen.
 Fixed: Large logs made the saved data grow with every step. CheckThat now saves only the logs that a step checks.
 
 ## 0.7.1

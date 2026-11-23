@@ -105,4 +105,4 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Log: none; on screen only.
 9. **Run button leaves with its step.** Finish the run on the Export results step, then fight a training dummy until combat ends.
    Check: the results screen shows no Run button, before and after the fight.
-   Log: none when the button stayed hidden; `[ct] run button hidden: nothing to run on this screen` if the game showed it and CheckThat hid it again.
+   Log: none when the button stayed hidden; one `[ct] run button hidden: nothing to run on this screen` line for the screen if the game showed it and CheckThat hid it again.

@@ -255,7 +255,9 @@ function Card.EnsureSecure()
         if A.InCombat() or card.secureWanted then return end -- protected in combat; fine when a step wants it
         self:Hide()
         local _, _, cur = App.Current()
-        App.Log("run button hidden: nothing to run on this screen (step " .. (cur and cur.id or "none") .. ")")
+        -- The state driver shows the button about five times a second. One line for each screen is enough.
+        local msg = "run button hidden: nothing to run on this screen (step " .. (cur and cur.id or "none") .. ")"
+        if card.hiddenLogged ~= msg then card.hiddenLogged = msg; App.Log(msg) end
     end)
     s:Hide()
     card.secure = s
@@ -268,6 +270,7 @@ local function setMacro(step, plan)
     if not s then card.pendingMacro = true; return end -- in combat: the button is hidden (state driver) and is set up after combat
     card.pendingMacro = nil
     card.secureWanted = body and card:IsShown() and true or false
+    if card.secureWanted then card.hiddenLogged = nil end
     if body and card:IsShown() then s:SetAttribute("macrotext", body); s:Show() else s:SetAttribute("macrotext", ""); s:Hide() end
 end
 

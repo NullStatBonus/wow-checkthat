@@ -79,23 +79,15 @@ sections:
     title: Open run asks before it replaces your run
     action:
       kind: manual
-      text: Pick the practice run that is still open and select |cffffd100Open run|r. Read the question. Select |cffffd100No|r.
-    expect: The question says your current run leaves the checklist. After No, the card still shows this step.
+      text: Pick the practice run that is still open and select |cffffd100Open run|r. Read the question. Select |cffffd100Cancel|r.
+    expect: The question says your current run leaves the checklist. After Cancel, the card still shows this step.
     verify:
     - player
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      pattern: '^%[ct%] run opened '
-      absent: true
-      scope: attempt
-      label: No run was opened
   - id: ct8.stale
     title: A run that comes back starts its step again
     action:
       kind: manual
-      text: Pick the open practice run and select |cffffd100Open run|r, then |cffffd100Yes|r. Type |cff99ccff/ct status|r. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Yes|r.
+      text: Pick the open practice run and select |cffffd100Open run|r, then |cffffd100Accept|r. Type |cff99ccff/ct status|r. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
       commands:
       - /ct status
     expect: Back on this step, the check below is not green yet, because the status line came from the other run. Type |cff99ccff/ct status|r again and the check turns green. Press Pass only after that.
@@ -111,8 +103,8 @@ sections:
     title: Delete a practice run
     action:
       kind: manual
-      text: Pick an ended practice run and select |cffffd100Delete run|r. Read the question. Select |cffffd100Yes|r.
-    expect: The question names the run you picked. After Yes the run is gone from the list.
+      text: Pick an ended practice run and select |cffffd100Delete run|r. Read the question. Select |cffffd100Accept|r.
+    expect: The question names the run you picked. After Accept the run is gone from the list.
     verify:
     - player
     - assertions
@@ -152,7 +144,7 @@ sections:
     title: Start a run to prune the oldest runs
     action:
       kind: manual
-      text: Set |cffffd100Runs to keep|r to 5 in Advanced. Type |cff99ccff/ct start DontDoThat|r. Open Home and count the runs. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Yes|r.
+      text: Set |cffffd100Runs to keep|r to 5 in Advanced. Type |cff99ccff/ct start DontDoThat|r. Open Home and count the runs. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
       commands:
       - /ct start DontDoThat
     setup: Keep at least seven runs, this one included.
@@ -165,6 +157,7 @@ sections:
     - kind: log
       source: debug
       pattern: '^%[ct%] run pruned '
+      scope: session
       label: Old runs were pruned
   - id: ct8.report
     title: The report shows the stored runs

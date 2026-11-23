@@ -316,17 +316,22 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     ns.Card.Show()
     local card = _G.CheckThatCard
     local s = card.secure
-    local function logged() for _, e in ipairs(ns.App.db.log.entries) do if tostring(type(e) == "table" and e.msg or e):find("run button hidden", 1, true) then return true end end end
+    local function hiddenLines() local n = 0; for _, e in ipairs(ns.App.db.log.entries) do if tostring(type(e) == "table" and e.msg or e):find("run button hidden", 1, true) then n = n + 1 end end; return n end
+    local function logged() return hiddenLines() > 0 end
     local function gameShows() s:Show(); s.scripts.OnShow(s) end             -- what the combat state driver does
     T.ok(s.shown, "visible with a step that has commands")
     gameShows(); T.ok(s.shown, "the guard leaves it alone there"); T.ok(not logged(), "and logs nothing")
     ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.2 has no commands
     T.ok(not s.shown, "hidden on a step without commands")
     gameShows(); T.ok(not s.shown, "hidden again when the game shows it"); T.ok(logged(), "and the log says so")
+    for _ = 1, 5 do gameShows() end                                          -- the state driver shows it about five times a second
+    T.eq(hiddenLines(), 1, "one line for the screen, not one for each time the game shows the button")
     ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.3 has commands again
     T.ok(s.shown, "visible again with the next step that has commands")
+    T.eq(hiddenLines(), 1, "a step with commands logs nothing")
     ns.App.db.ui.pendingStart = "KeepThat"; ns.Card.Refresh()                -- the Start screen of another plan
-    gameShows(); T.ok(not s.shown, "Start screen: hidden again")
+    local before = hiddenLines()
+    gameShows(); T.ok(not s.shown, "Start screen: hidden again"); T.eq(hiddenLines(), before + 1, "a new screen logs a new line")
     ns.App.db.ui.pendingStart = nil; ns.Card.Refresh()
     T.ok(s.shown, "back on the step: visible")
     ns.App.Verdict("pass"); ns.Card.Refresh()                                -- results screen, right after a step that had commands
