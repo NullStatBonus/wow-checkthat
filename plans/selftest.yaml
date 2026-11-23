@@ -58,7 +58,7 @@ sections:
     title: Reload and resume
     action:
       kind: reload
-      text: Press Reload on the card.
+      text: Press Run to reload the game.
     expect: After the reload the card moves on by itself within a minute.
     verify:
     - assertions

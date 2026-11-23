@@ -70,10 +70,9 @@ test("smoke: importing a plan after a finished run restarts the flow", function(
     for _ = 1, 20 do ns.Card.Refresh(); if not select(3, ns.App.Current()) then break end; ns.App.Verdict("skip") end
     T.ok(select(3, ns.App.Current()) == nil, "first run is complete")
     ns.Card.Show(); ns.Card.Refresh()
-    -- results screen: Export and a Main window button; no Reload
+    -- results screen: Export and a Main window button
     local card = _G.CheckThatCard
     T.ok(card.exportBtn.shown and card.mainBtn.shown, "Export results and Main window shown")
-    T.ok(not card.reload.shown, "no Reload on the results screen")
     local opened
     local realOpen = ns.Options.Open
     ns.Options.Open = function(page) opened = page end
@@ -146,18 +145,18 @@ test("smoke: a note stays with its step attempt", function()
     ns.Card.Go(1)
     T.eq(card.note:GetText(), "", "moving to another step clears the draft")
 end)
-test("smoke: a reload request on the last step shows Reload on the results screen", function()
+test("smoke: a reload request on the last step tells the player to type /reload on the results screen", function()
     ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
     local run = ns.App.Start("KeepThat")
     for _ = 1, 20 do ns.Card.Refresh(); if not select(3, ns.App.Current()) then break end; ns.App.Verdict("skip") end
     ns.App.db.ui.shareReload = run.runId
     ns.Card.Refresh()
-    T.ok(_G.CheckThatCard.reload.shown, "Reload offered on the results screen")
+    T.ok(_G.CheckThatCard.context.text:find("Type /reload now", 1, true), "the results screen asks for a reload")
     ns.App.db.ui.shareReload = nil; ns.Card.Refresh()
-    T.ok(not _G.CheckThatCard.reload.shown, "and gone once the request is cleared")
+    T.ok(not _G.CheckThatCard.context.text:find("/reload", 1, true), "and stops once the request is cleared")
     -- a request from another run, or a stale one from before a reload, is ignored
     ns.App.db.ui.shareReload = "some-other-run"; ns.Card.Refresh()
-    T.ok(not _G.CheckThatCard.reload.shown)
+    T.ok(not _G.CheckThatCard.context.text:find("/reload", 1, true))
     ns.App.Init(ns.App.db, ns.App.env)
     T.eq(ns.App.db.ui.shareReload, nil, "loading again clears a pending reload request")
 end)

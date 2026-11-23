@@ -306,6 +306,24 @@ function App.End(runId)
     return run
 end
 
+-- End the current run and forget its plan: the loaded plan and its place in the recent list go. The stored copy stays,
+-- so the ended run keeps its results screen and its export. runId is checked as for App.End.
+function App.ClearPlan(runId)
+    local run, err = App.End(runId)
+    if not run then return nil, err end
+    local ui = App.db.ui
+    local loaded = App.db.plans[run.addon]
+    local gone = { [run.planDigest or ""] = true, [loaded and loaded.digest or ""] = true }
+    App.db.plans[run.addon] = nil
+    if ui.pendingStart == run.addon then ui.pendingStart = nil end
+    if ui.lastImport == run.addon then ui.lastImport = nil end
+    local keep = {}
+    for _, e in ipairs(ui.recent or {}) do if not gone[e.digest] then keep[#keep + 1] = e end end
+    ui.recent = keep
+    App.Log("plan cleared " .. run.addon)
+    return run
+end
+
 function App.Undo()
     local run, ctx = App.Current()
     if not run then return false end

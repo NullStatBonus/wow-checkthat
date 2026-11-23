@@ -91,6 +91,18 @@ function Adapter.ContextMenu(owner, items)
     return false
 end
 
+-- A tooltip with the given text next to owner. Returns false when the game has no tooltip.
+function Adapter.Tooltip(owner, text)
+    local tip = _G.GameTooltip
+    if not (tip and tip.SetOwner and tip.SetText and text) then return false end
+    return (pcall(function() tip:SetOwner(owner, "ANCHOR_BOTTOM"); tip:SetText(text, 1, 1, 1, 1, true); tip:Show() end))
+end
+
+function Adapter.TooltipHide()
+    local tip = _G.GameTooltip
+    if tip and tip.Hide then pcall(tip.Hide, tip) end
+end
+
 -- A native confirmation dialog. onAccept runs only on the player's click.
 function Adapter.Confirm(text, onAccept)
     if not (_G.StaticPopupDialogs and _G.StaticPopup_Show) then return false end
