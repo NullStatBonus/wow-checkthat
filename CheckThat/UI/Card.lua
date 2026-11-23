@@ -329,7 +329,7 @@ end
 
 function Card.ExportNow(runId)
     local s, err = App.Export(runId)
-    if s then ns.Export.Show(L["Results string. Share it with Claude."], s) else ns.Slash.Print(err) end
+    if s then ns.Export.Show(L["Results string"], s) else ns.Slash.Print(err) end
 end
 
 function Card.ImportPrompt()
@@ -452,7 +452,7 @@ function Card.Refresh()
         place(card.context, 12, y)
         local ask = App.db.ui.shareReload == run.runId and not ended -- the last step asked for a reload so the log reaches the saved file
         setText(card.context, L["Export results to share this run. The game saves the evidence to disk when you reload or log out."] .. "\n" .. (ended and "" or ctx.plan.handoff or "")
-            .. (ask and ("\n" .. L["Type /reload now so Claude can read the log."]) or ""), GREY)
+            .. (ask and ("\n" .. L["Type /reload now so the game saves the log."]) or ""), GREY)
         y = y + card.context:GetStringHeight() + 12
         if not ended then card.prevBtn:Show() end
         card.exportBtn:ClearAllPoints(); card.exportBtn:SetPoint("BOTTOMLEFT", 12, 12); card.exportBtn:Show()
@@ -561,7 +561,7 @@ function Card.Refresh()
     local hint = {}
     if step.screenshot then hint[#hint + 1] = L["Press Print Screen while the result is on screen."] end
     if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Type /reload when done. This step resumes after."] end
-    if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Type /reload now so Claude can read the log."] end
+    if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Type /reload now so the game saves the log."] end
     if #hint > 0 then place(card.hint, 12, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
     y = y + 6
     local noteKey = noteKeyOf(run, step, rec0)

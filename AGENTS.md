@@ -34,6 +34,7 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 - **Every player-facing sentence is `L["The whole English sentence"]`.** No concatenation, no variable keys. `tests/test_locale.lua` enforces this. See `docs/localization.md`.
 - **New files go in both TOC files in the same order** (`make check` fails otherwise). `Libs/` is loaded by `embeds.xml`.
 - **Plan text is not Markdown.** Text a player sees in a plan uses native color codes (`|cffffd100text|r`), never backticks or `**`. Validation rejects Markdown. See `openspec/specs/test-plan-format/`.
+- **No AI or tool names in game.** Player-facing text never names Claude or any other assistant. Say what the player does, such as "so the game saves the log".
 - **Chat text** never contains a raw `|`; double it.
 - Choose game API code paths by checking whether the function exists, never by the client's name (the client is told apart by interface number).
 - Persistent visuals default to a pure black background, with a user-selectable opacity. Draw no fill, border, or texture at zero opacity. Keep text and icons dimmable and avoid bright fixed-position fills.
