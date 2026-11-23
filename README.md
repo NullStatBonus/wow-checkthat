@@ -1,47 +1,31 @@
-# wow-checkthat
+# CheckThat
 
-In-game test runner (**CheckThat**, `/ct`) plus tooling that turns the manual test plans of KeepThat, DontDoThat and ClosestVendor into a deterministic format, walks the tester through them, and gathers evidence for review.
+CheckThat (`/ct`) is an in-game test runner for World of Warcraft Classic Era and Forever. It walks a tester through a plan of test steps for an addon, reads the addon's debug log to check what happened, and exports the results for review.
 
-No input is ever automated. Every game action stays a player click or keypress; the runner only shows text to copy, a button the player clicks, and reads logs and state.
+CheckThat never plays for you. Every game action stays a real click or keypress. The runner shows text to copy, a button you click, and reads logs and state.
 
-## Flow
+This repository holds the addon (`CheckThat/`), the plans for KeepThat, DontDoThat and ClosestVendor (`plans/`), and the tools and coding-agent skills that write plans and read finished runs back.
 
-1. Author or convert a plan: `plans/<addon>.yaml` (schema: `schema/test-plan.schema.json`).
-   Draft from an existing doc: `.venv/bin/python tools/ct.py from-md ../wow-keepthat/docs/test-plan.md --addon KeepThat -o plans/keepthat.yaml`
-2. Compile to an import string: `make build` writes `build/*.ct` (`!CT1!...`).
-3. In game: `/ct import`, paste, then `/ct start KeepThat`. The card shows the step, what to do (with copy boxes), what to expect, and what comes next. Pass / Partial / Fail / Skip / Undo. A claimed pass without log evidence is recorded as *unverified*.
-4. `/ct export` gives a `!CT1!` results string. `/reload` saves the run to `CheckThat.lua` saved variables.
-5. Harvest: `.venv/bin/python tools/ct.py collect` (default source `../shared-addon-resources/saved`; `--wow <game dir>` / `CT_WOW` collects `_classic_era_` and `_forever_` with their `WTF` and `Screenshots` folders; `--src <WTF dir>` / `CT_WTF` names one folder and wins), then `.venv/bin/python tools/ct.py report` writes `evidence/REPORT.md`. The report starts each run with a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass. Paste a results string with `.venv/bin/python tools/ct.py import-results "<string>"` (a file path works too).
+## Quick start
 
-**Local paths.** `tools/ct.py` reads `KEY=VALUE` lines from `$CT_ENV`, `.ct.env` in the working folder (git-ignored) and `~/.checkthat.env`, in that order. A variable already set wins, and a flag wins over both. `CT_WOW` is the game folder (see Harvest); `CT_WTF` and `CT_SHOTS` name one folder each.
+1. Copy the `CheckThat` folder into `Interface/AddOns/`.
+2. Run `make build` (it needs the Python setup under Develop). It writes plan strings to `build/*.ct`.
+3. In game, type `/ct import` and paste a plan string, for example `build/selftest.ct`. Then type `/ct start CheckThat`.
+4. For each step, read what to do and what to expect, then press Pass, Partial, Fail or Skip. A pass the logs do not support is recorded as *unverified*.
+5. Type `/ct export` for a results string, then `/reload` so the game saves the run.
 
-**Run button.** A step that lists commands, and only allowed ones, gets a Run button that runs them in order. It is hidden during combat and set up again when combat ends. A step with more commands than the card has copy boxes (four) gets no button, so no command runs unseen. `/script` and `/dump` are not allowed. There is no separate Reload button. A step that asks for a reload shows Run beside its `/reload` command. A step without that command, and a plan that asks to share the log after a reload, tell you to type `/reload`.
+To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 
-**Run menu.** While a run is active, the card header shows a Run control with a small arrow, next to the "CheckThat" title. It highlights when you point at it. Click it for three items: Import..., End run... and Clear plan.... Import... opens the same box as the Import a plan button, with your recent plans. It leaves the run alone until you import or pick a plan.
+## Features
 
-**Clear plan.** Choose Clear plan... in the Run menu. CheckThat names the plan and asks first. If you agree, the run ends as with End run, and the plan leaves your loaded plans and your recent list. The recorded results stay: the card shows "Run ended" with Export results, and the results string still works. The ended card offers Import a plan in place of Main window. The start screen shows the plan title as its heading, with the step count and "Ready to test. Select Start run." under it. A long title shows in full on hover. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge. The debug log reads `plan cleared <addon>`. The stored copy of the plan stays for the ended run. A client without a menu API has no Clear plan. A click on Run asks to end the run directly.
-
-**Past runs.** Home lists every stored run under Past runs, newest first, with date, plan, character and counts. A row is short so the list stays inside the window: the date and time, the plan title (cut after 24 characters), the character name without its realm, and the pass, fail and open counts as three numbers. A run that has ended shows ", ended" after the counts. Delete run still names the run in full. It stays hidden while no run is stored. Pick a run, then choose Open run, Export run or Delete run. Each row starts with the date and time. Open run on an ended run shows its results on the card, read-only. Your current run stays as it was. Start a run, or open the current run, to return to it. Open run on an unfinished run of your own makes it the current run. CheckThat asks you to accept first whenever another run of yours is active. If you open an unfinished run, the current run leaves the card and stays in the list until newer runs push it out. If you open an ended run, the current run stays. Opening the current run asks nothing. The attempt that the opened run left open starts again, so lines that came from other runs do not count. A run that has not ended and belongs to another character cannot be opened, only exported or deleted. Delete run names the run and asks first. The debug log reads `run open asked <id>`, `run opened <id>`, `run delete asked <id>`, `run deleted <id>`, `run pruned <id>` and `run exported <id>`. A cancelled question leaves no `run opened` line.
-
-**Runs to keep.** Advanced sets how many runs CheckThat keeps (5 to 100, default 20), for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run, not while you move the slider. A plan copy that no run, loaded plan or recent plan uses is deleted when you import or clear a plan, delete a run, or a run is pruned. The debug report prints `Stored: <n> runs (limit <n>), <n> plan copies`, and the log reads `report requested: Stored: ...`.
-
-**Saved log positions.** When a step opens, CheckThat saves where each log that the step checks stands: its length and its last 12 lines. It saves no other log. A step that checks a log without a saved position stays unverified, and never counts the whole log as new. A full log drops its oldest line with every new line, so this is normal and CheckThat still finds where the step opened. Only when the last lines it saved are all the same line (a flood) can it not show that a line is absent, so a "must not appear" check stays unverified unless the line is there (then it fails). Runs saved by an earlier version keep working.
-
-**End run.** Choose End run in the Run menu, or type `/ct end`. CheckThat asks first, also when no step has a result yet. An ended run keeps every result, note and attempt. Steps without a result stay as they were. The card then shows "Run ended" with Export results and Main window, and takes no verdict, Undo or Resume. The export string, `/ct status run` and the debug report mark the run ended. The debug log reads `run ended <run id>`. The saved run holds an `endedAt` time. A run saved before this feature has none and reads as not ended. Start the plan again for a new run. On a client without a menu API, a click on Run asks to end the run directly.
-
-**Long titles.** A title that does not fit stays inside the card and ends with "...". The minimized card shows it on one line and shows the whole title when you point at it. The expanded card allows two lines. A single word that is wider than the card is cut too.
-
-**Auto steps.** A plan step can set `auto: true`. It must verify by assertions only (no `player`), have at least one required check, and have no required absence check. While the card is shown, CheckThat re-reads the checks twice a second and records the pass itself when every required check is met. A step can also set `timeout` (5 to 300 seconds, counted from when the step opens, also across `/reload`). When the time runs out, a contradicted check records fail and missing evidence records unverified. A check that is wrong for a moment and then right passes. CheckThat only reads the logs and state the card already shows. It never sends input or runs a command. Pass, Fail, Skip and Undo still work and win if you press them first. A step recorded this way says "recorded by CheckThat" on the card. The debug log reads `step <id> <verdict> auto evidence <result>`. The report adds `auto=<count>` to the counts and marks the step. A hidden game interface or a Start screen for another plan stops it from recording until the run shows again. A hidden card does not stop it. After an automatic unverified result the step waits for you and does not retry by itself. The `wait-event` action kind is valid only on an auto step. The card shows "Wait. CheckThat records the result when the checks below are met." unless the step has its own text.
-
-`plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account: the owner leaves a run open, the viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill. The other plans in `plans/` are short samples (4 to 7 steps each) that `make build` compiles. The full conversions of the sibling test plans are kept in `plans/full/` and are validated by the tests but not built; compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
-
-Screenshots: set `screenshot: true` on a step; the card asks for Print Screen (the addon never captures). `collect` copies screenshots taken inside an attempt's time window (`--shots <folder>`, default `Screenshots` beside `--src`).
-
-**Classic Era per-character data.** The sibling script `Copy-WowSavedVariables.ps1` (in the parent folder next to the addon folders, not in this repository) copies only account-level saved variables for Era, so ClosestVendor's per-character log (`ClosestVendorCharDB`) is missing from the shared copy. Run `collect --src "<WoW>/_classic_era_/WTF"` against the real folder instead (or drop `-SharedOnly` for Era in the script).
-
-**First live run.** Build (`make build`), copy `CheckThat/` to `Interface/AddOns/` (the parent folder's `Deploy-WowAddons.ps1` does it), `/ct import` with the contents of `build/selftest.ct`, `/ct start CheckThat`. It exercises the card, copy boxes, the Run button, log evidence and reload resume with no sibling addon. Then `/ct export`, `/reload`, and harvest. Next: `build/dontdothat.ct`.
-
-**Harvest on Windows.** Double-click `tools/Copy-CheckThatEvidence.bat` (it runs `Copy-CheckThatEvidence.ps1` beside it; `/reload` or log out first so the game writes the files). It copies CheckThat and the three addons' saved variables (including Era per-character files) and Screenshots into `evidence-src/`; then on the Mac run `.venv/bin/python tools/ct.py collect --src evidence-src` and `report` (they need LuaJIT, which the Windows PC does not have).
+- **Card.** One step at a time: what to do (with copy boxes), what to expect and what comes next. Back, next, undo and a note for each result.
+- **Run button.** Runs the step's allowed commands in order. It is hidden during combat. [Details](docs/features.md#run-button)
+- **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. [Details](docs/features.md#saved-log-positions)
+- **Automatic steps.** A step marked `auto` records its own result when the checks are met. Your click still wins. [Details](docs/features.md#automatic-steps)
+- **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)
+- **Past runs.** Home lists stored runs. Open, export or delete one. [Details](docs/features.md#past-runs)
+- **Reload safe.** The run and its place survive `/reload`.
+- **Screenshots.** A step can ask for Print Screen. CheckThat never captures. [Details](docs/harvesting.md#screenshots)
 
 ## Commands
 
@@ -66,38 +50,43 @@ Screenshots: set `screenshot: true` on a step; the card asks for Print Screen (t
 | `/ct macro` | Create a macro for the current step. |
 | `/ct reload` | Reload the interface so saved variables are written. |
 
+## Settings
+
+Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
+
+| Page | What it holds |
+| --- | --- |
+| Home | Current run (open the checklist, export results), Start a run (import a plan, pick a plan, Start run) and Past runs. |
+| Plans | Remove a plan. |
+| Appearance | Size and opacity, position, Lock position and Reset position. |
+| Advanced | Profile (separate settings for this character), **Runs to keep** and Debug (record debug information, show the debug report). |
+| About | The command list and help. |
+
+**Runs to keep** is 5 to 100, default 20, for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run. The debug report prints every setting and `Stored: <n> runs (limit <n>), <n> plan copies`.
+
+## Good to know
+
+- Results are saved when the game reloads or logs out.
+- Run is not available in combat. It comes back when combat ends.
+- A step with more commands than the card has copy boxes (four) gets no Run button, so no command runs unseen. `/script` and `/dump` are not allowed.
+- A long plan or step title ends with "..." and shows in full when you point at it.
+- A step that checks a log with no saved position stays unverified. It never counts the whole log as new.
+
+## Plans, evidence and skills
+
+- [Write a plan](docs/authoring-plans.md): the plan format, compile, and the sample and full plans.
+- [Collect evidence](docs/harvesting.md): `collect`, `report`, per-character data on Classic Era, and Windows.
+- [Plan skills](docs/skills.md): `ct-test-plan` and `ct-verify` for Claude Code, Codex and other agents, and the Claude Code plugin.
+- [Debug logging](docs/debug-logging.md): what a good addon debug log looks like.
+- [Feature reference](docs/features.md): how each feature behaves, including the debug log lines.
+- [Manual test plan](docs/test-plan.md).
+
 ## Develop
 
 ```
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 make test      # build, luajit tests, python tests
+make check     # packaging and version checks
 ```
 
-### Plan-writing skill
-
-What a good addon debug log looks like: [docs/debug-logging.md](docs/debug-logging.md).
-
-Two skills help addon developers. They are plain `SKILL.md` folders. These are developer tools for the repository, apart from the in-game `/ct` commands above.
-
-- `ct-test-plan` interviews you one question at a time and drafts a plan one step at a time. By default each step has one action and one expected result. Ask for a compound step when you need one. A check that needs several characters becomes one plan for each character role, named `<name>.<role>.yaml`. Each preamble names every partner plan. Examples: `skills/ct-test-plan/keepthat-tally.bank.yaml` and `keepthat-tally.alt.yaml`.
-- `ct-verify` reads a finished run back against its plan. It collects the saved variables (or reads an `/ct export` string), matches each step to its recorded result and evidence, and compares runs across characters. It reports pass, fail, unverified and contradicted steps. It never edits a plan and never runs the game. Collected evidence goes to a folder you name, `evidence/` by default. Keep it out of Git.
-
-**Install.** Run this in the CheckThat checkout:
-
-```
-make install-skill                              # Claude Code: ~/.claude/skills/
-make install-skill SKILL_DIR=~/.codex/skills    # Codex: its skills folder
-make install-skill SKILL_DIR=<folder>           # any other agent that reads SKILL.md folders
-```
-
-Each run installs both skills into `<folder>/ct-test-plan` and `<folder>/ct-verify` and replaces an earlier copy. Run it once for each agent you use. The install includes a copy of the plan tools, the decoder files that `collect` needs, and a private Python with PyYAML and jsonschema, so the skills work in any addon repository with no checkout. It needs Python 3 with `venv` and network access once. `ct-verify` also needs `luajit` on your PATH to read saved variables. `collect` exits with an error and names the file when it cannot decode one. The two skills must sit in the same folder, because `ct-verify` finds the tools in `../ct-test-plan/ct`. Run the install again after the tools change; each skill reports the tools version it uses.
-
-I tested the install with Claude Code only. Codex and other agents read the same `SKILL.md` format, but each one picks its own skills folder. Check its documentation for the folder it reads and pass that folder as `SKILL_DIR`. `SKILL_DIR` must be outside the checkout.
-
-**Plugin.** `make build-plugin` builds a Claude Code plugin in `build/plugin/` (`PLUGIN_DIR=<dir>` changes the target) with both skills, the plan tools and the version stamp. Load it for one session with `claude --plugin-dir build/plugin`. Its commands are `/checkthat:plan` and `/checkthat:verify`. A plugin has no private Python: the skills use `python3` when it imports PyYAML and jsonschema, and print the command that creates an environment when it does not. The plugin is not published yet (#53); `make install-skill` is the install for other repositories. The installed skills also run as `/ct-test-plan` and `/ct-verify`.
-
-Ask the skill in plain words: "write a CheckThat test plan for this branch", or "verify my CheckThat run".
-
-Deploy: `Deploy-WowAddons.ps1` in the parent folder picks up `CheckThat/` like the other addons.
-
-Requirements live in `openspec/`.
+Requirements live in `openspec/`. The release steps are in [docs/publishing.md](docs/publishing.md).
