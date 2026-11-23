@@ -1,7 +1,7 @@
 # test-plan-authoring Specification
 
 ## Purpose
-Guides an addon developer from a scope of work to a validated TestThat plan through an interview, a draft and a review, so plans cover the scope and use the evidence the addon already logs.
+Guides an addon developer from a scope of work to a validated CheckThat plan through an interview, a draft and a review, so plans cover the scope and use the evidence the addon already logs.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ The skill SHALL ask the author for the scope source (current branch, a diff or t
 - **THEN** it suggests `plans/` and accepts another path
 
 ### Requirement: Skill finds the plan tools from any install
-The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` in the bundle installed beside it, else in the checkout two folders above it. A path SHALL count as a root only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the TestThat path and SHALL NOT assume the working directory is the TestThat repository.
+The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` in the bundle installed beside it, else in the checkout two folders above it. A path SHALL count as a root only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the CheckThat path and SHALL NOT assume the working directory is the CheckThat repository.
 
 #### Scenario: Installed to the user's skills folder
 - **WHEN** the author ran `make install-skill`, then removed or moved the checkout, and starts the skill in another addon repository
@@ -25,7 +25,7 @@ The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/
 
 #### Scenario: Path unknown
 - **WHEN** no bundle exists beside the skill and the tools are not in a checkout above it
-- **THEN** the skill asks for the TestThat checkout path before drafting
+- **THEN** the skill asks for the CheckThat checkout path before drafting
 
 ### Requirement: Make installs the skill for the user
 `make install-skill` SHALL copy the skill folder and a bundle of the plan tools and format files into the user's skills folder, create a private Python environment there with the tools' dependencies, and replace an earlier copy. `SKILL_DIR` SHALL change the target folder. The install SHALL NOT change system Python, SHALL refuse a target folder inside the checkout, SHALL keep the earlier copy if any step fails, and SHALL stamp the bundle with the addon version.

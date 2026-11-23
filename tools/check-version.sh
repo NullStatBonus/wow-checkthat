@@ -2,11 +2,11 @@
 # Fails unless every TOC carries the same version, and, when a tag is given (v0.1.0 or 0.1.0),
 # that tag too; also fails unless CHANGELOG.md has a section for that version.
 # Usage: tools/check-version.sh [tag]
-dir=TestThat
+dir=CheckThat
 want=$(printf '%s' "${1#v}")
 status=0
 first=
-for toc in "$dir"/TestThat_*.toc; do
+for toc in "$dir"/CheckThat_*.toc; do
   v=$(sed -n 's/^## Version:[[:space:]]*//p' "$toc" | tr -d '\r')
   [ -z "$first" ] && first=$v
   if [ -z "$v" ] || [ "$v" != "$first" ]; then echo "VERSION  $(basename "$toc") has '$v', expected '$first'"; status=1; else echo "ok       $(basename "$toc") $v"; fi

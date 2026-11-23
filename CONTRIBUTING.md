@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. TestThat is a WoW Classic addon (Lua) that walks a tester through the in-game test plans of other addons and records evidence for review. It supports WoW Forever and Classic Era.
+Thanks for helping. CheckThat is a WoW Classic addon (Lua) that walks a tester through the in-game test plans of other addons and records evidence for review. It supports WoW Forever and Classic Era.
 
 ## Getting set up
 
@@ -22,7 +22,7 @@ Behavior is specified in `openspec/specs/`. A change to behavior goes through an
 ## Code
 
 - **Match the surrounding code**: naming, comment density and idiom. Keep changes small and focused.
-- **Keep the game out of the logic.** `TestThat/Model/` is plain Lua with no client calls. All client API reads go through `TestThat/Core/Adapter.lua`, wrapped in `pcall`.
+- **Keep the game out of the logic.** `CheckThat/Model/` is plain Lua with no client calls. All client API reads go through `CheckThat/Core/Adapter.lua`, wrapped in `pcall`.
 - **Never automate input.** See `AGENTS.md`.
 - **Write tests** for every behavior change in `tests/` (one `test_<module>.lua` per module).
 - **New files** go in both TOC files in the same order. `make check` fails if they differ.

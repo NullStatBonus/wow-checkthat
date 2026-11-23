@@ -2,7 +2,7 @@
 # Verifies a TOC: it has an Interface line, every file it lists exists, and every .lua file in
 # the addon folder is listed (Locales/Example.lua is a template and Libs/ is loaded by embeds.xml, so both are exempt).
 # Usage: tools/check-toc.sh [path/to/file.toc]   (run from the repository root)
-toc="${1:-TestThat/TestThat_Camelot.toc}"
+toc="${1:-CheckThat/CheckThat_Camelot.toc}"
 dir=$(dirname "$toc")
 status=0
 listed=$(grep -v -e '^#' -e '^[[:space:]]*$' "$toc" | tr -d '\r' | tr '\\' '/')

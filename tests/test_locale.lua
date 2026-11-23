@@ -3,7 +3,7 @@ H.plain(ns)
 -- Every player-facing sentence is L["The whole English sentence"]: no concatenation, no variable keys.
 local function files()
     local out = {}
-    local p = io.popen("find TestThat -name '*.lua' -not -path 'TestThat/Libs/*' | sort")
+    local p = io.popen("find CheckThat -name '*.lua' -not -path 'CheckThat/Libs/*' | sort")
     for line in p:lines() do out[#out + 1] = line end
     p:close()
     return out

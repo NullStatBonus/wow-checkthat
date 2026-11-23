@@ -1,4 +1,4 @@
--- The public settings keys, shared by the settings window and /wtt get|set so both validate the same way.
+-- The public settings keys, shared by the settings window and /ct get|set so both validate the same way.
 -- Plain Lua: the saved profile comes from ns.addon.db or the defaults, and Settings.onChange is set by the card.
 local _, ns = ...
 local L = ns.L

@@ -1,4 +1,4 @@
--- Bounded debug log, and the text of /wtt log. Lines are "[area] message". State lives in a table the
+-- Bounded debug log, and the text of /ct log. Lines are "[area] message". State lives in a table the
 -- caller binds (the saved global.log) so tests need no game.
 local _, ns = ...
 
@@ -54,7 +54,7 @@ end
 
 -- The report text. English only (debug output is not translated).
 function Log.Report()
-    local out = { ("TestThat %s, client %s, build %s"):format(tostring(ns.version),
+    local out = { ("CheckThat %s, client %s, build %s"):format(tostring(ns.version),
         ns.App and ns.App.Client() or "?", ns.App and ns.App.Build() or "?"), "", "Settings:" }
     local db = ns.addon and ns.addon.db
     if db then

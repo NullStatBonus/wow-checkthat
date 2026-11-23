@@ -1,5 +1,5 @@
 @echo off
-rem Double-click this on the Windows PC that runs WoW. It copies the TestThat and addon saved variables
+rem Double-click this on the Windows PC that runs WoW. It copies the CheckThat and addon saved variables
 rem (and screenshots) into evidence-src\ next to this file. Then run the collect and report step on the Mac:
 rem   .venv/bin/python tools/wtt.py collect --src evidence-src
 rem   .venv/bin/python tools/wtt.py report

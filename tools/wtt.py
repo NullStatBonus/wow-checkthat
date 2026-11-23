@@ -9,14 +9,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "test-plan.schema.json")
 PREFIX = "!WTT1!"
 SLASH = {
-    "TestThat": ["/wtt"],
+    "CheckThat": ["/ct", "/checkthat"],
     "KeepThat": ["/kt", "/keepthat"],
     "DontDoThat": ["/ddt", "/dontdothat"],
     "ClosestVendor": ["/cvn", "/closestvendor"],
 }
 BUILTIN = ["/reload", "/reloadui"]
 LOGS = {
-    "TestThat": {"debug": {"global": "TestThatDB", "path": "global.log.entries", "format": "entries"}},
+    "CheckThat": {"debug": {"global": "CheckThatDB", "path": "global.log.entries", "format": "entries"}},
     "KeepThat": {"debug": {"global": "KeepThatDB", "path": "global.log", "format": "strings"}},
     "DontDoThat": {"debug": {"global": "DontDoThatDB", "path": "global.log.entries", "format": "entries"}},
     "ClosestVendor": {"debug": {"global": "ClosestVendorCharDB", "path": "log.entries", "format": "entries"}},
@@ -154,7 +154,7 @@ def encode(obj):
     return "%s%08x!%s" % (PREFIX, zlib.adler32(js) & 0xFFFFFFFF, base64.b64encode(packed).decode("ascii"))
 
 
-MAX_INFLATED = 2000000  # TestThat/Model/Codec.lua LIMITS.inflated
+MAX_INFLATED = 2000000  # CheckThat/Model/Codec.lua LIMITS.inflated
 
 
 def safe_name(s):
@@ -364,7 +364,7 @@ def sv_json(path):
     return json.loads(r.stdout)
 
 
-WATCH = ("TestThat", "KeepThat", "DontDoThat", "ClosestVendor")
+WATCH = ("CheckThat", "KeepThat", "DontDoThat", "ClosestVendor")
 
 
 def find_sv(src):
@@ -388,9 +388,9 @@ def cmd_collect(a):
         out = os.path.join(dest, "sv", "%s.%s.lua" % (rel[:-4], h))
         if not os.path.exists(out):
             shutil.copyfile(f, out); new_sv += 1
-        if os.path.basename(f) == "TestThat.lua":
+        if os.path.basename(f) == "CheckThat.lua":
             try:
-                db = sv_json(f).get("TestThatDB", {})
+                db = sv_json(f).get("CheckThatDB", {})
             except Exception as e:
                 print("skip %s: %s" % (f, e), file=sys.stderr); continue
             runs = (db.get("global") or {}).get("runs") or db.get("runs") or {}
@@ -456,7 +456,7 @@ def latest_runs(dest):
     return runs
 
 
-def by_testthat(rec):
+def by_checkthat(rec):
     """True when the runner, not the player, recorded the step's last result (an auto step)."""
     done = [a for a in rec.get("attempts") or [] if a.get("verdict")]   # an open retry has no result yet
     return rec.get("verdict") != "pending" and bool(done) and done[-1].get("by") == "auto"   # Undo reopens the step
@@ -470,12 +470,12 @@ def report_text(runs, dest=None):
             counts[rec.get("verdict", "?")] = counts.get(rec.get("verdict", "?"), 0) + 1
         out.append("## %s (%s, rev %s)" % (rid, r.get("planTitle", r.get("addon")), r.get("revision")))
         out.append("client %s build %s character %s" % (r.get("client"), r.get("build"), r.get("character")))
-        auto = sum(1 for rec in (r.get("steps") or {}).values() if by_testthat(rec))
+        auto = sum(1 for rec in (r.get("steps") or {}).values() if by_checkthat(rec))
         out.append("counts: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())) + (", auto=%d" % auto if auto else ""))
         for sid in r.get("order", []):
             rec = r["steps"].get(sid, {})
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
-            mark = ", recorded by TestThat" if by_testthat(rec) else ""
+            mark = ", recorded by CheckThat" if by_checkthat(rec) else ""
             if (shots or mark) and rec.get("verdict") in ("pass", "skip", "inapplicable"):
                 out.append("- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else ""))
             if rec.get("verdict") in ("pass", "skip", "inapplicable"):

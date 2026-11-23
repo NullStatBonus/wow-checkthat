@@ -6,7 +6,7 @@ local L = ns.L
 local Options = {}
 ns.Options = Options
 
-local APP = "TestThat"
+local APP = "CheckThat"
 Options.state = {}
 
 local function profile() return ns.Settings.profile() end
@@ -61,7 +61,7 @@ end
 
 function Options.Home(order)
     local g = page(L["Home"], order)
-    introduction(g, L["Run a test plan"], L["Import a plan, start a run, and work through the checklist. TestThat never plays for you."])
+    introduction(g, L["Run a test plan"], L["Import a plan, start a run, and work through the checklist. CheckThat never plays for you."])
     add(g, "h_run", { type = "header", name = L["Current run"] })
     text(g, "runStatus", function() return ns.App.db and ns.App.Status() or L["No run."] end)
     add(g, "openCard", { type = "execute", name = L["Open checklist"], func = function() ns.Card.Show() end })
@@ -168,36 +168,36 @@ function Options.Advanced(order)
         set = function(_, value) profile().debug = value and true or false; ns.App.Log("debug " .. (value and "on" or "off")) end,
     })
     note(g, "debugHelp", grey(L["Turn recording on. Repeat the problem. Open the report. Press Ctrl+A, then Ctrl+C to copy it. Turn recording off."]))
-    note(g, "clearHelp", grey(L["Use /wtt log clear to clear diagnostics after confirmation. Plans, runs and settings stay the same."]))
+    note(g, "clearHelp", grey(L["Use /ct log clear to clear diagnostics after confirmation. Plans, runs and settings stay the same."]))
     add(g, "report", { type = "execute", width = 1.5, name = L["Show debug report"],
-        func = function() ns.Export.Show(L["TestThat debug report"], ns.Log.Report()) end })
+        func = function() ns.Export.Show(L["CheckThat debug report"], ns.Log.Report()) end })
     return g
 end
 
 function Options.About(order)
     local g = page(L["About"], order)
-    add(g, "title", { type = "description", fontSize = "large", width = "full", name = L["TestThat"] })
+    add(g, "title", { type = "description", fontSize = "large", width = "full", name = L["CheckThat"] })
     note(g, "version", grey(L["Version %s"]:format(tostring(ns.version))))
     gap(g, "g0")
     text(g, "what", L["Walks you through the in-game test plans for your addons and records evidence for review."])
     gap(g, "g1")
     add(g, "h_cmds", { type = "header", name = L["Commands"] })
     local commands = {
-        { "wtt", "/wtt", L["Open the checklist."] },
-        { "import", "/wtt import", L["Paste a plan string."] },
-        { "start", "/wtt start <addon>", L["Start a run for an imported plan."] },
-        { "debug", "/wtt debug on", L["Record diagnostics while you repeat a problem."] },
-        { "log", "/wtt log", L["Copy the debug report to share it."] },
+        { "wtt", "/ct", L["Open the checklist."] },
+        { "import", "/ct import", L["Paste a plan string."] },
+        { "start", "/ct start <addon>", L["Start a run for an imported plan."] },
+        { "debug", "/ct debug on", L["Record diagnostics while you repeat a problem."] },
+        { "log", "/ct log", L["Copy the debug report to share it."] },
     }
     for _, c in ipairs(commands) do
         text(g, "cmd_" .. c[1], L["|cffdddddd%s|r  %s"]:format(c[2], grey(c[3])))
     end
     gap(g, "helpGap")
     add(g, "h_help", { type = "header", name = L["Find the right command"] })
-    text(g, "helpAppearance", L["/wtt help appearance - card settings and valid values."])
-    text(g, "helpRuns", L["/wtt help runs - importing plans, verdicts and exports."])
-    text(g, "helpDiagnostics", L["/wtt help diagnostics - recording, copying and clearing diagnostic reports."])
-    note(g, "commandHelp", grey(L["Use /wtt status to check settings. Use /wtt get <key> to read a value. Use /wtt set <key> <value> to change it."]))
+    text(g, "helpAppearance", L["/ct help appearance - card settings and valid values."])
+    text(g, "helpRuns", L["/ct help runs - importing plans, verdicts and exports."])
+    text(g, "helpDiagnostics", L["/ct help diagnostics - recording, copying and clearing diagnostic reports."])
+    note(g, "commandHelp", grey(L["Use /ct status to check settings. Use /ct get <key> to read a value. Use /ct set <key> <value> to change it."]))
     return g
 end
 
@@ -205,7 +205,7 @@ Options.PAGES = { { "home", "Home" }, { "plans", "Plans" }, { "appearance", "App
 
 function Options.Build()
     return {
-        type = "group", name = L["TestThat"], childGroups = "tree",
+        type = "group", name = L["CheckThat"], childGroups = "tree",
         args = { home = Options.Home(1), plans = Options.Plans(2), appearance = Options.Appearance(3),
             advanced = Options.Advanced(4), about = Options.About(5) },
     }
@@ -228,9 +228,9 @@ ns.Start(function(addon)
     LibStub("AceConfigRegistry-3.0"):RegisterOptionsTable(APP, Options.Tree)
     local dialog = LibStub("AceConfigDialog-3.0")
     dialog:SetDefaultSize(APP, 600, 460)
-    dialog:AddToBlizOptions(APP, L["TestThat"], nil, "home")
+    dialog:AddToBlizOptions(APP, L["CheckThat"], nil, "home")
     local names = { plans = L["Plans"], appearance = L["Appearance"], advanced = L["Advanced"], about = L["About"] }
     for _, key in ipairs({ "plans", "appearance", "advanced", "about" }) do
-        dialog:AddToBlizOptions(APP, names[key], L["TestThat"], key)
+        dialog:AddToBlizOptions(APP, names[key], L["CheckThat"], key)
     end
 end)

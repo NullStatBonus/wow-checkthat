@@ -1,12 +1,12 @@
 ## Interface: 11509
-## Title: TestThat
+## Title: CheckThat
 ## Notes: Walks you through the in-game test plans for KeepThat, DontDoThat and ClosestVendor and records evidence for review.
-## Version: 0.4.0
+## Version: 0.5.1
 ## Author: NullStatBonus
-## SavedVariables: TestThatDB
+## SavedVariables: CheckThatDB
 ## OptionalDeps: KeepThat, DontDoThat, ClosestVendor
 ## Category: Development
-## IconTexture: Interface\AddOns\TestThat\Media\icon.tga
+## IconTexture: Interface\AddOns\CheckThat\Media\icon.tga
 ## X-Curse-Project-ID: 1824610
 ## X-Wago-ID: qGYB3eNg
 

@@ -56,6 +56,14 @@ class Validate(unittest.TestCase):
         p["sections"][0]["share"] = "email"
         self.assertTrue(wtt.validate(p))
 
+    def test_runner_plans_allow_ct_and_checkthat_only(self):
+        for cmd in ("/ct", "/checkthat"):
+            p = good(); p["addon"] = "CheckThat"; p["macros"][0]["text"] = cmd + " debug on\n/reload"
+            self.assertEqual(wtt.validate(p), [], cmd)
+        for cmd in ("/kt debug on", "/wtt debug on"):
+            p = good(); p["addon"] = "CheckThat"; p["macros"][0]["text"] = cmd
+            self.assertTrue(wtt.validate(p), cmd)
+
     def test_unknown_probe(self):
         p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "cast", "op": "eq"}]
         self.assertTrue(wtt.validate(p))
@@ -231,7 +239,7 @@ class PlanSkill(unittest.TestCase):
                 return f.read()
         text = read("SKILL.md")
         for rel in ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
-                    "openspec/specs/test-plan-format/spec.md", "TestThat/Model/Plan.lua"):
+                    "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua"):
             self.assertIn(rel, text + read("reference.md"))
             self.assertTrue(os.path.exists(os.path.join(ROOT, rel)), rel)
         for name in ("reference.md", "example.yaml"):
@@ -242,7 +250,7 @@ class PlanSkill(unittest.TestCase):
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "wtt-test-plan")
     BUNDLE = ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
-              "openspec/specs/test-plan-format/spec.md", "TestThat/Model/Plan.lua", "requirements.txt")
+              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "requirements.txt")
 
     def make(self, dest, **env):
         return subprocess.run(["make", "install-skill", "SKILL_DIR=" + dest], cwd=ROOT, capture_output=True, text=True,
@@ -263,7 +271,7 @@ class InstallSkill(unittest.TestCase):
             for rel in self.BUNDLE:
                 with open(os.path.join(ROOT, rel), "rb") as a, open(os.path.join(dest, "wtt", rel), "rb") as b:
                     self.assertEqual(a.read(), b.read(), rel)
-            with open(os.path.join(ROOT, "TestThat", "TestThat_Vanilla.toc"), encoding="utf-8") as f:
+            with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as f:
                 version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
             with open(os.path.join(dest, "wtt", "VERSION"), encoding="utf-8") as f:
                 self.assertEqual(f.read().strip(), version)
@@ -305,8 +313,8 @@ class Collect(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             sv = os.path.join(d, "src", "Account", "A", "SavedVariables")
             os.makedirs(sv)
-            with open(os.path.join(sv, "TestThat.lua"), "w") as fh:
-                fh.write('TestThatDB = {["runs"] = {["KeepThat-1"] = {["revision"] = 3, ["steps"] = {}, ["order"] = {}}}}\n')
+            with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+                fh.write('CheckThatDB = {["runs"] = {["KeepThat-1"] = {["revision"] = 3, ["steps"] = {}, ["order"] = {}}}}\n')
             with open(os.path.join(sv, "KeepThat.lua"), "w") as fh:
                 fh.write('KeepThatDB = {["global"] = {["log"] = {"a", "b"}}}\n')
             dest = os.path.join(d, "dest")
@@ -320,8 +328,8 @@ class Collect(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
             shots = os.path.join(d, "shots"); os.makedirs(shots)
-            with open(os.path.join(sv, "TestThat.lua"), "w") as fh:
-                fh.write('TestThatDB = {["runs"] = {["R-1"] = {["revision"] = 1, ["order"] = {"a"}, ["steps"] = {["a"] = {["verdict"] = "pass", ["attempts"] = {{["n"] = 1, ["started"] = 1000, ["finished"] = 1060, ["verdict"] = "pass"}}}}}}}\n')
+            with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+                fh.write('CheckThatDB = {["runs"] = {["R-1"] = {["revision"] = 1, ["order"] = {"a"}, ["steps"] = {["a"] = {["verdict"] = "pass", ["attempts"] = {{["n"] = 1, ["started"] = 1000, ["finished"] = 1060, ["verdict"] = "pass"}}}}}}}\n')
             for name, t in (("in.jpg", 1030), ("out.jpg", 5000)):
                 p = os.path.join(shots, name); open(p, "wb").close(); os.utime(p, (t, t))
             dest = os.path.join(d, "dest")
@@ -372,29 +380,29 @@ class ReportAuto(unittest.TestCase):
         return {"KeepThat-1": {"planTitle": "t", "addon": "KeepThat", "revision": 1, "client": "classic-era", "build": "1",
                                "character": "X", "order": ["a"], "steps": {"a": {"verdict": attempt["verdict"], "attempts": [attempt]}}}}
 
-    def test_report_says_which_results_testthat_recorded(self):
+    def test_report_says_which_results_checkthat_recorded(self):
         text = wtt.report_text(self.run_fixture(by="auto"))
-        self.assertIn("a: pass, recorded by TestThat", text)
+        self.assertIn("a: pass, recorded by CheckThat", text)
         self.assertIn("auto=1", text)
 
     def test_report_marks_an_automatic_failure_attempt(self):
         text = wtt.report_text(self.run_fixture(by="auto", verdict="fail"))
-        self.assertIn("recorded by TestThat", text)
+        self.assertIn("recorded by CheckThat", text)
 
     def test_open_retry_does_not_hide_the_mark(self):
         run = self.run_fixture(by="auto", verdict="unverified")
         run["KeepThat-1"]["steps"]["a"]["attempts"].append({"n": 2})   # the retry the card opens straight away
         text = wtt.report_text(run)
-        self.assertIn("recorded by TestThat", text); self.assertIn("auto=1", text)
+        self.assertIn("recorded by CheckThat", text); self.assertIn("auto=1", text)
 
     def test_reopened_step_is_not_marked(self):
         run = self.run_fixture(by="auto", verdict="unverified")
         run["KeepThat-1"]["steps"]["a"]["verdict"] = "pending"             # the player pressed Undo
-        self.assertNotIn("recorded by TestThat", wtt.report_text(run))
+        self.assertNotIn("recorded by CheckThat", wtt.report_text(run))
 
     def test_player_results_carry_no_mark(self):
         text = wtt.report_text(self.run_fixture())
-        self.assertNotIn("recorded by TestThat", text)
+        self.assertNotIn("recorded by CheckThat", text)
         self.assertNotIn("auto=", text)
 
 

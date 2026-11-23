@@ -135,7 +135,7 @@ Importing a plan, or choosing one from Recent plans, SHALL make it the pending p
 - **THEN** the card offers Start run and Resume run, and Resume returns to the unfinished run
 
 ### Requirement: The card says who checks the step
-Under the step title the card SHALL show a banner. A step with at least one required assertion SHALL show "TESTTHAT CHECKS THIS STEP". Any other step SHALL show "YOU CONFIRM THIS STEP", and SHALL say whether TestThat records extra detail for the reviewer or cannot see the step.
+Under the step title the card SHALL show a banner. A step with at least one required assertion SHALL show "CHECKTHAT CHECKS THIS STEP". Any other step SHALL show "YOU CONFIRM THIS STEP", and SHALL say whether CheckThat records extra detail for the reviewer or cannot see the step.
 
 #### Scenario: Auto-checked step
 - **WHEN** a step has a required assertion
@@ -149,7 +149,7 @@ While a step with required assertions is open, the card SHALL list each required
 - **THEN** the check turns green without any button press
 
 ### Requirement: Step navigation and redo
-The card SHALL have < and > buttons, and `/wtt back` and `/wtt next` SHALL do the same. A step already recorded SHALL show what was recorded and its note, with a Redo button; Redo SHALL open a fresh attempt. After a result the card SHALL go to the next open step, wrapping to earlier open steps, and show the results screen only when nothing is open. A step that stayed unverified is open. The results screen SHALL be reachable by > only when nothing is pending, and < SHALL leave it.
+The card SHALL have < and > buttons, and `/ct back` and `/ct next` SHALL do the same. A step already recorded SHALL show what was recorded and its note, with a Redo button; Redo SHALL open a fresh attempt. After a result the card SHALL go to the next open step, wrapping to earlier open steps, and show the results screen only when nothing is open. A step that stayed unverified is open. The results screen SHALL be reachable by > only when nothing is pending, and < SHALL leave it.
 
 #### Scenario: Go back
 - **WHEN** the tester presses < on step 3
@@ -167,11 +167,11 @@ The run-complete screen SHALL offer Export results and Main window. Main window 
 - **THEN** the card shows the plan ready with Start run and Import a plan, and no settings window opens
 
 ### Requirement: The card says a step settles itself
-An auto step SHALL show on the card that TestThat records the result when the checks are met. When it has a timeout, the card SHALL show the seconds left, counted from when the attempt opened. A `wait-event` step SHALL show what it is waiting for in words the player understands. The player SHALL still see Pass, Fail, Partial, Skip and Undo.
+An auto step SHALL show on the card that CheckThat records the result when the checks are met. When it has a timeout, the card SHALL show the seconds left, counted from when the attempt opened. A `wait-event` step SHALL show what it is waiting for in words the player understands. The player SHALL still see Pass, Fail, Partial, Skip and Undo.
 
 #### Scenario: Waiting
 - **WHEN** an auto step is open with checks not met
-- **THEN** the card says TestThat records the result when the checks are met
+- **THEN** the card says CheckThat records the result when the checks are met
 
 #### Scenario: Countdown
 - **WHEN** an auto step has a 30 second timeout and 12 seconds have passed
@@ -179,7 +179,7 @@ An auto step SHALL show on the card that TestThat records the result when the ch
 
 #### Scenario: Result recorded
 - **WHEN** the runner records an automatic result
-- **THEN** the card moves to the next step and the recorded step shows that TestThat settled it
+- **THEN** the card moves to the next step and the recorded step shows that CheckThat settled it
 
 #### Scenario: Card hidden
 - **WHEN** the card is hidden while an auto step is open
@@ -200,3 +200,29 @@ An auto step SHALL show on the card that TestThat records the result when the ch
 #### Scenario: Combat
 - **WHEN** the runner records a result during combat
 - **THEN** the card redraws without changing the secure Run button, which is set up after combat
+
+### Requirement: The text window draws above the Run button
+The copyable text window (debug report, results string, plan import) SHALL draw above the card and above the secure Run button, so the button never shows over or through the window.
+
+#### Scenario: Export from a step with a Run button
+- **WHEN** the player opens the results string while a step with a Run button is showing
+- **THEN** the window covers the Run button and the button cannot be clicked through it
+
+#### Scenario: Debug report
+- **WHEN** the player opens the debug report from the card or the settings window
+- **THEN** the window draws above every CheckThat frame
+
+### Requirement: The Run button shows only with a step that has commands
+The secure Run button SHALL be visible only while the card shows an open step that has commands, and SHALL be hidden on the results screen, on the Start screen and while the card is hidden. When anything else shows it out of combat, the card SHALL hide it again and SHALL write one debug log line saying so. The card SHALL NOT change the button in combat.
+
+#### Scenario: Results screen
+- **WHEN** the run is complete and the results screen shows, and the game shows the Run button again
+- **THEN** the card hides the Run button at once and the debug log says it was hidden
+
+#### Scenario: Step with commands
+- **WHEN** the card shows a step that has commands
+- **THEN** the Run button is visible and the guard does not hide it
+
+#### Scenario: Combat
+- **WHEN** the button is shown while the player is in combat
+- **THEN** the card does not touch it

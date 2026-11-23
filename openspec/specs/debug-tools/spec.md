@@ -13,7 +13,7 @@ While recording is on the addon SHALL keep the last 300 lines as `[area] message
 - **THEN** no lines are added
 
 ### Requirement: Copyable report
-`/wtt log` SHALL open a window with a selectable report: addon version, client, build, every saved setting, the current run status, failures, then the recorded lines.
+`/ct log` SHALL open a window with a selectable report: addon version, client, build, every saved setting, the current run status, failures, then the recorded lines.
 
 #### Scenario: Copy
 - **WHEN** the report opens

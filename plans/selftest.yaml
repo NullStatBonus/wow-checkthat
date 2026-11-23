@@ -1,24 +1,24 @@
 wtt: 1
 kind: plan
-addon: TestThat
-title: TestThat self-test
-preamble: Open the card with /wtt. This plan checks the card, the copy boxes, the secure Run button, evidence
+addon: CheckThat
+title: CheckThat self-test
+preamble: Open the card with /ct. This plan checks the card, the copy boxes, the secure Run button, evidence
   from the debug log, and reload resume.
 handoff: Reload or log out so the game saves the run, then run the harvest script. The report should show
   four steps and no unverified evidence.
 logs:
   debug:
-    global: TestThatDB
+    global: CheckThatDB
     path: global.log.entries
     format: entries
 requirements:
   loaded:
-    text: TestThat is loaded
+    text: CheckThat is loaded
     probe: addon-loaded
-    name: TestThat
+    name: CheckThat
 macros:
 - id: status
-  text: /wtt status
+  text: /ct status
 sections:
 - id: s1
   title: Card and evidence
@@ -29,7 +29,7 @@ sections:
     title: Turn debug recording on
     action:
       kind: copy-slash
-      text: /wtt debug on
+      text: /ct debug on
     expect: Chat says "Debug recording is on.".
     verify:
     - player
@@ -74,7 +74,7 @@ sections:
     title: Export results
     action:
       kind: copy-slash
-      text: /wtt export
+      text: /ct export
     expect: A box shows a string starting with !WTT1!.
     verify:
     - player

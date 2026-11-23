@@ -69,10 +69,10 @@ end
 -- A native confirmation dialog. onAccept runs only on the player's click.
 function Adapter.Confirm(text, onAccept)
     if not (_G.StaticPopupDialogs and _G.StaticPopup_Show) then return false end
-    _G.StaticPopupDialogs["WOWTESTTHAT_CONFIRM"] = {
+    _G.StaticPopupDialogs["WOWCHECKTHAT_CONFIRM"] = {
         text = text, button1 = _G.YES or "Yes", button2 = _G.NO or "No", timeout = 0, whileDead = true,
         hideOnEscape = true, preferredIndex = 3, OnAccept = onAccept,
     }
-    _G.StaticPopup_Show("WOWTESTTHAT_CONFIRM")
+    _G.StaticPopup_Show("WOWCHECKTHAT_CONFIRM")
     return true
 end

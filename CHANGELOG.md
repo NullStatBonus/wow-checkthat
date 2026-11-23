@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1
+
+Fixed: **Run button.** The Run button of the Export results step stayed on screen over the results window. The window now covers it.
+Fixed: The Run button stayed on screen after you left its step. It now hides when no step needs it.
+
+## 0.5.0
+
+Changed: **New name: CheckThat.** The addon was called TestThat. The addon site does not allow that name.
+Changed: The chat command is now /ct. /checkthat works too. /wtt is gone.
+
 ## 0.4.0
 
 New: **Automatic steps.** A plan step can record its own result when the debug log or game state shows your action.

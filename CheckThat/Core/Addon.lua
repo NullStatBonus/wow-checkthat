@@ -5,7 +5,7 @@ local addon = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceEvent-3.0", "AceCo
 ns.addon = addon
 
 function addon:OnInitialize()
-    self.db = LibStub("AceDB-3.0"):New("TestThatDB", ns.defaults, true)
+    self.db = LibStub("AceDB-3.0"):New("CheckThatDB", ns.defaults, true)
     ns.LibDeflate = LibStub("LibDeflate")
     ns.App.Init(self.db.global, ns.Adapter.Env(), { debug = function() return self.db.profile.debug end })
     ns.Slash.Register(self)

@@ -61,8 +61,8 @@ local function readError(err)
     err = tostring(err)
     if err:find("checksum") then return L["The checksum does not match. The string may be damaged."] end
     if err:find("too large") then return L["The string is too large."] end
-    if err:find("version") then return L["This string needs a newer TestThat."] end
-    if err:find("not a WTT") then return L["This is not a TestThat string."] end
+    if err:find("version") then return L["This string needs a newer CheckThat."] end
+    if err:find("not a WTT") then return L["This is not a CheckThat string."] end
     return L["The string is damaged or incomplete."]
 end
 
@@ -105,9 +105,9 @@ end
 local function planReason(first)
     first = tostring(first)
     if first:find("^markdown") then return L["A text in the plan uses backticks or stars. Plans use game color codes."] end
-    if first:find("not allowed") then return L["The plan has a command that TestThat does not allow."] end
-    if first:find("addon not supported") then return L["This plan is for an addon this TestThat does not support."] end
-    if first:find("format version") then return L["This string needs a newer TestThat."] end
+    if first:find("not allowed") then return L["The plan has a command that CheckThat does not allow."] end
+    if first:find("addon not supported") then return L["This plan is for an addon this CheckThat does not support."] end
+    if first:find("format version") then return L["This string needs a newer CheckThat."] end
     return L["The plan has a missing or wrong field. Export it again from the plan file."]
 end
 
