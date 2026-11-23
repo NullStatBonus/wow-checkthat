@@ -51,16 +51,24 @@ function Evidence.NewLines(snapshot, current)
         for j = 1, k do if current[last - k + j] ~= tail[tl - k + j] then return false end end
         return true
     end
-    local last, exact = nil, true
+    local last = nil
     if tailAt(n) then last = n
     else
-        exact = false -- the ring rolled: lines near the boundary may be missing, so an absence cannot be shown
         local found = 0
         for i = k, #current do
             if tailAt(i) then found = found + 1; last = i end
         end
         if found ~= 1 then return nil end
     end
+    -- A full ring rolls with every new line, so a boundary found by search is normal. It holds when the tail is
+    -- distinctive. A tail made of one repeated line (a flood) can also match lines written after the step opened,
+    -- and then a line between could be missed: an absence cannot be shown.
+    local seen, distinct = {}, 0
+    for j = 1, k do
+        local l = tail[tl - k + j]
+        if not seen[l] then seen[l] = true; distinct = distinct + 1 end
+    end
+    local exact = distinct >= math.ceil(k / 2)
     local out = {}
     for i = last + 1, #current do out[#out + 1] = current[i] end
     return out, exact

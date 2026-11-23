@@ -144,9 +144,8 @@ sections:
     title: Drag Runs to keep without deleting
     action:
       kind: manual
-      text: Open Advanced. Drag |cffffd100Runs to keep|r down to 5 and back up to 20, then release. Type |cff99ccff/ct status|r.
+      text: Open Esc, Options, AddOns, CheckThat, Advanced. Drag |cffffd100Runs to keep|r down to 5 and back up to 20, then release. Then press Run to type |cff99ccff/ct status|r.
       commands:
-      - /ct settings advanced
       - /ct status
     expect: Under Past runs on Home, every run is still listed.
     verify:

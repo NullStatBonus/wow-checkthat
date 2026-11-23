@@ -158,6 +158,25 @@ test("after a ring roll an absence cannot be shown, but a present line still fai
     local _, exact2 = E.NewLines({ "a", "b" }, { "a", "b", "c" }); T.eq(exact2, true, "an unrolled log is exact")
     T.eq(select(2, E.NewLines(nil, { "a" })), true); T.eq(select(2, E.NewLines({ n = 0, tail = {} }, { "a" })), true)
 end)
+test("a full ring rolls with every line; a distinctive tail still gives an exact boundary", function()
+    local ring = {}
+    for i = 1, 300 do ring[i] = "line " .. i end
+    local snap = E.Snapshot(plan, env(ring), { assertions = { { kind = "log", source = "s", contains = "x" } } })
+    local cur = {}
+    for i = 6, 300 do cur[#cur + 1] = "line " .. i end            -- five old lines rolled out
+    for _, l in ipairs({ "status requested", "run opened x" }) do cur[#cur + 1] = l end
+    local lines, exact = E.NewLines(snap.s, cur)
+    T.eq(#lines, 2); T.eq(exact, true, "the tail is distinctive, so nothing is missing")
+    local en = env(cur)
+    local absent = { kind = "log", source = "s", contains = "run pruned", absent = true }
+    T.eq((E.CheckLog(absent, snap, plan, en)), "pass", "an absence is shown on a full ring")
+    T.eq((E.CheckLog({ kind = "log", source = "s", contains = "run opened", absent = true }, snap, plan, en)), "fail")
+    local flood = {}
+    for i = 1, 300 do flood[i] = "tick" end
+    local snap2 = E.Snapshot(plan, env(flood), { assertions = { { kind = "log", source = "s", contains = "x" } } })
+    local _, exact2 = E.NewLines(snap2.s, flood)
+    T.eq(exact2, false, "a tail of one repeated line proves no boundary")
+end)
 test("state probe keeps a stored false", function()
     local en = { DB = { flags = { on = false } } }
     local a = { kind = "state", probe = "global-value", name = "DB", path = "flags.on", op = "eq", value = false }

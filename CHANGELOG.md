@@ -9,6 +9,7 @@ Changed: CheckThat saves less data for each step. It also deletes plan copies th
 Fixed: A "must not appear" check could pass after the game log rolled over. It now stays unverified.
 Changed: Open run now asks you to accept first whenever another run is active. Before, it asked only when it replaced an unfinished run.
 Fixed: The debug log filled with "run button hidden" lines, about five each second. Checks for a missing line then stayed unverified. The game no longer shows the button again and again, and the log holds one line for each screen.
+Fixed: "Must not appear" checks stayed unverified on a full debug log. They now pass or fail from the new lines.
 Fixed: The debug log did not show exports, reports or the Open run and Delete run questions. It now does.
 Fixed: Large logs made the saved data grow with every step. CheckThat now saves only the logs that a step checks.
 
