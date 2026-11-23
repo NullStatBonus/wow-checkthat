@@ -67,16 +67,83 @@ function Export.OpenMenu()
     menu:Show()
 end
 
--- Read-only text, selected for Ctrl+A / Ctrl+C.
+-- Read-only text, selected for Ctrl+A / Ctrl+C. The same AceGUI window KeepThat, DontDoThat and ClosestVendor use.
+-- It falls back to the plain text window when AceGUI is missing.
+local window
+local function aceShow(title, text)
+    local gui = LibStub and LibStub("AceGUI-3.0", true)
+    if not (gui and gui.Create) then return false end
+    if window then gui:Release(window); window = nil end
+    local w = gui:Create("Frame")
+    window = w
+    w:SetTitle(title)
+    w:SetStatusText(L["Press Ctrl+A to select everything, then Ctrl+C to copy."])
+    w:SetLayout("Fill")
+    w:SetCallback("OnClose", function(f) gui:Release(f); if window == f then window = nil end end)
+    local edit = gui:Create("MultiLineEditBox")
+    edit:SetLabel("")
+    edit:DisableButton(true)
+    edit:SetText(text)
+    edit:SetCallback("OnTextChanged", function(b) b:SetText(text) end)
+    w:AddChild(edit)
+    edit:SetFocus()
+    edit:HighlightText()
+    return true
+end
+
 function Export.Show(title, text)
+    local ok, shown = pcall(aceShow, title, text or "")
+    if ok and shown then if box then box:Hide() end return end
+    if window then pcall(function() window:Release() end); window = nil end
     Export.Prompt(title, text, nil, L["Close"], L["Press Ctrl+C to copy."], true)
+end
+
+-- The editable import window in the same AceGUI frame: a "Recent plans" dropdown above a text box with the button.
+local function aceImport(title, content, onAccept, label, hint, opts)
+    local gui = LibStub and LibStub("AceGUI-3.0", true)
+    if not (gui and gui.Create) then return false end
+    if window then gui:Release(window); window = nil end
+    local w = gui:Create("Frame")
+    window = w
+    local function close() if window == w then window = nil end gui:Release(w) end
+    w:SetTitle(title)
+    w:SetStatusText(hint or "")
+    w:SetLayout("Flow")
+    w:SetCallback("OnClose", function() if window == w then window = nil end gui:Release(w) end)
+    local choices = opts and opts.choices
+    if choices then
+        local dd = gui:Create("Dropdown")
+        local values, order = {}, {}
+        for i, ch in ipairs(choices) do values[ch.id] = ch.text; order[i] = ch.id end
+        dd:SetLabel(#choices > 0 and L["Recent plans"] or L["No recent plans"])
+        dd:SetList(values, order)
+        dd:SetDisabled(#choices == 0)
+        dd:SetFullWidth(true)
+        dd:SetCallback("OnValueChanged", function(_, _, key) close(); if opts.onChoose then opts.onChoose(key) end end)
+        w:AddChild(dd)
+    end
+    local edit = gui:Create("MultiLineEditBox")
+    edit:SetLabel("")
+    edit:SetNumLines(12)
+    edit:SetFullWidth(true)
+    edit:SetButtonText(label or L["Import"])
+    edit:SetText(content or "")
+    edit:SetCallback("OnEnterPressed", function(_, _, text) close(); onAccept(text) end)
+    w:AddChild(edit)
+    edit:SetFocus()
+    return true
 end
 
 -- Editable text. onAccept(text) runs when the player presses the button.
 -- opts.choices = { { id, text }, ... } adds a "Recent plans" dropdown; opts.onChoose(id) runs on a pick.
 function Export.Prompt(title, content, onAccept, label, hint, readOnly, opts)
+    if onAccept and not readOnly then
+        local ok, shown = pcall(aceImport, title, content, onAccept, label, hint, opts)
+        if ok and shown then if box then box:Hide() end return end
+        if window then pcall(function() window:Release() end); window = nil end
+    end
     if not box then build() end
-    box.choices, box.onChoose = opts and opts.choices, opts and opts.onChoose
+    box.choices, box.onChoose = opts and opts.choices or false, opts and opts.onChoose or false
     box.menu:Hide()
     if box.choices then
         box.recent:SetText(#box.choices > 0 and L["Recent plans"] or L["No recent plans"]); box.recent:Show()

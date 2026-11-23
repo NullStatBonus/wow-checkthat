@@ -55,8 +55,8 @@ Screenshots: set `screenshot: true` on a step; the card asks for Print Screen (t
 | `/ct status [topic]` | Show the run status, the settings, or both. Topics: `run`, `settings`. |
 | `/ct get <key>`, `/ct set <key> <value>` | Read or change a card setting (`card.scale`, `card.background-opacity`, `card.text-opacity`, `card.locked`). |
 | `/ct debug on`, `/ct debug off` | Record or stop the debug log. |
-| `/ct log`, `/ct log clear` | Copy the debug report. Clear it after confirmation. |
-| `/ct import` | Paste a plan string. |
+| `/ct log`, `/ct log clear` | Copy the debug report in a window like the one KeepThat, DontDoThat and ClosestVendor use. Clear it after confirmation. |
+| `/ct import` | Paste a plan string, in the same window style as the debug report. |
 | `/ct start <addon>` | Start a run for an imported plan. |
 | `/ct end` | End the current run after confirmation. The card has an End run item in its Run menu too. |
 | `/ct pass`, `/ct partial [note]`, `/ct fail [note]`, `/ct skip [note]` | Record the result of the current step. Partial means it mostly works. |
