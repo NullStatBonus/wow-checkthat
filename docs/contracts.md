@@ -9,6 +9,7 @@ What a client or another addon provides, as measured or source-reviewed. Add a r
 | KeepThat | `KeepThatDB.global.log` is a list of `"[area] text"` strings. Startup lines repeat at every login. | 2026-11-22 |
 | DontDoThat | `DontDoThatDB.global.log.entries` is a list of `{ t, msg }`. | 2026-11-22 |
 | ClosestVendor | `ClosestVendorCharDB.log.entries` is a list of `{ t, msg }`. It is per character. | 2026-11-22 |
+| CheckThat | `CheckThatDB.global.log.entries` holds 300 lines. On Forever, the combat state driver `[combat] hide; show` shows the Run button again about five times a second out of combat, also after a script hides it. CheckThat now releases the driver while a step has no commands (not yet measured in game). | 2026-11-23 |
 
 ## Measured in game
 

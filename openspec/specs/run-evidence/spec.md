@@ -181,3 +181,80 @@ Ending a run SHALL set an optional run-level `endedAt` time and bump the revisio
 #### Scenario: Reload after end
 - **WHEN** the player reloads after ending a run
 - **THEN** the run is still ended and no step resumes
+
+### Requirement: Attempts snapshot only the logs a step checks
+When a step opens an attempt, CheckThat SHALL record a position in each log source that an attempt-scoped log or log-sequence assertion of that step names, and in no other log. A position SHALL hold the log length and its last 12 lines. A log source that a step does not check MUST NOT be recorded for that step.
+
+#### Scenario: Unchecked log is not recorded
+- **WHEN** a plan declares logs "debug" and "other" and a step checks only "debug"
+- **THEN** the attempt of that step holds a position for "debug" and none for "other"
+
+#### Scenario: Session-scope assertion needs no position
+- **WHEN** a step's only log assertion has session scope
+- **THEN** the attempt records no log position
+
+### Requirement: A log without a position is never all new
+When an attempt-scoped assertion names a log source that has no position in the attempt, the check SHALL give "unverified" and MUST NOT count the whole log as new lines.
+
+#### Scenario: Missing position
+- **WHEN** an attempt lacks a position for the asserted source and the log holds a matching line
+- **THEN** the check does not pass and the note says the log position is missing
+
+### Requirement: An absence is not shown after the log rolled
+When the boundary of an attempt was found by search and the saved tail is not distinctive (fewer than half of its lines differ), a check that a line is absent SHALL be unverified when the new lines hold no such line, and SHALL fail when one does. When the tail is distinctive, the boundary SHALL count as exact and an absence check SHALL be judged on the new lines. Checks for a present line SHALL be judged as before.
+
+#### Scenario: Rolled log
+- **WHEN** a ring log rolled over so far that lines near the boundary may be missing
+- **THEN** an absence check does not pass
+
+#### Scenario: Flooded tail
+- **WHEN** a ring log rolled and the saved tail is one repeated line
+- **THEN** an absence check does not pass
+
+#### Scenario: Full ring with a distinctive tail
+- **WHEN** a full ring log pushed old lines out and the saved tail is found once
+- **THEN** an absence check passes when no new line matches, and fails when one does
+
+### Requirement: Older full snapshots stay usable
+A run saved with full-array snapshots SHALL keep checking correctly after an update.
+
+#### Scenario: Old run after update
+- **WHEN** an open attempt holds a full-array snapshot
+- **THEN** its new lines are found as before
+
+### Requirement: Unused plan copies are pruned
+CheckThat SHALL delete a stored plan copy that no stored run, no loaded plan and no recent-list entry names. Pruning SHALL run when a plan is imported, a plan is cleared or a run is deleted.
+
+#### Scenario: Orphan after Clear plan
+- **WHEN** a plan was imported twice with different content and only one revision has a run
+- **THEN** the other revision is deleted at the next import or clear
+
+#### Scenario: Run keeps its plan
+- **WHEN** a stored run names a plan copy
+- **THEN** that copy stays, even when it is not loaded
+
+### Requirement: Old runs are pruned to a limit
+CheckThat SHALL keep at most the configured number of runs, newest first, and MUST NOT delete the current run of any character.
+
+#### Scenario: Limit reached
+- **WHEN** a new run starts and the limit is exceeded
+- **THEN** the oldest non-current run is deleted and its plan copy follows the pruning rule
+
+### Requirement: The report lists every step
+The central report (`ct.py report`) SHALL print, for each run, a table with one row per step in plan order: step id, verdict, evidence state, attempt count and note. Detail lines for attempts and evidence SHALL stay for steps that did not pass.
+
+#### Scenario: Passing step with evidence
+- **WHEN** a run holds a step that passed through a log assertion
+- **THEN** the table has a row for it with verdict pass, evidence state met and its attempt count
+
+#### Scenario: Passing step without evidence
+- **WHEN** a step passed on the player's click alone
+- **THEN** the row shows evidence state none and the step has no detail lines
+
+#### Scenario: Failing step keeps its detail
+- **WHEN** a step failed
+- **THEN** the table has a row and the attempt and evidence detail lines follow as before
+
+#### Scenario: Unverified evidence
+- **WHEN** a step has an assertion outcome that is unverified or has no result
+- **THEN** its row shows evidence state missing

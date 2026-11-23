@@ -33,7 +33,7 @@ Ask in this order. Ask one topic at a time, say why it matters, and offer a reco
    - If the addon has no debug log at all, say so once and recommend adding one. Point to `$CT/docs/debug-logging.md` for the pattern and what a good line looks like. Ask: add one now, or draft with player checks? Either way, draft player checks, never invent log lines, and mark each step that would become a log assertion once the log exists (`notes: Becomes a log assertion once <addon> logs <event>.`).
 8. **Human eye.** For each changed behavior with no log line: can the author accept a player check, or should the addon gain a log line? List suggestions and let the author accept them all or decide one by one. What needs combat, a protected action, or a second client?
 9. **Reload and state.** Which steps need `/reload`? Which checks survive a reload and which are per attempt or per session? What setup and cleanup does each step need?
-10. **Return path.** Remind the author the result comes back by `/ct export`, then `/reload`, then `ct.py collect` and `report`. The tool needs the WoW SavedVariables path; ask for it only if the author wants to harvest now. A local config file for paths is not available yet.
+10. **Return path.** Remind the author the result comes back by `/ct export`, then `/reload`, then `ct.py collect` and `report`. The tool needs the WoW SavedVariables path; ask for it only if the author wants to harvest now. The tool reads `CT_WOW` (the game folder) from `$CT_ENV`, `.ct.env` or `~/.checkthat.env`, so ask for the path once and offer to write it there.
 
 ## 2. Draft
 

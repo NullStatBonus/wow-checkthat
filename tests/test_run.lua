@@ -321,6 +321,24 @@ test("end drops the log snapshots of an open attempt and keeps the attempt", fun
     R.End(run, 200)
     T.eq(#run.steps.a.attempts, 1); T.eq(run.steps.a.attempts[1].snapshots, nil)
 end)
+test("an attempt records a position only for the log its step checks", function()
+    local run, ctx, env = mk()
+    ctx.plan.logs.other = { global = "DB", path = "other", format = "strings" }
+    env.DB.other = { "x" }
+    R.Begin(run, ctx, "a")
+    local snaps = run.steps.a.attempts[1].snapshots
+    T.ok(snaps.debug and snaps.debug.n == 1 and snaps.debug.tail[1] == "old", "checked log")
+    T.eq(snaps.other, nil, "unchecked log")
+    R.Begin(run, ctx, "b")
+    T.eq(next(run.steps.b.attempts[1].snapshots), nil, "a step with no log check records nothing")
+end)
+test("an older open attempt with a full snapshot still checks its new lines", function()
+    local run, ctx, env = mk()
+    R.Begin(run, ctx, "a")
+    run.steps.a.attempts[1].snapshots = { debug = { "old" } } -- saved by an earlier version
+    env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.Verdict(run, ctx, "a", "pass").verdict, "pass")
+end)
 test("a saved run without endedAt is not ended", function()
     local run, ctx = mk()
     T.eq(run.endedAt, nil); T.eq(R.CurrentId(run), "a")

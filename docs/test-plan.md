@@ -66,6 +66,15 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 13. **Start screen over a minimized run.** Start a run and minimize the card with the - button. Import another plan.
    Check: the card widens to full size. The plan title and the text under it stay inside the card and Start run sits at the left edge. With no plan loaded, Import a plan sits at the left edge instead.
    Log: `[ct] imported plan`.
+14. **Reopen a past run.** End one run and start another. Open Esc, Options, AddOns, CheckThat, Home. Under Past runs, pick the ended run and press Open run. Accept the question.
+   Check: a question comes first and says your current run stays. After you accept, the card shows that run as "Run ended" with its results. Open the current run again: the card returns to it with no question.
+   Log: `[ct] run open asked`, then `[ct] run opened`.
+15. **Delete a past run.** Under Past runs, pick a run and press Delete run. Press Accept.
+   Check: the question names the run and comes first. After Accept the run leaves the list. With no run left, Past runs disappears.
+   Log: `[ct] run delete asked`, then `[ct] run deleted`.
+16. **Runs to keep.** Keep at least six runs. On Advanced, drag Runs to keep down to 5 and back up to 15. Then start a run.
+   Check: the list keeps every run while you drag. Lower the slider to 5 and start a run: the list keeps five runs and the oldest are gone. The run on the card stays.
+   Log: `[ct] run pruned`.
 
 ## 4. Evidence
 
@@ -96,4 +105,4 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Log: none; on screen only.
 9. **Run button leaves with its step.** Finish the run on the Export results step, then fight a training dummy until combat ends.
    Check: the results screen shows no Run button, before and after the fight.
-   Log: none when the button stayed hidden; `[ct] run button hidden: nothing to run on this screen` if the game showed it and CheckThat hid it again.
+   Log: none when the button stayed hidden; one `[ct] run button hidden: nothing to run on this screen` line for the screen if the game showed it and CheckThat hid it again.

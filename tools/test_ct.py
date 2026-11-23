@@ -324,6 +324,22 @@ class Collect(unittest.TestCase):
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "KeepThat-1")), ["r3.json"])
             self.assertIn("KeepThat-1", ct.report_text(ct.latest_runs(dest)))
 
+    def test_wow_folder_collects_each_client(self):
+        with tempfile.TemporaryDirectory() as d:
+            for c, rev in (("_classic_era_", 1), ("_forever_", 2)):
+                sv = os.path.join(d, "wow", c, "WTF", "Account", "A", "SavedVariables"); os.makedirs(sv)
+                with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+                    fh.write('CheckThatDB = {["runs"] = {["R-%d"] = {["revision"] = %d, ["steps"] = {}, ["order"] = {}}}}\n' % (rev, rev))
+            os.makedirs(os.path.join(d, "wow", "_retail_", "WTF", "Account", "A", "SavedVariables"))
+            dest = os.path.join(d, "dest")
+            args = type("A", (), {"src": None, "wow": os.path.join(d, "wow"), "dest": dest, "shots": None})
+            ct.cmd_collect(args)
+            self.assertEqual(sorted(os.listdir(os.path.join(dest, "runs"))), ["R-1", "R-2"])
+            self.assertEqual(len(os.listdir(os.path.join(dest, "sv"))), 2)
+            args.wow = os.path.join(d, "nothing")
+            with self.assertRaises(SystemExit):
+                ct.cmd_collect(args)
+
     def test_screenshots_by_attempt_window(self):
         with tempfile.TemporaryDirectory() as d:
             sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
@@ -337,6 +353,28 @@ class Collect(unittest.TestCase):
             ct.cmd_collect(args); ct.cmd_collect(args)
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "R-1", "shots")), ["a__in.jpg"])
             self.assertIn("screenshots: a__in.jpg", ct.report_text(ct.latest_runs(dest), dest))
+
+
+class LoadEnv(unittest.TestCase):
+    def test_file_fills_unset_variables_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            first, second = os.path.join(d, "a.env"), os.path.join(d, "b.env")
+            with open(first, "w") as fh:
+                fh.write('# paths\nCT_T_ONE=/one\nexport CT_T_TWO="~/two"\nCT_T_SET=file\n')
+            with open(second, "w") as fh:
+                fh.write("CT_T_ONE=/other\nCT_T_THREE=3\n")
+            for k in ("CT_T_ONE", "CT_T_TWO", "CT_T_THREE"):
+                os.environ.pop(k, None)
+            os.environ["CT_T_SET"] = "real"
+            try:
+                ct.load_env([first, os.path.join(d, "missing.env"), second])
+                self.assertEqual(os.environ["CT_T_ONE"], "/one")
+                self.assertEqual(os.environ["CT_T_TWO"], os.path.expanduser("~/two"))
+                self.assertEqual(os.environ["CT_T_THREE"], "3")
+                self.assertEqual(os.environ["CT_T_SET"], "real")
+            finally:
+                for k in ("CT_T_ONE", "CT_T_TWO", "CT_T_THREE", "CT_T_SET"):
+                    os.environ.pop(k, None)
 
 
 class Safety(unittest.TestCase):
@@ -404,6 +442,85 @@ class ReportAuto(unittest.TestCase):
         text = ct.report_text(self.run_fixture())
         self.assertNotIn("recorded by CheckThat", text)
         self.assertNotIn("auto=", text)
+
+
+class ReportTable(unittest.TestCase):
+    def table(self, steps, order=None):
+        run = {"R-1": {"planTitle": "t", "addon": "KeepThat", "revision": 1, "client": "c", "build": "1", "character": "X",
+                       "order": order or list(steps), "steps": steps}}
+        text = ct.report_text(run)
+        return [ln for ln in text.splitlines() if ln.split()[:1] and ln.split()[0] in steps or ln.startswith("step ")]
+
+    def rows(self, steps):
+        return {ln.split()[0]: ln.split() for ln in self.table(steps)[1:] if "attempt " not in ln}
+
+    def att(self, verdict, outcomes=None, note=None):
+        a = {"n": 1, "verdict": verdict}
+        if outcomes is not None:
+            a["outcomes"] = [{"result": r} for r in outcomes]
+        if note:
+            a["note"] = note
+        return a
+
+    def test_every_step_has_a_row_with_its_evidence_state(self):
+        steps = {
+            "p": {"verdict": "pass", "attempts": [self.att("pass", ["pass", "pass"])]},
+            "q": {"verdict": "pass", "attempts": [self.att("pass")]},
+            "f": {"verdict": "fail", "attempts": [self.att("fail", ["fail"], "broke"), self.att("fail", ["pass", "fail"])]},
+            "u": {"verdict": "unverified", "attempts": [self.att("unverified", ["pass", "unverified"])]},
+            "s": {"verdict": "skip", "attempts": [self.att("skip")]},
+            "i": {"verdict": "inapplicable", "attempts": []},
+            "w": {"verdict": "pending", "attempts": []},
+        }
+        rows = self.rows(steps)
+        self.assertEqual(rows["p"][:4], ["p", "pass", "met", "1"])
+        self.assertEqual(rows["q"][:4], ["q", "pass", "none", "1"], "a click-only pass shows no evidence")
+        self.assertEqual(rows["f"][:4], ["f", "fail", "bad", "2"])
+        self.assertEqual(rows["u"][:4], ["u", "unverified", "missing", "1"])
+        self.assertEqual(rows["s"][:4], ["s", "skip", "none", "1"])
+        self.assertEqual(rows["i"][:4], ["i", "inapplicable", "none", "0"])
+        self.assertEqual(rows["w"][:4], ["w", "pending", "none", "0"])
+
+    def test_a_step_the_client_does_not_use_still_has_a_row(self):
+        steps = {"a": {"verdict": "pass", "attempts": [self.att("pass", ["pass"])]}, "z": {"verdict": "inapplicable", "attempts": []}}
+        run = {"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "order": ["a"], "steps": steps}}
+        rows = [ln.split() for ln in ct.report_text(run).splitlines() if ln.startswith("z ")]
+        self.assertEqual(rows[0][:3], ["z", "inapplicable", "none"])
+
+    def test_a_run_without_order_lists_its_steps(self):
+        run = {"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "steps": {"s": {"verdict": "pass", "attempts": []}}}}
+        self.assertTrue(any(ln.startswith("s ") for ln in ct.report_text(run).splitlines()))
+
+    def test_an_order_naming_a_missing_step_does_not_stop_the_report(self):
+        run = {"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "order": ["s"], "steps": {}}}
+        self.assertTrue(any(ln.startswith("s ") for ln in ct.report_text(run).splitlines()))
+
+    def test_an_outcome_without_a_result_is_not_evidence(self):
+        a = {"n": 1, "verdict": "pass", "outcomes": [{}]}
+        self.assertEqual(self.rows({"m": {"verdict": "pass", "attempts": [a]}})["m"][2], "missing")
+
+    def test_a_unicode_line_break_in_a_note_does_not_split_the_row(self):
+        note = "one" + chr(0x2028) + "two" + chr(0x85) + "three\r\nfour"
+        steps = {"u": {"verdict": "pass", "attempts": [self.att("pass", ["pass"], note)]}}
+        text = ct.report_text({"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "order": ["u"], "steps": steps}})
+        rows = [ln for ln in text.splitlines() if ln.startswith("u ")]
+        self.assertEqual(len(rows), 1); self.assertIn("one two three four", rows[0])
+
+    def test_diagnostic_checks_do_not_count_as_evidence(self):
+        a = {"n": 1, "verdict": "pass", "outcomes": [{"result": "unverified", "diagnostic": True}]}
+        self.assertEqual(self.rows({"d": {"verdict": "pass", "attempts": [a]}})["d"][2], "none")
+
+    def test_the_note_shows_and_a_long_one_is_cut(self):
+        steps = {"n": {"verdict": "pass", "attempts": [self.att("pass", ["pass"], "x" * 80)]}}
+        row = [ln for ln in self.table(steps) if ln.startswith("n ")][0]
+        self.assertIn("x" * 37 + "...", row); self.assertNotIn("x" * 38, row)
+
+    def test_passing_steps_get_no_detail_lines_and_failing_ones_keep_theirs(self):
+        steps = {"p": {"verdict": "pass", "attempts": [self.att("pass", ["pass"])]},
+                 "f": {"verdict": "fail", "attempts": [self.att("fail", ["fail"], "broke")]}}
+        text = ct.report_text({"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "order": ["p", "f"], "steps": steps}})
+        self.assertIn("- f: fail", text); self.assertIn("attempt 1: fail note=broke", text)
+        self.assertNotIn("- p:", text)
 
 
 class Names(unittest.TestCase):

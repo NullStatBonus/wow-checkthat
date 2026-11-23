@@ -32,3 +32,48 @@ Appearance SHALL offer card scale (50 to 200), background opacity (0 to 100), te
 #### Scenario: Zero opacity
 - **WHEN** background opacity is 0
 - **THEN** no fill or border is drawn
+
+### Requirement: Home lists past runs
+The Home page SHALL list stored runs in a choice list, newest first, each with date, plan title, character and counts of pass, fail and open steps. Each entry SHALL start with the date and time. Open, Export and Delete SHALL act on the chosen run. Delete SHALL name the run and ask for confirmation. Open on an ended run SHALL show it on the card and SHALL leave the character's current run unchanged. Open on an unfinished run of the character SHALL make it the current run, SHALL start again the attempt it left open, and SHALL ask for confirmation while another unfinished run has the card. Open SHALL be unavailable for an unfinished run of another character. The list and its buttons SHALL NOT draw when no runs are stored.
+
+#### Scenario: Reopen an older run
+- **WHEN** the player chooses Open on an ended run
+- **THEN** the checklist window shows that run, read-only, and the current run is unchanged
+
+#### Scenario: Slider drag
+- **WHEN** the player drags Runs to keep through a low value
+- **THEN** no run is deleted until the next run starts
+
+#### Scenario: Export an older run
+- **WHEN** the player chooses Export on a run
+- **THEN** the text window shows that run's export string
+
+#### Scenario: Unfinished run of another character
+- **WHEN** the chosen run has not ended and belongs to another character
+- **THEN** Open is unavailable and Export and Delete stay available
+
+#### Scenario: Delete the current run
+- **WHEN** the player deletes the current run and confirms
+- **THEN** the run is gone and the checklist shows the start screen
+
+### Requirement: Run limit setting
+The Advanced page SHALL offer a run limit from 5 to 100 runs, with a default of 20, shared by all profiles. Pruning SHALL happen when a run starts and SHALL NOT happen while the setting changes. The debug report SHALL print its value.
+
+#### Scenario: Report shows the limit
+- **WHEN** the player runs /ct log
+- **THEN** the report names the run limit and the number of stored runs and plans
+
+### Requirement: Open run asks first while a run is active
+Open run SHALL ask the player to accept before it opens a run when this character has an unfinished current run that is not the run chosen. The question SHALL say whether the current run leaves the checklist or stays. Without an active run, or for the current run itself, Open run SHALL ask nothing.
+
+#### Scenario: Viewing an ended run
+- **WHEN** the player chooses Open run for an ended run while a run is active
+- **THEN** a question says the current run stays, and the run opens only after the player accepts
+
+#### Scenario: Replacing a run
+- **WHEN** the player chooses Open run for an unfinished run while another run is active
+- **THEN** a question says the current run leaves the checklist, and nothing opens until the player accepts
+
+#### Scenario: Nothing active
+- **WHEN** this character has no unfinished current run
+- **THEN** Open run opens the run without a question

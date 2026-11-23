@@ -33,3 +33,32 @@ Every game API read and action SHALL be in `Core/Adapter.lua`, guarded, returnin
 #### Scenario: Game global outside the allowed places
 - **WHEN** a file in `Model/`, `Options/` or `Core/` other than the adapter uses a game global
 - **THEN** the layering test fails and names the file
+
+### Requirement: One cause writes one log line
+The debug log SHALL NOT repeat the same line while the cause stays the same. When the game shows the Run button on a screen with nothing to run, CheckThat SHALL hide it and write one `run button hidden` line for that screen.
+
+#### Scenario: The game shows the button again and again
+- **WHEN** the game shows the Run button five times in a row on a step without commands
+- **THEN** the debug log holds one `run button hidden` line for that step
+
+#### Scenario: The next screen
+- **WHEN** the card moves to another step without commands and the game shows the button
+- **THEN** the debug log holds a new `run button hidden` line for that step
+
+### Requirement: The log names questions, exports and reports
+The debug log SHALL hold `run open asked <id>` when Open run asks, `run delete asked <id>` when Delete run asks, `run exported <id>` when CheckThat builds a results string, and `report requested: <Stored line>` when the debug report is built.
+
+#### Scenario: Question cancelled
+- **WHEN** the player chooses Open run and cancels the question
+- **THEN** the log holds `run open asked` and no `run opened` line for it
+
+#### Scenario: Report built
+- **WHEN** the player types `/ct log`
+- **THEN** the log holds `report requested: Stored: <n> runs (limit <n>), <n> plan copies`
+
+### Requirement: The Run button leaves the combat state driver while unused
+CheckThat SHALL release the Run button from the game's combat state driver out of combat while the step has nothing to run, and SHALL register it again when a step has commands. A line `run button hidden` SHALL be written once for each screen.
+
+#### Scenario: A step without commands
+- **WHEN** the card shows a step that has no commands and the player is out of combat
+- **THEN** the Run button is hidden and released from the state driver, and the log holds at most one `run button hidden` line for the step

@@ -4,6 +4,7 @@ local Evidence = {}
 ns.Evidence = Evidence
 
 local MAX_PATTERN = 200
+Evidence.TAIL = 12 -- lines of a log kept as the position where an attempt opened
 
 local function walk(root, path)
     local v = root
@@ -38,15 +39,19 @@ end
 function Evidence.NewLines(snapshot, current)
     if not current then return nil end
     if snapshot and snapshot.unavailable then return nil end -- the log could not be read when the step opened
-    if not snapshot or #snapshot == 0 then return current end
-    local n = #snapshot
-    local k = math.min(12, n) -- a long tail: startup blocks repeat every session, so a short one is ambiguous
+    if not snapshot then return current, true end
+    -- A position is { n = length, tail = last lines }; runs saved before it hold the whole log as an array.
+    local n = snapshot.tail and snapshot.n or #snapshot
+    local tail = snapshot.tail or snapshot
+    if not n or n == 0 then return current, true end
+    local k = math.min(Evidence.TAIL, n) -- a long tail: startup blocks repeat every session, so a short one is ambiguous
+    local tl = #tail
     local function tailAt(last)
-        if last < k or last > #current then return false end
-        for j = 1, k do if current[last - k + j] ~= snapshot[n - k + j] then return false end end
+        if last < k or last > #current or tl < k then return false end
+        for j = 1, k do if current[last - k + j] ~= tail[tl - k + j] then return false end end
         return true
     end
-    local last
+    local last = nil
     if tailAt(n) then last = n
     else
         local found = 0
@@ -55,9 +60,23 @@ function Evidence.NewLines(snapshot, current)
         end
         if found ~= 1 then return nil end
     end
+    -- A full ring rolls with every new line, so a boundary found by search is normal. It holds when the tail is
+    -- distinctive. A tail made of one repeated line (a flood) can also match lines written after the step opened,
+    -- and then a line between could be missed: an absence cannot be shown.
+    local seen, distinct = {}, 0
+    for j = 1, k do
+        local l = tail[tl - k + j]
+        if not seen[l] then seen[l] = true; distinct = distinct + 1 end
+    end
+    local exact = distinct >= math.ceil(k / 2)
     local out = {}
     for i = last + 1, #current do out[#out + 1] = current[i] end
-    return out
+    return out, exact
+end
+
+-- An attempt that has positions but none for this source cannot say which lines are new.
+local function missingPosition(a, snapshots)
+    return a.scope ~= "session" and snapshots ~= nil and snapshots[a.source] == nil
 end
 
 local function lineMatches(a, line)
@@ -79,9 +98,15 @@ function Evidence.CheckLog(a, snapshots, plan, env)
     if not current then return "unverified", "log not readable (is debug on and the addon loaded?)" end
     local lines = current
     if a.scope ~= "session" then
+        if missingPosition(a, snapshots) then return "unverified", "log position missing (the step opened without it)" end
         if snapshots and snapshots[a.source] and snapshots[a.source].unavailable then return "unverified", "log was not readable when the step opened" end
-        lines = Evidence.NewLines(snapshots and snapshots[a.source], current)
+        local exact
+        lines, exact = Evidence.NewLines(snapshots and snapshots[a.source], current)
         if not lines then return "unverified", "log rolled over; evidence lost" end
+        if a.absent and exact == false then
+            for _, l in ipairs(lines) do if lineMatches(a, l) then return "fail" end end
+            return "unverified", "log rolled over; a line that is absent cannot be shown"
+        end
     end
     local found
     for _, l in ipairs(lines) do if lineMatches(a, l) then found = true; break end end
@@ -134,6 +159,7 @@ function Evidence.CheckSequence(a, snapshots, plan, env)
     if not src then return "unverified", "unknown log source" end
     local current = Evidence.ReadLog(src, env)
     if not current then return "unverified", "log not readable (is debug on and the addon loaded?)" end
+    if missingPosition(a, snapshots) then return "unverified", "log position missing (the step opened without it)" end
     if a.scope ~= "session" and snapshots and snapshots[a.source] and snapshots[a.source].unavailable then
         return "unverified", "log was not readable when the step opened"
     end
@@ -180,9 +206,25 @@ function Evidence.Preview(step, snapshots, plan, env)
     return items
 end
 
-function Evidence.Snapshot(plan, env)
+-- Where the logs a step checks stand when its attempt opens: { [source] = { n, tail } }. Only logs that an
+-- attempt-scoped assertion of the step names are recorded. An unreadable log is not an empty one: marking it
+-- keeps old lines from counting as new later.
+function Evidence.Snapshot(plan, env, step)
     local snaps = {}
-    -- An unreadable log is not an empty one: marking it keeps old lines from counting as new later.
-    for name, src in pairs(plan.logs or {}) do snaps[name] = Evidence.ReadLog(src, env) or { unavailable = true } end
+    for _, a in ipairs(step and step.assertions or {}) do
+        local name = a.source
+        if (a.kind == "log" or a.kind == "log-sequence") and a.scope ~= "session" and name and not snaps[name] then
+            local src = plan.logs and plan.logs[name]
+            local lines = src and Evidence.ReadLog(src, env)
+            if lines then
+                local tail = {}
+                for i = math.max(1, #lines - Evidence.TAIL + 1), #lines do tail[#tail + 1] = lines[i] end
+                snaps[name] = { n = #lines, tail = tail }
+            else
+                snaps[name] = { unavailable = true }
+            end
+        end
+    end
     return snaps
 end
+

@@ -13,4 +13,7 @@ debug.txt
 Screenshot*.png
 screenshots/
 
+# Local paths for tools/ct.py (see README)
+.ct.env
+
 .claude/

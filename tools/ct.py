@@ -374,9 +374,39 @@ def find_sv(src):
     return sorted(set(found))
 
 
+WOW_CLIENTS = ("_classic_era_", "_forever_")
+
+
+def wow_sources(wow):
+    """Standard layout: <game dir>/<client>/WTF and <client>/Screenshots for each client folder that exists."""
+    found = [c for c in WOW_CLIENTS if os.path.isdir(os.path.join(wow, c, "WTF"))]
+    return [(os.path.join(wow, c, "WTF"), wow) for c in found], [os.path.join(wow, c, "Screenshots") for c in found]
+
+
 def cmd_collect(a):
-    src = a.src
     dest = a.dest
+    wow = getattr(a, "wow", None)
+    if a.src or not wow:
+        sources, shot_dirs = [(a.src or default_src(), a.src or default_src())], [getattr(a, "shots", None)]
+    else:
+        sources, shot_dirs = wow_sources(wow)
+        if not sources:
+            sys.exit("no %s folder with WTF under %s" % (" or ".join(WOW_CLIENTS), wow))
+        if getattr(a, "shots", None):
+            shot_dirs = [a.shots]
+    new_sv = new_runs = 0
+    for src, base in sources:
+        n_sv, n_runs = collect_src(src, base, dest)
+        new_sv += n_sv; new_runs += n_runs
+    new_shots = sum(collect_shots(dest, d) for d in shot_dirs)
+    print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
+
+
+def default_src():
+    return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
+
+
+def collect_src(src, base, dest):
     os.makedirs(os.path.join(dest, "sv"), exist_ok=True)
     os.makedirs(os.path.join(dest, "runs"), exist_ok=True)
     new_sv = new_runs = 0
@@ -384,7 +414,7 @@ def cmd_collect(a):
         with open(f, "rb") as fh:
             data = fh.read()
         h = hashlib.sha1(data).hexdigest()[:10]
-        rel = os.path.relpath(f, src).replace(os.sep, "__")
+        rel = os.path.relpath(f, base).replace(os.sep, "__")
         out = os.path.join(dest, "sv", "%s.%s.lua" % (rel[:-4], h))
         if not os.path.exists(out):
             shutil.copyfile(f, out); new_sv += 1
@@ -404,8 +434,7 @@ def cmd_collect(a):
                     new_runs += 1
                 elif res == "conflict":
                     print("warning: run %s revision %s already stored with different content; kept the first (two testers may share an id)" % (rid, run.get("revision")), file=sys.stderr)
-    new_shots = collect_shots(dest, getattr(a, "shots", None))
-    print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
+    return new_sv, new_runs
 
 
 SHOT_EXT = (".jpg", ".jpeg", ".png", ".tga")
@@ -462,6 +491,38 @@ def by_checkthat(rec):
     return rec.get("verdict") != "pending" and bool(done) and done[-1].get("by") == "auto"   # Undo reopens the step
 
 
+def evidence_state(rec):
+    """met, bad, missing or none: the required checks of the step's last finished attempt."""
+    done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
+    outs = [o for o in (done[-1].get("outcomes") or []) if not o.get("diagnostic")] if done else []
+    if not outs:
+        return "none"
+    results = {o.get("result") for o in outs}
+    if "fail" in results:
+        return "bad"
+    return "met" if results == {"pass"} else "missing"   # an outcome without a result is not evidence
+
+
+def step_ids(r):
+    """Steps in plan order, then any other recorded step (one the client does not use) in name order."""
+    order = list(r.get("order") or [])
+    return order + sorted(s for s in (r.get("steps") or {}) if s not in order)
+
+
+def step_table(r):
+    """One row per step in plan order: step, verdict, evidence, attempts, note."""
+    rows = [("step", "verdict", "evidence", "attempts", "note")]
+    for sid in step_ids(r):
+        rec = (r.get("steps") or {}).get(sid, {})
+        done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
+        note = " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
+        if len(note) > 40:
+            note = note[:37] + "..."
+        rows.append((sid, str(rec.get("verdict", "?")), evidence_state(rec), str(len(rec.get("attempts") or [])), note))
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
+
+
 def report_text(runs, dest=None):
     out = ["# CT report", ""]
     for rid, r in sorted(runs.items()):
@@ -472,8 +533,11 @@ def report_text(runs, dest=None):
         out.append("client %s build %s character %s" % (r.get("client"), r.get("build"), r.get("character")))
         auto = sum(1 for rec in (r.get("steps") or {}).values() if by_checkthat(rec))
         out.append("counts: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())) + (", auto=%d" % auto if auto else ""))
-        for sid in r.get("order", []):
-            rec = r["steps"].get(sid, {})
+        out.append("")
+        out.extend(step_table(r))
+        out.append("")
+        for sid in step_ids(r):
+            rec = (r.get("steps") or {}).get(sid, {})
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
             mark = ", recorded by CheckThat" if by_checkthat(rec) else ""
             if (shots or mark) and rec.get("verdict") in ("pass", "skip", "inapplicable"):
@@ -493,7 +557,27 @@ def report_text(runs, dest=None):
 
 # ---------------------------------------------------------------- CLI
 
+def load_env(paths=None):
+    """Fill unset environment variables from KEY=VALUE files. Earlier files win; real variables and flags win over all."""
+    for p in paths or [os.environ.get("CT_ENV"), os.path.join(os.getcwd(), ".ct.env"), os.path.expanduser("~/.checkthat.env")]:
+        if not p or not os.path.isfile(p):
+            continue
+        with open(p, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                if key.startswith("export "):
+                    key = key[7:].strip()
+                val = val.strip().strip("\"'")
+                if key:
+                    os.environ.setdefault(key, os.path.expanduser(val))
+
+
 def main(argv=None):
+    load_env()
     ap = argparse.ArgumentParser(prog="ct")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("validate"); p.add_argument("plan")
@@ -501,8 +585,7 @@ def main(argv=None):
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
-    default_src = os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
-    p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF", default_src)); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; collects _classic_era_ and _forever_ (WTF and Screenshots)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
@@ -553,8 +636,8 @@ def main(argv=None):
         print(json.dumps(sv_json(a.file), indent=1, sort_keys=True))
         return 0
     if a.cmd == "collect":
-        if not a.shots:
-            guess = os.path.join(os.path.dirname(os.path.abspath(a.src)), "Screenshots")
+        if not a.shots and (a.src or not a.wow):
+            guess = os.path.join(os.path.dirname(os.path.abspath(a.src or default_src())), "Screenshots")
             a.shots = guess if os.path.isdir(guess) else None
         cmd_collect(a); return 0
     if a.cmd == "import-results":

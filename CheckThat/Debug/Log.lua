@@ -64,6 +64,14 @@ function Log.Report()
     out[#out + 1] = "  presentation contract = v1"
     out[#out + 1] = ""
     out[#out + 1] = "Run: " .. (ns.App and ns.App.db and ns.App.Status() or "none")
+    if ns.App and ns.App.db then
+        local runs, plans = 0, 0
+        for _ in pairs(ns.App.db.runs) do runs = runs + 1 end
+        for _ in pairs(ns.App.db.planStore) do plans = plans + 1 end
+        local stored = ("Stored: %d runs (limit %d), %d plan copies"):format(runs, ns.App.RunLimit(), plans)
+        out[#out + 1] = stored
+        ns.App.Log("report requested: " .. stored)
+    end
     out[#out + 1] = ""
     out[#out + 1] = "Failures:"
     if #Log.failures == 0 then out[#out + 1] = "  none" end

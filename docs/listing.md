@@ -14,6 +14,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - See which steps CheckThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
 - Keep your place through `/reload`.
+- Reopen, export or delete an older run from Past runs on the Home page. Choose how many runs to keep in Advanced.
 - End a run you will not finish from the Run menu in the card header or with `/ct end`. The results stay for export. The same menu imports another plan or clears the current plan.
 - Set card size, opacity and position. Use shared or per-character settings.
 - Commands: `/ct`, `/ct settings`, `/ct import`, `/ct start <addon>`, `/ct end`, `/ct export`, `/ct log`. `/checkthat` works the same as `/ct`.
@@ -22,6 +23,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 
 - Plans are made for KeepThat, DontDoThat and ClosestVendor. Other plans need the plan format in the project repository.
 - Results are saved when the game reloads or logs out.
+- CheckThat keeps the newest 20 runs by default and deletes the oldest ones first. The run on your card always stays. Change the number in Advanced.
 - Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `CheckThat` folder in `Interface/AddOns/`.
 - Run is not available in combat. CheckThat shows it again when combat ends.
 - Automatic steps record a result also while the card is hidden. They pause while the game interface is hidden. They read logs and never send input.

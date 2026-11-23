@@ -249,13 +249,15 @@ function Card.EnsureSecure()
     s:SetAttribute("type", "macro")
     s:SetAttribute("useOnKeyDown", false)
     s:RegisterForClicks("AnyUp")
-    A.HideInCombat(s)
+    A.HideInCombat(s); card.combatHide = true
     -- The game's own state driver shows this button again after combat. It must show only with a step that has commands.
     s:HookScript("OnShow", function(self)
         if A.InCombat() or card.secureWanted then return end -- protected in combat; fine when a step wants it
         self:Hide()
         local _, _, cur = App.Current()
-        App.Log("run button hidden: nothing to run on this screen (step " .. (cur and cur.id or "none") .. ")")
+        -- The state driver shows the button about five times a second. One line for each screen is enough.
+        local msg = "run button hidden: nothing to run on this screen (step " .. (cur and cur.id or "none") .. ")"
+        if card.hiddenLogged ~= msg then card.hiddenLogged = msg; App.Log(msg) end
     end)
     s:Hide()
     card.secure = s
@@ -268,7 +270,15 @@ local function setMacro(step, plan)
     if not s then card.pendingMacro = true; return end -- in combat: the button is hidden (state driver) and is set up after combat
     card.pendingMacro = nil
     card.secureWanted = body and card:IsShown() and true or false
-    if body and card:IsShown() then s:SetAttribute("macrotext", body); s:Show() else s:SetAttribute("macrotext", ""); s:Hide() end
+    if card.secureWanted then card.hiddenLogged = nil end
+    if card.secureWanted then
+        if not card.combatHide then card.combatHide = true; A.HideInCombat(s) end -- the driver hides it for the whole of combat
+        s:SetAttribute("macrotext", body); s:Show()
+    else
+        -- The driver would show the button again every 0.2 seconds. Out of combat it is safe to release it while unused.
+        if card.combatHide ~= false then card.combatHide = false; A.ReleaseCombatHide(s) end
+        s:SetAttribute("macrotext", ""); s:Hide()
+    end
 end
 
 -- A plan can ask for evidence to be shared at a point: a reload (logs reach saved variables) or the export string.
@@ -317,8 +327,8 @@ function Card.RunMenu(owner)
     if not A.ContextMenu(owner, items) then Card.ConfirmEnd() end
 end
 
-function Card.ExportNow()
-    local s, err = App.Export()
+function Card.ExportNow(runId)
+    local s, err = App.Export(runId)
     if s then ns.Export.Show(L["Results string. Share it with Claude."], s) else ns.Slash.Print(err) end
 end
 

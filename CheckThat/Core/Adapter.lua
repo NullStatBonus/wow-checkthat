@@ -15,7 +15,7 @@ end
 
 function Adapter.Env()
     local env = {}
-    for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time" }) do
+    for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time", "date" }) do
         env[name] = function(...) return call(name, ...) end
     end
     env.IsAddOnLoaded = function(addon)
@@ -46,6 +46,8 @@ function Adapter.InCombat() return call("InCombatLockdown") and true or false en
 function Adapter.Reload() return call("ReloadUI") end
 -- Hide a frame for the whole of combat, and show it again when combat ends (the owner re-checks it then).
 function Adapter.HideInCombat(frame) return call("RegisterStateDriver", frame, "visibility", "[combat] hide; show") end
+-- The driver shows its frame again every 0.2 seconds, so release a frame that must stay hidden. Out of combat only.
+function Adapter.ReleaseCombatHide(frame) return call("UnregisterStateDriver", frame, "visibility") end
 
 -- Macros the player can click. Never used in combat (callers check InCombat first).
 function Adapter.MacroIndex(name) return call("GetMacroIndexByName", name) or 0 end
