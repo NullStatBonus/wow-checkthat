@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+Fixed: **Hidden card.** An automatic step recorded nothing while the card was hidden. It now records the result and the time limit still counts.
+
 ## 0.6.0
 
 New: **End run.** Click the card title and choose End run, or type /ct end. CheckThat asks first. The results stay.

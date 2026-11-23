@@ -572,7 +572,10 @@ end
 -- Auto steps: the runner records the result itself once the checks say so. It reads only, and only while the card
 -- is shown. An error here is logged and never stops the loop.
 function Card.AutoSettle()
-    if not (card and card:IsShown() and card:IsVisible()) then return nil end -- IsVisible: false while the game UI is hidden
+    if not card then return nil end
+    -- A shown card is visible only while the game UI is shown. A hidden card settles unless the game UI is hidden too.
+    if card:IsShown() then if not card:IsVisible() then return nil end
+    elseif not UIParent:IsShown() then return nil end
     local pending = App.db.ui.pendingStart
     if pending and App.db.plans[pending] then return nil end -- the Start screen is showing, not the run
     local note = card.note and card.note:GetText()
@@ -593,17 +596,27 @@ function Card.AutoSettle()
     return a
 end
 
+local function openAuto()
+    local run, _, step = App.Current()
+    return run and step and step.auto
+end
+
+-- Runs while the card is shown or an auto step is current. Stops itself otherwise; Card.Refresh restarts it.
 local function tick()
-    if not (card and card:IsShown()) then if card then card.ticking = false end return end
+    if not (card and (card:IsShown() or openAuto())) then if card then card.ticking = false end return end
     Card.AutoSettle()
     Card.UpdateChecks()
     A.After(0.5, tick)
 end
 
+local function kick()
+    if card and not card.ticking then card.ticking = true; A.After(0.5, tick) end
+end
+
 function Card.Show()
     if not card then build() end
     card:Show(); Card.Refresh()
-    if not card.ticking then card.ticking = true; A.After(0.5, tick) end
+    kick()
 end
 function Card.Toggle() if card and card:IsShown() then card:Hide() else Card.Show() end end
 

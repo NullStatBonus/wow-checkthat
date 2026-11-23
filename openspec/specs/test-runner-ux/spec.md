@@ -182,8 +182,8 @@ An auto step SHALL show on the card that CheckThat records the result when the c
 - **THEN** the card moves to the next step and the recorded step shows that CheckThat settled it
 
 #### Scenario: Card hidden
-- **WHEN** the card is hidden while an auto step is open
-- **THEN** the runner records nothing until the card is shown again
+- **WHEN** the card is hidden while an auto step is open and the checks are met
+- **THEN** the runner records the result, and the card shows the next step when the player opens it again
 
 #### Scenario: Game interface hidden
 - **WHEN** the player hides the game interface while an auto step is open
