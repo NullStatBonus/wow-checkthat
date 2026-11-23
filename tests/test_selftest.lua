@@ -2,7 +2,7 @@ local ns, test, T, finish, H = dofile("tests/harness.lua")()
 H.plain(ns)
 local App = ns.App
 test("self-test plan runs end to end with its own debug log as evidence", function()
-    local f = io.open("build/selftest.wtt"); local s = f:read("*a"); f:close()
+    local f = io.open("build/selftest.ct"); local s = f:read("*a"); f:close()
     local env = { time = function() return 7000 end, GetBuildInfo = function() return "1.15.7", "1", "x", 11507 end,
         UnitName = function() return "T" end, GetRealmName = function() return "R" end,
         IsAddOnLoaded = function(n) return n == "CheckThat" end }

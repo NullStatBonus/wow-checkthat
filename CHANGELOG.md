@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+Changed: **Short name ct.** The plan format, the tools and the debug log now use the short name ct. The old short name is gone.
+Changed: Plan strings now start with !CT1!. Plan files end in .ct. Debug log lines start with [ct].
+Changed: The macro that the card creates is now named CT.
+
 ## 0.5.1
 
 Fixed: **Run button.** The Run button of the Export results step stayed on screen over the results window. The window now covers it.

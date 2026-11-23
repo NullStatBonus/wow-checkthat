@@ -64,7 +64,7 @@ end)
 
 test("start shows the card and undo refreshes it", function()
     ns.App.Init({}, { time = function() return 1 end, UnitName = function() return "T" end, GetRealmName = function() return "R" end })
-    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "t", sections = { { id = "s", title = "S", steps = {
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "t", sections = { { id = "s", title = "S", steps = {
         { id = "a", title = "A", action = { kind = "manual", text = "x" }, expect = "e", verify = { "player" } } } } } }
     ns.App.db.plans.KeepThat = { plan = p, digest = "d" }
     called.card = nil

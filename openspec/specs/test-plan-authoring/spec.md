@@ -17,7 +17,7 @@ The skill SHALL ask the author for the scope source (current branch, a diff or t
 - **THEN** it suggests `plans/` and accepts another path
 
 ### Requirement: Skill finds the plan tools from any install
-The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` in the bundle installed beside it, else in the checkout two folders above it. A path SHALL count as a root only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the CheckThat path and SHALL NOT assume the working directory is the CheckThat repository.
+The skill SHALL locate `tools/ct.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` in the bundle installed beside it, else in the checkout two folders above it. A path SHALL count as a root only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the CheckThat path and SHALL NOT assume the working directory is the CheckThat repository.
 
 #### Scenario: Installed to the user's skills folder
 - **WHEN** the author ran `make install-skill`, then removed or moved the checkout, and starts the skill in another addon repository
@@ -32,7 +32,7 @@ The skill SHALL locate `tools/wtt.py`, `schema/test-plan.schema.json` and `docs/
 
 #### Scenario: Install and update
 - **WHEN** the author runs `make install-skill SKILL_DIR=<dir>` twice
-- **THEN** `<dir>/wtt-test-plan` holds the current skill files, the bundle and a working private Python
+- **THEN** `<dir>/ct-test-plan` holds the current skill files, the bundle and a working private Python
 
 #### Scenario: Target inside the checkout
 - **WHEN** `SKILL_DIR` points inside the checkout
@@ -50,7 +50,7 @@ The skill SHALL build assertions from the debug log the target addon already wri
 - **THEN** the step uses a player check and the skill offers an issue for the missing evidence
 
 ### Requirement: Draft covers the scope and passes validation
-The skill SHALL cover each changed requirement or scenario in the scope with at least one step, add a regression step for the nearest unchanged behavior, and write the plan for one locale. It SHALL run `tools/wtt.py validate` on the draft and report each problem with its step ID. It SHALL list every slash command named in step text in that step's `commands`.
+The skill SHALL cover each changed requirement or scenario in the scope with at least one step, add a regression step for the nearest unchanged behavior, and write the plan for one locale. It SHALL run `tools/ct.py validate` on the draft and report each problem with its step ID. It SHALL list every slash command named in step text in that step's `commands`.
 
 #### Scenario: Validation fails
 - **WHEN** `validate` rejects the draft
@@ -72,7 +72,7 @@ The skill SHALL run the plan tools with the private Python in its own folder and
 
 #### Scenario: Validate a draft
 - **WHEN** the skill validates a draft
-- **THEN** it runs the bundled `wtt.py` with the private Python and reports the bundle version
+- **THEN** it runs the bundled `ct.py` with the private Python and reports the bundle version
 
 ### Requirement: Skill guides an addon that has no debug log
 When the target addon writes no debug log, the skill SHALL say so once, recommend adding one, and point to the debug-logging guide. It SHALL draft the plan with player checks, SHALL mark the steps that would become log assertions once a log exists, and SHALL NOT invent log lines.

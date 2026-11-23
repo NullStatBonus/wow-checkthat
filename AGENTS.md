@@ -11,7 +11,7 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 - Check the report with `/ct log`.
 - Record what a client or another addon provides in `docs/contracts.md` whenever a probe or source review measures it.
 - `tests/test_readme.lua` checks the README command list.
-- Keep `schema/test-plan.schema.json` and the plan format specs (`openspec/specs/test-plan-format/`) in step with `CheckThat/Model/Plan.lua` and `tools/wtt.py`.
+- Keep `schema/test-plan.schema.json` and the plan format specs (`openspec/specs/test-plan-format/`) in step with `CheckThat/Model/Plan.lua` and `tools/ct.py`.
 
 ## Testing
 
@@ -24,7 +24,7 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 - Each module's tests live in `tests/test_<module>.lua` and run alone with `luajit tests/test_<module>.lua`. `tests/harness.lua` builds the fake client. `test_smoke` loads every file the TOC lists, with the real Ace3 libraries, and `test_options` validates the settings tree with AceConfig's own validator.
 - Python tools have tests in `tools/test_*.py` (run by `make test`).
 - Reserve in-game checks for what unit tests cannot prove. Read the copied `/ct log` report or saved variables yourself. Ask for an on-screen observation only when neither captures the result.
-- Read the player's copied saved variables in `../shared-addon-resources/saved` (or run `tools/wtt.py collect`) before asking for more in-game steps.
+- Read the player's copied saved variables in `../shared-addon-resources/saved` (or run `tools/ct.py collect`) before asking for more in-game steps.
 
 ## Conventions
 

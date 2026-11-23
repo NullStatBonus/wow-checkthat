@@ -183,7 +183,7 @@ function Options.About(order)
     gap(g, "g1")
     add(g, "h_cmds", { type = "header", name = L["Commands"] })
     local commands = {
-        { "wtt", "/ct", L["Open the checklist."] },
+        { "ct", "/ct", L["Open the checklist."] },
         { "import", "/ct import", L["Paste a plan string."] },
         { "start", "/ct start <addon>", L["Start a run for an imported plan."] },
         { "debug", "/ct debug on", L["Record diagnostics while you repeat a problem."] },

@@ -271,7 +271,7 @@ function Card.ImportPrompt()
             Card.Refresh()
         else ns.Slash.Print(err) end
     end
-    ns.Export.Prompt(L["Paste a plan string (it starts with !WTT1!), or pick a recent plan"], "", function(str)
+    ns.Export.Prompt(L["Paste a plan string (it starts with !CT1!), or pick a recent plan"], "", function(str)
         local plan, err = App.ImportPlan(str)
         if plan then
             ns.Slash.Print(L["Imported %s."]:format(ns.Slash.Esc(plan.title)))
@@ -591,10 +591,10 @@ function Card.MakeMacro()
     end
     if idx then A.EditMacro(idx, name, body) else
         for n = 1, 9 do
-            local cand = n == 1 and "WTT" or ("WTT" .. n)
+            local cand = n == 1 and "CT" or ("CT" .. n)
             if A.MacroIndex(cand) == 0 then name = cand; break end
         end
-        if not name then ns.Slash.Print(L["No free macro name between WTT and WTT9."]); return end
+        if not name then ns.Slash.Print(L["No free macro name between CT and CT9."]); return end
         if not A.CreateMacro(name, body) then ns.Slash.Print(L["The macro could not be created. The macro slots may be full."]); return end
     end
     ui.macroName, ui.macroBody = name, body

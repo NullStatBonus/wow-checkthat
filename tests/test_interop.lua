@@ -1,11 +1,11 @@
 local ns, test, T, finish, H = dofile("tests/harness.lua")()
 H.plain(ns)
--- Strings compiled by tools/wtt.py (make build) must decode and validate in the addon.
+-- Strings compiled by tools/ct.py (make build) must decode and validate in the addon.
 local names = { "keepthat", "dontdothat", "closestvendor", "selftest" }
 for _, n in ipairs(names) do
     test("interop: python-compiled " .. n .. " decodes and validates in Lua", function()
-        local f = io.open("build/" .. n .. ".wtt")
-        T.ok(f, "build/" .. n .. ".wtt missing (run make build)")
+        local f = io.open("build/" .. n .. ".ct")
+        T.ok(f, "build/" .. n .. ".ct missing (run make build)")
         local s = f:read("*a"); f:close()
         local plan, err = ns.Codec.Decode(s)
         T.ok(plan, err)

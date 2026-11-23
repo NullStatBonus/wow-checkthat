@@ -24,7 +24,7 @@ function App.Init(db, env, opts)
 end
 
 function App.Log(msg)
-    if ns.Log then ns.Log.Record("wtt", msg) end
+    if ns.Log then ns.Log.Record("ct", msg) end
 end
 
 -- "classic-era" or "forever-camelot", from the interface number (checked by number, not by client name).
@@ -62,7 +62,7 @@ local function readError(err)
     if err:find("checksum") then return L["The checksum does not match. The string may be damaged."] end
     if err:find("too large") then return L["The string is too large."] end
     if err:find("version") then return L["This string needs a newer CheckThat."] end
-    if err:find("not a WTT") then return L["This is not a CheckThat string."] end
+    if err:find("not a CT") then return L["This is not a CheckThat string."] end
     return L["The string is damaged or incomplete."]
 end
 
@@ -194,7 +194,7 @@ end
 -- commands the tester cannot see.
 App.MAX_COPY = 4
 
--- The macro text a secure button or the "WTT" macro would run, or nil. Always re-checked against the allow list.
+-- The macro text a secure button or the "CT" macro would run, or nil. Always re-checked against the allow list.
 function App.MacroText(step, plan)
     local a = step.action
     local text

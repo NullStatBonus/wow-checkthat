@@ -13,10 +13,10 @@ test("smoke: enable, import, run, export and settings through the real addon", f
     addon:OnInitialize()
     addon:OnEnable()
     T.ok(addon.db.profile.card.scale == 100)
-    local f = io.open("build/keepthat.wtt"); local s = f:read("*a"); f:close()
+    local f = io.open("build/keepthat.ct"); local s = f:read("*a"); f:close()
     local plan, err = ns.App.ImportPlan(s)
     T.ok(plan, err)
-    local slash = _G.SlashCmdList["WTT"] or _G.SlashCmdList["WOWCHECKTHAT"]
+    local slash = _G.SlashCmdList["CT"] or _G.SlashCmdList["WOWCHECKTHAT"]
     T.ok(addon.db.global.plans.KeepThat, "plan saved in the global table")
     local lines = ns.Slash.Run("start KeepThat", { card = function() ns.Card.Show() end })
     T.ok(lines[1]:find("Started"), lines[1])
@@ -34,7 +34,7 @@ test("smoke: the card says who checks the step and shows live checks and navigat
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
     ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
-    local f = io.open("build/keepthat.wtt"); local s = f:read("*a"); f:close()
+    local f = io.open("build/keepthat.ct"); local s = f:read("*a"); f:close()
     ns.App.ImportPlan(s); ns.App.Start("KeepThat")
     ns.Card.Show()
     local card = _G.CheckThatCard
@@ -84,7 +84,7 @@ test("smoke: importing a plan after a finished run restarts the flow", function(
     T.ok(not card.resume.shown and not card.exportBtn.shown, "a finished run has nothing to resume")
     ns.App.db.ui.pendingStart = nil; ns.Card.Refresh()
     T.ok(not _G.CheckThatCard.start.shown, "no Start button on the finished run")
-    local f = io.open("build/dontdothat.wtt"); local s = f:read("*a"); f:close()
+    local f = io.open("build/dontdothat.ct"); local s = f:read("*a"); f:close()
     ns.Card.ImportPrompt()
     local box = _G.CheckThatTextBox
     box.edit:SetText(s); box.ok.scripts.OnClick()
@@ -94,7 +94,7 @@ test("smoke: importing a plan after a finished run restarts the flow", function(
     local run = ns.App.Current()
     T.eq(run.addon, "DontDoThat"); T.eq(ns.App.db.ui.pendingStart, nil)
     -- an unfinished run offers Resume when another plan is imported
-    f = io.open("build/keepthat.wtt"); s = f:read("*a"); f:close()
+    f = io.open("build/keepthat.ct"); s = f:read("*a"); f:close()
     ns.Card.ImportPrompt(); box = _G.CheckThatTextBox
     box.edit:SetText(s); box.ok.scripts.OnClick()
     T.ok(_G.CheckThatCard.start.shown and _G.CheckThatCard.resume.shown, "Start and Resume offered")
@@ -120,7 +120,7 @@ test("smoke: the secure Run button is anchored to the screen only, never to the 
     T.ok(pcall(ns.Card.Refresh))
 end)
 test("smoke: importing a plan opens the window with a Start button", function()
-    local f = io.open("build/dontdothat.wtt"); local s = f:read("*a"); f:close()
+    local f = io.open("build/dontdothat.ct"); local s = f:read("*a"); f:close()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     ns.App.db.currentByChar = {}            -- no active run
     ns.Card.Show(); _G.CheckThatCard:Hide()
@@ -181,7 +181,7 @@ end)
 test("smoke: an auto step passes by itself, shows its countdown and waits while the card is hidden", function()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
-    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "Auto",
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "Auto",
         logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = {
             { id = "au.1", title = "First", auto = true, timeout = 30, action = { kind = "wait-event", text = "Open your bags." },
@@ -228,7 +228,7 @@ test("smoke: an auto step records nothing in combat, behind a Start screen or wi
                 assertions = { { kind = "log", source = "debug", contains = "line " .. i } } }
         end
         steps[#steps + 1] = { id = "g.end", title = "End", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } }
-        return { kind = "plan", wtt = 1, addon = "KeepThat", title = "G", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        return { kind = "plan", ct = 1, addon = "KeepThat", title = "G", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
             sections = { { id = "s", title = "S", steps = steps } } }
     end
     local function log(s) KeepThatDB.global.log[#KeepThatDB.global.log + 1] = s end
@@ -264,7 +264,7 @@ end)
 test("smoke: after an automatic unverified result the card stops promising automatic recording", function()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
-    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "T", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "T", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = {
             { id = "t.1", title = "Timed", auto = true, timeout = 5, action = { kind = "wait-event" }, expect = "e", verify = { "assertions" },
               assertions = { { kind = "log", source = "debug", contains = "never" } } },
@@ -288,7 +288,7 @@ end)
 test("smoke: a note from another step is not saved by an automatic result", function()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
-    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "N", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "N", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = {
             { id = "n.1", title = "One", auto = true, action = { kind = "wait-event" }, expect = "e", verify = { "assertions" },
               assertions = { { kind = "log", source = "debug", contains = "one" } } } } } } }
@@ -305,7 +305,7 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
     local function cmdStep(id) return { id = id, title = "With " .. id, action = { kind = "copy-slash", text = "/kt log", commands = { "/kt log" } }, expect = "e", verify = { "player" } } end
-    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "R", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "R", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = { cmdStep("r.1"),
             { id = "r.2", title = "Without command", action = { kind = "manual", text = "Look." }, expect = "e", verify = { "player" } },
             cmdStep("r.3") } } } }

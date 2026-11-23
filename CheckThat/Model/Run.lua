@@ -17,7 +17,7 @@ end
 function Run.New(ctx)
     local steps, inapplicable = ns.Plan.Steps(ctx.plan, ctx.client)
     local run = {
-        kind = "results", wtt = 1,
+        kind = "results", ct = 1,
         runId = ("%s-%d-%s"):format(ctx.plan.addon, ctx.now, Run.Tag(ctx.character)),
         revision = 0, addon = ctx.plan.addon, planDigest = ctx.planDigest, planTitle = ctx.plan.title,
         client = ctx.client, build = ctx.build, character = ctx.character,

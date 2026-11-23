@@ -41,7 +41,7 @@ Each rule below is advice. The examples are real lines read from the addon sourc
 | --- | --- | --- |
 | Fixed text | `equals` | The whole line must match. |
 | Stable part of a line | `contains` | Prefer this for lines with changing values. |
-| Changing value | `pattern` | A Lua pattern, for example `^%[wtt%] resumed run `. |
+| Changing value | `pattern` | A Lua pattern, for example `^%[ct%] resumed run `. |
 | Must not happen | `absent` | Needs a refusal or skip line to prove the code path ran. |
 | After this step only | `scope: attempt` | Attempts survive `/reload`. Use `session` only for a line an earlier step wrote. |
 
@@ -52,7 +52,7 @@ A required assertion needs an unconditional line: the code path writes it every 
 - `strings`: a list of `"[area] text"` strings (KeepThat).
 - `entries`: a list of `{ t, msg }` (DontDoThat, ClosestVendor, CheckThat).
 
-Add a new addon's saved variable name, path and format to `LOGS` in `tools/wtt.py` and to `docs/contracts.md`.
+Add a new addon's saved variable name, path and format to `LOGS` in `tools/ct.py` and to `docs/contracts.md`.
 
 ## Checklist for an addon author
 
