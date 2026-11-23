@@ -394,12 +394,16 @@ def cmd_collect(a):
             sys.exit("no %s folder with WTF under %s" % (" or ".join(WOW_CLIENTS), wow))
         if getattr(a, "shots", None):
             shot_dirs = [a.shots]
-    new_sv = new_runs = 0
+    new_sv = new_runs = failed = 0
     for src, base in sources:
-        n_sv, n_runs = collect_src(src, base, dest)
-        new_sv += n_sv; new_runs += n_runs
+        n_sv, n_runs, n_failed = collect_src(src, base, dest)
+        new_sv += n_sv; new_runs += n_runs; failed += n_failed
     new_shots = sum(collect_shots(dest, d) for d in shot_dirs)
     print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
+    if failed:
+        print("error: %d saved-variables file(s) could not be decoded (is luajit installed?)" % failed, file=sys.stderr)
+        return 1
+    return 0
 
 
 def default_src():
@@ -409,7 +413,7 @@ def default_src():
 def collect_src(src, base, dest):
     os.makedirs(os.path.join(dest, "sv"), exist_ok=True)
     os.makedirs(os.path.join(dest, "runs"), exist_ok=True)
-    new_sv = new_runs = 0
+    new_sv = new_runs = failed = 0
     for f in find_sv(src):
         with open(f, "rb") as fh:
             data = fh.read()
@@ -420,10 +424,13 @@ def collect_src(src, base, dest):
             shutil.copyfile(f, out); new_sv += 1
         if os.path.basename(f) == "CheckThat.lua":
             try:
-                db = sv_json(f).get("CheckThatDB", {})
+                db = sv_json(f).get("CheckThatDB") or {}   # an empty Lua table decodes to a list
             except Exception as e:
-                print("skip %s: %s" % (f, e), file=sys.stderr); continue
-            runs = (db.get("global") or {}).get("runs") or db.get("runs") or {}
+                print("error: could not decode %s: %s" % (f, e), file=sys.stderr); failed += 1; continue
+            glob_db = db.get("global") if isinstance(db, dict) else None
+            runs = (glob_db.get("runs") if isinstance(glob_db, dict) else None) or (db.get("runs") if isinstance(db, dict) else None) or {}
+            if not isinstance(runs, dict):
+                runs = {}
             for rid, run in runs.items():
                 run = dict(run); run.setdefault("runId", rid)
                 try:
@@ -434,7 +441,7 @@ def collect_src(src, base, dest):
                     new_runs += 1
                 elif res == "conflict":
                     print("warning: run %s revision %s already stored with different content; kept the first (two testers may share an id)" % (rid, run.get("revision")), file=sys.stderr)
-    return new_sv, new_runs
+    return new_sv, new_runs, failed
 
 
 SHOT_EXT = (".jpg", ".jpeg", ".png", ".tga")
@@ -639,7 +646,7 @@ def main(argv=None):
         if not a.shots and (a.src or not a.wow):
             guess = os.path.join(os.path.dirname(os.path.abspath(a.src or default_src())), "Screenshots")
             a.shots = guess if os.path.isdir(guess) else None
-        cmd_collect(a); return 0
+        return cmd_collect(a)
     if a.cmd == "import-results":
         s = a.string_or_file
         if os.path.exists(s):

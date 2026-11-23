@@ -106,3 +106,29 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 9. **Run button leaves with its step.** Finish the run on the Export results step, then fight a training dummy until combat ends.
    Check: the results screen shows no Run button, before and after the fight.
    Log: none when the button stayed hidden; one `[ct] run button hidden: nothing to run on this screen` line for the screen if the game showed it and CheckThat hid it again.
+
+## 5. Plan skills (no game needed)
+
+These checks run in a coding agent, not in the game. Run `make install-skill` first. `make test` covers what code decides (bundle, `collect`, example plans, fixture data). These checks cover the conversation.
+
+1. **One question per turn.** Ask the plan skill for a plan for issue #48 and answer each question. Do not give the scope up front.
+   Check: the agent asks one question in each turn, says why, and gives a recommended answer. It skips what the repository answers and says what it assumed.
+   Log: none; read the transcript.
+2. **Simple steps.** In the same run, ask for a check that needs two actions, then ask once for one step that covers a sequence.
+   Check: the first check becomes two steps. The second becomes one step with the note "Compound step, drafted on request."
+   Log: none; read the plan files.
+3. **One plan per character.** Say that two characters take part.
+   Check: the agent drafts two plan files named `<name>.<role>.yaml`. Each preamble names the other file. A reviewer line names the partner file and a step ID. Both plans validate and compile.
+   Log: `ct.py validate` prints ok for each file.
+4. **Read a run back.** Run `python3 tools/verify_fixture.py <folder>`, then ask the verify skill to verify the plans and runs in `<folder>`.
+   Check: step fx.1 is contradicted, fx.2 is unverified, fx.3 is not contradicted and fx.4 has no evidence. The tally set reads held, with "total 12" in both notes.
+   Log: none; read the report.
+5. **Two eligible runs.** Run `python3 tools/verify_fixture.py <folder> --ambiguous` and verify again.
+   Check: the agent lists the two bank runs and asks which to use. It does not choose.
+   Log: none; read the transcript.
+6. **Load the plugin.** Run `make build-plugin`, then start `claude --plugin-dir build/plugin` in an addon repository. Type `/checkthat:ct-test-plan`, then `/checkthat:ct-verify`.
+   Check: both commands exist and start their skill. With no PyYAML in `python3`, the skill prints the command that creates an environment and stops.
+   Log: none; read the transcript.
+7. **Offer at apply.** Finish the tasks of an OpenSpec change that alters a setting. Run `/opsx:apply` on it.
+   Check: the agent offers the plan skill once and waits. It starts nothing if you decline.
+   Log: none; read the transcript.

@@ -33,8 +33,15 @@ Judge each log assertion against `docs/debug-logging.md`.
 - Each command is in the addon's allow list, or is `/reload`, `/reloadui` or `/console scriptErrors 0|1`.
 - No `/script`, `/run` or `/dump`. The card shows four command lines; keep a step to four.
 
+## Character roles
+- A check that needs more than one character is split into one plan for each role. No plan needs a login as another character.
+- File names are `<name>.<role>.yaml`.
+- Each preamble names every partner plan file.
+- A `reviewer` line names the partner files, the step IDs to compare and the relationship that must hold. A step ID is always paired with a file name.
+- Each role plan is compiled and validated. The import order is one role per character.
+
 ## Shape and wording
-- One action and one expected result per step.
+- One action and one expected result per step. A step with several actions or results exists only because the author asked for it, and carries `notes: Compound step, drafted on request.`
 - A sample plan has a handful of steps; a release plan has more.
 - Native color codes only. No backticks or `**`.
 - Short sentences, active voice, one fact each.
