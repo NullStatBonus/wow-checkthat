@@ -2,7 +2,7 @@ local ns, test, T, finish, H = dofile("tests/harness.lua")()
 H.plain(ns)
 local R = ns.Run
 local function mk()
-    local plan = { kind = "plan", wtt = 1, addon = "KeepThat", title = "t",
+    local plan = { kind = "plan", ct = 1, addon = "KeepThat", title = "t",
         logs = { debug = { global = "DB", path = "log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = {
             { id = "a", title = "A", action = { kind = "manual", text = "t" }, expect = "e",

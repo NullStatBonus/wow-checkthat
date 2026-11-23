@@ -15,7 +15,7 @@ test("the text window draws above the card and the Run button", function()
     ns.Card.Show()
     local card = _G.CheckThatCard
     T.ok(card.secure, "the Run button exists")
-    ns.Export.Prompt("Results", "!WTT1!x", nil, "Close", "", true, { choices = {} }) -- the stub frame answers any missing field with a function
+    ns.Export.Prompt("Results", "!CT1!x", nil, "Close", "", true, { choices = {} }) -- the stub frame answers any missing field with a function
     local box = _G.CheckThatTextBox
     T.ok(box, "the window exists")
     T.ok(RANK[box.strata], "window strata is set: " .. tostring(box.strata))

@@ -6,7 +6,7 @@ Versioned, checksummed strings that carry plans in and results out of the game.
 ## Requirements
 
 ### Requirement: Plans and results use a versioned string
-Exported strings SHALL be `!WTT1!`, an 8-hex Adler-32 of the canonical JSON, `!`, then base64 of raw-deflate-compressed canonical JSON (sorted keys, ASCII only). Import SHALL reject unknown versions, bad checksums, malformed base64 or JSON, and encoded strings over 120,000 characters, without partial import. A decoded payload SHALL declare `kind` as `plan` or `results`.
+Exported strings SHALL be `!CT1!`, an 8-hex Adler-32 of the canonical JSON, `!`, then base64 of raw-deflate-compressed canonical JSON (sorted keys, ASCII only). Import SHALL reject unknown versions, bad checksums, malformed base64 or JSON, and encoded strings over 120,000 characters, without partial import. A decoded payload SHALL declare `kind` as `plan` or `results`.
 
 #### Scenario: Corrupt string
 - **WHEN** a pasted string has a bad checksum

@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://wow-checkthat/schema/test-plan.schema.json",
-  "title": "WTT test plan v1",
+  "title": "CT test plan v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "wtt",
+    "ct",
     "addon",
     "title",
     "sections"
   ],
   "properties": {
-    "wtt": {
+    "ct": {
       "const": 1
     },
     "kind": {

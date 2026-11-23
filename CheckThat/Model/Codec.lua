@@ -1,9 +1,9 @@
--- Import/export strings: "!WTT1!<adler32 hex>!<base64 of raw deflate of canonical JSON>".
+-- Import/export strings: "!CT1!<adler32 hex>!<base64 of raw deflate of canonical JSON>".
 local _, ns = ...
 local Codec = {}
 ns.Codec = Codec
 
-Codec.PREFIX = "!WTT1!"
+Codec.PREFIX = "!CT1!"
 Codec.LIMITS = { encoded = 120000, inflated = 2000000 }
 
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -58,12 +58,12 @@ function Codec.Decode(str)
     if type(str) ~= "string" then return nil, "not a string" end
     str = str:gsub("^%s+", ""):gsub("%s+$", "")
     if #str > Codec.LIMITS.encoded then return nil, "string too large" end
-    local ver, sum, body = str:match("^!WTT(%d+)!(%x%x%x%x%x%x%x%x)!(.+)$")
+    local ver, sum, body = str:match("^!CT(%d+)!(%x%x%x%x%x%x%x%x)!(.+)$")
     if not ver then
-        if str:match("^!WTT") then return nil, "unknown or malformed WTT string version" end
-        return nil, "not a WTT string"
+        if str:match("^!CT") then return nil, "unknown or malformed CT string version" end
+        return nil, "not a CT string"
     end
-    if ver ~= "1" then return nil, "unsupported WTT version " .. ver end
+    if ver ~= "1" then return nil, "unsupported CT version " .. ver end
     local packed = b64dec(body)
     if not packed then return nil, "bad base64" end
     local json = LD:DecompressDeflate(packed)

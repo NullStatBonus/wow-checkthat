@@ -118,7 +118,7 @@ function Plan.Validate(plan)
         end
     end
     if plan.kind ~= "plan" then errs[#errs + 1] = "kind must be plan" end
-    if plan.wtt ~= 1 then errs[#errs + 1] = "unsupported plan format version" end
+    if plan.ct ~= 1 then errs[#errs + 1] = "unsupported plan format version" end
     if not isStr(plan.addon) then errs[#errs + 1] = "addon missing" end
     if not isStr(plan.title) then errs[#errs + 1] = "title missing" end
     if isStr(plan.addon) and not Plan.SLASH[plan.addon] then

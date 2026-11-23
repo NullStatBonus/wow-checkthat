@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""WTT plan tooling: validate, compile, decode, from-md, collect, report.
+"""CT plan tooling: validate, compile, decode, from-md, collect, report.
 
-Needs PyYAML and jsonschema (see requirements.txt). Run via .venv/bin/python tools/wtt.py.
+Needs PyYAML and jsonschema (see requirements.txt). Run via .venv/bin/python tools/ct.py.
 """
 import argparse, base64, copy, glob, hashlib, json, os, re, shutil, subprocess, sys, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "test-plan.schema.json")
-PREFIX = "!WTT1!"
+PREFIX = "!CT1!"
 SLASH = {
     "CheckThat": ["/ct", "/checkthat"],
     "KeepThat": ["/kt", "/keepthat"],
@@ -125,7 +125,7 @@ def print_warnings(plan):
 def merge_sections(plan):
     """Compile section requirements, setup and clients into each step."""
     out = copy.deepcopy(plan)
-    out["kind"], out["wtt"] = "plan", 1
+    out["kind"], out["ct"] = "plan", 1
     for sec in out["sections"]:
         sreq, ssetup, scl = sec.pop("requires", []), sec.pop("setup", None), sec.get("clients")
         sshare = sec.pop("share", None)
@@ -183,9 +183,9 @@ def write_revision(dest, run):
 
 def decode(s):
     s = s.strip()
-    m = re.match(r"^!WTT(\d+)!([0-9a-fA-F]{8})!(.+)$", s, re.S)
+    m = re.match(r"^!CT(\d+)!([0-9a-fA-F]{8})!(.+)$", s, re.S)
     if not m:
-        raise ValueError("not a WTT string")
+        raise ValueError("not a CT string")
     if m.group(1) != "1":
         raise ValueError("unsupported version " + m.group(1))
     # Stop inflating at the same cap the addon uses: a tiny string must not expand without limit.
@@ -294,7 +294,7 @@ def from_md(path, addon):
     parts = re.split(r"^## ", text, flags=re.M)
     pre = parts[0]
     prefix = {"KeepThat": "kt", "DontDoThat": "ddt", "ClosestVendor": "cv"}[addon]
-    plan = {"wtt": 1, "kind": "plan", "addon": addon,
+    plan = {"ct": 1, "kind": "plan", "addon": addon,
             "title": "%s in-game test plan" % addon,
             "preamble": re.sub(r"^# .*\n", "", pre).strip(),
             "logs": copy.deepcopy(LOGS[addon]),
@@ -463,7 +463,7 @@ def by_checkthat(rec):
 
 
 def report_text(runs, dest=None):
-    out = ["# WTT report", ""]
+    out = ["# CT report", ""]
     for rid, r in sorted(runs.items()):
         counts = {}
         for sid, rec in (r.get("steps") or {}).items():
@@ -494,7 +494,7 @@ def report_text(runs, dest=None):
 # ---------------------------------------------------------------- CLI
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="wtt")
+    ap = argparse.ArgumentParser(prog="ct")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("validate"); p.add_argument("plan")
     p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o")
@@ -502,8 +502,8 @@ def main(argv=None):
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
     default_src = os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
-    p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("WTT_WTF", default_src)); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
-    p.add_argument("--shots", default=os.environ.get("WTT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
+    p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF", default_src)); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     a = ap.parse_args(argv)

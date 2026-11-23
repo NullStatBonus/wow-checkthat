@@ -1,12 +1,12 @@
 import json, os, re, subprocess, sys, tempfile, unittest, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import wtt
+import ct
 
-ROOT = wtt.ROOT
+ROOT = ct.ROOT
 
 
 def good():
-    return {"wtt": 1, "addon": "KeepThat", "title": "t",
+    return {"ct": 1, "addon": "KeepThat", "title": "t",
             "logs": {"debug": {"global": "G", "path": "log", "format": "strings"}},
             "requirements": {"r": {"text": "r"}},
             "macros": [{"id": "m", "text": "/kt debug on\n/reload"}],
@@ -18,55 +18,55 @@ def good():
 
 class Validate(unittest.TestCase):
     def test_good(self):
-        self.assertEqual(wtt.validate(good()), [])
+        self.assertEqual(ct.validate(good()), [])
 
     def test_unknown_field(self):
         p = good(); p["sections"][0]["steps"][0]["bogus"] = 1
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_duplicate_id(self):
         p = good(); p["sections"][0]["steps"][1]["id"] = "a.1"
-        self.assertTrue(any("duplicate" in e for e in wtt.validate(p)))
+        self.assertTrue(any("duplicate" in e for e in ct.validate(p)))
 
     def test_unknown_action(self):
         p = good(); p["sections"][0]["steps"][1]["action"]["kind"] = "cast"
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_unresolved_requirement(self):
         p = good(); p["sections"][0]["requires"] = ["zzz"]
-        self.assertTrue(any("unresolved" in e for e in wtt.validate(p)))
+        self.assertTrue(any("unresolved" in e for e in ct.validate(p)))
 
     def test_macro_must_be_allowed(self):
         for bad in ("/run print(1)", "/cast x", "/ddt debug on", "/console scriptErrors 1\n/script x"):
             p = good(); p["macros"][0]["text"] = bad
-            self.assertTrue(any("not allowed" in e for e in wtt.validate(p)), bad)
+            self.assertTrue(any("not allowed" in e for e in ct.validate(p)), bad)
 
     def test_screenshot_flag_must_be_boolean(self):
         p = good(); p["sections"][0]["steps"][1]["screenshot"] = True
-        self.assertEqual(wtt.validate(p), [])
+        self.assertEqual(ct.validate(p), [])
         p["sections"][0]["steps"][1]["screenshot"] = "yes"
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_section_share_lands_on_last_step(self):
         p = good(); p["sections"][0]["share"] = "export"
-        self.assertEqual(wtt.validate(p), [])
-        m = wtt.merge_sections(p)
+        self.assertEqual(ct.validate(p), [])
+        m = ct.merge_sections(p)
         self.assertEqual(m["sections"][0]["steps"][-1]["share"], "export")
         self.assertNotIn("share", m["sections"][0]["steps"][0])
         p["sections"][0]["share"] = "email"
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_runner_plans_allow_ct_and_checkthat_only(self):
         for cmd in ("/ct", "/checkthat"):
             p = good(); p["addon"] = "CheckThat"; p["macros"][0]["text"] = cmd + " debug on\n/reload"
-            self.assertEqual(wtt.validate(p), [], cmd)
-        for cmd in ("/kt debug on", "/wtt debug on"):
+            self.assertEqual(ct.validate(p), [], cmd)
+        for cmd in ("/kt debug on", "/ct2 debug on"):
             p = good(); p["addon"] = "CheckThat"; p["macros"][0]["text"] = cmd
-            self.assertTrue(wtt.validate(p), cmd)
+            self.assertTrue(ct.validate(p), cmd)
 
     def test_unknown_probe(self):
         p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "cast", "op": "eq"}]
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def auto(self):
         p = good(); st = p["sections"][0]["steps"][0]
@@ -74,40 +74,40 @@ class Validate(unittest.TestCase):
         return p, st
 
     def has(self, p, needle):
-        errs = wtt.validate(p)
+        errs = ct.validate(p)
         self.assertTrue(any(needle in e for e in errs), "%r not in %r" % (needle, errs))
 
     def test_auto_step_valid(self):
         p, st = self.auto()
-        self.assertEqual(wtt.validate(p), [])
+        self.assertEqual(ct.validate(p), [])
         for n in (5, 30, 300):
             st["timeout"] = n
-            self.assertEqual(wtt.validate(p), [], n)
+            self.assertEqual(ct.validate(p), [], n)
 
     def test_auto_step_needs_assertions_alone(self):
         p, st = self.auto(); st["verify"] = ["player", "assertions"]
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
         p, st = self.auto(); st["verify"] = ["reviewer"]; st["reviewer"] = "r"; del st["assertions"]
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_auto_step_needs_a_required_assertion(self):
         p, st = self.auto(); st["assertions"][0]["diagnostic"] = True
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_auto_step_rejects_required_absence(self):
         p, st = self.auto(); st["assertions"][0]["absent"] = True
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_timeout_range_and_auto_only(self):
         for n in (3, 4, 301, 600, 7.5, -1, "30"):
             p, st = self.auto(); st["timeout"] = n
-            self.assertTrue(wtt.validate(p), n)
+            self.assertTrue(ct.validate(p), n)
         p = good(); p["sections"][0]["steps"][0]["timeout"] = 30
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
 
     def test_schema_alone_rejects_the_cross_field_auto_rules(self):
         import jsonschema
-        with open(wtt.SCHEMA, encoding="utf-8") as f:
+        with open(ct.SCHEMA, encoding="utf-8") as f:
             v = jsonschema.Draft202012Validator(json.load(f))
         def errs(mut):
             p, st = self.auto(); mut(st)
@@ -125,47 +125,47 @@ class Validate(unittest.TestCase):
 
     def test_wait_event_needs_auto(self):
         p = good(); p["sections"][0]["steps"][0]["action"] = {"kind": "wait-event", "text": "t"}
-        self.assertTrue(wtt.validate(p))
+        self.assertTrue(ct.validate(p))
         p, st = self.auto(); st["action"] = {"kind": "wait-event", "text": "t"}
-        self.assertEqual(wtt.validate(p), [])
+        self.assertEqual(ct.validate(p), [])
 
 
 class Compile(unittest.TestCase):
     def test_section_fields_merge_into_steps(self):
-        m = wtt.merge_sections(good())
+        m = ct.merge_sections(good())
         s0, s1 = m["sections"][0]["steps"]
         self.assertEqual(s0["requires"], ["r"]); self.assertEqual(s0["clients"], ["classic-era"])
         self.assertEqual(s1["setup"], "Do this. Own.")
         self.assertNotIn("requires", m["sections"][0])
 
     def test_round_trip_and_checksum(self):
-        s = wtt.encode(wtt.merge_sections(good()))
-        self.assertTrue(s.startswith("!WTT1!"))
-        self.assertEqual(wtt.decode(s), wtt.merge_sections(good()))
+        s = ct.encode(ct.merge_sections(good()))
+        self.assertTrue(s.startswith("!CT1!"))
+        self.assertEqual(ct.decode(s), ct.merge_sections(good()))
         bad = s[:6] + "00000000" + s[14:]
         with self.assertRaises(ValueError):
-            wtt.decode(bad)
+            ct.decode(bad)
 
     def test_log_none_maps_to_player_only(self):
         with tempfile.TemporaryDirectory() as d:
             md = os.path.join(d, "p.md")
             with open(md, "w") as fh:
                 fh.write("# T\n\n## 1. Sec\n\n- [ ] Do it.\n  Check: it works.\n  Log: none; on screen only.\n- [ ] Type `/kt log`.\n  Check: ok.\n  Log: `[kt] started` and `[x] n=<n>`\n")
-            plan = wtt.from_md(md, "KeepThat")
+            plan = ct.from_md(md, "KeepThat")
             s = plan["sections"][0]["steps"]
             self.assertEqual(s[0]["verify"], ["player"])
             self.assertEqual(s[1]["action"]["commands"], ["/kt log"])
             self.assertEqual([a["contains"] for a in s[1]["assertions"]], ["[kt] started"])
             self.assertTrue(all(a["diagnostic"] for a in s[1]["assertions"]))
-            self.assertEqual(wtt.validate(plan), [])
+            self.assertEqual(ct.validate(plan), [])
 
 
 class Plans(unittest.TestCase):
     def test_shipped_plans_validate(self):
         for n in ("keepthat", "dontdothat", "closestvendor", "selftest"):
-            plan = wtt.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
-            self.assertEqual(wtt.validate(plan), [], n)
-            self.assertEqual(wtt.warnings(plan), [], n)
+            plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
+            self.assertEqual(ct.validate(plan), [], n)
+            self.assertEqual(ct.warnings(plan), [], n)
 
 
 class NativeText(unittest.TestCase):
@@ -174,17 +174,17 @@ class NativeText(unittest.TestCase):
         st = p["sections"][0]["steps"][1]
         st["action"]["text"] = "Type `/kt log` and press **Pass**."
         st["title"] = "Run `/kt log`"
-        self.assertTrue(any("markdown" in e for e in wtt.validate(p)))
-        wtt.nativize(p)
+        self.assertTrue(any("markdown" in e for e in ct.validate(p)))
+        ct.nativize(p)
         self.assertEqual(st["action"]["text"], "Type |cff99ccff/kt log|r and press |cffffd100Pass|r.")
         self.assertEqual(st["title"], "Run /kt log")
-        self.assertEqual(wtt.validate(p), [])
+        self.assertEqual(ct.validate(p), [])
 
     def test_shipped_plans_have_no_markdown(self):
         import glob
         for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True):
-            d = wtt.load_yaml(path)
-            for box, key, _ in wtt.display_fields(d):
+            d = ct.load_yaml(path)
+            for box, key, _ in ct.display_fields(d):
                 self.assertNotRegex(box[key], r"`|\*\*", path + " " + key)
 
 
@@ -192,23 +192,23 @@ class SamplePlans(unittest.TestCase):
     def test_sample_plans_stay_short_and_full_plans_stay_valid(self):
         import glob
         for n in ("keepthat", "dontdothat", "closestvendor", "selftest"):
-            plan = wtt.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
+            plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
             steps = sum(len(s["steps"]) for s in plan["sections"])
             self.assertLessEqual(steps, 8, n)
         for path in glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml")):
-            plan = wtt.load_yaml(path)
-            self.assertEqual(wtt.validate(plan), [], path)
-            self.assertEqual(wtt.warnings(plan), [], path)
+            plan = ct.load_yaml(path)
+            self.assertEqual(ct.validate(plan), [], path)
+            self.assertEqual(ct.warnings(plan), [], path)
 
 
 class PlanSkill(unittest.TestCase):
-    SKILL = os.path.join(ROOT, "skills", "wtt-test-plan")
+    SKILL = os.path.join(ROOT, "skills", "ct-test-plan")
 
-    missing_commands = staticmethod(wtt.warnings)
+    missing_commands = staticmethod(ct.warnings)
 
     def test_example_plan_validates_and_lists_named_commands(self):
-        plan = wtt.load_yaml(os.path.join(self.SKILL, "example.yaml"))
-        self.assertEqual(wtt.validate(plan), [])
+        plan = ct.load_yaml(os.path.join(self.SKILL, "example.yaml"))
+        self.assertEqual(ct.validate(plan), [])
         self.assertEqual(self.missing_commands(plan), [])
 
     def test_missing_command_check_catches_colored_uncolored_and_other_codes(self):
@@ -229,7 +229,7 @@ class PlanSkill(unittest.TestCase):
                 yaml.safe_dump(plan, f)
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                rc = wtt.main(["validate", p])
+                rc = ct.main(["validate", p])
         self.assertEqual(rc, 0)
         self.assertIn("warning: a.2: command named in text but not in commands: /kt debug on", out.getvalue())
 
@@ -238,7 +238,7 @@ class PlanSkill(unittest.TestCase):
             with open(os.path.join(self.SKILL, name), encoding="utf-8") as f:
                 return f.read()
         text = read("SKILL.md")
-        for rel in ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
+        for rel in ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
                     "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua"):
             self.assertIn(rel, text + read("reference.md"))
             self.assertTrue(os.path.exists(os.path.join(ROOT, rel)), rel)
@@ -248,8 +248,8 @@ class PlanSkill(unittest.TestCase):
 
 
 class InstallSkill(unittest.TestCase):
-    SRC = os.path.join(ROOT, "skills", "wtt-test-plan")
-    BUNDLE = ("tools/wtt.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
+    SRC = os.path.join(ROOT, "skills", "ct-test-plan")
+    BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "requirements.txt")
 
     def make(self, dest, **env):
@@ -258,37 +258,37 @@ class InstallSkill(unittest.TestCase):
 
     def test_install_copies_skill_and_bundle_and_replaces_stale_copy(self):
         with tempfile.TemporaryDirectory() as d:
-            dest = os.path.join(d, "wtt-test-plan")
+            dest = os.path.join(d, "ct-test-plan")
             os.makedirs(dest)
             with open(os.path.join(dest, "stale.txt"), "w") as f:
                 f.write("old")
             self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
             self.assertFalse(os.path.exists(os.path.join(dest, "stale.txt")))
-            self.assertFalse(os.path.exists(os.path.join(dest, ".wtt-root")))
+            self.assertFalse(os.path.exists(os.path.join(dest, ".ct-root")))
             for name in os.listdir(self.SRC):
                 with open(os.path.join(self.SRC, name), "rb") as a, open(os.path.join(dest, name), "rb") as b:
                     self.assertEqual(a.read(), b.read(), name)
             for rel in self.BUNDLE:
-                with open(os.path.join(ROOT, rel), "rb") as a, open(os.path.join(dest, "wtt", rel), "rb") as b:
+                with open(os.path.join(ROOT, rel), "rb") as a, open(os.path.join(dest, "ct", rel), "rb") as b:
                     self.assertEqual(a.read(), b.read(), rel)
             with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as f:
                 version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
-            with open(os.path.join(dest, "wtt", "VERSION"), encoding="utf-8") as f:
+            with open(os.path.join(dest, "ct", "VERSION"), encoding="utf-8") as f:
                 self.assertEqual(f.read().strip(), version)
-            self.assertEqual([n for n in os.listdir(d) if n.startswith(".wtt-test-plan.")], [])
+            self.assertEqual([n for n in os.listdir(d) if n.startswith(".ct-test-plan.")], [])
 
     def test_installed_tools_run_without_the_checkout(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
-            dest = os.path.join(d, "wtt-test-plan")
-            r = subprocess.run([sys.executable, os.path.join(dest, "wtt", "tools", "wtt.py"), "validate",
+            dest = os.path.join(d, "ct-test-plan")
+            r = subprocess.run([sys.executable, os.path.join(dest, "ct", "tools", "ct.py"), "validate",
                                 os.path.join(dest, "example.yaml")], capture_output=True, text=True, cwd=d)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("ok", r.stdout)
 
     def test_failed_dependency_install_keeps_the_earlier_copy(self):
         with tempfile.TemporaryDirectory() as d:
-            dest = os.path.join(d, "wtt-test-plan")
+            dest = os.path.join(d, "ct-test-plan")
             os.makedirs(dest)
             with open(os.path.join(dest, "keep.txt"), "w") as f:
                 f.write("old")
@@ -297,7 +297,7 @@ class InstallSkill(unittest.TestCase):
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("installing PyYAML and jsonschema failed", r.stderr + r.stdout)
             self.assertTrue(os.path.exists(os.path.join(dest, "keep.txt")))
-            self.assertEqual([n for n in os.listdir(d) if n.startswith(".wtt-test-plan.")], [])
+            self.assertEqual([n for n in os.listdir(d) if n.startswith(".ct-test-plan.")], [])
 
     def test_install_refuses_a_folder_inside_the_checkout(self):
         inside = os.path.join(ROOT, "skills")
@@ -319,10 +319,10 @@ class Collect(unittest.TestCase):
                 fh.write('KeepThatDB = {["global"] = {["log"] = {"a", "b"}}}\n')
             dest = os.path.join(d, "dest")
             args = type("A", (), {"src": os.path.join(d, "src"), "dest": dest})
-            wtt.cmd_collect(args); wtt.cmd_collect(args)
+            ct.cmd_collect(args); ct.cmd_collect(args)
             self.assertEqual(len(os.listdir(os.path.join(dest, "sv"))), 2)
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "KeepThat-1")), ["r3.json"])
-            self.assertIn("KeepThat-1", wtt.report_text(wtt.latest_runs(dest)))
+            self.assertIn("KeepThat-1", ct.report_text(ct.latest_runs(dest)))
 
     def test_screenshots_by_attempt_window(self):
         with tempfile.TemporaryDirectory() as d:
@@ -334,16 +334,16 @@ class Collect(unittest.TestCase):
                 p = os.path.join(shots, name); open(p, "wb").close(); os.utime(p, (t, t))
             dest = os.path.join(d, "dest")
             args = type("A", (), {"src": os.path.join(d, "src"), "dest": dest, "shots": shots})
-            wtt.cmd_collect(args); wtt.cmd_collect(args)
+            ct.cmd_collect(args); ct.cmd_collect(args)
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "R-1", "shots")), ["a__in.jpg"])
-            self.assertIn("screenshots: a__in.jpg", wtt.report_text(wtt.latest_runs(dest), dest))
+            self.assertIn("screenshots: a__in.jpg", ct.report_text(ct.latest_runs(dest), dest))
 
 
 class Safety(unittest.TestCase):
     def test_run_ids_cannot_leave_the_runs_folder(self):
         with tempfile.TemporaryDirectory() as d:
             run = {"runId": "../../evil", "revision": 1, "steps": {}}
-            wtt.write_revision(d, run)
+            ct.write_revision(d, run)
             self.assertFalse(os.path.exists(os.path.join(d, "evil")))
             self.assertFalse(os.path.exists(os.path.join(os.path.dirname(d), "evil")))
             self.assertTrue(any(f.startswith("r1") for _, _, fs in os.walk(os.path.join(d, "runs")) for f in fs))
@@ -351,26 +351,26 @@ class Safety(unittest.TestCase):
     def test_a_different_run_with_the_same_id_and_revision_is_a_conflict(self):
         with tempfile.TemporaryDirectory() as d:
             a = {"runId": "R-1", "revision": 2, "steps": {"x": {"verdict": "pass"}}}
-            self.assertEqual(wtt.write_revision(d, a), "new")
-            self.assertEqual(wtt.write_revision(d, dict(a)), "same")
+            self.assertEqual(ct.write_revision(d, a), "new")
+            self.assertEqual(ct.write_revision(d, dict(a)), "same")
             b = {"runId": "R-1", "revision": 2, "steps": {"x": {"verdict": "fail"}}}
-            self.assertEqual(wtt.write_revision(d, b), "conflict")
+            self.assertEqual(ct.write_revision(d, b), "conflict")
             with open(os.path.join(d, "runs", "R-1", "r2.json")) as fh:
                 self.assertEqual(json.load(fh)["steps"]["x"]["verdict"], "pass", "the first copy is kept")
 
     def test_decode_stops_a_zip_bomb(self):
-        raw = b"\0" * (wtt.MAX_INFLATED + 10)
+        raw = b"\0" * (ct.MAX_INFLATED + 10)
         c = zlib.compressobj(9, zlib.DEFLATED, -15)
         packed = c.compress(raw) + c.flush()
         import base64
-        s = "!WTT1!%08x!%s" % (zlib.adler32(raw) & 0xFFFFFFFF, base64.b64encode(packed).decode())
+        s = "!CT1!%08x!%s" % (zlib.adler32(raw) & 0xFFFFFFFF, base64.b64encode(packed).decode())
         with self.assertRaises(ValueError):
-            wtt.decode(s)
+            ct.decode(s)
 
     def test_title_and_requirement_text_are_checked_for_markdown(self):
         p = good(); p["title"] = "Run `x`"; p["requirements"]["r"]["text"] = "needs **it**"
-        self.assertTrue(any("markdown" in e for e in wtt.validate(p)))
-        wtt.nativize(p)
+        self.assertTrue(any("markdown" in e for e in ct.validate(p)))
+        ct.nativize(p)
         self.assertNotIn("`", p["title"]); self.assertNotIn("**", p["requirements"]["r"]["text"])
 
 
@@ -381,29 +381,53 @@ class ReportAuto(unittest.TestCase):
                                "character": "X", "order": ["a"], "steps": {"a": {"verdict": attempt["verdict"], "attempts": [attempt]}}}}
 
     def test_report_says_which_results_checkthat_recorded(self):
-        text = wtt.report_text(self.run_fixture(by="auto"))
+        text = ct.report_text(self.run_fixture(by="auto"))
         self.assertIn("a: pass, recorded by CheckThat", text)
         self.assertIn("auto=1", text)
 
     def test_report_marks_an_automatic_failure_attempt(self):
-        text = wtt.report_text(self.run_fixture(by="auto", verdict="fail"))
+        text = ct.report_text(self.run_fixture(by="auto", verdict="fail"))
         self.assertIn("recorded by CheckThat", text)
 
     def test_open_retry_does_not_hide_the_mark(self):
         run = self.run_fixture(by="auto", verdict="unverified")
         run["KeepThat-1"]["steps"]["a"]["attempts"].append({"n": 2})   # the retry the card opens straight away
-        text = wtt.report_text(run)
+        text = ct.report_text(run)
         self.assertIn("recorded by CheckThat", text); self.assertIn("auto=1", text)
 
     def test_reopened_step_is_not_marked(self):
         run = self.run_fixture(by="auto", verdict="unverified")
         run["KeepThat-1"]["steps"]["a"]["verdict"] = "pending"             # the player pressed Undo
-        self.assertNotIn("recorded by CheckThat", wtt.report_text(run))
+        self.assertNotIn("recorded by CheckThat", ct.report_text(run))
 
     def test_player_results_carry_no_mark(self):
-        text = wtt.report_text(self.run_fixture())
+        text = ct.report_text(self.run_fixture())
         self.assertNotIn("recorded by CheckThat", text)
         self.assertNotIn("auto=", text)
+
+
+class Names(unittest.TestCase):
+    """The old names are gone. Archived changes, vendored libraries and past changelog entries keep them as history."""
+    OLD = re.compile("|".join(["w" + "tt", "Test" + "That"]), re.I)   # built from pieces so this file does not match itself
+    SKIP = ("openspec/changes/archive/", "CheckThat/Libs/", "CHANGELOG.md")
+
+    def test_no_tracked_file_uses_an_old_name(self):
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout
+        found = []
+        for rel in out.decode().split("\0"):
+            if not rel or rel.startswith(self.SKIP) or rel == "CHANGELOG.md":
+                continue
+            if self.OLD.search(rel):
+                found.append(rel)
+                continue
+            try:
+                with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+                    for n, line in enumerate(fh, 1):
+                        if self.OLD.search(line):
+                            found.append("%s:%d" % (rel, n)); break
+            except (UnicodeDecodeError, FileNotFoundError):
+                continue
+        self.assertEqual(found, [])
 
 
 if __name__ == "__main__":

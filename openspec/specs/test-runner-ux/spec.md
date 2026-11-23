@@ -35,7 +35,7 @@ The runner MAY show copy boxes for allowed commands, a button whose click is the
 - **THEN** no protected-action block occurs
 
 #### Scenario: Existing macro
-- **WHEN** the player already has a macro named WTT that the runner did not create
+- **WHEN** the player already has a macro named CT that the runner did not create
 - **THEN** the runner leaves it alone and creates the macro under an unused name
 
 #### Scenario: Too many commands

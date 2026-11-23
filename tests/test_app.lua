@@ -2,7 +2,7 @@ local ns, test, T, finish, H = dofile("tests/harness.lua")()
 H.plain(ns)
 local App = ns.App
 local function plan()
-    return { kind = "plan", wtt = 1, addon = "KeepThat", title = "KT",
+    return { kind = "plan", ct = 1, addon = "KeepThat", title = "KT",
         logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         macros = { { id = "dbg", text = "/kt debug on\n/reload" } },
         sections = { { id = "s", title = "S", steps = {
@@ -29,7 +29,7 @@ test("app import stores plan, rejects bad ones without state change", function()
     local v, err = App.ImportPlan(assert(ns.Codec.Encode(bad)))
     T.ok(v == nil and err:find("not valid"), err)
     T.ok(next(db2.plans) == nil, "nothing stored")
-    local r, e2 = App.ImportPlan(assert(ns.Codec.Encode({ kind = "results", wtt = 1 })))
+    local r, e2 = App.ImportPlan(assert(ns.Codec.Encode({ kind = "results", ct = 1 })))
     T.ok(r == nil and e2:find("results"))
 end)
 test("character key falls back when the realm name is empty", function()
@@ -183,7 +183,7 @@ end)
 test("a different plan with the same checksum does not replace a stored plan", function()
     local db = boot()
     local a = plan(); local sa = assert(ns.Codec.Encode(a))
-    local digest = sa:match("^!WTT1!(%x+)!")
+    local digest = sa:match("^!CT1!(%x+)!")
     T.ok(App.ImportPlan(sa))
     local other = plan(); other.title = "Other"; other.sections[1].steps[1].id = "kt.x"
     db.planStore[digest] = other                          -- simulate a collision with a different stored plan
@@ -197,7 +197,7 @@ test("import errors are player sentences; damaged data never raises", function()
     local v, err = App.ImportPlan(assert(ns.Codec.Encode(bad)))
     T.ok(v == nil and err:find("does not allow"), err)
     T.ok(not err:find("macro not allowed"), "no raw validator text")
-    local ok, r, e2 = pcall(App.ImportPlan, "!WTT1!00000000!====")
+    local ok, r, e2 = pcall(App.ImportPlan, "!CT1!00000000!====")
     T.ok(ok and r == nil and e2, "damaged string")
     local md = plan(); md.title = "A `x`"
     local _, e3 = App.ImportPlan(assert(ns.Codec.Encode(md)))

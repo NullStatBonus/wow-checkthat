@@ -1,7 +1,7 @@
 local ns, test, T, finish, H = dofile("tests/harness.lua")()
 H.plain(ns)
 local function good()
-    return { kind = "plan", wtt = 1, addon = "KeepThat", title = "t",
+    return { kind = "plan", ct = 1, addon = "KeepThat", title = "t",
         logs = { debug = { global = "G", path = "log", format = "strings" } },
         requirements = { loaded = { text = "loaded" } },
         macros = { { id = "dbg", text = "/kt debug on\n/reload" } },
@@ -122,7 +122,7 @@ end)test("plans for CheckThat allow /ct and /checkthat and no other command", fu
         local p = good(); p.addon = "CheckThat"; p.macros[1].text = cmd .. " debug on\n/reload"
         T.eq(#ns.Plan.Validate(p), 0, cmd .. ": " .. table.concat(ns.Plan.Validate(p), ";"))
     end
-    for _, cmd in ipairs({ "/kt debug on", "/wtt debug on" }) do
+    for _, cmd in ipairs({ "/kt debug on", "/ct2 debug on" }) do
         local p = good(); p.addon = "CheckThat"; p.macros[1].text = cmd
         T.ok(#ns.Plan.Validate(p) > 0, cmd .. " must be rejected")
     end
