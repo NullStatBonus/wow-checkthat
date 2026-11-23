@@ -2,7 +2,7 @@ ct: 1
 kind: plan
 addon: ClosestVendor
 title: ClosestVendor sample test plan
-preamble: A short sample of the ClosestVendor plan. Type /cvn debug on, then /reload, before the checks.
+preamble: A short sample of the ClosestVendor plan. The first check turns the debug log on, so run it before the others. Clear the log only in the last check.
   The full plan is in plans/full/closestvendor.yaml.
 logs:
   debug:
@@ -31,6 +31,21 @@ sections:
     verify:
     - player
     reload: after_action
+  - id: cv.s0.2
+    title: Turn the debug log on
+    action:
+      kind: copy-slash
+      text: /cvn debug on
+    expect: the chat says the debug log is on. The step records itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      contains: debug log turned on
+      label: Debug log turned on
   intro: 'Every item is pass/fail. The tester verifies the |cff99ccffCheck:|r line. The reviewer verifies
     the |cff99ccffLog:|r line. Do this once, before the first section: type |cff99ccff/cvn debug on|r,
     then |cff99ccff/reload|r. After the last check, type |cff99ccff/reload|r again so the game saves the
@@ -81,8 +96,14 @@ sections:
     expect: a question shows a vendor name and a zone.
     verify:
     - player
+    - assertions
     - reviewer
-    reviewer: '"test command: repair".'
+    assertions:
+    - kind: log
+      source: debug
+      contains: 'test command: repair'
+      label: Repair test command ran
+    reviewer: 'The log has "test command: repair".'
 - id: s7
   title: Report and debug log
   steps:
@@ -107,6 +128,7 @@ sections:
       text: Enter |cff99ccff/cvn log clear|r and confirm.
       commands:
       - /cvn log clear
+    setup: This empties the saved log. Do it last. Type |cff99ccff/reload|r before it so the game saves the log first.
     expect: the entries are gone.
     verify:
     - player
