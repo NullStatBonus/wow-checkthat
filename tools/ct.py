@@ -374,9 +374,39 @@ def find_sv(src):
     return sorted(set(found))
 
 
+WOW_CLIENTS = ("_classic_era_", "_forever_")
+
+
+def wow_sources(wow):
+    """Standard layout: <game dir>/<client>/WTF and <client>/Screenshots for each client folder that exists."""
+    found = [c for c in WOW_CLIENTS if os.path.isdir(os.path.join(wow, c, "WTF"))]
+    return [(os.path.join(wow, c, "WTF"), wow) for c in found], [os.path.join(wow, c, "Screenshots") for c in found]
+
+
 def cmd_collect(a):
-    src = a.src
     dest = a.dest
+    wow = getattr(a, "wow", None)
+    if a.src or not wow:
+        sources, shot_dirs = [(a.src or default_src(), a.src or default_src())], [getattr(a, "shots", None)]
+    else:
+        sources, shot_dirs = wow_sources(wow)
+        if not sources:
+            sys.exit("no %s folder with WTF under %s" % (" or ".join(WOW_CLIENTS), wow))
+        if getattr(a, "shots", None):
+            shot_dirs = [a.shots]
+    new_sv = new_runs = 0
+    for src, base in sources:
+        n_sv, n_runs = collect_src(src, base, dest)
+        new_sv += n_sv; new_runs += n_runs
+    new_shots = sum(collect_shots(dest, d) for d in shot_dirs)
+    print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
+
+
+def default_src():
+    return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
+
+
+def collect_src(src, base, dest):
     os.makedirs(os.path.join(dest, "sv"), exist_ok=True)
     os.makedirs(os.path.join(dest, "runs"), exist_ok=True)
     new_sv = new_runs = 0
@@ -384,7 +414,7 @@ def cmd_collect(a):
         with open(f, "rb") as fh:
             data = fh.read()
         h = hashlib.sha1(data).hexdigest()[:10]
-        rel = os.path.relpath(f, src).replace(os.sep, "__")
+        rel = os.path.relpath(f, base).replace(os.sep, "__")
         out = os.path.join(dest, "sv", "%s.%s.lua" % (rel[:-4], h))
         if not os.path.exists(out):
             shutil.copyfile(f, out); new_sv += 1
@@ -404,8 +434,7 @@ def cmd_collect(a):
                     new_runs += 1
                 elif res == "conflict":
                     print("warning: run %s revision %s already stored with different content; kept the first (two testers may share an id)" % (rid, run.get("revision")), file=sys.stderr)
-    new_shots = collect_shots(dest, getattr(a, "shots", None))
-    print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
+    return new_sv, new_runs
 
 
 SHOT_EXT = (".jpg", ".jpeg", ".png", ".tga")
@@ -501,8 +530,7 @@ def main(argv=None):
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
-    default_src = os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
-    p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF", default_src)); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; collects _classic_era_ and _forever_ (WTF and Screenshots)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
@@ -553,8 +581,8 @@ def main(argv=None):
         print(json.dumps(sv_json(a.file), indent=1, sort_keys=True))
         return 0
     if a.cmd == "collect":
-        if not a.shots:
-            guess = os.path.join(os.path.dirname(os.path.abspath(a.src)), "Screenshots")
+        if not a.shots and (a.src or not a.wow):
+            guess = os.path.join(os.path.dirname(os.path.abspath(a.src or default_src())), "Screenshots")
             a.shots = guess if os.path.isdir(guess) else None
         cmd_collect(a); return 0
     if a.cmd == "import-results":

@@ -324,6 +324,22 @@ class Collect(unittest.TestCase):
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "KeepThat-1")), ["r3.json"])
             self.assertIn("KeepThat-1", ct.report_text(ct.latest_runs(dest)))
 
+    def test_wow_folder_collects_each_client(self):
+        with tempfile.TemporaryDirectory() as d:
+            for c, rev in (("_classic_era_", 1), ("_forever_", 2)):
+                sv = os.path.join(d, "wow", c, "WTF", "Account", "A", "SavedVariables"); os.makedirs(sv)
+                with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+                    fh.write('CheckThatDB = {["runs"] = {["R-%d"] = {["revision"] = %d, ["steps"] = {}, ["order"] = {}}}}\n' % (rev, rev))
+            os.makedirs(os.path.join(d, "wow", "_retail_", "WTF", "Account", "A", "SavedVariables"))
+            dest = os.path.join(d, "dest")
+            args = type("A", (), {"src": None, "wow": os.path.join(d, "wow"), "dest": dest, "shots": None})
+            ct.cmd_collect(args)
+            self.assertEqual(sorted(os.listdir(os.path.join(dest, "runs"))), ["R-1", "R-2"])
+            self.assertEqual(len(os.listdir(os.path.join(dest, "sv"))), 2)
+            args.wow = os.path.join(d, "nothing")
+            with self.assertRaises(SystemExit):
+                ct.cmd_collect(args)
+
     def test_screenshots_by_attempt_window(self):
         with tempfile.TemporaryDirectory() as d:
             sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)

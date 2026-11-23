@@ -1,0 +1,200 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.8 Past runs and run limit
+preamble: |-
+  Before you start this plan, make practice runs. Import |cff99ccffbuild/dontdothat.ct|r with |cff99ccff/ct import|r. Then do this six times: type |cff99ccff/ct start DontDoThat|r, type |cff99ccff/ct end|r and confirm. After the sixth run, type |cff99ccff/ct start DontDoThat|r once more and leave that run open. Then import and start this plan. Type |cff99ccff/ct debug on|r in the first step. Do not press End run on this plan before the last step.
+handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then delete the practice runs and set Runs to keep back to 20.
+logs:
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s0
+  title: Setup
+  requires:
+  - loaded
+  steps:
+  - id: ct8.debug
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.".
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+- id: s1
+  title: Past runs
+  requires:
+  - loaded
+  steps:
+  - id: ct8.list
+    title: Look at the Past runs list
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct settings home|r and look under |cffffd100Past runs|r.
+      commands:
+      - /ct settings home
+    expect: The list shows this run first, then your practice runs. Each entry starts with a date and time.
+    verify:
+    - player
+  - id: ct8.view
+    title: View an ended run and come back
+    action:
+      kind: manual
+      text: Under |cffffd100Past runs|r pick the oldest ended practice run and select |cffffd100Open run|r. Look at the card. Then pick the newest run, which is this one, and select |cffffd100Open run|r again.
+    expect: The card shows "Run ended" with the practice run's results and no Pass button. After the second Open run it shows this step again. No question asks you to confirm.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log-sequence
+      source: debug
+      sequence:
+      - pattern: '^%[ct%] run opened '
+      - pattern: '^%[ct%] run opened '
+      label: Two runs were opened
+  - id: ct8.export
+    title: Export an older run
+    action:
+      kind: manual
+      text: Under |cffffd100Past runs|r pick a practice run and select |cffffd100Export run|r.
+    expect: A box shows a string that starts with !CT1!. Press Escape to close it.
+    verify:
+    - player
+    notes: Becomes a log assertion once CheckThat logs "run exported".
+  - id: ct8.replace
+    title: Open run asks before it replaces your run
+    action:
+      kind: manual
+      text: Pick the practice run that is still open and select |cffffd100Open run|r. Read the question. Select |cffffd100No|r.
+    expect: The question says your current run leaves the checklist. After No, the card still shows this step.
+    verify:
+    - player
+  - id: ct8.stale
+    title: A run that comes back starts its step again
+    action:
+      kind: manual
+      text: Pick the open practice run and select |cffffd100Open run|r, then |cffffd100Yes|r. Type |cff99ccff/ct status|r. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Yes|r.
+      commands:
+      - /ct status
+    expect: Back on this step, the check below is not green yet, because the status line came from the other run. Type |cff99ccff/ct status|r again and the check turns green. Press Pass only after that.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] status requested'
+      label: Status requested after you came back
+  - id: ct8.delete
+    title: Delete a practice run
+    action:
+      kind: manual
+      text: Pick an ended practice run and select |cffffd100Delete run|r. Read the question. Select |cffffd100Yes|r.
+    expect: The question names the run you picked. After Yes the run is gone from the list.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run deleted '
+      label: A run was deleted
+- id: s2
+  title: Runs to keep
+  requires:
+  - loaded
+  steps:
+  - id: ct8.drag
+    title: Drag Runs to keep without deleting
+    action:
+      kind: manual
+      text: Open Advanced. Drag |cffffd100Runs to keep|r down to 5 and back up to 20, then release. Type |cff99ccff/ct status|r.
+      commands:
+      - /ct settings advanced
+      - /ct status
+    expect: Under Past runs on Home, every run is still listed.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] status requested'
+      label: Status requested after the drag
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run pruned '
+      absent: true
+      label: No run was pruned
+  - id: ct8.prune
+    title: Start a run to prune the oldest runs
+    action:
+      kind: manual
+      text: Set |cffffd100Runs to keep|r to 5 in Advanced. Type |cff99ccff/ct start DontDoThat|r. Open Home and count the runs. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Yes|r.
+      commands:
+      - /ct start DontDoThat
+    setup: Keep at least seven runs, this one included.
+    cleanup: Set |cffffd100Runs to keep|r back to 20.
+    expect: Home lists five runs. The oldest ended practice runs are gone. This plan's run is still there.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run pruned '
+      label: Old runs were pruned
+  - id: ct8.report
+    title: The report shows the stored runs
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct log|r, press Ctrl+A, then look near the top of the report.
+      commands:
+      - /ct log
+    expect: The report holds a line that starts with "Stored:" and names the runs, the limit and the plan copies.
+    verify:
+    - player
+    notes: Becomes a log assertion once CheckThat logs "report requested".
+- id: s3
+  title: Reload and results
+  requires:
+  - loaded
+  steps:
+  - id: ct8.reload
+    title: Reload and resume
+    action:
+      kind: reload
+      text: Press Run to reload the game.
+    expect: After the reload the card moves on by itself within a minute.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    reload: after_action
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] resumed run '
+      label: Run resumed after the reload
+  - id: ct8.export.results
+    title: Export results
+    action:
+      kind: copy-slash
+      text: /ct export
+    expect: A box shows a string that starts with !CT1!.
+    verify:
+    - player
