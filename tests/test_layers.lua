@@ -23,4 +23,25 @@ test("the text window draws above the card and the Run button", function()
         ("window (%s) must be above the Run button (%s)"):format(tostring(box.strata), tostring(card.secure.strata)))
     T.ok(RANK[box.strata] > RANK[rawget(card, "strata") or "MEDIUM"], "and above the card")
 end)
+-- Game globals stay in Core/Adapter.lua. UI/ and Debug/ may build their own frames (AGENTS.md, Conventions).
+test("Model, Options and Core use no game globals outside the adapter", function()
+    local GLOBALS = { "CreateFrame", "UIParent", "InCombatLockdown", "GetTime", "hooksecurefunc", "GameTooltip", "GetBuildInfo" }
+    local bad = {}
+    local p = io.popen("find CheckThat/Model CheckThat/Options CheckThat/Core -name '*.lua' ! -name Adapter.lua")
+    for path in p:lines() do
+        local n = 0
+        for line in io.lines(path) do
+            n = n + 1
+            line = " " .. line:gsub("%-%-.*$", "") .. " "
+            for _, g in ipairs(GLOBALS) do
+                -- a bare name: not a field (x.G, x:G) and not part of a longer name
+                if line:find("[^%w_.:]" .. g .. "[^%w_]") then bad[#bad + 1] = ("%s:%d %s"):format(path, n, g) end
+            end
+            -- C_* namespaces
+            if line:find("[^%w_.:\"']C_%u%w*%.") then bad[#bad + 1] = ("%s:%d C_*"):format(path, n) end
+        end
+    end
+    p:close()
+    T.ok(#bad == 0, "game globals outside the adapter: " .. table.concat(bad, ", "))
+end)
 finish()

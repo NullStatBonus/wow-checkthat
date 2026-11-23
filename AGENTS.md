@@ -28,7 +28,7 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 
 ## Conventions
 
-- **Game calls live in `Core/Adapter.lua` only.** Every function the game provides is read there, guarded and in `pcall`, returning nil when missing. `Model/` has no game globals; it gets `Adapter.Env()`. Unknown data is nil, never 0 or false.
+- **Game calls live in `Core/Adapter.lua` only.** Every function the game provides is read there, guarded and in `pcall`, returning nil when missing. `Model/` has no game globals; it gets `Adapter.Env()`. Unknown data is nil, never 0 or false. One exception: `UI/` and `Debug/` build, anchor and style their own frames (`CreateFrame`, `UIParent`, frame methods). A guard cannot stand in for a missing frame. `tests/test_layers.lua` fails when `Model/`, `Options/` or `Core/` (outside the adapter) uses a game global.
 - **Logic is plain Lua.** `Model/` runs under `luajit` with a fake environment.
 - **No input automation.** Every protected action stays a real player click or keypress. The runner shows text to copy, a button the player clicks, and reads logs and state. Slash commands and macro bodies come from the allow list in `Model/Plan.lua` (`Plan.SLASH`); a plan cannot extend it. Imported data is never executed.
 - **Every player-facing sentence is `L["The whole English sentence"]`.** No concatenation, no variable keys. `tests/test_locale.lua` enforces this. See `docs/localization.md`.
