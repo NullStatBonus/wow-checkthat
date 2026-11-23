@@ -36,4 +36,27 @@ test("damaged base64 never raises", function()
     end
 end)
 
+local function bomb()
+    local LD = ns.LibDeflate or LibStub("LibDeflate")
+    return LD, LD:CompressDeflate(string.rep("a", 3000000), { level = 1 })
+end
+test("inflate stops at the output cap", function()
+    local LD, packed = bomb()
+    local out, status = LD:DecompressDeflate(packed, ns.Codec.LIMITS.inflated)
+    T.ok(out == nil and status == -20, "stopped with status " .. tostring(status))
+    T.ok(LD:DecompressDeflate(packed) ~= nil, "no limit still decodes")
+end)
+test("codec passes the cap to the decoder and reports too large", function()
+    local LD, packed = bomb()
+    local seen
+    local real = LD.DecompressDeflate
+    LD.DecompressDeflate = function(self, s, max) seen = max; return real(self, s, max) end
+    local str = "!CT1!00000000!" .. ns.Codec.b64enc(packed)
+    local v, err = ns.Codec.Decode(str)
+    LD.DecompressDeflate = real
+    T.ok(#str < ns.Codec.LIMITS.encoded, "string within the encoded cap")
+    T.ok(seen == ns.Codec.LIMITS.inflated, "cap passed: " .. tostring(seen))
+    T.ok(v == nil and err:find("too large"), err)
+end)
+
 finish()

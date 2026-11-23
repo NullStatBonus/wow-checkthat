@@ -2274,7 +2274,7 @@ end
 -- @param dictionary The preset dictionary. nil if not provided.
 --		This dictionary should be produced by LibDeflate:CreateDictionary(str)
 -- @return The decomrpess state.
-local function CreateDecompressState(str, dictionary)
+local function CreateDecompressState(str, dictionary, max_out)
   local ReadBits, ReadBytes, Decode, ReaderBitlenLeft, SkipToByteBoundary =
     CreateReader(str)
   local state = {
@@ -2286,7 +2286,10 @@ local function CreateDecompressState(str, dictionary)
     buffer_size = 0,
     buffer = {},
     result_buffer = {},
-    dictionary = dictionary
+    dictionary = dictionary,
+    -- CheckThat patch: optional output limit, counted as buffers are flushed.
+    max_out = max_out,
+    flushed = 0
   }
   return state
 end
@@ -2436,6 +2439,12 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens,
       buffer[buffer_size + 1] = nil
       -- NOTE: buffer[32769..end] and buffer[-257..0] are not cleared.
       -- This is why "buffer_size" variable is needed.
+      -- CheckThat patch: stop when the output passes the caller's limit.
+      local flushed = state.flushed + 32768
+      state.flushed = flushed
+      if state.max_out and flushed > state.max_out then
+        return -20 -- output limit exceeded
+      end
     end
   until symbol == 256
 
@@ -2645,8 +2654,8 @@ end
 
 -- @see LibDeflate:DecompressDeflate(str)
 -- @see LibDeflate:DecompressDeflateWithDict(str, dictionary)
-local function DecompressDeflateInternal(str, dictionary)
-  local state = CreateDecompressState(str, dictionary)
+local function DecompressDeflateInternal(str, dictionary, max_out)
+  local state = CreateDecompressState(str, dictionary, max_out)
   local result, status = Inflate(state)
   if not result then return nil, status end
 
@@ -2728,6 +2737,8 @@ end
 
 --- Decompress a raw deflate compressed data.
 -- @param str [string] The data to be decompressed.
+-- @param max_out [integer/nil] CheckThat patch: stop with nil, -20 once the
+-- output passes about this many bytes (checked every 32768 bytes).
 -- @return [string/nil] If the decompression succeeds, return the decompressed
 -- data. If the decompression fails, return nil. You should check if this return
 -- value is non-nil to know if the decompression succeeds.
@@ -2739,12 +2750,12 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressDeflate
-function LibDeflate:DecompressDeflate(str)
+function LibDeflate:DecompressDeflate(str, max_out)
   local arg_valid, arg_err = IsValidArguments(str)
   if not arg_valid then
     error(("Usage: LibDeflate:DecompressDeflate(str): " .. arg_err), 2)
   end
-  return DecompressDeflateInternal(str)
+  return DecompressDeflateInternal(str, nil, max_out)
 end
 
 --- Decompress a raw deflate compressed data with a preset dictionary.

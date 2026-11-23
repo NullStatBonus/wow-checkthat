@@ -33,3 +33,12 @@ Updating:
   4. sha256 every file against the tarball (no local patches) and against the sibling addons'
      copies of the same files (wow-closest-vendor, wow-dontdothat); they must match.
   5. make test && make check.
+
+LibDeflate (not from Ace3)
+  Version:       1.0.2-release (MINOR 1), from https://github.com/safeteeWow/LibDeflate
+  Local patch:   DecompressDeflate(str, max_out) stops with nil, -20 once flushed output passes
+                 max_out. Marked "CheckThat patch" in LibDeflate.lua (CreateDecompressState,
+                 DecodeUntilEndOfBlock, DecompressDeflateInternal, DecompressDeflate).
+                 Without it, a small pasted string can expand to about 90 MB before the size check.
+  Updating:      reapply the patch; tests/test_codec.lua fails if it is lost.
+                 Sibling addons keep an unpatched copy, so their files differ.

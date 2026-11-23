@@ -66,8 +66,11 @@ function Codec.Decode(str)
     if ver ~= "1" then return nil, "unsupported CT version " .. ver end
     local packed = b64dec(body)
     if not packed then return nil, "bad base64" end
-    local json = LD:DecompressDeflate(packed)
-    if not json then return nil, "bad compressed data" end
+    local json, status = LD:DecompressDeflate(packed, Codec.LIMITS.inflated)
+    if not json then
+        if status == -20 then return nil, "decoded data too large" end
+        return nil, "bad compressed data"
+    end
     if #json > Codec.LIMITS.inflated then return nil, "decoded data too large" end
     if string.format("%08x", LD:Adler32(json)) ~= sum:lower() then return nil, "checksum mismatch" end
     local tbl, err = ns.Json.Decode(json)

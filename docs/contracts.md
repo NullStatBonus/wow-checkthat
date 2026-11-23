@@ -22,6 +22,7 @@ What a client or another addon provides, as measured or source-reviewed. Add a r
 | Area | Fact | Source |
 | --- | --- | --- |
 | Era 11509 | `SecureActionButtonTemplate` with `type=macro` and `macrotext`; `useOnKeyDown` false makes a key-up click work. | Blizzard UI source 1.15.9 (`SecureTemplates.lua`) |
+| Both clients | LibDeflate 1.0.2 `DecompressDeflate` has no output limit and builds the whole result. CheckThat patches it: `DecompressDeflate(str, max_out)` returns `nil, -20` once flushed output passes `max_out`, checked every 32768 bytes. | LibDeflate source review and `tests/test_codec.lua` |
 | Both clients | Protected frames cannot be shown, hidden or re-anchored in combat. The secure button is a separate top-level frame. | Blizzard UI documentation |
 
 ## Pending in-game
