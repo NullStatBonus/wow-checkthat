@@ -491,6 +491,38 @@ def by_checkthat(rec):
     return rec.get("verdict") != "pending" and bool(done) and done[-1].get("by") == "auto"   # Undo reopens the step
 
 
+def evidence_state(rec):
+    """met, bad, missing or none: the required checks of the step's last finished attempt."""
+    done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
+    outs = [o for o in (done[-1].get("outcomes") or []) if not o.get("diagnostic")] if done else []
+    if not outs:
+        return "none"
+    results = {o.get("result") for o in outs}
+    if "fail" in results:
+        return "bad"
+    return "met" if results == {"pass"} else "missing"   # an outcome without a result is not evidence
+
+
+def step_ids(r):
+    """Steps in plan order, then any other recorded step (one the client does not use) in name order."""
+    order = list(r.get("order") or [])
+    return order + sorted(s for s in (r.get("steps") or {}) if s not in order)
+
+
+def step_table(r):
+    """One row per step in plan order: step, verdict, evidence, attempts, note."""
+    rows = [("step", "verdict", "evidence", "attempts", "note")]
+    for sid in step_ids(r):
+        rec = (r.get("steps") or {}).get(sid, {})
+        done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
+        note = " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
+        if len(note) > 40:
+            note = note[:37] + "..."
+        rows.append((sid, str(rec.get("verdict", "?")), evidence_state(rec), str(len(rec.get("attempts") or [])), note))
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
+
+
 def report_text(runs, dest=None):
     out = ["# CT report", ""]
     for rid, r in sorted(runs.items()):
@@ -501,8 +533,11 @@ def report_text(runs, dest=None):
         out.append("client %s build %s character %s" % (r.get("client"), r.get("build"), r.get("character")))
         auto = sum(1 for rec in (r.get("steps") or {}).values() if by_checkthat(rec))
         out.append("counts: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())) + (", auto=%d" % auto if auto else ""))
-        for sid in r.get("order", []):
-            rec = r["steps"].get(sid, {})
+        out.append("")
+        out.extend(step_table(r))
+        out.append("")
+        for sid in step_ids(r):
+            rec = (r.get("steps") or {}).get(sid, {})
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
             mark = ", recorded by CheckThat" if by_checkthat(rec) else ""
             if (shots or mark) and rec.get("verdict") in ("pass", "skip", "inapplicable"):
