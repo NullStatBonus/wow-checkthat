@@ -12,6 +12,7 @@ TestThat turns a long manual test plan into a short checklist. A card shows one 
 - Copy each command from its own box, or click Run to run the step's commands. TestThat never sends input for you.
 - Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
 - See which steps TestThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
+- Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
 - Keep your place through `/reload`.
 - Set card size, opacity and position. Use shared or per-character settings.
 - Commands: `/wtt`, `/wtt settings`, `/wtt import`, `/wtt start <addon>`, `/wtt export`, `/wtt log`.
@@ -22,3 +23,4 @@ TestThat turns a long manual test plan into a short checklist. A card shows one 
 - Results are saved when the game reloads or logs out.
 - Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `TestThat` folder in `Interface/AddOns/`.
 - Run is not available in combat. TestThat shows it again when combat ends.
+- Automatic steps record a result only while the card is on screen. They read logs and never send input.

@@ -63,6 +63,9 @@ function Run.Begin(run, ctx, id)
     local last = rec.attempts[#rec.attempts]
     if last and not last.verdict then return last end -- already open (e.g. after a reload)
     local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = ns.Evidence.Snapshot(ctx.plan, ctx.env), build = ctx.build }
+    -- After the runner settled the last attempt as unverified, the retry waits for the player: no loop of automatic results.
+    -- (Undo resets the step to pending: that is the player acting, so the retry may settle itself.)
+    if last and last.by == "auto" and last.verdict == "unverified" and rec.verdict == "unverified" then a.noauto = true end
     rec.attempts[#rec.attempts + 1] = a
     run.current = Run.IndexOf(run, id)
     Run.Touch(run, ctx.now)
@@ -100,8 +103,36 @@ function Run.IndexOf(run, id)
     for i, v in ipairs(run.order) do if v == id then return i end end
 end
 
--- Evaluate assertions and record the verdict. Returns the attempt.
-function Run.Verdict(run, ctx, id, verdict, note)
+-- Auto steps: when every required check is met, or the timeout has passed, record a pass claim through the same gate
+-- as a player's click. The gate turns it into fail (contradicting evidence) or unverified (missing evidence) at the timeout.
+-- Reads only; the card calls it from its refresh. Returns the attempt when it recorded a result.
+function Run.AutoSettle(run, ctx, id, note)
+    local step, rec = stepOf(ctx, id), run.steps[id]
+    if not (step and step.auto and rec) then return nil end
+    local a = rec.attempts[#rec.attempts]
+    if not a or a.verdict or a.noauto then return nil end
+    local allMet = true
+    local items = ns.Evidence.Preview(step, a.snapshots, ctx.plan, ctx.env)
+    for _, it in ipairs(items) do if it.state ~= "met" then allMet = false end end
+    local due = step.timeout and (ctx.now - a.started) >= step.timeout
+    if due then return Run.Verdict(run, ctx, id, "pass", note, "auto") end
+    -- A step that asks for a reload is not settled before the reload happened. The recording read must agree with the
+    -- live read: a check that flipped in between is left for the next refresh, never recorded as a failure.
+    local waitingReload = step.reload == "after_action" and not a.reloaded
+    if allMet and #items > 0 and not waitingReload then return Run.Verdict(run, ctx, id, "pass", note, "auto", true) end
+end
+
+-- Seconds until an auto step with a timeout settles, counted from when its attempt opened; nil when none applies.
+function Run.TimeLeft(run, ctx, id)
+    local step, rec = stepOf(ctx, id), run.steps[id]
+    if not (step and step.auto and step.timeout and rec) then return nil end
+    local a = rec.attempts[#rec.attempts]
+    if not a or a.verdict or a.noauto then return nil end
+    return math.max(0, step.timeout - (ctx.now - a.started))
+end
+
+-- Evaluate assertions and record the verdict. Returns the attempt. `by` = "auto" marks a result the runner recorded.
+function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     if not VERDICTS[verdict] then return nil, "bad verdict" end
     local step = stepOf(ctx, id)
     local rec = run.steps[id]
@@ -120,6 +151,7 @@ function Run.Verdict(run, ctx, id, verdict, note)
             end
         end
     end
+    if holdUnlessMet and (anyFail or anyUnverified) then a.outcomes = nil; return nil end
     -- A pass needs every required assertion to match. Contradicting evidence fails; missing evidence is unverified.
     local needsAssert = false
     for _, v in ipairs(step.verify) do if v == "assertions" then needsAssert = true end end
@@ -130,7 +162,7 @@ function Run.Verdict(run, ctx, id, verdict, note)
         elseif required > 0 then a.evidence = "matched"
         else a.evidence = "diagnostic-only" end
     end
-    a.claimed = verdict
+    a.claimed, a.by = verdict, by
     a.verdict, a.note, a.finished = effective, note, ctx.now
     a.snapshots = nil
     verdict = effective

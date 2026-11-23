@@ -239,16 +239,37 @@ function App.Begin()
     return ns.Run.Begin(run, ctx, step.id), step
 end
 
+local function logResult(step, a)
+    local why
+    for _, o in ipairs(a.outcomes or {}) do if o.result ~= "pass" and not o.diagnostic then why = o.why; break end end
+    App.Log(("step %s %s%s%s%s"):format(step.id, a.verdict, a.by == "auto" and " auto" or "",
+        a.evidence and (" evidence " .. a.evidence) or "", why and (": " .. why) or ""))
+end
+
 function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
     if not step then return nil, L["There is no current step."] end
     local a, err = ns.Run.Verdict(run, ctx, step.id, verdict, note)
-    if a then
-        local why
-        for _, o in ipairs(a.outcomes or {}) do if o.result ~= "pass" and not o.diagnostic then why = o.why; break end end
-        App.Log(("step %s %s%s%s"):format(step.id, a.verdict, a.evidence and (" evidence " .. a.evidence) or "", why and (": " .. why) or ""))
-    end
+    if a then logResult(step, a) end
     return a, err, step
+end
+
+-- Seconds until the current auto step settles itself, or nil.
+function App.TimeLeft()
+    local run, ctx, step = App.Current()
+    if not (step and step.auto and step.timeout) then return nil end
+    ctx.now = now(App)
+    return ns.Run.TimeLeft(run, ctx, step.id)
+end
+
+-- The card's refresh calls this for the current step. Records a result only when the step is auto and its evidence says so.
+function App.AutoSettle(note)
+    local run, ctx, step = App.Current()
+    if not (step and step.auto) then return nil end
+    ctx.now = now(App)
+    local a = ns.Run.AutoSettle(run, ctx, step.id, note)
+    if a then logResult(step, a) end
+    return a, step
 end
 
 -- The open attempt survived a reload: the card should ask for verification, not another reload.

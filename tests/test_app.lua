@@ -204,4 +204,26 @@ test("import errors are player sentences; damaged data never raises", function()
     T.ok(e3:find("backticks"), e3)
 end)
 
+test("an automatic result is logged, labelled and exported", function()
+    local db, env = boot()
+    db.log.enabled = true
+    local p = plan()
+    local st = p.sections[1].steps[1]
+    st.verify = { "assertions" }; st.auto = true; st.reload = nil; st.assertions[1].scope = nil; st.assertions[1].contains = "auto line"
+    App.ImportPlan(assert(ns.Codec.Encode(p)))
+    App.Start("KeepThat"); App.Begin()
+    T.eq(App.AutoSettle(), nil, "nothing yet")
+    env.KeepThatDB.global.log[#env.KeepThatDB.global.log + 1] = "auto line"
+    local a, step = App.AutoSettle()
+    T.eq(a.verdict, "pass"); T.eq(step.id, "kt.1")
+    local found
+    for _, e in ipairs(db.log.entries) do
+        local m = type(e) == "table" and e.msg or e
+        if tostring(m):find("step kt.1 pass auto evidence matched", 1, true) then found = true end
+    end
+    T.ok(found, "log line missing")
+    local back = assert(ns.Codec.Decode(assert(App.Export())))
+    T.eq(back.steps["kt.1"].attempts[1].by, "auto", "the results string says TestThat recorded it")
+end)
+
 finish()

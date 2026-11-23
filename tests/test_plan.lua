@@ -73,4 +73,50 @@ test("malformed plan shapes are errors, not Lua errors", function()
     bad(function(p) p.sections[1].steps[2] = 5 end, "step is not a table")
 end)
 
+local function auto(p)
+    local st = p.sections[1].steps[1]
+    st.verify = { "assertions" }; st.auto = true
+    return st
+end
+test("auto step with a required line is valid; timeout 5 to 300 is valid", function()
+    local p = good(); auto(p)
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    for _, n in ipairs({ 5, 30, 300 }) do
+        p.sections[1].steps[1].timeout = n
+        T.eq(#ns.Plan.Validate(p), 0, "timeout " .. n)
+    end
+end)
+test("auto step must verify by assertions alone", function()
+    bad(function(p) auto(p).verify = { "player", "assertions" } end, "auto step cannot ask the player")
+    bad(function(p) local s = auto(p); s.verify = { "reviewer" }; s.reviewer = "r"; s.assertions = nil end, "auto step needs assertions")
+end)
+test("auto step needs a required assertion", function()
+    bad(function(p) auto(p).assertions[1].diagnostic = true end, "auto step needs a required assertion")
+end)
+test("auto step cannot rely on an absence check", function()
+    bad(function(p) auto(p).assertions[1].absent = true end, "auto step cannot use a required absence check")
+    local p = good(); local s = auto(p)
+    s.assertions[2] = { kind = "log", source = "debug", contains = "y", absent = true, diagnostic = true }
+    T.eq(#ns.Plan.Validate(p), 0, "a diagnostic absence check is fine")
+end)
+test("timeout is a whole number from 5 to 300 and only on an auto step", function()
+    for _, n in ipairs({ 3, 4, 301, 600, 7.5, -1 }) do
+        bad(function(p) auto(p).timeout = n end, "timeout must be a whole number from 5 to 300")
+    end
+    bad(function(p) auto(p).timeout = "30" end, "timeout must be a whole number from 5 to 300")
+    bad(function(p) p.sections[1].steps[1].timeout = 30 end, "timeout needs auto")
+    bad(function(p) auto(p).auto = "yes" end, "auto must be boolean")
+end)
+test("wait-event is valid only on an auto step", function()
+    bad(function(p) p.sections[1].steps[1].action = { kind = "wait-event", text = "t" } end, "wait-event needs an auto step")
+    local p = good(); auto(p).action = { kind = "wait-event", text = "t" }
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+end)
+test("assertion flags must be real booleans, so an import cannot downgrade a required check", function()
+    bad(function(p) p.sections[1].steps[1].assertions[1].diagnostic = "false" end, "diagnostic must be boolean")
+    bad(function(p) p.sections[1].steps[1].assertions[1].absent = "no" end, "absent must be boolean")
+    local p = good(); p.sections[1].steps[1].assertions[1].diagnostic = false
+    T.eq(#ns.Plan.Validate(p), 0)
+end)
+
 finish()

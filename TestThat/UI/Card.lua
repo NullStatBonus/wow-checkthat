@@ -231,7 +231,7 @@ end
 
 local function setMacro(step, plan)
     local body = App.MacroText(step, plan)
-    local s = Card.EnsureSecure()
+    local s = not A.InCombat() and Card.EnsureSecure()
     if not s then card.pendingMacro = true; return end -- in combat: the button is hidden (state driver) and is set up after combat
     card.pendingMacro = nil
     if body and card:IsShown() then s:SetAttribute("macrotext", body); s:Show() else s:SetAttribute("macrotext", ""); s:Hide() end
@@ -297,6 +297,9 @@ local function setText(f, str, color)
     if color then f:SetTextColor(color[1], color[2], color[3]) end
     f:Show()
 end
+
+-- A note belongs to one attempt of one step; the box is cleared when this key changes.
+local function noteKeyOf(run, step, rec) return run.runId .. "/" .. step.id .. "/" .. #rec.attempts end
 
 function Card.Refresh()
     if not card then return end
@@ -378,7 +381,10 @@ function Card.Refresh()
     y = y + card.title:GetStringHeight() + 6
     -- Who checks this step: unmissable, right under the title.
     place(card.banner, 12, y)
-    if #required > 0 then
+    local autoLive = step.auto and not (open and open.noauto) -- after an automatic unverified result the retry waits for the player
+    if autoLive then
+        setText(card.banner, L["|cff66ff66TESTTHAT CHECKS THIS STEP.|r It records the result when the checks are met."], GREY)
+    elseif #required > 0 then
         setText(card.banner, L["|cff66ff66TESTTHAT CHECKS THIS STEP.|r It ticks below when it sees your action."], GREY)
     elseif hasExtra then
         setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r TestThat records extra detail for the reviewer."], GREY)
@@ -402,7 +408,7 @@ function Card.Refresh()
     end
     local rows = {}
     if step.setup then rows[#rows + 1] = { L["Setup"], step.setup } end
-    rows[#rows + 1] = { L["Do"], step.action.text or L["Use the command below."] }
+    rows[#rows + 1] = { L["Do"], step.action.text or (step.action.kind == "wait-event" and (autoLive and L["Wait. TestThat records the result when the checks below are met."] or L["Repeat the action, then press Pass."])) or L["Use the command below."] }
     rows[#rows + 1] = { L["Expect"], step.expect }
     local copies = App.Copyables(step, ctx.plan)
     local firstCopy
@@ -427,17 +433,18 @@ function Card.Refresh()
     if #required > 0 and open then
         card.checkStep = step.id
         place(card.checks, 12, y); card.checks:Show()
-        local items = ns.Run.Preview(run, ctx, step.id)
-        card.checks:SetText(Card.ChecksText(items, true)) -- measure the longest state so a green list never grows into the buttons
+        local items, left = ns.Run.Preview(run, ctx, step.id), App.TimeLeft()
+        card.checks:SetText(Card.ChecksText(items, true, left or 0)) -- measure the longest state so a green list never grows into the buttons
         y = y + card.checks:GetStringHeight() + 14
-        card.checks:SetText(Card.ChecksText(items))
+        card.checks:SetText(Card.ChecksText(items, false, left))
     end
     if viewing then
         -- A finished step: show what was recorded, offer Redo. Nothing here changes the result.
         local word = ({ pass = L["Pass"], partial = L["Partial"], fail = L["Fail"], skip = L["Skip"] })[rec0.verdict] or rec0.verdict
         local last = lastA
         place(card.recorded, 12, y)
-        setText(card.recorded, L["Recorded: %s"]:format(word) .. ((last and last.note) and ("  -  " .. last.note) or ""), BODY)
+        setText(card.recorded, ((last and last.by == "auto") and L["Recorded: %s (recorded by TestThat)"] or L["Recorded: %s"]):format(word)
+            .. ((last and last.note) and ("  -  " .. last.note) or ""), BODY)
         y = y + card.recorded:GetStringHeight() + 12
         card.redo:Show()
         card:SetHeight(y + 40); return
@@ -457,7 +464,7 @@ function Card.Refresh()
     if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Reload now so Claude can read the log."] end
     if #hint > 0 then place(card.hint, 12, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
     y = y + 6
-    local noteKey = run.runId .. "/" .. step.id .. "/" .. #rec0.attempts
+    local noteKey = noteKeyOf(run, step, rec0)
     if card.noteKey ~= noteKey then card.note:SetText(""); card.noteKey = noteKey end -- a note belongs to one step attempt
     card.noteLabel:Show(); place(card.noteLabel, 12, y + 3)
     place(card.note, 62, y - 1); card.note:Show()
@@ -494,7 +501,8 @@ local ICON = {
 local TINT = { met = "|cff66ff66", waiting = "|cffdddddd", bad = "|cffff6666", later = "|cffaaaaaa" }
 
 -- reserve = true adds the final "all detected" line, so the card can be sized for the longest state.
-function Card.ChecksText(items, reserve)
+-- left = seconds until an auto step settles itself, shown as the last line.
+function Card.ChecksText(items, reserve, left)
     local lines, allMet = {}, #items > 0
     for _, it in ipairs(items) do
         local a = it.assertion
@@ -509,6 +517,7 @@ function Card.ChecksText(items, reserve)
         lines[#lines + 1] = ICON[it.state] .. " " .. TINT[it.state] .. label .. tail .. "|r"
     end
     if allMet or reserve then lines[#lines + 1] = L["|cff66ff66All checks detected. Press Pass.|r"] end
+    if left then lines[#lines + 1] = L["TestThat records the result in %d s."]:format(left) end
     return table.concat(lines, "\n")
 end
 
@@ -517,12 +526,37 @@ function Card.UpdateChecks()
     if not (card and card:IsShown() and card.checkStep) then return end
     local run, ctx, step = App.Current()
     if run and step and step.id == card.checkStep then
-        card.checks:SetText(Card.ChecksText(ns.Run.Preview(run, ctx, step.id)))
+        card.checks:SetText(Card.ChecksText(ns.Run.Preview(run, ctx, step.id), false, App.TimeLeft()))
     end
+end
+
+-- Auto steps: the runner records the result itself once the checks say so. It reads only, and only while the card
+-- is shown. An error here is logged and never stops the loop.
+function Card.AutoSettle()
+    if not (card and card:IsShown() and card:IsVisible()) then return nil end -- IsVisible: false while the game UI is hidden
+    local pending = App.db.ui.pendingStart
+    if pending and App.db.plans[pending] then return nil end -- the Start screen is showing, not the run
+    local note = card.note and card.note:GetText()
+    if note == "" then note = nil end
+    local run, _, cur = App.Current()
+    local rec = run and cur and run.steps[cur.id]
+    if note and not (rec and card.noteKey == noteKeyOf(run, cur, rec)) then note = nil end -- the box may still hold another step's note
+    local ok, a, step = pcall(App.AutoSettle, note)
+    if not ok then
+        if ns.Log then ns.Log.Failure("card", "auto settle: " .. tostring(a)) end
+        return nil
+    end
+    if a then
+        pcall(function() card.note:SetText(""); card.note:ClearFocus() end) -- the note went with the result
+        local ok2, err = pcall(function() Card.AfterVerdict(step); Card.Refresh() end)
+        if not ok2 and ns.Log then ns.Log.Failure("card", "after auto: " .. tostring(err)) end
+    end
+    return a
 end
 
 local function tick()
     if not (card and card:IsShown()) then if card then card.ticking = false end return end
+    Card.AutoSettle()
     Card.UpdateChecks()
     A.After(0.5, tick)
 end
