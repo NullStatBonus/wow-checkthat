@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+New: **Past runs.** Home lists your stored runs. Open a run, export it, or delete it.
+New: **Runs to keep.** Advanced sets how many runs CheckThat keeps. The oldest runs go first.
+New: Opening an ended run only views it. Your current run stays where it was.
+Changed: CheckThat saves less data for each step. It also deletes plan copies that no run uses.
+Fixed: A "must not appear" check could pass after the game log rolled over. It now stays unverified.
+Fixed: Large logs made the saved data grow with every step. CheckThat now saves only the logs that a step checks.
+
 ## 0.7.1
 
 Changed: **Start screen.** The heading is now the plan title. The step count and "Ready to test" show under it.

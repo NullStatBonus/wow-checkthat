@@ -293,4 +293,125 @@ test("context menu: MenuUtil, then UIDropDownMenu, then false", function()
     T.eq(Ad.ContextMenu({}, items), false, "a failing menu falls back")
     _G.MenuUtil, _G.UIDropDownMenu_Initialize = saved.MenuUtil, saved.UDM_I
 end)
+-- Run history, run limit and plan pruning
+local function withRuns(n, char)
+    local db, env = boot()
+    env.UnitName = function() return char or "Tester" end
+    App.ImportPlan(assert(ns.Codec.Encode(plan())))
+    local ids = {}
+    for i = 1, n do
+        env.time = function() return 1000 + i end
+        local run = assert(App.Start("KeepThat"))
+        ids[i] = run.runId
+        App.End()
+    end
+    return db, env, ids
+end
+test("a stored plan copy goes when no run, loaded plan or recent entry names it", function()
+    local db = boot()
+    local p1 = plan()
+    local p2 = plan(); p2.title = "KT two"
+    App.ImportPlan(assert(ns.Codec.Encode(p1)))
+    local d1 = db.plans.KeepThat.digest
+    App.ImportPlan(assert(ns.Codec.Encode(p2)))
+    local d2 = db.plans.KeepThat.digest
+    T.ok(db.planStore[d1] and db.planStore[d2], "a recent entry still names the first")
+    db.ui.recent = {}
+    App.PrunePlans()
+    T.eq(db.planStore[d1], nil, "orphan revision removed"); T.ok(db.planStore[d2], "loaded plan kept")
+    local run = assert(App.Start("KeepThat"))
+    App.ClearPlan()
+    T.ok(db.planStore[d2], "the ended run still names it")
+    T.ok(App.Current() ~= nil and App.Current().runId == run.runId)
+    App.DeleteRun(run.runId)
+    T.eq(db.planStore[d2], nil, "no run, loaded plan or recent entry names it")
+end)
+test("runs beyond the limit are pruned oldest first and the current run stays", function()
+    local db, env, ids = withRuns(7)
+    db.runLimit = 10
+    T.eq(#App.Runs(), 7)
+    db.runLimit = 5
+    App.PruneRuns()
+    T.eq(#App.Runs(), 5)
+    T.eq(db.runs[ids[1]], nil); T.eq(db.runs[ids[2]], nil); T.ok(db.runs[ids[3]] and db.runs[ids[7]])
+    env.time = function() return 2000 end
+    local live = assert(App.Start("KeepThat"))
+    T.eq(#App.Runs(), 5, "never above the limit")
+    T.eq(db.runs[ids[3]], nil, "the oldest went")
+    T.ok(db.runs[live.runId] and db.currentByChar[App.Character()] == live.runId, "the new current run stays")
+end)
+test("the limit never removes any character's current run", function()
+    local db, env, ids = withRuns(7, "Anna")
+    db.currentByChar["Zed-Realm"] = ids[1] -- the oldest run is another character's current run
+    db.runLimit = 5
+    App.PruneRuns()
+    T.ok(db.runs[ids[1]], "current run of another character kept")
+    T.eq(#App.Runs(), 5, "the others gave way")
+    db.runLimit = 1; T.eq(App.RunLimit(), 5, "an out of range value is clamped")
+    db.runLimit = 500; T.eq(App.RunLimit(), 100)
+    db.runLimit = nil; T.eq(App.RunLimit(), 20)
+end)
+test("Runs lists newest first with counts", function()
+    local db, env, ids = withRuns(3)
+    local rows = App.Runs()
+    T.eq(rows[1].id, ids[3]); T.eq(rows[3].id, ids[1])
+    T.ok(rows[1].text:find("KT") and rows[1].text:find("Tester") and rows[1].text:find("open"), rows[1].text)
+    T.ok(rows[1].ended)
+end)
+test("OpenRun shows an ended run, refuses another character's unfinished run", function()
+    local db, env, ids = withRuns(2)
+    local before = db.currentByChar[App.Character()]
+    local opened = App.OpenRun(ids[1])
+    T.eq(opened.runId, ids[1]); T.eq(db.currentByChar[App.Character()], before, "viewing changes no current run")
+    local run = App.Current()
+    T.eq(run.runId, ids[1]); T.ok(run.endedAt, "read-only")
+    T.eq(App.Status():find(ids[1], 1, true) ~= nil, true, "status names the run on the card")
+    local s = assert(App.Export()); T.ok(s:find("^!CT1!"))
+    local why = select(2, App.CanEnd()); T.ok(why:find("already ended"), "End run acts on the ended run on the card")
+    local live = assert(App.Start("KeepThat"))
+    T.eq(App.Current().runId, live.runId, "a new run clears the view")
+    T.ok(not App.OpenReplacesRun(ids[1]), "viewing an ended run takes nothing from the live run")
+    App.OpenRun(ids[2]); T.eq(App.Current().runId, ids[2]); T.eq(db.currentByChar[App.Character()], live.runId)
+    App.OpenRun(live.runId); T.eq(App.Current().runId, live.runId, "opening the current run returns to it")
+    env.UnitName = function() return "Other" end
+    local r, err = App.OpenRun(live.runId)
+    T.ok(r == nil and err:find("another character"), err)
+    T.ok(App.OpenRun(ids[2]), "an ended run opens for anyone")
+    local r2, err2 = App.OpenRun("nope")
+    T.ok(r2 == nil and err2:find("no run"), err2)
+end)
+test("opening another unfinished run takes the card and starts its open attempt again", function()
+    local db, env = boot()
+    App.ImportPlan(assert(ns.Codec.Encode(plan())))
+    env.time = function() return 1000 end
+    local a = assert(App.Start("KeepThat"))
+    ns.Run.Begin(a, App.Ctx(a), "kt.1")
+    T.eq(#a.steps["kt.1"].attempts, 1)
+    env.time = function() return 2000 end
+    local b = assert(App.Start("KeepThat"))
+    T.ok(App.OpenReplacesRun(a.runId), "asks before one live run replaces another")
+    T.ok(not App.OpenReplacesRun(b.runId))
+    env.time = function() return 3000 end
+    App.OpenRun(a.runId)
+    T.eq(App.Current().runId, a.runId); T.eq(db.currentByChar[App.Character()], a.runId)
+    T.eq(#a.steps["kt.1"].attempts, 0, "the open attempt from before is dropped")
+    local fresh = ns.Run.Begin(a, App.Ctx(a), "kt.1")
+    T.eq(fresh.started, 3000, "the new attempt counts from now")
+end)
+test("a run deleted while viewed clears the view", function()
+    local db, env, ids = withRuns(2)
+    App.OpenRun(ids[1]); T.eq(App.Current().runId, ids[1])
+    T.ok(App.DeleteRun(ids[1]))
+    T.eq(db.ui.view[App.Character()], nil)
+    T.eq(App.Current().runId, ids[2], "the card falls back to the current run")
+end)
+test("DeleteRun removes the run and clears the card when it was current", function()
+    local db, env, ids = withRuns(2)
+    local cur = db.currentByChar[App.Character()]
+    T.ok(App.DeleteRun(cur))
+    T.eq(db.runs[cur], nil); T.eq(App.Current(), nil, "card falls back to the start screen")
+    T.eq(db.currentByChar[App.Character()], nil, "no dangling pointer to the deleted run")
+    local ok, err = App.DeleteRun(cur)
+    T.ok(ok == nil and err:find("no run"), err)
+end)
 finish()

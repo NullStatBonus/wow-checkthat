@@ -39,8 +39,8 @@ local function grey(value) return "|cffaaaaaa" .. value .. "|r" end
 local function note(group, key, body, hidden)
     return add(group, key, { type = "description", fontSize = "small", width = "full", name = body, hidden = hidden })
 end
-local function gap(group, key)
-    return add(group, key, { type = "description", fontSize = "small", width = "full", name = " " })
+local function gap(group, key, hidden)
+    return add(group, key, { type = "description", fontSize = "small", width = "full", name = " ", hidden = hidden })
 end
 local function introduction(group, heading, purpose)
     add(group, "pageTitle", { type = "header", name = heading })
@@ -81,6 +81,55 @@ function Options.Home(order)
             Options.Notify()
         end })
     gap(g, "g2")
+    local function noRuns() return not (ns.App.db and #ns.App.Runs() > 0) end
+    local function chosen()
+        local id = Options.state.run
+        return id and ns.App.db and ns.App.db.runs[id] and id or nil
+    end
+    local function runValues()
+        local out = {}
+        for _, row in ipairs(ns.App.db and ns.App.Runs() or {}) do out[row.id] = row.text end
+        return out
+    end
+    local function runOrder()
+        local out = {}
+        for _, row in ipairs(ns.App.db and ns.App.Runs() or {}) do out[#out + 1] = row.id end
+        return out
+    end
+    add(g, "h_runs", { type = "header", name = L["Past runs"], hidden = noRuns })
+    note(g, "runsHelp", grey(L["Pick a run in the list. Select Open run to see it on the checklist. Select Export run to copy its results. Select Delete run to remove it."]), noRuns)
+    add(g, "runPick", { type = "select", width = "full", name = L["Run"], hidden = noRuns, values = runValues, sorting = runOrder,
+        get = chosen, set = function(_, v) Options.state.run = v end })
+    add(g, "runOpen", { type = "execute", name = L["Open run"], hidden = noRuns,
+        confirm = function()
+            local id = chosen()
+            if id and ns.App.OpenReplacesRun(id) then return L["Open this run? Your current run leaves the checklist. CheckThat keeps it in the list until newer runs push it out."] end
+        end,
+        disabled = function()
+            local id = chosen()
+            local run = id and ns.App.db.runs[id]
+            return not run or (not run.endedAt and run.character ~= ns.App.Character())
+        end,
+        func = function()
+            local run, err = ns.App.OpenRun(chosen())
+            if run then ns.Card.Show(); ns.Card.Refresh() else ns.Slash.Print(err) end
+            Options.Notify()
+        end })
+    add(g, "runExport", { type = "execute", name = L["Export run"], hidden = noRuns, disabled = function() return not chosen() end,
+        func = function() ns.Card.ExportNow(chosen()) end })
+    add(g, "runDelete", { type = "execute", name = L["Delete run"], hidden = noRuns, disabled = function() return not chosen() end,
+        confirm = function() -- a string would name a handler method, so the text comes from a function
+            local text = chosen() and ns.App.RunText(chosen()) or ""
+            return L["Delete the run %s? CheckThat removes its results. You cannot restore them."]:format((ns.Slash.Esc(text):gsub("%%", "%%%%")))
+        end,
+        func = function()
+            local ok, err = ns.App.DeleteRun(chosen())
+            if not ok then ns.Slash.Print(err) end
+            Options.state.run = nil
+            ns.Card.Refresh()
+            Options.Notify()
+        end })
+    gap(g, "g3", noRuns)
     text(g, "next", L["Set the card size and opacity in Appearance. Collect problem reports in Advanced."])
     return g
 end
@@ -104,7 +153,7 @@ function Options.Plans(order)
     add(g, "pick", { type = "select", width = 1.5, name = L["Plan"], values = planValues,
         get = function() return Options.state.remove end, set = function(_, v) Options.state.remove = v end })
     add(g, "remove", { type = "execute", name = L["Remove plan"],
-        confirm = L["Remove this plan? Runs and results stay."],
+        confirm = function() return L["Remove this plan? Runs and results stay."] end,
         disabled = function() return not Options.state.remove or not (ns.App.db and ns.App.db.plans[Options.state.remove]) end,
         func = function() ns.App.db.plans[Options.state.remove] = nil; Options.state.remove = nil; Options.Notify() end })
     return g
@@ -156,11 +205,22 @@ function Options.Advanced(order)
     note(g, "profileContext", grey(L["Select separate settings to use this character’s profile. Clear the checkbox to use shared settings. Both profiles keep their saved values. Plans and runs are shared."]))
     add(g, "charProfile", {
         type = "toggle", width = "full", name = L["Use separate settings for this character"],
-        confirm = L["Switch settings scope? Existing settings in both scopes are retained; no settings are copied."],
+        confirm = function() return L["Switch settings scope? Existing settings in both scopes are retained; no settings are copied."] end,
         get = Options.CharacterProfileOn,
         set = function(_, value) Options.SetCharacterProfile(value) end,
     })
     gap(g, "g1")
+    add(g, "h_store", { type = "header", name = L["Stored runs"] })
+    note(g, "storeHelp", grey(L["Set how many runs to keep. When you start a run, CheckThat deletes the oldest runs above this number. The current run of each character always stays."]))
+    add(g, "runLimit", { type = "range", width = 1.5, name = L["Runs to keep"],
+        min = ns.App.RUN_LIMIT.min, max = ns.App.RUN_LIMIT.max, step = 1,
+        get = function() return ns.App.db and ns.App.RunLimit() or ns.App.RUN_LIMIT.default end,
+        set = function(_, v)
+            if not ns.App.db then return end
+            ns.App.db.runLimit = v -- the slider fires while it is dragged: nothing is deleted until a run starts
+            Options.Notify()
+        end })
+    gap(g, "g2")
     add(g, "h_debug", { type = "header", name = L["Debug"] })
     add(g, "debug", {
         type = "toggle", width = "full", name = L["Record debug information"],

@@ -62,7 +62,7 @@ function Run.Begin(run, ctx, id)
     local rec = run.steps[id]
     local last = rec.attempts[#rec.attempts]
     if last and not last.verdict then return last end -- already open (e.g. after a reload)
-    local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = ns.Evidence.Snapshot(ctx.plan, ctx.env), build = ctx.build }
+    local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = ns.Evidence.Snapshot(ctx.plan, ctx.env, stepOf(ctx, id)), build = ctx.build }
     -- After the runner settled the last attempt as unverified, the retry waits for the player: no loop of automatic results.
     -- (Undo resets the step to pending: that is the player acting, so the retry may settle itself.)
     if last and last.by == "auto" and last.verdict == "unverified" and rec.verdict == "unverified" then a.noauto = true end
@@ -235,6 +235,16 @@ end
 function Run.CurrentId(run)
     if run.endedAt then return nil end
     return run.order[run.current]
+end
+
+-- Take a run that left the card back: an attempt left open belongs to the time it was open, so drop it.
+-- The step opens a new one with a new log position and start time.
+function Run.Resume(run, now)
+    for _, rec in pairs(run.steps) do
+        local a = rec.attempts[#rec.attempts]
+        if a and not a.verdict then table.remove(rec.attempts) end
+    end
+    Run.Touch(run, now)
 end
 
 -- End a run for good. Every verdict, attempt and note stays; open attempts drop their bulky log snapshots.

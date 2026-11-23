@@ -317,8 +317,8 @@ function Card.RunMenu(owner)
     if not A.ContextMenu(owner, items) then Card.ConfirmEnd() end
 end
 
-function Card.ExportNow()
-    local s, err = App.Export()
+function Card.ExportNow(runId)
+    local s, err = App.Export(runId)
     if s then ns.Export.Show(L["Results string. Share it with Claude."], s) else ns.Slash.Print(err) end
 end
 

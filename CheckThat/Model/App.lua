@@ -100,6 +100,128 @@ function App.UseRecent(digest)
     return plan
 end
 
+-- A stored plan copy stays only while a run, a loaded plan or a recent-list entry names it.
+function App.PrunePlans()
+    local keep = {}
+    for _, r in pairs(App.db.runs) do if r.planDigest then keep[r.planDigest] = true end end
+    for _, p in pairs(App.db.plans) do keep[p.digest] = true end
+    for _, e in ipairs(App.db.ui.recent or {}) do keep[e.digest] = true end
+    for digest in pairs(App.db.planStore) do
+        if not keep[digest] then App.db.planStore[digest] = nil end
+    end
+end
+
+App.RUN_LIMIT = { default = 20, min = 5, max = 100 }
+
+function App.RunLimit()
+    local n = App.db and tonumber(App.db.runLimit)
+    if not n then return App.RUN_LIMIT.default end
+    return math.max(App.RUN_LIMIT.min, math.min(App.RUN_LIMIT.max, math.floor(n)))
+end
+
+-- Runs newest first; ties keep a stable order by id.
+local function sortedRuns()
+    local list = {}
+    for id, run in pairs(App.db.runs) do list[#list + 1] = { id = id, run = run } end
+    table.sort(list, function(a, b)
+        local x, y = a.run.started or 0, b.run.started or 0
+        if x ~= y then return x > y end
+        return a.id > b.id
+    end)
+    return list
+end
+
+-- Keep at most RunLimit runs: the oldest go first. A character's current run always stays.
+function App.PruneRuns()
+    local list, current = sortedRuns(), {}
+    for _, id in pairs(App.db.currentByChar) do current[id] = true end
+    local excess = #list - App.RunLimit()
+    for i = #list, 1, -1 do
+        if excess <= 0 then break end
+        if not current[list[i].id] then
+            App.db.runs[list[i].id] = nil
+            excess = excess - 1
+            App.Log("run pruned " .. list[i].id)
+        end
+    end
+    App.PrunePlans()
+end
+
+-- The run the card shows: an ended run opened from Past runs, else the character's current run.
+local function shownId()
+    local char = App.Character()
+    local v = App.db.ui.view and App.db.ui.view[char]
+    if v and App.db.runs[v] then return v end
+    return App.db.currentByChar[char]
+end
+App.ShownId = shownId
+
+local function runText(run)
+    local c = ns.Run.Counts(run)
+    local when = run.started and App.env.date and App.env.date("%Y-%m-%d %H:%M", run.started) or tostring(run.started or "?")
+    return L["%s  %s (%s): %d pass, %d fail, %d open"]:format(when, tostring(run.planTitle or run.addon), tostring(run.character), c.pass, c.fail, c.open)
+end
+
+function App.RunText(id)
+    local run = App.db.runs[id or ""]
+    return run and runText(run) or nil
+end
+
+-- Rows for the Runs list, newest first: { id, text, ended, character, current }.
+function App.Runs()
+    local out = {}
+    local cur = App.db.currentByChar[App.Character()]
+    for _, e in ipairs(sortedRuns()) do
+        out[#out + 1] = { id = e.id, ended = e.run.endedAt ~= nil, character = e.run.character, current = e.id == cur, text = runText(e.run) }
+    end
+    return out
+end
+
+-- Show a stored run on the card. An ended run is only viewed: the character's current run stays as it was.
+-- A run that has not ended belongs to the character that started it: it becomes the current run, and the
+-- attempt it left open starts again. Another character cannot take it over.
+function App.OpenRun(id)
+    local run = App.db.runs[id or ""]
+    if not run then return nil, L["There is no run."] end
+    local char, ui = App.Character(), App.db.ui
+    ui.view = ui.view or {}
+    if run.endedAt then
+        ui.view[char] = App.db.currentByChar[char] ~= id and id or nil
+    elseif run.character ~= char then
+        return nil, L["That run has not ended and belongs to another character. Export it or delete it."]
+    else
+        ui.view[char] = nil
+        if App.db.currentByChar[char] ~= id then
+            App.db.currentByChar[char] = id
+            ns.Run.Resume(run, now(App))
+        end
+    end
+    ui.pendingStart = nil
+    App.Log("run opened " .. id)
+    return run
+end
+
+-- True when opening this run would take the card from another unfinished run of this character.
+function App.OpenReplacesRun(id)
+    local run = App.db.runs[id or ""]
+    local cur = App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    return run ~= nil and not run.endedAt and cur ~= nil and not cur.endedAt and cur.runId ~= id
+end
+
+function App.DeleteRun(id)
+    if not App.db.runs[id or ""] then return nil, L["There is no run."] end
+    App.db.runs[id] = nil
+    for char, cur in pairs(App.db.currentByChar) do
+        if cur == id then App.db.currentByChar[char] = nil end
+    end
+    for char, v in pairs(App.db.ui.view or {}) do
+        if v == id then App.db.ui.view[char] = nil end
+    end
+    App.PrunePlans()
+    App.Log("run deleted " .. id)
+    return true
+end
+
 -- Import a pasted string. Returns plan table or nil + error text. Nothing is stored on failure.
 -- Validator messages are technical English kept for the debug log; the player sees one of these sentences.
 local function planReason(first)
@@ -136,6 +258,7 @@ function App.ImportPlan(str)
     App.db.planStore[digest] = tbl -- runs keep the exact plan they started with
     App.RememberRecent(tbl, digest)
     App.db.ui.pendingStart = tbl.addon -- a new plan takes focus: the card offers Start run, even after a finished run
+    App.PrunePlans()
     App.Log(("imported plan %s digest %s"):format(tbl.addon, digest))
     return tbl
 end
@@ -156,14 +279,16 @@ function App.Start(addon)
     while App.db.runs[run.runId] do run.runId = run.runId .. "x" end
     App.db.runs[run.runId] = run
     App.db.currentByChar[App.Character()] = run.runId
+    if App.db.ui.view then App.db.ui.view[App.Character()] = nil end
     App.db.planStore[rec.digest] = rec.plan
     App.db.ui.pendingStart = nil
+    App.PruneRuns()
     App.Log("run started " .. run.runId)
     return run
 end
 
 function App.Current()
-    local id = App.db and App.db.currentByChar[App.Character()]
+    local id = App.db and shownId()
     local run = id and App.db.runs[id]
     if not run then return nil end
     local ctx = App.Ctx(run)
@@ -290,7 +415,7 @@ end
 
 -- The run /ct end and the card's End run act on: nil plus a sentence when there is none or it already ended.
 function App.CanEnd()
-    local run = App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    local run = App.db.runs[shownId() or ""]
     if not run then return nil, L["There is no run."] end
     if run.endedAt then return nil, L["This run has already ended."] end
     return run
@@ -320,6 +445,7 @@ function App.ClearPlan(runId)
     local keep = {}
     for _, e in ipairs(ui.recent or {}) do if not gone[e.digest] then keep[#keep + 1] = e end end
     ui.recent = keep
+    App.PrunePlans()
     App.Log("plan cleared " .. run.addon)
     return run
 end
@@ -331,14 +457,14 @@ function App.Undo()
 end
 
 function App.Export(runId)
-    local run = App.db.runs[runId or App.db.currentByChar[App.Character()] or ""]
+    local run = App.db.runs[runId or shownId() or ""]
     if not run then return nil, L["There is no run."] end
     local copy = ns.Run.Export and ns.Run.Export(run) or run
     return ns.Codec.Encode(copy)
 end
 
 function App.Status()
-    local run = App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    local run = App.db.runs[shownId() or ""]
     if not run then return L["No run."] end
     local c = ns.Run.Counts(run)
     local line = L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client (revision %d, saved on reload)"]:format(

@@ -92,15 +92,71 @@ test("pattern length capped", function()
 end)
 
 test("an unreadable log at attempt start is not an empty baseline", function()
-    local snap = E.Snapshot(plan, {})                       -- addon data missing when the step opened
+    local step = { assertions = { { kind = "log", source = "s", contains = "x" } } }
+    local snap = E.Snapshot(plan, {}, step)                 -- addon data missing when the step opened
     T.ok(snap.s.unavailable, "marked unavailable")
     local en = env({ "old startup line" })                  -- later the log exists and holds an old line
     local r, why = E.CheckLog({ kind = "log", source = "s", contains = "old startup" }, snap, plan, en)
     T.eq(r, "unverified"); T.ok(why:find("not readable"), why)
     T.eq((E.CheckLog({ kind = "log", source = "s", contains = "old startup", scope = "session" }, snap, plan, en)), "pass")
-    local empty = E.Snapshot(plan, env({}))                 -- a readable empty log is a valid baseline
+    local empty = E.Snapshot(plan, env({}), step)           -- a readable empty log is a valid baseline
     T.ok(not empty.s.unavailable)
     T.eq((E.CheckLog({ kind = "log", source = "s", contains = "new" }, empty, plan, env({ "new" }))), "pass")
+end)
+test("a snapshot records only the logs an attempt-scoped assertion checks, as length and tail", function()
+    local lines = {}
+    for i = 1, 30 do lines[i] = "l" .. i end
+    local en = env(lines, { { msg = "e1" } })
+    local step = { assertions = {
+        { kind = "log", source = "s", contains = "x" },
+        { kind = "log-sequence", source = "s", sequence = { { contains = "a" } } },
+        { kind = "log", source = "e", contains = "y", scope = "session" },
+        { kind = "state", probe = "addon-loaded", name = "X", op = "eq", value = true } } }
+    local snap = E.Snapshot(plan, en, step)
+    T.ok(snap.s, "checked log recorded"); T.eq(snap.e, nil, "session scope needs no position")
+    T.eq(snap.s.n, 30); T.eq(#snap.s.tail, E.TAIL); T.eq(snap.s.tail[1], "l19"); T.eq(snap.s.tail[E.TAIL], "l30")
+    T.eq(next(E.Snapshot(plan, en, { assertions = {} })), nil, "a step with no log check records nothing")
+    T.eq(next(E.Snapshot(plan, en)), nil, "no step, nothing recorded")
+    en.DB.log[31] = "new"
+    local r = E.CheckLog({ kind = "log", source = "s", equals = "new" }, snap, plan, en)
+    T.eq(r, "pass", "new lines are found from the tail")
+    T.eq((E.CheckLog({ kind = "log", source = "s", equals = "l30" }, snap, plan, en)), "unverified", "old lines stay old")
+end)
+test("NewLines reads a position record and an older full snapshot alike", function()
+    local cur = { "a", "b", "c", "d", "e" }
+    T.eq(#E.NewLines({ n = 3, tail = { "a", "b", "c" } }, cur), 2)
+    T.eq(#E.NewLines({ "a", "b", "c" }, cur), 2, "saved before positions existed")
+    T.eq(#E.NewLines({ n = 0, tail = {} }, cur), 5, "empty log at the start")
+    T.ok(E.NewLines({ n = 3, tail = { "q", "r", "s" } }, cur) == nil, "lost position is never guessed")
+end)
+test("an attempt with positions but none for the source is unverified, not all new", function()
+    local en = env({ "old", "match" })
+    local a = { kind = "log", source = "s", contains = "match" }
+    local r, why = E.CheckLog(a, {}, plan, en)
+    T.eq(r, "unverified"); T.ok(why:find("position missing"), why)
+    local r2, why2 = E.CheckSequence({ kind = "log-sequence", source = "s", sequence = { { contains = "match" } } }, {}, plan, en)
+    T.eq(r2, "unverified"); T.ok(why2:find("position missing"), why2)
+    T.eq((E.CheckLog(a, nil, plan, en)), "pass", "no attempt at all: live view reads the whole log")
+    T.eq((E.CheckLog({ kind = "log", source = "s", contains = "match", scope = "session" }, {}, plan, en)), "pass")
+end)
+test("after a ring roll an absence cannot be shown, but a present line still fails and a match still passes", function()
+    local ring = {}
+    for i = 1, 14 do ring[i] = "tick" end
+    local snap = E.Snapshot(plan, env(ring), { assertions = { { kind = "log", source = "s", contains = "x" } } })
+    -- the ring holds 14 lines: "forbidden", 12 ticks and "ok" pushed 13 old lines out
+    local cur = { "forbidden" }
+    for _ = 1, 12 do cur[#cur + 1] = "tick" end
+    cur[#cur + 1] = "ok"
+    local lines, exact = E.NewLines(snap.s, cur)
+    T.eq(#lines, 1, "the boundary looks unique, so only 'ok' is new"); T.eq(exact, false, "but the boundary was found by search")
+    local en = env(cur)
+    local absent = { kind = "log", source = "s", contains = "forbidden", absent = true }
+    local r, why = E.CheckLog(absent, snap, plan, en)
+    T.eq(r, "unverified", "the missed line must not pass an absence check"); T.ok(why:find("cannot be shown"), why)
+    T.eq((E.CheckLog({ kind = "log", source = "s", contains = "ok" }, snap, plan, en)), "pass", "a present line still passes")
+    T.eq((E.CheckLog({ kind = "log", source = "s", contains = "ok", absent = true }, snap, plan, en)), "fail", "a present line still fails an absence check")
+    local _, exact2 = E.NewLines({ "a", "b" }, { "a", "b", "c" }); T.eq(exact2, true, "an unrolled log is exact")
+    T.eq(select(2, E.NewLines(nil, { "a" })), true); T.eq(select(2, E.NewLines({ n = 0, tail = {} }, { "a" })), true)
 end)
 test("state probe keeps a stored false", function()
     local en = { DB = { flags = { on = false } } }
