@@ -396,15 +396,20 @@ function Card.Refresh()
     if starting then
         -- A plan is waiting to start (just imported or picked): it takes focus, even after a finished run.
         local rec = (pendingAddon or App.db.ui.lastImport) and App.db.plans[pendingAddon or App.db.ui.lastImport]
-        place(card.title, 12, 36); setText(card.title, L["Ready to test"])
-        local y = 36 + card.title:GetStringHeight() + 8
-        local msg
+        place(card.title, 12, 36)
+        local y, msg
         if rec then
             local steps = 0
             for _, s in ipairs(rec.plan.sections) do steps = steps + #s.steps end
-            msg = L["Plan ready: %s (%d steps). Select Start run."]:format(rec.plan.title, steps)
+            setText(card.title, rec.plan.title)
+            card.titleHit.full = rec.plan.title; card.titleHit:Show() -- the full title on hover, as in the collapsed card
+            msg = steps == 1 and L["1 step. Ready to test. Select Start run."] or L["%d steps. Ready to test. Select Start run."]:format(steps)
             card.start:Show()
-        else msg = L["No plan yet. Select Import a plan and paste a plan string."] end
+        else
+            setText(card.title, L["No plan yet"])
+            msg = L["Select Import a plan and paste a plan string."]
+        end
+        y = 36 + card.title:GetStringHeight() + 8
         place(card.context, 12, y); setText(card.context, msg, BODY)
         y = y + card.context:GetStringHeight() + 12
         card.start:ClearAllPoints(); card.start:SetPoint("BOTTOMLEFT", 12, 12)
