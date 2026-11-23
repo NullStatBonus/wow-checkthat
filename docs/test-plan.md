@@ -101,7 +101,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: the card opens on the next step.
    Log: `[ct] status requested`, then `[ct] step self.secure pass auto evidence matched` before the card is shown.
 8. **Export window covers the Run button.** On the Export results step, click Run (or type `/ct export`).
-   Check: the results window opens over the card and the Run button is hidden behind it. Clicking the window does not press Run.
+   Check: the results window opens over the card and the Run button is hidden behind it. Clicking the window does not press Run. The window has a title bar and a scroll box, and its status line says to press Ctrl+A, then Ctrl+C, like the KeepThat, DontDoThat and ClosestVendor report windows. Typing in the box changes nothing.
    Log: none; on screen only.
 9. **Run button leaves with its step.** Finish the run on the Export results step, then fight a training dummy until combat ends.
    Check: the results screen shows no Run button, before and after the fight.

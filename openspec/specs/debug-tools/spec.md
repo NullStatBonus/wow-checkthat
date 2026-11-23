@@ -13,11 +13,19 @@ While recording is on the addon SHALL keep the last 300 lines as `[area] message
 - **THEN** no lines are added
 
 ### Requirement: Copyable report
-`/ct log` SHALL open a window with a selectable report: addon version, client, build, every saved setting, the current run status, failures, then the recorded lines.
+`/ct log` SHALL open a window with a selectable report: addon version, client, build, every saved setting, the current run status, failures, then the recorded lines. The window SHALL be the standard AceGUI frame with a scrolling read-only text box, the same as KeepThat, DontDoThat and ClosestVendor.
 
 #### Scenario: Copy
 - **WHEN** the report opens
 - **THEN** its text is selected-all ready for Ctrl+C
+
+#### Scenario: Same window as the sibling addons
+- **WHEN** the report opens
+- **THEN** it shows a title bar, the status line "Press Ctrl+A to select everything, then Ctrl+C to copy." and a text box that ignores typing
+
+#### Scenario: AceGUI missing
+- **WHEN** the AceGUI frame is not available
+- **THEN** the report opens in the plain CheckThat text window instead
 
 ### Requirement: Game calls go through the adapter
 Every game API read and action SHALL be in `Core/Adapter.lua`, guarded, returning nil when missing. Model code SHALL use no game globals. Frame construction, anchoring and styling in `UI/` and `Debug/` MAY call the game directly. Other modules SHALL NOT.

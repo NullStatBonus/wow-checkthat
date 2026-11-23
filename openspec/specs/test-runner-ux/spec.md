@@ -214,7 +214,7 @@ An auto step SHALL show on the card that CheckThat records the result when the c
 - **THEN** the card redraws without changing the secure Run button, which is set up after combat
 
 ### Requirement: The text window draws above the Run button
-The copyable text window (debug report, results string, plan import) SHALL draw above the card and above the secure Run button, so the button never shows over or through the window.
+The copyable text windows (debug report, results string, plan import) SHALL draw above the card and above the secure Run button, so the button never shows over or through the window.
 
 #### Scenario: Export from a step with a Run button
 - **WHEN** the player opens the results string while a step with a Run button is showing

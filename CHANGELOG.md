@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.3
+
+Changed: The **debug report and results window** now look like the report window in KeepThat, DontDoThat and ClosestVendor.
+
 ## 0.8.2
 
 Fixed: **Past runs** showed an ended run and an unfinished run the same way. An ended run now ends with ", ended".
