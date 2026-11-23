@@ -3,7 +3,7 @@ kind: plan
 addon: CheckThat
 title: CheckThat 0.8 Past runs and run limit
 preamble: |-
-  Before you start this plan, make practice runs. Import |cff99ccffbuild/dontdothat.ct|r with |cff99ccff/ct import|r. Then do this six times: type |cff99ccff/ct start DontDoThat|r, type |cff99ccff/ct end|r and confirm. After the sixth run, type |cff99ccff/ct start DontDoThat|r once more and leave that run open. Then import and start this plan. Type |cff99ccff/ct debug on|r in the first step. Do not press End run on this plan before the last step.
+  Before you start this plan, make practice runs. Import |cff99ccffbuild/dontdothat.ct|r with |cff99ccff/ct import|r. Then do this five times: type |cff99ccff/ct start DontDoThat|r, type |cff99ccff/ct end|r and confirm. After the fifth run, type |cff99ccff/ct start DontDoThat|r once more and leave that run open. Then import and start this plan. Type |cff99ccff/ct debug on|r in the first step. Do not press End run on this plan before the last step.
 handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then delete the practice runs and set Runs to keep back to 20.
 logs:
   debug:
@@ -47,7 +47,7 @@ sections:
       text: Type |cff99ccff/ct settings home|r and look under |cffffd100Past runs|r.
       commands:
       - /ct settings home
-    expect: The list shows this run first, then your practice runs. Each entry starts with a date and time.
+    expect: The list shows at least seven runs. This run is first, then your practice runs. Each entry starts with a date and time. With fewer runs, stop and make more practice runs first.
     verify:
     - player
   - id: ct8.view
@@ -147,7 +147,7 @@ sections:
       text: Set |cffffd100Runs to keep|r to 5 in Advanced. Type |cff99ccff/ct start DontDoThat|r. Open Home and count the runs. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
       commands:
       - /ct start DontDoThat
-    setup: Keep at least seven runs, this one included.
+    setup: Home must list at least six runs now, this one included. Starting a run adds one, and the limit is 5.
     cleanup: Set |cffffd100Runs to keep|r back to 20.
     expect: Home lists five runs. The oldest ended practice runs are gone. This plan's run is still there.
     verify:
