@@ -73,3 +73,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 7. **Hidden card waits.** Setup: on the Run button step, hide the card with `/ct` and type `/ct status`. Then type `/ct` to show the card.
    Check: the card moves on to the next step within a second of showing.
    Log: `[wtt] status requested`, then `[wtt] step self.secure pass auto evidence matched` after the card is shown.
+8. **Export window covers the Run button.** On the Export results step, click Run (or type `/ct export`).
+   Check: the results window opens over the card and the Run button is hidden behind it. Clicking the window does not press Run.
+   Log: none; on screen only.
+9. **Run button leaves with its step.** Finish the run on the Export results step, then fight a training dummy until combat ends.
+   Check: the results screen shows no Run button, before and after the fight.
+   Log: none when the button stayed hidden; `[wtt] run button hidden: nothing to run on this screen` if the game showed it and CheckThat hid it again.

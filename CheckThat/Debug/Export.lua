@@ -10,7 +10,7 @@ local box
 
 local function build()
     box = CreateFrame("Frame", "CheckThatTextBox", UIParent, "BackdropTemplate")
-    box:SetSize(520, 240); box:SetPoint("CENTER"); box:SetFrameStrata("DIALOG")
+    box:SetSize(520, 240); box:SetPoint("CENTER"); box:SetFrameStrata("FULLSCREEN_DIALOG") -- above the card and its protected Run button (DIALOG)
     box:SetBackdrop(BACKDROP); box:SetBackdropColor(0, 0, 0, 0.95); box:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     box:SetMovable(true); box:EnableMouse(true); box:RegisterForDrag("LeftButton")
     box:SetScript("OnDragStart", box.StartMoving); box:SetScript("OnDragStop", box.StopMovingOrSizing)

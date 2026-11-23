@@ -224,6 +224,13 @@ function Card.EnsureSecure()
     s:SetAttribute("useOnKeyDown", false)
     s:RegisterForClicks("AnyUp")
     A.HideInCombat(s)
+    -- The game's own state driver shows this button again after combat. It must show only with a step that has commands.
+    s:HookScript("OnShow", function(self)
+        if A.InCombat() or card.secureWanted then return end -- protected in combat; fine when a step wants it
+        self:Hide()
+        local _, _, cur = App.Current()
+        App.Log("run button hidden: nothing to run on this screen (step " .. (cur and cur.id or "none") .. ")")
+    end)
     s:Hide()
     card.secure = s
     return s
@@ -234,6 +241,7 @@ local function setMacro(step, plan)
     local s = not A.InCombat() and Card.EnsureSecure()
     if not s then card.pendingMacro = true; return end -- in combat: the button is hidden (state driver) and is set up after combat
     card.pendingMacro = nil
+    card.secureWanted = body and card:IsShown() and true or false
     if body and card:IsShown() then s:SetAttribute("macrotext", body); s:Show() else s:SetAttribute("macrotext", ""); s:Hide() end
 end
 
@@ -289,6 +297,7 @@ local function hideAll()
     for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "reload", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide()
+    card.secureWanted = false
     if not A.InCombat() and card.secure then card.secure:Hide() end
 end
 

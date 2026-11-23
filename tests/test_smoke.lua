@@ -301,4 +301,44 @@ test("smoke: a note from another step is not saved by an automatic result", func
     ns.Card.AutoSettle()
     T.eq(select(1, ns.App.Current()).steps["n.1"].attempts[1].note, nil)
 end)
+test("smoke: the Run button shows only with a step that has commands, and is hidden again if the game shows it", function()
+    do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
+    _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
+    local function cmdStep(id) return { id = id, title = "With " .. id, action = { kind = "copy-slash", text = "/kt log", commands = { "/kt log" } }, expect = "e", verify = { "player" } } end
+    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "R", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = { cmdStep("r.1"),
+            { id = "r.2", title = "Without command", action = { kind = "manual", text = "Look." }, expect = "e", verify = { "player" } },
+            cmdStep("r.3") } } } }
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.log.enabled = true; ns.App.db.log.entries = {}
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p)))); ns.App.Start("KeepThat")
+    ns.Card.Show()
+    local card = _G.CheckThatCard
+    local s = card.secure
+    local function logged() for _, e in ipairs(ns.App.db.log.entries) do if tostring(type(e) == "table" and e.msg or e):find("run button hidden", 1, true) then return true end end end
+    local function gameShows() s:Show(); s.scripts.OnShow(s) end             -- what the combat state driver does
+    T.ok(s.shown, "visible with a step that has commands")
+    gameShows(); T.ok(s.shown, "the guard leaves it alone there"); T.ok(not logged(), "and logs nothing")
+    ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.2 has no commands
+    T.ok(not s.shown, "hidden on a step without commands")
+    gameShows(); T.ok(not s.shown, "hidden again when the game shows it"); T.ok(logged(), "and the log says so")
+    ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.3 has commands again
+    T.ok(s.shown, "visible again with the next step that has commands")
+    ns.App.db.ui.pendingStart = "KeepThat"; ns.Card.Refresh()                -- the Start screen of another plan
+    gameShows(); T.ok(not s.shown, "Start screen: hidden again")
+    ns.App.db.ui.pendingStart = nil; ns.Card.Refresh()
+    T.ok(s.shown, "back on the step: visible")
+    ns.App.Verdict("pass"); ns.Card.Refresh()                                -- results screen, right after a step that had commands
+    T.ok(select(3, ns.App.Current()) == nil, "run complete")
+    gameShows(); T.ok(not s.shown, "results screen: hidden again")
+    -- combat: the card never touches the protected button
+    local hides = 0
+    local realHide = s.Hide
+    s.Hide = function(self, ...) hides = hides + 1; return realHide(self, ...) end
+    s.shown = true
+    rawset(_G, "InCombatLockdown", function() return true end)
+    s.scripts.OnShow(s)
+    rawset(_G, "InCombatLockdown", function() return false end)
+    s.Hide = nil
+    T.eq(hides, 0, "nothing called on the button in combat")
+end)
 finish()
