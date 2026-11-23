@@ -77,3 +77,10 @@ Open run SHALL ask the player to accept before it opens a run when this characte
 #### Scenario: Nothing active
 - **WHEN** this character has no unfinished current run
 - **THEN** Open run opens the run without a question
+
+### Requirement: Past runs mark ended runs
+Each Past runs entry for an ended run SHALL end with `, ended` after the counts. An unfinished run SHALL carry no such marker.
+
+#### Scenario: Ended and open rows
+- **WHEN** Home lists one ended run and one unfinished run
+- **THEN** only the ended run's entry ends with `, ended`

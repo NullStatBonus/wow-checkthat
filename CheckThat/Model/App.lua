@@ -159,7 +159,8 @@ App.ShownId = shownId
 local function runText(run)
     local c = ns.Run.Counts(run)
     local when = run.started and App.env.date and App.env.date("%Y-%m-%d %H:%M", run.started) or tostring(run.started or "?")
-    return L["%s  %s (%s): %d pass, %d fail, %d open"]:format(when, tostring(run.planTitle or run.addon), tostring(run.character), c.pass, c.fail, c.open)
+    local fmt = run.endedAt and L["%s  %s (%s): %d pass, %d fail, %d open, ended"] or L["%s  %s (%s): %d pass, %d fail, %d open"]
+    return fmt:format(when, tostring(run.planTitle or run.addon), tostring(run.character), c.pass, c.fail, c.open)
 end
 
 function App.RunText(id)

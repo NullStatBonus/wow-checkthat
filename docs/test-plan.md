@@ -67,7 +67,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: the card widens to full size. The plan title and the text under it stay inside the card and Start run sits at the left edge. With no plan loaded, Import a plan sits at the left edge instead.
    Log: `[ct] imported plan`.
 14. **Reopen a past run.** End one run and start another. Open Esc, Options, AddOns, CheckThat, Home. Under Past runs, pick the ended run and press Open run. Accept the question.
-   Check: a question comes first and says your current run stays. After you accept, the card shows that run as "Run ended" with its results. Open the current run again: the card returns to it with no question.
+   Check: the ended run's row ends with "ended" and the current run's row does not. A question comes first and says your current run stays. After you accept, the card shows that run as "Run ended" with its results. Open the current run again: the card returns to it with no question.
    Log: `[ct] run open asked`, then `[ct] run opened`.
 15. **Delete a past run.** Under Past runs, pick a run and press Delete run. Press Accept.
    Check: the question names the run and comes first. After Accept the run leaves the list. With no run left, Past runs disappears.
