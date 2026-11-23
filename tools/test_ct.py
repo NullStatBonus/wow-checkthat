@@ -355,6 +355,28 @@ class Collect(unittest.TestCase):
             self.assertIn("screenshots: a__in.jpg", ct.report_text(ct.latest_runs(dest), dest))
 
 
+class LoadEnv(unittest.TestCase):
+    def test_file_fills_unset_variables_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            first, second = os.path.join(d, "a.env"), os.path.join(d, "b.env")
+            with open(first, "w") as fh:
+                fh.write('# paths\nCT_T_ONE=/one\nexport CT_T_TWO="~/two"\nCT_T_SET=file\n')
+            with open(second, "w") as fh:
+                fh.write("CT_T_ONE=/other\nCT_T_THREE=3\n")
+            for k in ("CT_T_ONE", "CT_T_TWO", "CT_T_THREE"):
+                os.environ.pop(k, None)
+            os.environ["CT_T_SET"] = "real"
+            try:
+                ct.load_env([first, os.path.join(d, "missing.env"), second])
+                self.assertEqual(os.environ["CT_T_ONE"], "/one")
+                self.assertEqual(os.environ["CT_T_TWO"], os.path.expanduser("~/two"))
+                self.assertEqual(os.environ["CT_T_THREE"], "3")
+                self.assertEqual(os.environ["CT_T_SET"], "real")
+            finally:
+                for k in ("CT_T_ONE", "CT_T_TWO", "CT_T_THREE", "CT_T_SET"):
+                    os.environ.pop(k, None)
+
+
 class Safety(unittest.TestCase):
     def test_run_ids_cannot_leave_the_runs_folder(self):
         with tempfile.TemporaryDirectory() as d:

@@ -522,7 +522,27 @@ def report_text(runs, dest=None):
 
 # ---------------------------------------------------------------- CLI
 
+def load_env(paths=None):
+    """Fill unset environment variables from KEY=VALUE files. Earlier files win; real variables and flags win over all."""
+    for p in paths or [os.environ.get("CT_ENV"), os.path.join(os.getcwd(), ".ct.env"), os.path.expanduser("~/.checkthat.env")]:
+        if not p or not os.path.isfile(p):
+            continue
+        with open(p, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                if key.startswith("export "):
+                    key = key[7:].strip()
+                val = val.strip().strip("\"'")
+                if key:
+                    os.environ.setdefault(key, os.path.expanduser(val))
+
+
 def main(argv=None):
+    load_env()
     ap = argparse.ArgumentParser(prog="ct")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("validate"); p.add_argument("plan")

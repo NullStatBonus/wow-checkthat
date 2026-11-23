@@ -74,7 +74,7 @@ sections:
     expect: A box shows a string that starts with !CT1!. Press Escape to close it.
     verify:
     - player
-    notes: Becomes a log assertion once CheckThat logs "run exported".
+    notes: Becomes a log assertion once CheckThat logs "run exported" (issue 46).
   - id: ct8.replace
     title: Open run asks before it replaces your run
     action:
@@ -83,6 +83,14 @@ sections:
     expect: The question says your current run leaves the checklist. After No, the card still shows this step.
     verify:
     - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run opened '
+      absent: true
+      scope: attempt
+      label: No run was opened
   - id: ct8.stale
     title: A run that comes back starts its step again
     action:
@@ -168,7 +176,7 @@ sections:
     expect: The report holds a line that starts with "Stored:" and names the runs, the limit and the plan copies.
     verify:
     - player
-    notes: Becomes a log assertion once CheckThat logs "report requested".
+    notes: Becomes a log assertion once CheckThat logs "report requested" (issue 47).
 - id: s3
   title: Reload and results
   requires:
@@ -198,3 +206,4 @@ sections:
     expect: A box shows a string that starts with !CT1!.
     verify:
     - player
+    notes: Becomes a log assertion once CheckThat logs "run exported" (issue 46).
