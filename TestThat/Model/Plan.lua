@@ -36,6 +36,9 @@ end
 
 local function checkAssertion(a, i, errs, logs, where)
     if type(a) ~= "table" then errs[#errs + 1] = where .. ": assertion " .. i .. " not a table"; return end
+    for _, flag in ipairs({ "diagnostic", "absent" }) do
+        if a[flag] ~= nil and type(a[flag]) ~= "boolean" then errs[#errs + 1] = where .. ": " .. flag .. " must be boolean" end
+    end
     if a.kind == "log" then
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         local n = (a.equals and 1 or 0) + (a.contains and 1 or 0) + (a.pattern and 1 or 0)
@@ -52,6 +55,36 @@ local function checkAssertion(a, i, errs, logs, where)
         if not Plan.PROBES[a.probe] then errs[#errs + 1] = where .. ": unknown probe " .. tostring(a.probe) end
         if not Plan.OPS[a.op] then errs[#errs + 1] = where .. ": unknown op " .. tostring(a.op) end
     else errs[#errs + 1] = where .. ": unknown assertion kind " .. tostring(a.kind) end
+end
+
+-- An auto step is settled by its own evidence, so the evidence must be able to settle it alone.
+function Plan.CheckAuto(st, w, errs)
+    if st.auto ~= nil and type(st.auto) ~= "boolean" then errs[#errs + 1] = w .. ": auto must be boolean" end
+    local isAuto = st.auto == true
+    local act = st.action
+    if type(act) == "table" and act.kind == "wait-event" and not isAuto then errs[#errs + 1] = w .. ": wait-event needs an auto step" end
+    local t = st.timeout
+    if t ~= nil then
+        if not isAuto then errs[#errs + 1] = w .. ": timeout needs auto"
+        elseif type(t) ~= "number" or t % 1 ~= 0 or t < 5 or t > 300 then
+            errs[#errs + 1] = w .. ": timeout must be a whole number from 5 to 300"
+        end
+    end
+    if not isAuto then return end
+    local hasA, hasP
+    for _, v in ipairs(type(st.verify) == "table" and st.verify or {}) do
+        if v == "assertions" then hasA = true elseif v == "player" then hasP = true end
+    end
+    if not hasA then errs[#errs + 1] = w .. ": auto step needs assertions in verify" end
+    if hasP then errs[#errs + 1] = w .. ": auto step cannot ask the player" end
+    local required = 0
+    for _, a in ipairs(st.assertions or {}) do
+        if type(a) == "table" and not a.diagnostic then
+            required = required + 1
+            if a.absent then errs[#errs + 1] = w .. ": auto step cannot use a required absence check" end
+        end
+    end
+    if hasA and required == 0 then errs[#errs + 1] = w .. ": auto step needs a required assertion" end
 end
 
 -- Returns a list of error strings (empty when valid).
@@ -143,6 +176,7 @@ function Plan.Validate(plan)
                 if not hasA and st.assertions and #st.assertions > 0 then errs[#errs + 1] = w .. ": assertions given but verify lacks assertions" end
             end
             for i, a in ipairs(st.assertions or {}) do checkAssertion(a, i, errs, plan.logs, w) end
+            Plan.CheckAuto(st, w, errs)
             if st.share ~= nil and st.share ~= "none" and st.share ~= "reload" and st.share ~= "export" then errs[#errs + 1] = w .. ": bad share" end
             if st.screenshot ~= nil and type(st.screenshot) ~= "boolean" then errs[#errs + 1] = w .. ": screenshot must be boolean" end
             if st.reload ~= nil and st.reload ~= "none" and st.reload ~= "after_action" then errs[#errs + 1] = w .. ": bad reload" end

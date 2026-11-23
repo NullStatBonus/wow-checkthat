@@ -1,7 +1,7 @@
 ## Interface: 11509
 ## Title: TestThat
 ## Notes: Walks you through the in-game test plans for KeepThat, DontDoThat and ClosestVendor and records evidence for review.
-## Version: 0.3.3
+## Version: 0.4.0
 ## Author: NullStatBonus
 ## SavedVariables: TestThatDB
 ## OptionalDeps: KeepThat, DontDoThat, ClosestVendor

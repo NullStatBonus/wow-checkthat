@@ -60,6 +60,67 @@ class Validate(unittest.TestCase):
         p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "cast", "op": "eq"}]
         self.assertTrue(wtt.validate(p))
 
+    def auto(self):
+        p = good(); st = p["sections"][0]["steps"][0]
+        st["verify"] = ["assertions"]; st["auto"] = True
+        return p, st
+
+    def has(self, p, needle):
+        errs = wtt.validate(p)
+        self.assertTrue(any(needle in e for e in errs), "%r not in %r" % (needle, errs))
+
+    def test_auto_step_valid(self):
+        p, st = self.auto()
+        self.assertEqual(wtt.validate(p), [])
+        for n in (5, 30, 300):
+            st["timeout"] = n
+            self.assertEqual(wtt.validate(p), [], n)
+
+    def test_auto_step_needs_assertions_alone(self):
+        p, st = self.auto(); st["verify"] = ["player", "assertions"]
+        self.assertTrue(wtt.validate(p))
+        p, st = self.auto(); st["verify"] = ["reviewer"]; st["reviewer"] = "r"; del st["assertions"]
+        self.assertTrue(wtt.validate(p))
+
+    def test_auto_step_needs_a_required_assertion(self):
+        p, st = self.auto(); st["assertions"][0]["diagnostic"] = True
+        self.assertTrue(wtt.validate(p))
+
+    def test_auto_step_rejects_required_absence(self):
+        p, st = self.auto(); st["assertions"][0]["absent"] = True
+        self.assertTrue(wtt.validate(p))
+
+    def test_timeout_range_and_auto_only(self):
+        for n in (3, 4, 301, 600, 7.5, -1, "30"):
+            p, st = self.auto(); st["timeout"] = n
+            self.assertTrue(wtt.validate(p), n)
+        p = good(); p["sections"][0]["steps"][0]["timeout"] = 30
+        self.assertTrue(wtt.validate(p))
+
+    def test_schema_alone_rejects_the_cross_field_auto_rules(self):
+        import jsonschema
+        with open(wtt.SCHEMA, encoding="utf-8") as f:
+            v = jsonschema.Draft202012Validator(json.load(f))
+        def errs(mut):
+            p, st = self.auto(); mut(st)
+            return list(v.iter_errors(p))
+        self.assertEqual(errs(lambda st: None), [])
+        self.assertTrue(errs(lambda st: st.update(auto=False, timeout=30)), "timeout without auto")
+        self.assertTrue(errs(lambda st: st.update(verify=["player", "assertions"])), "auto with player")
+        self.assertTrue(errs(lambda st: st.update(verify=["reviewer"], reviewer="r")), "auto without assertions")
+        self.assertTrue(errs(lambda st: st.update(auto=False, action={"kind": "wait-event"})), "wait-event without auto")
+        self.assertTrue(errs(lambda st: st["assertions"][0].update(diagnostic=True)), "only diagnostic assertions")
+        self.assertTrue(errs(lambda st: st["assertions"][0].update(absent=True)), "required absence check")
+        def with_diagnostic_absence(st):
+            st["assertions"].append({"kind": "log", "source": "debug", "contains": "y", "absent": True, "diagnostic": True})
+        self.assertEqual(errs(with_diagnostic_absence), [], "a diagnostic absence check beside a required one is fine")
+
+    def test_wait_event_needs_auto(self):
+        p = good(); p["sections"][0]["steps"][0]["action"] = {"kind": "wait-event", "text": "t"}
+        self.assertTrue(wtt.validate(p))
+        p, st = self.auto(); st["action"] = {"kind": "wait-event", "text": "t"}
+        self.assertEqual(wtt.validate(p), [])
+
 
 class Compile(unittest.TestCase):
     def test_section_fields_merge_into_steps(self):
@@ -303,6 +364,38 @@ class Safety(unittest.TestCase):
         self.assertTrue(any("markdown" in e for e in wtt.validate(p)))
         wtt.nativize(p)
         self.assertNotIn("`", p["title"]); self.assertNotIn("**", p["requirements"]["r"]["text"])
+
+
+class ReportAuto(unittest.TestCase):
+    def run_fixture(self, **at):
+        attempt = {"n": 1, "verdict": at.pop("verdict", "pass"), **at}
+        return {"KeepThat-1": {"planTitle": "t", "addon": "KeepThat", "revision": 1, "client": "classic-era", "build": "1",
+                               "character": "X", "order": ["a"], "steps": {"a": {"verdict": attempt["verdict"], "attempts": [attempt]}}}}
+
+    def test_report_says_which_results_testthat_recorded(self):
+        text = wtt.report_text(self.run_fixture(by="auto"))
+        self.assertIn("a: pass, recorded by TestThat", text)
+        self.assertIn("auto=1", text)
+
+    def test_report_marks_an_automatic_failure_attempt(self):
+        text = wtt.report_text(self.run_fixture(by="auto", verdict="fail"))
+        self.assertIn("recorded by TestThat", text)
+
+    def test_open_retry_does_not_hide_the_mark(self):
+        run = self.run_fixture(by="auto", verdict="unverified")
+        run["KeepThat-1"]["steps"]["a"]["attempts"].append({"n": 2})   # the retry the card opens straight away
+        text = wtt.report_text(run)
+        self.assertIn("recorded by TestThat", text); self.assertIn("auto=1", text)
+
+    def test_reopened_step_is_not_marked(self):
+        run = self.run_fixture(by="auto", verdict="unverified")
+        run["KeepThat-1"]["steps"]["a"]["verdict"] = "pending"             # the player pressed Undo
+        self.assertNotIn("recorded by TestThat", wtt.report_text(run))
+
+    def test_player_results_carry_no_mark(self):
+        text = wtt.report_text(self.run_fixture())
+        self.assertNotIn("recorded by TestThat", text)
+        self.assertNotIn("auto=", text)
 
 
 if __name__ == "__main__":

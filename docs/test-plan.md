@@ -37,11 +37,11 @@ Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`
    Check: a "Recent plans" button lists the plan you imported. Choosing it opens the window with Start run and no paste.
    Log: `[wtt] reused plan`.
 4. **Run button.** Open the second step and click Run. The button sits inside the card beside the first command.
-   Check: chat shows a status line.
-   Log: `[wtt] status requested`.
+   Check: chat shows a status line, and the card moves on by itself without Pass.
+   Log: `[wtt] status requested`, then `[wtt] step self.secure pass auto evidence matched`.
 5. **Reload resume.** Open the third step and press Reload.
-   Check: after the reload the card is on the same step, a green "Reloaded" line shows under the title, and chat says the run continues.
-   Log: `[wtt] resumed run`.
+   Check: after the reload the card is on the same step, a green "Reloaded" line shows under the title, and chat says the run continues. Within a minute the card moves on by itself.
+   Log: `[wtt] resumed run`, then `[wtt] step self.reload pass auto evidence matched`.
 6. **Card in combat.** Start a fight with a training dummy. Drag, collapse and expand the card.
    Check: the card moves and collapses and no "action blocked" message shows.
    Log: none; on screen only.
@@ -67,3 +67,9 @@ Setup: copy `TestThat/` into `Interface/AddOns/`, type `/console scriptErrors 1`
 5. **Harvest.** Double-click `Copy-WttEvidence.bat` on the PC, then run `tools/wtt.py collect --src evidence-src` and `report` on the Mac.
    Check: `evidence/REPORT.md` lists the run and no unverified evidence.
    Log: none; read the report.
+6. **Automatic step shows who records it.** Press < on the card after an automatic step finished.
+   Check: the finished step says "recorded by TestThat" next to Recorded: Pass.
+   Log: `[wtt] step self.secure pass auto evidence matched`.
+7. **Hidden card waits.** Setup: on the Run button step, hide the card with `/wtt` and type `/wtt status`. Then type `/wtt` to show the card.
+   Check: the card moves on to the next step within a second of showing.
+   Log: `[wtt] status requested`, then `[wtt] step self.secure pass auto evidence matched` after the card is shown.

@@ -178,4 +178,127 @@ test("smoke: the Run button is built out of combat only and hidden by a state dr
     rawset(_G, "RegisterStateDriver", nil)
 end)
 
+test("smoke: an auto step passes by itself, shows its countdown and waits while the card is hidden", function()
+    do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
+    _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
+    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "Auto",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = {
+            { id = "au.1", title = "First", auto = true, timeout = 30, action = { kind = "wait-event", text = "Open your bags." },
+              expect = "Bags open.", verify = { "assertions" },
+              assertions = { { kind = "log", source = "debug", contains = "bags opened", label = "Bags opened" } } },
+            { id = "au.2", title = "Second", auto = true, action = { kind = "wait-event" },
+              expect = "Map opens.", verify = { "assertions" },
+              assertions = { { kind = "log", source = "debug", contains = "map opened", label = "Map opened" } } },
+            { id = "au.3", title = "Third", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } } } } } }
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p)))); ns.App.Start("KeepThat")
+    ns.Card.Show()
+    local card = _G.TestThatCard
+    T.ok(card.banner.text:find("records the result when the checks are met"), "auto banner: " .. tostring(card.banner.text))
+    T.ok(card.checks.text:find("records the result in 30 s"), "countdown: " .. tostring(card.checks.text))
+    T.eq(ns.Card.AutoSettle(), nil, "nothing recorded before the line")
+    KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "bags opened"
+    T.ok(ns.Card.AutoSettle(), "recorded when the line appears")
+    local run, _, step = ns.App.Current()
+    T.eq(run.steps["au.1"].verdict, "pass"); T.eq(step.id, "au.2", "card moved on")
+    T.ok(card.title.text:find("Second"), "card shows the next step")
+    T.ok(card.rows[1].body.text:find("TestThat records the result when the checks below are met"), "wait-event wording: " .. tostring(card.rows[1].body.text))
+    card.prevBtn.scripts.OnClick()
+    T.ok(card.recorded.text:find("recorded by TestThat"), "settled step is marked: " .. tostring(card.recorded.text))
+    card.nextBtn.scripts.OnClick()
+    -- a hidden card records nothing
+    card:Hide()
+    KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "map opened"
+    T.eq(ns.Card.AutoSettle(), nil, "hidden card records nothing")
+    T.eq(select(1, ns.App.Current()).steps["au.2"].verdict, "pending")
+    card.ticking = false; st.timers = {}
+    ns.Card.Show()                                       -- queues the card's refresh loop
+    local queued = st.timers; st.timers = {}             -- a loop that re-queues itself must not run forever
+    for _, fn in ipairs(queued) do fn() end
+    T.eq(select(1, ns.App.Current()).steps["au.2"].verdict, "pass", "the refresh loop settles it once the card is shown again")
+end)
+test("smoke: an auto step records nothing in combat, behind a Start screen or with the UI hidden, and keeps a typed note", function()
+    do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
+    _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
+    local function plan(n)
+        local steps = {}
+        for i = 1, n do
+            steps[i] = { id = "g." .. i, title = "Go " .. i, auto = true, action = { kind = "wait-event" }, expect = "e", verify = { "assertions" },
+                assertions = { { kind = "log", source = "debug", contains = "line " .. i } } }
+        end
+        steps[#steps + 1] = { id = "g.end", title = "End", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } }
+        return { kind = "plan", wtt = 1, addon = "KeepThat", title = "G", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+            sections = { { id = "s", title = "S", steps = steps } } }
+    end
+    local function log(s) KeepThatDB.global.log[#KeepThatDB.global.log + 1] = s end
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(plan(4))))); ns.App.Start("KeepThat")
+    ns.Card.Show()
+    local card = _G.TestThatCard
+    local function verdict(id) return select(1, ns.App.Current()).steps[id].verdict end
+    -- combat: the redraw after a result must not touch the protected button
+    local calls = 0
+    local real = card.secure.SetAttribute
+    card.secure.SetAttribute = function(self, ...) calls = calls + 1; return real(self, ...) end
+    rawset(_G, "InCombatLockdown", function() return true end); log("line 1")
+    T.ok(ns.Card.AutoSettle(), "recorded in combat")
+    T.eq(calls, 0, "no protected SetAttribute in combat")
+    rawset(_G, "InCombatLockdown", function() return false end)
+    -- a typed note is kept
+    card.note:SetText("slow but fine"); log("line 2")
+    ns.Card.AutoSettle()
+    local run = select(1, ns.App.Current())
+    T.eq(run.steps["g.2"].attempts[1].note, "slow but fine"); T.eq(card.note:GetText(), "", "box cleared like after a click")
+    -- the game UI is hidden: the card is shown but not visible
+    card.IsVisible = function() return false end
+    log("line 3")
+    T.eq(ns.Card.AutoSettle(), nil); T.eq(verdict("g.3"), "pending")
+    card.IsVisible = nil
+    -- another plan waits on the Start screen
+    ns.App.db.ui.pendingStart = "KeepThat"
+    T.eq(ns.Card.AutoSettle(), nil, "nothing recorded behind the Start screen"); T.eq(verdict("g.3"), "pending")
+    ns.App.db.ui.pendingStart = nil
+    T.ok(ns.Card.AutoSettle(), "records once the run is showing again"); T.eq(verdict("g.3"), "pass")
+end)
+test("smoke: after an automatic unverified result the card stops promising automatic recording", function()
+    do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
+    _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
+    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "T", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = {
+            { id = "t.1", title = "Timed", auto = true, timeout = 5, action = { kind = "wait-event" }, expect = "e", verify = { "assertions" },
+              assertions = { { kind = "log", source = "debug", contains = "never" } } },
+            { id = "t.2", title = "Next", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } } } } } }
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p)))); ns.App.Start("KeepThat")
+    ns.Card.Show()
+    local card = _G.TestThatCard
+    T.ok(card.banner.text:find("records the result when the checks are met"), "promise before the timeout")
+    local realTime = ns.App.env.time
+    ns.App.env.time = function() return (realTime and realTime() or 0) + 100 end
+    ns.Card.AutoSettle()
+    ns.App.env.time = realTime
+    local run = select(1, ns.App.Current())
+    T.eq(run.steps["t.1"].verdict, "unverified")
+    ns.Card.Refresh()
+    T.ok(not card.banner.text:find("records the result when the checks are met"), "no promise on the retry: " .. tostring(card.banner.text))
+    T.ok(card.rows[1].body.text:find("press Pass"), "tells the player to press Pass: " .. tostring(card.rows[1].body.text))
+    T.ok(not card.checks.text:find("records the result in"), "no countdown on the retry")
+end)
+test("smoke: a note from another step is not saved by an automatic result", function()
+    do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
+    _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
+    local p = { kind = "plan", wtt = 1, addon = "KeepThat", title = "N", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = {
+            { id = "n.1", title = "One", auto = true, action = { kind = "wait-event" }, expect = "e", verify = { "assertions" },
+              assertions = { { kind = "log", source = "debug", contains = "one" } } } } } } }
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p)))); ns.App.Start("KeepThat")
+    ns.Card.Show()
+    local card = _G.TestThatCard
+    card.note:SetText("belongs elsewhere"); card.noteKey = "another/step/1"   -- a collapsed refresh left it behind
+    KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "one"
+    ns.Card.AutoSettle()
+    T.eq(select(1, ns.App.Current()).steps["n.1"].attempts[1].note, nil)
+end)
 finish()

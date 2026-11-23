@@ -59,11 +59,15 @@ The runner MAY show copy boxes for allowed commands, a button whose click is the
 - **THEN** the card asks them to check the result, not to reload again
 
 ### Requirement: Auto-verification is read-only
-Log assertions and state probes SHALL only read. Unverified results SHALL tell the player to retry or skip.
+Log assertions and state probes SHALL only read. Unverified results SHALL tell the player to retry or skip. Recording a result automatically SHALL change no game state and SHALL send no click, key, cast or command.
 
 #### Scenario: Log matched
 - **WHEN** the expected debug line appears after the action
 - **THEN** the step records evidence matched when the player passes it
+
+#### Scenario: Automatic result is bookkeeping only
+- **WHEN** the runner records an automatic result
+- **THEN** the only changes are in the run record, the card and the debug log
 
 ### Requirement: Notes and share points
 The card SHALL offer a one-line note box saved with the verdict. After a step with a share point, the card SHALL open the results export or ask for a reload so the log reaches the saved file. Unverified steps SHALL name the missing evidence and offer Retry or Skip with a note.
@@ -161,3 +165,38 @@ The run-complete screen SHALL offer Export results and Main window. Main window 
 #### Scenario: Back to start
 - **WHEN** the run is complete and the player presses Main window
 - **THEN** the card shows the plan ready with Start run and Import a plan, and no settings window opens
+
+### Requirement: The card says a step settles itself
+An auto step SHALL show on the card that TestThat records the result when the checks are met. When it has a timeout, the card SHALL show the seconds left, counted from when the attempt opened. A `wait-event` step SHALL show what it is waiting for in words the player understands. The player SHALL still see Pass, Fail, Partial, Skip and Undo.
+
+#### Scenario: Waiting
+- **WHEN** an auto step is open with checks not met
+- **THEN** the card says TestThat records the result when the checks are met
+
+#### Scenario: Countdown
+- **WHEN** an auto step has a 30 second timeout and 12 seconds have passed
+- **THEN** the card shows 18 seconds left
+
+#### Scenario: Result recorded
+- **WHEN** the runner records an automatic result
+- **THEN** the card moves to the next step and the recorded step shows that TestThat settled it
+
+#### Scenario: Card hidden
+- **WHEN** the card is hidden while an auto step is open
+- **THEN** the runner records nothing until the card is shown again
+
+#### Scenario: Game interface hidden
+- **WHEN** the player hides the game interface while an auto step is open
+- **THEN** the runner records nothing until the interface is shown again
+
+#### Scenario: Start screen showing
+- **WHEN** the card shows the Start screen of a newly imported plan while an old run has an open auto step
+- **THEN** the runner records nothing for the old run until the player returns to it
+
+#### Scenario: Typed note
+- **WHEN** the player typed a note and the runner records the result before a button is pressed
+- **THEN** the result keeps the note and the note box is cleared
+
+#### Scenario: Combat
+- **WHEN** the runner records a result during combat
+- **THEN** the card redraws without changing the secure Run button, which is set up after combat

@@ -437,6 +437,16 @@
         "screenshot": {
           "type": "boolean"
         },
+        "auto": {
+          "type": "boolean",
+          "description": "TestThat records the result itself when every required assertion is met. Needs assertions in verify, no player, and at least one required assertion that is not an absence check."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 300,
+          "description": "Seconds after the step opens when an auto step settles with the evidence it has. Auto steps only."
+        },
         "cleanup": {
           "type": "string"
         },
@@ -457,7 +467,30 @@
           ],
           "description": "After this step: ask for a reload (logs reach saved variables) or open the export string."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["auto"], "properties": { "auto": { "const": true } } },
+          "then": {
+            "required": ["assertions"],
+            "properties": {
+              "verify": { "contains": { "const": "assertions" }, "not": { "contains": { "const": "player" } } },
+              "assertions": {
+                "contains": { "not": { "required": ["diagnostic"], "properties": { "diagnostic": { "const": true } } } },
+                "items": {
+                  "if": { "required": ["absent"], "properties": { "absent": { "const": true } } },
+                  "then": { "required": ["diagnostic"], "properties": { "diagnostic": { "const": true } } }
+                }
+              }
+            }
+          },
+          "else": { "not": { "required": ["timeout"] } }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "required": ["kind"], "properties": { "kind": { "const": "wait-event" } } } } },
+          "then": { "required": ["auto"], "properties": { "auto": { "const": true } } }
+        }
+      ]
     }
   }
 }

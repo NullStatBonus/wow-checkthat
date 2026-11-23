@@ -18,12 +18,14 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     App.Begin()                                  -- the card opens the retry straight away
     db.log.enabled = true; App.Log("debug on")   -- player types /wtt debug on
     T.eq(App.Verdict("pass").verdict, "pass")
-    App.Begin(); App.Log("status requested")
-    T.eq(App.Verdict("pass").verdict, "pass")
-    -- reload step: attempt opens, reload happens (state saved), login logs the resume line
+    App.Begin(); T.eq(App.AutoSettle(), nil, "waits for the Run click")
+    App.Log("status requested")                  -- the player clicks Run; TestThat records the result itself
+    local s = App.AutoSettle()
+    T.eq(s.verdict, "pass"); T.eq(s.by, "auto")
+    -- reload step: attempt opens, reload happens (state saved), login logs the resume line, the runner settles it
     App.Begin(); App.MarkReloaded(); App.Log("resumed run " .. run.runId .. " after load")
-    local a = App.Verdict("pass")
-    T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched")
+    local a = App.AutoSettle()
+    T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched"); T.eq(a.by, "auto")
     App.Begin(); T.eq(App.Verdict("pass").verdict, "pass")
     local _, _, step = App.Current()
     T.ok(step == nil, "run complete")

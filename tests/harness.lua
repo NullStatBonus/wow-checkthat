@@ -45,6 +45,8 @@ function H.stubClient(opts)
     _G.StaticPopup_Show = function(which) st.popup = _G.StaticPopupDialogs[which] end
     _G.geterrorhandler = function() return function(e) error(e, 0) end end
     _G.GetTime = function() return 1 end
+    st.timers = {}
+    _G.C_Timer = { After = function(_, fn) st.timers[#st.timers + 1] = fn end } -- queued; a test runs them
     _G.issecurevariable = function() return false end
     _G.securecallfunction = function(f, ...) return f(...) end
     _G.print = function(...) st.said[#st.said + 1] = table.concat({ ... }, " ") end

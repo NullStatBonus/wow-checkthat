@@ -148,4 +148,156 @@ test("addon-loaded requirement defaults to loaded, not merely answered", functio
     T.eq(#R.Blocked(ctx, ctx.plan.sections[1].steps[2]), 0)
 end)
 
+-- Auto steps: the runner settles them from the evidence alone.
+local function mkAuto(timeout)
+    local run, ctx, env = mk()
+    local st = ctx.plan.sections[1].steps[1]
+    st.verify = { "assertions" }; st.auto = true; st.timeout = timeout
+    return run, ctx, env, st
+end
+test("auto: a player pass is unchanged and carries no auto mark", function()
+    local run, ctx, env = mk()
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.Verdict(run, ctx, "a", "pass").by, nil)
+end)
+test("auto: the step passes by itself when the line appears", function()
+    local run, ctx, env = mkAuto()
+    R.Begin(run, ctx, "a")
+    T.eq(R.AutoSettle(run, ctx, "a"), nil); T.eq(run.steps.a.verdict, "pending")
+    env.DB.log[#env.DB.log + 1] = "ok line"
+    local a = R.AutoSettle(run, ctx, "a")
+    T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched"); T.eq(a.by, "auto"); T.eq(a.claimed, "pass")
+    T.eq(R.CurrentId(run), "b", "moves on")
+end)
+test("auto: nothing is recorded while a required check is still waiting", function()
+    local run, ctx, env, st = mkAuto()
+    st.assertions[2] = { kind = "log", source = "debug", contains = "second" }
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.AutoSettle(run, ctx, "a"), nil)
+    T.eq(run.steps.a.verdict, "pending"); T.eq(#run.steps.a.attempts, 1); T.eq(run.steps.a.attempts[1].verdict, nil)
+end)
+test("auto: a step that is not auto is never settled by the runner", function()
+    local run, ctx, env = mk()
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.AutoSettle(run, ctx, "a"), nil); T.eq(run.steps.a.verdict, "pending")
+end)
+test("auto: the player's result comes first and is not overwritten", function()
+    local run, ctx, env = mkAuto()
+    R.Begin(run, ctx, "a"); R.Verdict(run, ctx, "a", "fail", "no")
+    env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.AutoSettle(run, ctx, "a"), nil)
+    T.eq(run.steps.a.verdict, "fail"); T.eq(#run.steps.a.attempts, 1)
+end)
+test("auto: undo reopens the step and the runner can settle it again", function()
+    local run, ctx, env = mkAuto()
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"; R.AutoSettle(run, ctx, "a")
+    T.eq(R.UndoLast(run, ctx), true); T.eq(run.steps.a.verdict, "pending")
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok again"
+    T.eq(R.AutoSettle(run, ctx, "a").verdict, "pass")
+end)
+local function stateStep(st)
+    st.assertions = { { kind = "state", probe = "global-value", name = "G", path = "v", op = "eq", value = 2 } }
+end
+test("auto: at the timeout contradicting evidence records fail", function()
+    local run, ctx, env, st = mkAuto(30); stateStep(st); env.G = { v = 1 }
+    R.Begin(run, ctx, "a")
+    ctx.now = 129; T.eq(R.AutoSettle(run, ctx, "a"), nil, "not due yet")
+    ctx.now = 130
+    local a = R.AutoSettle(run, ctx, "a")
+    T.eq(a.verdict, "fail"); T.eq(a.evidence, "contradicts"); T.eq(a.by, "auto")
+end)
+test("auto: at the timeout missing evidence records unverified and the step stays open", function()
+    local run, ctx = mkAuto(30)
+    R.Begin(run, ctx, "a"); ctx.now = 131
+    local a = R.AutoSettle(run, ctx, "a")
+    T.eq(a.verdict, "unverified"); T.eq(a.by, "auto"); T.eq(R.CurrentId(run), "a")
+end)
+test("auto: a check that reads bad and then recovers before the timeout passes", function()
+    local run, ctx, env, st = mkAuto(30); stateStep(st); env.G = { v = 1 }
+    R.Begin(run, ctx, "a")
+    ctx.now = 110; T.eq(R.AutoSettle(run, ctx, "a"), nil, "bad is not a failure before the timeout")
+    env.G.v = 2; ctx.now = 120
+    T.eq(R.AutoSettle(run, ctx, "a").verdict, "pass")
+end)
+test("auto: the timeout counts from when the attempt opened, also after a reload", function()
+    local run, ctx, env, st = mkAuto(30); stateStep(st); env.G = { v = 1 }
+    R.Begin(run, ctx, "a")
+    ctx.now = 110; R.AutoSettle(run, ctx, "a")
+    local saved = ns.Json and ns.Json.Decode and ns.Json.Decode(ns.Json.Encode(run)) or run
+    ctx.now = 130
+    T.eq(R.AutoSettle(saved, ctx, "a").verdict, "fail", "30 s after the open, not after the reload")
+end)
+test("auto: an unverified timeout does not loop; Redo lets the runner settle again", function()
+    local run, ctx, env = mkAuto(30)
+    R.Begin(run, ctx, "a"); ctx.now = 131; R.AutoSettle(run, ctx, "a")
+    local b = R.Begin(run, ctx, "a")             -- the card opens the retry straight away
+    T.eq(#run.steps.a.attempts, 2)
+    ctx.now = 500; env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.AutoSettle(run, ctx, "a"), nil, "no second automatic result until the player acts")
+    T.eq(#run.steps.a.attempts, 2)
+    R.Verdict(run, ctx, "a", "pass")             -- the player acts: unverified or pass, either closes it
+    R.Begin(run, ctx, "a")                       -- the player acted, so a new attempt may settle itself
+    env.DB.log[#env.DB.log + 1] = "ok again"
+    T.eq(R.AutoSettle(run, ctx, "a").verdict, "pass")
+end)
+test("auto: settling reads only the evidence sources and sends no input", function()
+    local run, ctx, env, st = mkAuto(30); stateStep(st); env.G = { v = 1 }
+    local touched = {}
+    ctx.env = setmetatable({}, { __index = function(_, k) touched[k] = true; return env[k] end })
+    R.Begin(run, ctx, "a"); ctx.now = 200
+    R.AutoSettle(run, ctx, "a")
+    local extra = {}
+    for k in pairs(touched) do if k ~= "DB" and k ~= "G" then extra[#extra + 1] = tostring(k) end end
+    T.eq(#extra, 0, "touched: " .. table.concat(extra, ","))
+end)
+
+test("auto: a check that flips between the live read and the recording read does not fail the step early", function()
+    local run, ctx, env, st = mkAuto(30); stateStep(st)
+    local reads = 0
+    setmetatable(env, { __index = function(_, k) if k == "G" then reads = reads + 1; return { v = reads == 1 and 2 or 1 } end end })
+    R.Begin(run, ctx, "a")
+    T.eq(R.AutoSettle(run, ctx, "a"), nil, "nothing is recorded when the recording read disagrees")
+    T.eq(run.steps.a.verdict, "pending"); T.eq(run.steps.a.attempts[1].verdict, nil)
+end)
+test("auto: a step that asks for a reload waits for it, unless the timeout is due", function()
+    local run, ctx, env, st = mkAuto(30); st.reload = "after_action"
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.AutoSettle(run, ctx, "a"), nil, "checks are met but the reload has not happened")
+    run.steps.a.attempts[1].reloaded = true
+    T.eq(R.AutoSettle(run, ctx, "a").verdict, "pass")
+    local run2, ctx2, env2, st2 = mkAuto(30); st2.reload = "after_action"
+    R.Begin(run2, ctx2, "a"); ctx2.now = 131
+    T.eq(R.AutoSettle(run2, ctx2, "a").verdict, "unverified", "the timeout still settles")
+end)
+test("auto: Undo is the player acting, so the step can settle itself again", function()
+    local run, ctx, env = mkAuto(30)
+    R.Begin(run, ctx, "a"); ctx.now = 131; R.AutoSettle(run, ctx, "a")     -- unverified by the runner
+    R.Begin(run, ctx, "a")                                                 -- retry, waits for the player
+    R.Verdict(run, ctx, "a", "skip")
+    T.eq(R.UndoLast(run, ctx), true); T.eq(run.steps.a.verdict, "pending")
+    local a = R.Begin(run, ctx, "a")
+    T.eq(a.noauto, nil, "the reopened attempt may settle")
+    env.DB.log[#env.DB.log + 1] = "ok again"
+    T.eq(R.AutoSettle(run, ctx, "a").verdict, "pass")
+end)
+test("auto: a note typed while waiting is kept", function()
+    local run, ctx, env = mkAuto()
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"
+    T.eq(R.AutoSettle(run, ctx, "a", "my note").note, "my note")
+end)
+test("auto: seconds left count from when the attempt opened", function()
+    local run, ctx = mkAuto(30)
+    R.Begin(run, ctx, "a")
+    T.eq(R.TimeLeft(run, ctx, "a"), 30)
+    ctx.now = 112; T.eq(R.TimeLeft(run, ctx, "a"), 18)
+    ctx.now = 400; T.eq(R.TimeLeft(run, ctx, "a"), 0, "never negative")
+end)
+test("auto: no countdown without a timeout, without auto, or once the runner has handed over", function()
+    local run, ctx = mkAuto(nil); R.Begin(run, ctx, "a")
+    T.eq(R.TimeLeft(run, ctx, "a"), nil, "no timeout")
+    local run2, ctx2 = mk(); R.Begin(run2, ctx2, "a")
+    T.eq(R.TimeLeft(run2, ctx2, "a"), nil, "not an auto step")
+    local run3, ctx3 = mkAuto(30); R.Begin(run3, ctx3, "a"); ctx3.now = 131; R.AutoSettle(run3, ctx3, "a"); R.Begin(run3, ctx3, "a")
+    T.eq(R.TimeLeft(run3, ctx3, "a"), nil, "the retry after an automatic unverified waits for the player")
+end)
 finish()

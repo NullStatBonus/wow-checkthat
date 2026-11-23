@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+New: **Automatic steps.** A plan step can record its own result when the debug log or game state shows your action.
+New: An automatic step can also fail or stay open at a time limit. The card shows the seconds left.
+New: The card, the debug log and the report show which results TestThat recorded.
+Changed: The wait-event step type now shows a wait message on the card.
+Fixed: Pressing Pass in combat could change the protected Run button and raise a blocked-action error. The button now waits until combat ends.
+
 ## 0.3.3
 
 New: **Debug logging guide.** A new guide tells addon authors what a good debug log looks like.

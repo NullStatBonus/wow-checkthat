@@ -456,6 +456,12 @@ def latest_runs(dest):
     return runs
 
 
+def by_testthat(rec):
+    """True when the runner, not the player, recorded the step's last result (an auto step)."""
+    done = [a for a in rec.get("attempts") or [] if a.get("verdict")]   # an open retry has no result yet
+    return rec.get("verdict") != "pending" and bool(done) and done[-1].get("by") == "auto"   # Undo reopens the step
+
+
 def report_text(runs, dest=None):
     out = ["# WTT report", ""]
     for rid, r in sorted(runs.items()):
@@ -464,15 +470,17 @@ def report_text(runs, dest=None):
             counts[rec.get("verdict", "?")] = counts.get(rec.get("verdict", "?"), 0) + 1
         out.append("## %s (%s, rev %s)" % (rid, r.get("planTitle", r.get("addon")), r.get("revision")))
         out.append("client %s build %s character %s" % (r.get("client"), r.get("build"), r.get("character")))
-        out.append("counts: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())))
+        auto = sum(1 for rec in (r.get("steps") or {}).values() if by_testthat(rec))
+        out.append("counts: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())) + (", auto=%d" % auto if auto else ""))
         for sid in r.get("order", []):
             rec = r["steps"].get(sid, {})
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
-            if shots and rec.get("verdict") in ("pass", "skip", "inapplicable"):
-                out.append("- %s: %s, screenshots: %s" % (sid, rec.get("verdict"), ", ".join(shots)))
+            mark = ", recorded by TestThat" if by_testthat(rec) else ""
+            if (shots or mark) and rec.get("verdict") in ("pass", "skip", "inapplicable"):
+                out.append("- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else ""))
             if rec.get("verdict") in ("pass", "skip", "inapplicable"):
                 continue
-            out.append("- %s: %s%s" % (sid, rec.get("verdict"), (", screenshots: " + ", ".join(shots)) if shots else ""))
+            out.append("- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else ""))
             for at in rec.get("attempts", []):
                 note = at.get("note")
                 outs = [o for o in (at.get("outcomes") or []) if o.get("result") != "pass"]

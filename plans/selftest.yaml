@@ -45,10 +45,10 @@ sections:
       kind: secure-macro
       macro: status
       text: Click Run on the card.
-    expect: Chat shows a status line with your pass count.
+    expect: Chat shows a status line with your pass count. The card records the result by itself.
     verify:
-    - player
     - assertions
+    auto: true
     assertions:
     - kind: log
       source: debug
@@ -59,10 +59,11 @@ sections:
     action:
       kind: reload
       text: Press Reload on the card.
-    expect: After the reload the card is back on this step and says "Reloaded".
+    expect: After the reload the card moves on by itself within a minute.
     verify:
-    - player
     - assertions
+    auto: true
+    timeout: 60
     reload: after_action
     assertions:
     - kind: log
