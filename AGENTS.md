@@ -1,4 +1,4 @@
-# TestThat
+# CheckThat
 
 ## Documentation
 
@@ -8,10 +8,10 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 - Update the CurseForge/Wago text in `docs/listing.md`. Update its summary when the headline behavior changes.
 - Update `docs/test-plan.md` with the relevant manual checks. Keep section numbers unique and in order.
 - Document every new setting in the README and include its value in the debug report.
-- Check the report with `/wtt log`.
+- Check the report with `/ct log`.
 - Record what a client or another addon provides in `docs/contracts.md` whenever a probe or source review measures it.
 - `tests/test_readme.lua` checks the README command list.
-- Keep `schema/test-plan.schema.json` and the plan format specs (`openspec/specs/test-plan-format/`) in step with `TestThat/Model/Plan.lua` and `tools/wtt.py`.
+- Keep `schema/test-plan.schema.json` and the plan format specs (`openspec/specs/test-plan-format/`) in step with `CheckThat/Model/Plan.lua` and `tools/wtt.py`.
 
 ## Testing
 
@@ -23,7 +23,7 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 - Keep raw saved variables and debug output out of Git. Anonymize any fixture derived from them.
 - Each module's tests live in `tests/test_<module>.lua` and run alone with `luajit tests/test_<module>.lua`. `tests/harness.lua` builds the fake client. `test_smoke` loads every file the TOC lists, with the real Ace3 libraries, and `test_options` validates the settings tree with AceConfig's own validator.
 - Python tools have tests in `tools/test_*.py` (run by `make test`).
-- Reserve in-game checks for what unit tests cannot prove. Read the copied `/wtt log` report or saved variables yourself. Ask for an on-screen observation only when neither captures the result.
+- Reserve in-game checks for what unit tests cannot prove. Read the copied `/ct log` report or saved variables yourself. Ask for an on-screen observation only when neither captures the result.
 - Read the player's copied saved variables in `../shared-addon-resources/saved` (or run `tools/wtt.py collect`) before asking for more in-game steps.
 
 ## Conventions
@@ -49,9 +49,9 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 ## OpenSpec, Git, and releases
 
 - Follow the matching workflow under `.claude/skills/`. The archive procedure is in `.claude/skills/openspec-archive-change/SKILL.md` (`/opsx:archive` in Claude Code).
-- **Bump the version only when addon code changed.** Addon code is any file under `TestThat/`, the folder `.pkgmeta` ships. A change that touches only tools, tests, skills, docs, README, `Makefile`, `openspec/` or CI leaves both TOC versions, `CHANGELOG.md` and the release tag alone. Archive it without a bump. Check `git diff --stat` for `TestThat/` before you bump.
+- **Bump the version only when addon code changed.** Addon code is any file under `CheckThat/`, the folder `.pkgmeta` ships. A change that touches only tools, tests, skills, docs, README, `Makefile`, `openspec/` or CI leaves both TOC versions, `CHANGELOG.md` and the release tag alone. Archive it without a bump. Check `git diff --stat` for `CheckThat/` before you bump.
 - When addon code changed, bump the version once per OpenSpec change when its specs are applied to `openspec/specs/` during sync or archive. If `/opsx:sync` already set the version, keep it at archive.
-- Set the same `## Version:` in `TestThat/TestThat_Vanilla.toc` and `TestThat/TestThat_Camelot.toc`. These are the only files that hard-code the addon version.
+- Set the same `## Version:` in `CheckThat/CheckThat_Vanilla.toc` and `CheckThat/CheckThat_Camelot.toc`. These are the only files that hard-code the addon version.
 - Before 1.0, bump minor for a new capability or player-visible feature and patch for a fix or modification to existing behavior. From 1.0 onward, follow semantic versioning. Breaking saved settings or data requires a major bump from 1.0 onward.
 - Archive before committing, pushing, or opening a PR for the change. Keep the code, synced specs, archive, and (for addon code changes) the version bump and matching `## X.Y.Z` changelog section in the same commit. Name the new version in the commit message when there is one. A change still active in `openspec/changes/` is ineligible for commit.
 - Write `CHANGELOG.md` at archive, only for a version bump. Order entries by `New:`, `Changed:`, `Fixed:`, and `Removed:`. Bold the main item. For each fix, say what players saw before. Write one short line per entry in ASD-STE100 Simplified Technical English. Use active voice, simple tenses, common words, one fact per sentence, and at most 20 words per sentence. Describe what players see. Put settings-page, debug-report, and implementation details in the README.

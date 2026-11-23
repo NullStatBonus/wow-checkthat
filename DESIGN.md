@@ -1,6 +1,6 @@
-# TestThat presentation and interaction design
+# CheckThat presentation and interaction design
 
-TestThat follows the shared presentation contract documented in KeepThat's `DESIGN.md` (v1). This file records how TestThat applies it. **Shared** means a common design vocabulary, not shared SavedVariables or a required runtime library.
+CheckThat follows the shared presentation contract documented in KeepThat's `DESIGN.md` (v1). This file records how CheckThat applies it. **Shared** means a common design vocabulary, not shared SavedVariables or a required runtime library.
 
 ## 1. Product principles
 
@@ -23,7 +23,7 @@ AceConfig/AceGUI with a tree and a scrolling content pane.
 | Element | Decision |
 | --- | --- |
 | Standalone initial window | 600 x 460 logical units |
-| Window title | TestThat |
+| Window title | CheckThat |
 | Navigation | Ace tree; resizable; content scrolls |
 | Sliders | 1.5 Ace control widths |
 | Action buttons | Standard width; longer labels 1.5 widths |
@@ -43,7 +43,7 @@ The same pages are registered in the game's Settings window.
 | 4 | Advanced | Settings scope and debug recording and report |
 | 5 | About | Name, version, purpose and commands |
 
-Every page works when opened directly (`/wtt settings <page>`). Each page starts with a heading, a purpose of one or two short sentences, then sections per task.
+Every page works when opened directly (`/ct settings <page>`). Each page starts with a heading, a purpose of one or two short sentences, then sections per task.
 
 ### Scope
 
@@ -53,7 +53,7 @@ Settings use the shared Default profile. A checkbox in Advanced switches to a ch
 
 - Importing a plan opens the window with the plan title, its step count and Start run. The import screen has a text box and a "Recent plans" dropdown (up to 8, newest first); choosing one needs no paste.
 - Layout, top to bottom: header (step number, collapse, close), a 3 unit progress bar filled by resolved steps, the step title (largest text), Setup / Do / Expect in a 62 unit label column, the step's commands in read-only boxes beside Do with Run next to the first, an amber evidence line only when evidence is missing, a labelled note field, and a pinned row of Pass, Partial (mostly works), Fail, Skip and Undo (24 high; Reload joins the row only when a step asks for it). The secure button is labelled Run and sits inside the card beside the first command. After a reload a green "Reloaded" line shows under the title.
-- Under the title a banner says who checks the step: green TESTTHAT CHECKS THIS STEP (the required checks are listed below Expect and tick live with the stock ReadyCheck icons; on an auto step the banner adds that TestThat records the result, the checks list ends with the seconds left when the step has a timeout, and a settled step reads "Recorded: Pass (recorded by TestThat)") or gold YOU CONFIRM THIS STEP. < and > in the header move between steps; a finished step shows what was recorded with a Redo button.
+- Under the title a banner says who checks the step: green CHECKTHAT CHECKS THIS STEP (the required checks are listed below Expect and tick live with the stock ReadyCheck icons; on an auto step the banner adds that CheckThat records the result, the checks list ends with the seconds left when the step has a timeout, and a settled step reads "Recorded: Pass (recorded by CheckThat)") or gold YOU CONFIRM THIS STEP. < and > in the header move between steps; a finished step shows what was recorded with a Redo button.
 - Fonts are stock Blizzard: GameFontHighlightLarge (title), GameFontHighlight #DDDDDD (Do, Expect), GameFontHighlightSmall #AAAAAA (header, labels, hints). Amber means missing evidence only.
 - Collapsed, the card is a 280 wide strip with the step title and number. When the run is complete it shows passed, partial, failed and skipped counts, the plan handoff, Export results and Main window (the card start screen with Start run and Import a plan; there is no Reload here).
 - Default position right of center, 380 wide; draggable; the position is saved; Lock position stops dragging; Reset position restores it.
@@ -64,12 +64,12 @@ Settings use the shared Default profile. A checkbox in Advanced switches to a ch
 
 ## 4. Commands and diagnostics
 
-The common vocabulary: `settings [page]`, `help [topic]`, `status [topic]`, `get`, `set`, `debug on|off`, `log`, `log clear`. TestThat adds the runner commands (`import`, `start`, `pass`, `partial`, `fail`, `skip`, `undo`, `back`, `next`, `export`, `macro`, `reload`).
+The common vocabulary: `settings [page]`, `help [topic]`, `status [topic]`, `get`, `set`, `debug on|off`, `log`, `log clear`. CheckThat adds the runner commands (`import`, `start`, `pass`, `partial`, `fail`, `skip`, `undo`, `back`, `next`, `export`, `macro`, `reload`).
 
-UI and commands share validators in `Core/Settings.lua`. Unknown keys, bad values and surplus input are rejected without writes. TestThat's public keys are `card.scale`, `card.background-opacity`, `card.text-opacity` and `card.locked`. The report lists every saved setting, the run status, failures and the recorded lines.
+UI and commands share validators in `Core/Settings.lua`. Unknown keys, bad values and surplus input are rejected without writes. CheckThat's public keys are `card.scale`, `card.background-opacity`, `card.text-opacity` and `card.locked`. The report lists every saved setting, the run status, failures and the recorded lines.
 
 ## 5. Reuse boundaries and validation
 
-Adopt the shared terms and contracts locally. Record intentional differences with their reason: TestThat has no Move/Done/Cancel transaction (the card is dragged and locked) and no previews or demo, because it has nothing to preview.
+Adopt the shared terms and contracts locally. Record intentional differences with their reason: CheckThat has no Move/Done/Cancel transaction (the card is dragged and locked) and no previews or demo, because it has nothing to preview.
 
 Validation: `make test`, `make check` and strict OpenSpec validation. `test_smoke` loads the whole TOC with the real Ace libraries; `test_options` validates the tree with AceConfig. These do not replace checks on a client: see `docs/test-plan.md`.

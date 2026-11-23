@@ -223,7 +223,7 @@ test("an automatic result is logged, labelled and exported", function()
     end
     T.ok(found, "log line missing")
     local back = assert(ns.Codec.Decode(assert(App.Export())))
-    T.eq(back.steps["kt.1"].attempts[1].by, "auto", "the results string says TestThat recorded it")
+    T.eq(back.steps["kt.1"].attempts[1].by, "auto", "the results string says CheckThat recorded it")
 end)
 
 finish()

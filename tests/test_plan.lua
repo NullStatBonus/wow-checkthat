@@ -38,9 +38,9 @@ test("plan rejects executable macro bodies", function()
     bad(function(p) p.macros[1].text = "/console scriptErrors 1\n/script x=1" end, "macro not allowed")
 end)
 test("unknown addon name is named in the error, not blamed on the macro", function()
-    local p = good(); p.addon = "WoWTestThat"
+    local p = good(); p.addon = "WoWCheckThat"
     local errs = ns.Plan.Validate(p)
-    T.eq(#errs, 1); T.ok(errs[1]:find("addon not supported") and errs[1]:find("WoWTestThat"), errs[1])
+    T.eq(#errs, 1); T.ok(errs[1]:find("addon not supported") and errs[1]:find("WoWCheckThat"), errs[1])
 end)
 test("plan cannot extend the slash allow list", function()
     bad(function(p) p.slash = { "/run" }; p.macros[1].text = "/run x" end, "macro not allowed")
@@ -117,6 +117,15 @@ test("assertion flags must be real booleans, so an import cannot downgrade a req
     bad(function(p) p.sections[1].steps[1].assertions[1].absent = "no" end, "absent must be boolean")
     local p = good(); p.sections[1].steps[1].assertions[1].diagnostic = false
     T.eq(#ns.Plan.Validate(p), 0)
+end)test("plans for CheckThat allow /ct and /checkthat and no other command", function()
+    for _, cmd in ipairs({ "/ct", "/checkthat" }) do
+        local p = good(); p.addon = "CheckThat"; p.macros[1].text = cmd .. " debug on\n/reload"
+        T.eq(#ns.Plan.Validate(p), 0, cmd .. ": " .. table.concat(ns.Plan.Validate(p), ";"))
+    end
+    for _, cmd in ipairs({ "/kt debug on", "/wtt debug on" }) do
+        local p = good(); p.addon = "CheckThat"; p.macros[1].text = cmd
+        T.ok(#ns.Plan.Validate(p) > 0, cmd .. " must be rejected")
+    end
 end)
 
 finish()

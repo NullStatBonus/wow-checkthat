@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verifies every Script/Include path in TestThat/embeds.xml (recursively) exists.
+# Verifies every Script/Include path in CheckThat/embeds.xml (recursively) exists.
 cd "$(dirname "$0")/.." || exit 1
 fail=0
 check() {
@@ -14,6 +14,6 @@ check() {
     fi
   done
 }
-check TestThat/embeds.xml
+check CheckThat/embeds.xml
 if [ -f /tmp/.kt_embed_fail.$$ ]; then rm -f /tmp/.kt_embed_fail.$$; echo "FAILED"; exit 1; fi
 echo "All embed paths exist"

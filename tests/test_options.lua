@@ -1,15 +1,15 @@
 local ns, test, T, finish, H = dofile("tests/harness.lua")()
 -- Loads the real Ace libraries and checks the settings pages against AceConfig's own validator.
 local st = H.stubClient()
-H.loadToc(ns, "TestThat/TestThat_Vanilla.toc")
+H.loadToc(ns, "CheckThat/CheckThat_Vanilla.toc")
 do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
-TestThatDB = nil
+CheckThatDB = nil
 ns.addon:OnInitialize()
 
 test("the tree validates and has the shared pages in order", function()
     local tree = ns.Options.Build()
     local reg = LibStub("AceConfigRegistry-3.0")
-    T.ok(pcall(reg.ValidateOptionsTable, reg, tree, "TestThat"))
+    T.ok(pcall(reg.ValidateOptionsTable, reg, tree, "CheckThat"))
     local order = {}
     for key, g in pairs(tree.args) do order[g.order] = key end
     T.eq(table.concat(order, ","), "home,plans,appearance,advanced,about")

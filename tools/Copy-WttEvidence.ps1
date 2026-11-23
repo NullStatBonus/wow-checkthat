@@ -1,6 +1,6 @@
 # Copy-WttEvidence.ps1
 # Copies only the files the WTT collector needs from every WoW install, keeping per-character files
-# (the shared copy script skips those for Classic Era): TestThat, KeepThat, DontDoThat and
+# (the shared copy script skips those for Classic Era): CheckThat, KeepThat, DontDoThat and
 # ClosestVendor saved variables, plus Screenshots. Read-only on the game folders.
 # Then run:  .venv/bin/python tools/wtt.py collect --src <Destination>
 param(
@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 $Destination = [System.IO.Path]::GetFullPath($Destination)
 Write-Host "Copying to $Destination"
 try {
-$names = 'TestThat', 'KeepThat', 'DontDoThat', 'ClosestVendor'
+$names = 'CheckThat', 'KeepThat', 'DontDoThat', 'ClosestVendor'
 foreach ($root in $Roots) {
     $flavor = Split-Path $root -Leaf
     $wtf = Join-Path $root 'WTF'

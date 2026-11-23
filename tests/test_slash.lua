@@ -82,4 +82,14 @@ test("text from a plan is escaped for chat", function()
     T.eq(ns.Slash.Esc("plain"), "plain")
 end)
 
+test("registers /ct and /checkthat with one handler, and no other command", function()
+    local handlers = {}
+    local fake = { db = { profile = {} }, RegisterChatCommand = function(_, name, fn) handlers[name] = fn end }
+    ns.Slash.Register(fake)
+    T.ok(handlers.ct and handlers.checkthat, "both registered")
+    T.eq(handlers.ct, handlers.checkthat, "the same handler")
+    local n = 0
+    for _ in pairs(handlers) do n = n + 1 end
+    T.eq(n, 2, "nothing else is registered")
+end)
 finish()

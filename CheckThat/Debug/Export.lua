@@ -9,7 +9,7 @@ local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interfac
 local box
 
 local function build()
-    box = CreateFrame("Frame", "TestThatTextBox", UIParent, "BackdropTemplate")
+    box = CreateFrame("Frame", "CheckThatTextBox", UIParent, "BackdropTemplate")
     box:SetSize(520, 240); box:SetPoint("CENTER"); box:SetFrameStrata("DIALOG")
     box:SetBackdrop(BACKDROP); box:SetBackdropColor(0, 0, 0, 0.95); box:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     box:SetMovable(true); box:EnableMouse(true); box:RegisterForDrag("LeftButton")
@@ -17,7 +17,7 @@ local function build()
     box.title = box:CreateFontString(nil, "OVERLAY", "GameFontNormal"); box.title:SetPoint("TOPLEFT", 10, -8)
     box.title:SetWidth(470); box.title:SetJustifyH("LEFT")
     local close = CreateFrame("Button", nil, box, "UIPanelCloseButton"); close:SetPoint("TOPRIGHT", 2, 2)
-    local sf = CreateFrame("ScrollFrame", "TestThatTextScroll", box, "UIPanelScrollFrameTemplate")
+    local sf = CreateFrame("ScrollFrame", "CheckThatTextScroll", box, "UIPanelScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", 10, -32); sf:SetPoint("BOTTOMRIGHT", -30, 40)
     box.edit = CreateFrame("EditBox", nil, sf)
     box.edit:SetMultiLine(true); box.edit:SetFontObject("ChatFontNormal"); box.edit:SetWidth(470)

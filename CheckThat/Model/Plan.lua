@@ -8,7 +8,7 @@ Plan.ACTIONS = { manual = true, ["copy-slash"] = true, ["secure-macro"] = true, 
 Plan.VERIFY = { player = true, assertions = true, reviewer = true }
 -- Runner-shipped slash allow list per addon. A plan can never extend it.
 Plan.SLASH = {
-    TestThat = { ["/wtt"] = true },
+    CheckThat = { ["/ct"] = true, ["/checkthat"] = true },
     KeepThat = { ["/kt"] = true, ["/keepthat"] = true },
     DontDoThat = { ["/ddt"] = true, ["/dontdothat"] = true },
     ClosestVendor = { ["/cvn"] = true, ["/closestvendor"] = true },
@@ -122,7 +122,7 @@ function Plan.Validate(plan)
     if not isStr(plan.addon) then errs[#errs + 1] = "addon missing" end
     if not isStr(plan.title) then errs[#errs + 1] = "title missing" end
     if isStr(plan.addon) and not Plan.SLASH[plan.addon] then
-        errs[#errs + 1] = "addon not supported by this TestThat version: " .. plan.addon
+        errs[#errs + 1] = "addon not supported by this CheckThat version: " .. plan.addon
         return errs
     end
     local allow = Plan.SLASH[plan.addon] or {}

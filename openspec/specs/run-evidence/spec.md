@@ -40,7 +40,7 @@ A claimed pass SHALL record as pass only if every required (non-diagnostic) asse
 - **THEN** only lines after the snapshot position count as new
 
 ### Requirement: Results survive reload
-The runner SHALL keep the run in SavedVariables (`TestThatDB.global.runs`), open an attempt before the player acts, keep that attempt (with its log snapshot) across `/reload`, resume the current step after login, and offer an immediate export string. Results SHALL be labelled "saved on reload" until the game flushes them. The runner's own log SHALL be readable as an evidence source at `TestThatDB.global.log.entries`.
+The runner SHALL keep the run in SavedVariables (`CheckThatDB.global.runs`), open an attempt before the player acts, keep that attempt (with its log snapshot) across `/reload`, resume the current step after login, and offer an immediate export string. Results SHALL be labelled "saved on reload" until the game flushes them. The runner's own log SHALL be readable as an evidence source at `CheckThatDB.global.log.entries`.
 
 #### Scenario: Reload mid-step
 - **WHEN** a step has `reload: after_action` and the player reloads
@@ -165,4 +165,4 @@ The runner SHALL settle an auto attempt at most once. After an automatic unverif
 
 #### Scenario: Reviewer can tell
 - **WHEN** a reviewer reads the report for an automatic result, including while a retry attempt is open
-- **THEN** the report labels the result as recorded by TestThat, not by the player
+- **THEN** the report labels the result as recorded by CheckThat, not by the player

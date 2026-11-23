@@ -2,7 +2,7 @@
 local path = arg[1]
 local here = arg[0]:match("^(.*)/tools/[^/]*$") or "."
 local ns = {}
-assert(loadfile(here .. "/TestThat/Model/Json.lua"))("TestThat", ns)
+assert(loadfile(here .. "/CheckThat/Model/Json.lua"))("CheckThat", ns)
 
 local env = {}
 local chunk, err = loadfile(path)

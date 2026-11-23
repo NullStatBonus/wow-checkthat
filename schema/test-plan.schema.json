@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://wow-testthat/schema/test-plan.schema.json",
+  "$id": "https://wow-checkthat/schema/test-plan.schema.json",
   "title": "WTT test plan v1",
   "type": "object",
   "additionalProperties": false,
@@ -19,7 +19,7 @@
     },
     "addon": {
       "enum": [
-        "TestThat",
+        "CheckThat",
         "KeepThat",
         "DontDoThat",
         "ClosestVendor"
@@ -288,7 +288,7 @@
             },
             "label": {
               "type": "string",
-              "description": "Player-readable name of this check, shown on the card while TestThat watches for it."
+              "description": "Player-readable name of this check, shown on the card while CheckThat watches for it."
             }
           }
         },
@@ -325,7 +325,7 @@
             },
             "label": {
               "type": "string",
-              "description": "Player-readable name of this check, shown on the card while TestThat watches for it."
+              "description": "Player-readable name of this check, shown on the card while CheckThat watches for it."
             }
           }
         },
@@ -370,7 +370,7 @@
             },
             "label": {
               "type": "string",
-              "description": "Player-readable name of this check, shown on the card while TestThat watches for it."
+              "description": "Player-readable name of this check, shown on the card while CheckThat watches for it."
             }
           }
         }
@@ -439,7 +439,7 @@
         },
         "auto": {
           "type": "boolean",
-          "description": "TestThat records the result itself when every required assertion is met. Needs assertions in verify, no player, and at least one required assertion that is not an absence check."
+          "description": "CheckThat records the result itself when every required assertion is met. Needs assertions in verify, no player, and at least one required assertion that is not an absence check."
         },
         "timeout": {
           "type": "integer",

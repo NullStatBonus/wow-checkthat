@@ -68,16 +68,16 @@ function H.stubClient(opts)
     return st
 end
 
--- Loads TestThat/<name>.lua with the addon's own (name, ns) arguments.
+-- Loads CheckThat/<name>.lua with the addon's own (name, ns) arguments.
 function H.module(ns, name)
-    local chunk = assert(loadfile("TestThat/" .. name .. ".lua"))
-    chunk("TestThat", ns)
+    local chunk = assert(loadfile("CheckThat/" .. name .. ".lua"))
+    chunk("CheckThat", ns)
 end
 
 -- Plain modules, in TOC order: everything that needs no frames.
 function H.plain(ns)
-    assert(loadfile("TestThat/Libs/LibStub/LibStub.lua"))()
-    assert(loadfile("TestThat/Libs/LibDeflate/LibDeflate.lua"))()
+    assert(loadfile("CheckThat/Libs/LibStub/LibStub.lua"))()
+    assert(loadfile("CheckThat/Libs/LibDeflate/LibDeflate.lua"))()
     ns.LibDeflate = LibStub("LibDeflate")
     for _, m in ipairs({ "Locales/enUS", "Core/Init", "Core/Adapter", "Core/Defaults", "Model/Json", "Model/Codec", "Model/Plan",
         "Model/Evidence", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
@@ -99,7 +99,7 @@ function H.loadToc(ns, toc)
             end
         elseif path:match("%.lua$") then
             local chunk = assert(loadfile(path))
-            chunk("TestThat", ns)
+            chunk("CheckThat", ns)
         end
     end
     for line in io.lines(toc) do

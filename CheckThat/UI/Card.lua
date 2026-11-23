@@ -89,7 +89,7 @@ local function place(frame, x, y, anchor)
 end
 
 local function build()
-    card = CreateFrame("Frame", "TestThatCard", UIParent, "BackdropTemplate")
+    card = CreateFrame("Frame", "CheckThatCard", UIParent, "BackdropTemplate")
     card:SetSize(380, 300)
     card:SetMovable(true); card:EnableMouse(true); card:SetClampedToScreen(true); card:RegisterForDrag("LeftButton")
     card:SetScript("OnDragStart", function(self) if not cfg().locked then self:StartMoving() end end)
@@ -217,7 +217,7 @@ end
 function Card.EnsureSecure()
     if card.secure then return card.secure end
     if A.InCombat() then return nil end
-    local s = CreateFrame("Button", "TestThatSecureButton", UIParent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+    local s = CreateFrame("Button", "CheckThatSecureButton", UIParent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
     s:SetSize(56, 24); s:SetText(L["Run"])
     s:SetFrameStrata("DIALOG")
     s:SetAttribute("type", "macro")
@@ -312,13 +312,13 @@ function Card.Refresh()
     local inner = mini and 256 or INNER
     card.title:SetWidth(inner); card.barBack:SetWidth(inner)
     card.collapse:SetText(collapsed and "+" or "-")
-    card.head:SetText(L["TestThat / Run"])
+    card.head:SetText(L["CheckThat / Run"])
     card.step:SetText("")
     local pendingAddon = App.db.ui.pendingStart
     if not run or (pendingAddon and App.db.plans[pendingAddon]) then
         -- A plan is waiting to start (just imported or picked): it takes focus, even after a finished run.
         local rec = (pendingAddon or App.db.ui.lastImport) and App.db.plans[pendingAddon or App.db.ui.lastImport]
-        place(card.title, 12, 36); setText(card.title, L["TestThat"])
+        place(card.title, 12, 36); setText(card.title, L["CheckThat"])
         local y = 36 + card.title:GetStringHeight() + 8
         local msg
         if rec then
@@ -383,13 +383,13 @@ function Card.Refresh()
     place(card.banner, 12, y)
     local autoLive = step.auto and not (open and open.noauto) -- after an automatic unverified result the retry waits for the player
     if autoLive then
-        setText(card.banner, L["|cff66ff66TESTTHAT CHECKS THIS STEP.|r It records the result when the checks are met."], GREY)
+        setText(card.banner, L["|cff66ff66CHECKTHAT CHECKS THIS STEP.|r It records the result when the checks are met."], GREY)
     elseif #required > 0 then
-        setText(card.banner, L["|cff66ff66TESTTHAT CHECKS THIS STEP.|r It ticks below when it sees your action."], GREY)
+        setText(card.banner, L["|cff66ff66CHECKTHAT CHECKS THIS STEP.|r It ticks below when it sees your action."], GREY)
     elseif hasExtra then
-        setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r TestThat records extra detail for the reviewer."], GREY)
+        setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r CheckThat records extra detail for the reviewer."], GREY)
     else
-        setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r TestThat cannot see it."], GREY)
+        setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r CheckThat cannot see it."], GREY)
     end
     y = y + card.banner:GetStringHeight() + 8
     if reloaded then
@@ -408,7 +408,7 @@ function Card.Refresh()
     end
     local rows = {}
     if step.setup then rows[#rows + 1] = { L["Setup"], step.setup } end
-    rows[#rows + 1] = { L["Do"], step.action.text or (step.action.kind == "wait-event" and (autoLive and L["Wait. TestThat records the result when the checks below are met."] or L["Repeat the action, then press Pass."])) or L["Use the command below."] }
+    rows[#rows + 1] = { L["Do"], step.action.text or (step.action.kind == "wait-event" and (autoLive and L["Wait. CheckThat records the result when the checks below are met."] or L["Repeat the action, then press Pass."])) or L["Use the command below."] }
     rows[#rows + 1] = { L["Expect"], step.expect }
     local copies = App.Copyables(step, ctx.plan)
     local firstCopy
@@ -428,7 +428,7 @@ function Card.Refresh()
         end
         y = y + 4
     end
-    -- Live checks: each required check ticks as TestThat sees it.
+    -- Live checks: each required check ticks as CheckThat sees it.
     card.checkStep = nil
     if #required > 0 and open then
         card.checkStep = step.id
@@ -443,7 +443,7 @@ function Card.Refresh()
         local word = ({ pass = L["Pass"], partial = L["Partial"], fail = L["Fail"], skip = L["Skip"] })[rec0.verdict] or rec0.verdict
         local last = lastA
         place(card.recorded, 12, y)
-        setText(card.recorded, ((last and last.by == "auto") and L["Recorded: %s (recorded by TestThat)"] or L["Recorded: %s"]):format(word)
+        setText(card.recorded, ((last and last.by == "auto") and L["Recorded: %s (recorded by CheckThat)"] or L["Recorded: %s"]):format(word)
             .. ((last and last.note) and ("  -  " .. last.note) or ""), BODY)
         y = y + card.recorded:GetStringHeight() + 12
         card.redo:Show()
@@ -517,7 +517,7 @@ function Card.ChecksText(items, reserve, left)
         lines[#lines + 1] = ICON[it.state] .. " " .. TINT[it.state] .. label .. tail .. "|r"
     end
     if allMet or reserve then lines[#lines + 1] = L["|cff66ff66All checks detected. Press Pass.|r"] end
-    if left then lines[#lines + 1] = L["TestThat records the result in %d s."]:format(left) end
+    if left then lines[#lines + 1] = L["CheckThat records the result in %d s."]:format(left) end
     return table.concat(lines, "\n")
 end
 
@@ -572,7 +572,7 @@ function Card.Toggle() if card and card:IsShown() then card:Hide() else Card.Sho
 function Card.MakeMacro()
     if A.InCombat() then ns.Slash.Print(L["Not available in combat."]); return end
     local _, ctx, step = App.Current()
-    local body = step and App.MacroText(step, ctx.plan) or "/wtt status"
+    local body = step and App.MacroText(step, ctx.plan) or "/ct status"
     local ui = App.db.ui
     local name, idx = ui.macroName, nil
     if name then

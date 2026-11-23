@@ -2,7 +2,7 @@
 
 Read the format files for rules. This list is for judging a draft.
 
-Sources: `schema/test-plan.schema.json`, `openspec/specs/test-plan-format/spec.md`, `docs/test-plan.md`, `tools/wtt.py`, `Plan.SLASH` in `TestThat/Model/Plan.lua`.
+Sources: `schema/test-plan.schema.json`, `openspec/specs/test-plan-format/spec.md`, `docs/test-plan.md`, `tools/wtt.py`, `Plan.SLASH` in `CheckThat/Model/Plan.lua`.
 
 ## Coverage
 - Each changed requirement or scenario has at least one step.
