@@ -141,8 +141,35 @@ test("the start screen stays full width and keeps its text inside, even over a c
     ns.Card.Refresh()
     T.eq(card.calls.SetWidth[1], 380, "the start screen is full width")
     T.ok(card.start.shown, "Start run is visible")
-    T.eq(card.title.text, "Ready to test", "the start screen does not repeat the header")
+    T.eq(card.title.text, "KeepThat sample test plan", "the plan title is the heading")
     collapse(false)
+end)
+
+test("the start screen shows the plan title, the step count under it, and the full title on hover", function()
+    local run, plan, card = startRun()
+    local p = importAgain()
+    local rec = ns.App.db.plans[ns.App.db.ui.pendingStart]
+    local n = 0
+    for _, s in ipairs(rec.plan.sections) do n = n + #s.steps end
+    ns.Card.Refresh()
+    T.eq(card.title.text, rec.plan.title, "heading is the plan title")
+    T.eq(card.context.text, ("%d steps. Ready to test. Select Start run."):format(n), "count, status and instruction under it")
+    T.eq(card.title.calls.SetMaxLines[#card.title.calls.SetMaxLines], 2, "two lines at most")
+    local shown
+    _G.GameTooltip = { SetOwner = function() end, SetText = function(_, t) shown = t end, Show = function() end, Hide = function() shown = nil end }
+    T.ok(card.titleHit.shown, "hover area over the heading")
+    card.titleHit.scripts.OnEnter(card.titleHit)
+    T.eq(shown, rec.plan.title, "tooltip shows the full title")
+    _G.GameTooltip = nil
+    for i = #rec.plan.sections, 2, -1 do table.remove(rec.plan.sections, i) end
+    rec.plan.sections[1].steps = { rec.plan.sections[1].steps[1] }
+    ns.Card.Refresh()
+    T.eq(card.context.text, "1 step. Ready to test. Select Start run.", "one step is singular")
+    ns.App.db.currentByChar = {}; ns.App.db.plans = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.lastImport = nil
+    ns.Card.Refresh()
+    T.eq(card.title.text, "No plan yet", "no plan: heading")
+    T.eq(card.context.text, "Select Import a plan and paste a plan string.", "no plan: body")
+    T.ok(not card.titleHit.shown, "no hover area without a plan")
 end)
 
 test("the first visible start button sits at the left edge", function()

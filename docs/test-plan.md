@@ -31,7 +31,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: chat says "Debug recording is on."
    Log: `[ct] debug on`.
 2. **Import opens the window.** Type `/ct import`, paste the contents of `build/selftest.ct`, press Import, then type `/ct start CheckThat`.
-   Check: the window opens at once with "Ready to test", the plan title and a Start run button. After you select Start run (or type `/ct start CheckThat`) the card shows "Turn debug recording on" with a copy box, a progress bar and Pass, Partial, Fail, Skip and Undo at the bottom.
+   Check: the window opens at once with the plan title as its heading, "N steps. Ready to test. Select Start run." under it, and a Start run button. After you select Start run (or type `/ct start CheckThat`) the card shows "Turn debug recording on" with a copy box, a progress bar and Pass, Partial, Fail, Skip and Undo at the bottom.
    Log: `[ct] run started`.
 3. **Recent plans.** Type `/ct import` again.
    Check: a "Recent plans" button lists the plan you imported. Choosing it opens the window with Start run and no paste.
@@ -64,7 +64,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: the question names the plan. After Escape the run goes on. After Yes the card shows "Run ended" with Export results and Import a plan, and the recent plans list in the import box no longer holds that plan. Export results still works.
    Log: `[ct] plan cleared`.
 13. **Start screen over a minimized run.** Start a run and minimize the card with the - button. Import another plan.
-   Check: the card widens to full size. The "Plan ready" text stays inside the card and Start run sits at the left edge. With no plan loaded, Import a plan sits at the left edge instead.
+   Check: the card widens to full size. The plan title and the text under it stay inside the card and Start run sits at the left edge. With no plan loaded, Import a plan sits at the left edge instead.
    Log: `[ct] imported plan`.
 
 ## 4. Evidence

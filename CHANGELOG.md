@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+Changed: **Start screen.** The heading is now the plan title. The step count and "Ready to test" show under it.
+Changed: A long plan title shows in full when you hover over it.
+
 ## 0.7.0
 
 New: **Run menu.** The card header shows a Run control. It opens Import, End run and Clear plan.
