@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3
+
+Fixed: **Large plan strings.** A small pasted plan string could expand to a huge size and freeze the game while you imported it. Import now stops at the size limit and shows "decoded data too large".
+
 ## 0.5.2
 
 Changed: **Short name ct.** The plan format, the tools and the debug log now use the short name ct. The old short name is gone.
