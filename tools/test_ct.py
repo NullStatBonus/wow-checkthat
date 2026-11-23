@@ -168,6 +168,24 @@ class Plans(unittest.TestCase):
             self.assertEqual(ct.warnings(plan), [], n)
 
 
+class OpenRunPlans(unittest.TestCase):
+    PATHS = [os.path.join(ROOT, "plans", "checkthat-openrun.%s.yaml" % r) for r in ("owner", "viewer")]
+
+    def test_plans_validate_and_name_their_partners(self):
+        for p in self.PATHS:
+            plan = ct.load_yaml(p)
+            self.assertEqual(ct.validate(plan), [], p)
+            self.assertEqual(ct.warnings(plan), [], p)
+        self.assertEqual(PlanSkill.partner_problems(self.PATHS), [])
+
+    def test_every_step_has_one_action_and_no_step_asks_for_another_character(self):
+        for p in self.PATHS:
+            for sec in ct.load_yaml(p)["sections"]:
+                for s in sec["steps"]:
+                    self.assertEqual(len(s["action"].get("commands") or []) <= 1, True, s["id"])
+                    self.assertNotIn("log in", s["action"].get("text", "").lower(), s["id"])
+
+
 class NativeText(unittest.TestCase):
     def test_markdown_is_converted_to_native_codes_and_rejected_if_left(self):
         p = good()
@@ -233,6 +251,58 @@ class PlanSkill(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("warning: a.2: command named in text but not in commands: /kt debug on", out.getvalue())
 
+    @staticmethod
+    def partner_problems(paths):
+        """Each preamble names every partner file. Some reviewer line of the set names each plan with one of its step ids."""
+        plans = {os.path.basename(p): ct.load_yaml(p) for p in paths}
+        steps = lambda plan: [s for sec in plan["sections"] for s in sec["steps"]]
+        out = []
+        for name, plan in plans.items():
+            for other in plans:
+                if other != name and other not in (plan.get("preamble") or ""):
+                    out.append("%s: preamble does not name %s" % (name, other))
+        def completes(name):
+            rev = [s.get("reviewer") or "" for s in steps(plans[name])]
+            return all(any(o in r and any(s["id"] in r for s in steps(plans[o])) for r in rev) for o in plans if o != name)
+        if len(plans) > 1 and not any(completes(n) for n in plans):
+            out.append("no plan has reviewer lines that name every partner file with a step id")
+        return out
+
+    def example_set(self):
+        return [os.path.join(self.SKILL, n) for n in ("keepthat-tally.bank.yaml", "keepthat-tally.alt.yaml")]
+
+    def test_example_plan_set_validates_and_names_its_partners(self):
+        for p in self.example_set():
+            self.assertEqual(ct.validate(ct.load_yaml(p)), [], p)
+        self.assertEqual(self.partner_problems(self.example_set()), [])
+
+    def test_partner_check_fails_when_a_reference_is_missing(self):
+        import yaml
+        with tempfile.TemporaryDirectory() as d:
+            paths = []
+            for p in self.example_set():
+                plan = ct.load_yaml(p)
+                paths.append(os.path.join(d, os.path.basename(p)))
+                with open(paths[-1], "w") as f:
+                    yaml.safe_dump(plan, f)
+            plan = ct.load_yaml(paths[0]); plan["preamble"] = "No partner named."
+            with open(paths[0], "w") as f:
+                yaml.safe_dump(plan, f)
+            self.assertIn("%s: preamble does not name keepthat-tally.alt.yaml" % os.path.basename(paths[0]), self.partner_problems(paths))
+            for p in paths:
+                plan = ct.load_yaml(p)
+                plan["sections"][0]["steps"][1]["reviewer"] = "Compare the totals."
+                with open(p, "w") as f:
+                    yaml.safe_dump(plan, f)
+            self.assertTrue(any("no plan has reviewer lines" in x for x in self.partner_problems(paths)))
+
+    def test_skill_states_the_interview_and_draft_rules(self):
+        with open(os.path.join(self.SKILL, "SKILL.md"), encoding="utf-8") as f:
+            text = f.read()
+        for rule in ("**one question per turn**", "Skip a question when the OpenSpec change", "Simple steps by default", "Compound step, drafted on request",
+                     "one plan for each character role", "<name>.<role>.yaml", "A rejected new step stays out", "ct-verify"):
+            self.assertIn(rule, text)
+
     def test_skill_points_at_files_that_exist(self):
         def read(name):
             with open(os.path.join(self.SKILL, name), encoding="utf-8") as f:
@@ -250,7 +320,9 @@ class PlanSkill(unittest.TestCase):
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
-              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "requirements.txt")
+              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "tools/sv2json.lua",
+              "requirements.txt")
+    VERIFY = os.path.join(ROOT, "skills", "ct-verify")
 
     def make(self, dest, **env):
         return subprocess.run(["make", "install-skill", "SKILL_DIR=" + dest], cwd=ROOT, capture_output=True, text=True,
@@ -275,7 +347,48 @@ class InstallSkill(unittest.TestCase):
                 version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
             with open(os.path.join(dest, "ct", "VERSION"), encoding="utf-8") as f:
                 self.assertEqual(f.read().strip(), version)
-            self.assertEqual([n for n in os.listdir(d) if n.startswith(".ct-test-plan.")], [])
+            self.assertEqual([n for n in os.listdir(d) if n.startswith(".ct-test-plan.") or n.startswith(".ct-verify.")], [])
+            for name in os.listdir(self.VERIFY):
+                with open(os.path.join(self.VERIFY, name), "rb") as a, open(os.path.join(d, "ct-verify", name), "rb") as b:
+                    self.assertEqual(a.read(), b.read(), name)
+
+    def write_sv(self, root, body):
+        sv = os.path.join(root, "src", "Account", "A", "SavedVariables"); os.makedirs(sv, exist_ok=True)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write(body)
+        return os.path.join(root, "src")
+
+    def installed_collect(self, d, sib, body):
+        tool = os.path.join(d, "ct-test-plan", "ct", "tools", "ct.py")
+        dest = os.path.join(sib, "evidence")
+        r = subprocess.run([sys.executable, tool, "collect", "--src", self.write_sv(sib, body), "--dest", dest],
+                           capture_output=True, text=True, cwd=sib)
+        return r, dest
+
+    RUN = 'CheckThatDB = {["runs"] = {["KeepThat-1"] = {["revision"] = 3, ["steps"] = {["a.1"] = {["verdict"] = "pass"}}, ["order"] = {"a.1"}}}}\n'
+
+    def test_installed_collect_decodes_from_a_sibling_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
+            sib = os.path.join(d, "sibling"); os.makedirs(sib)
+            r, dest = self.installed_collect(d, sib, self.RUN)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(os.path.join(dest, "runs", "KeepThat-1", "r3.json")) as fh:
+                run = json.load(fh)
+            self.assertEqual(run["revision"], 3)
+            self.assertEqual(run["steps"]["a.1"]["verdict"], "pass")
+            self.assertFalse(os.path.exists(os.path.join(d, "ct-test-plan", "ct", "evidence")), "evidence stays outside the bundle")
+            r2, _ = self.installed_collect(d, sib, self.RUN)
+            self.assertEqual(r2.returncode, 0, "the same revision again is not a failure")
+            self.assertIn("0 new run revisions", r2.stdout)
+
+    def test_installed_collect_reports_a_decode_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
+            sib = os.path.join(d, "sibling"); os.makedirs(sib)
+            r, dest = self.installed_collect(d, sib, "CheckThatDB = {\n")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("could not decode", r.stderr)
 
     def test_installed_tools_run_without_the_checkout(self):
         with tempfile.TemporaryDirectory() as d:
@@ -324,6 +437,22 @@ class Collect(unittest.TestCase):
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "KeepThat-1")), ["r3.json"])
             self.assertIn("KeepThat-1", ct.report_text(ct.latest_runs(dest)))
 
+    def collect_body(self, body):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write(body)
+        return type("A", (), {"src": os.path.join(d, "src"), "dest": os.path.join(d, "dest"), "shots": None})
+
+    def test_malformed_saved_variables_report_a_decode_failure(self):
+        self.assertEqual(ct.cmd_collect(self.collect_body("CheckThatDB = {\n")), 1)
+
+    def test_empty_database_and_a_repeat_collect_are_not_failures(self):
+        self.assertEqual(ct.cmd_collect(self.collect_body("CheckThatDB = {}\n")), 0)
+        a = self.collect_body('CheckThatDB = {["runs"] = {["R-1"] = {["revision"] = 1, ["steps"] = {}, ["order"] = {}}}}\n')
+        self.assertEqual(ct.cmd_collect(a), 0)
+        self.assertEqual(ct.cmd_collect(a), 0)
+
     def test_wow_folder_collects_each_client(self):
         with tempfile.TemporaryDirectory() as d:
             for c, rev in (("_classic_era_", 1), ("_forever_", 2)):
@@ -353,6 +482,116 @@ class Collect(unittest.TestCase):
             ct.cmd_collect(args); ct.cmd_collect(args)
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "R-1", "shots")), ["a__in.jpg"])
             self.assertIn("screenshots: a__in.jpg", ct.report_text(ct.latest_runs(dest), dest))
+
+
+class VerifySkill(unittest.TestCase):
+    SKILL = os.path.join(ROOT, "skills", "ct-verify")
+
+    def test_skill_names_the_commands_and_fields_the_tools_and_runs_have(self):
+        with open(os.path.join(self.SKILL, "SKILL.md"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertTrue(text.startswith("---\nname: ct-verify\n"))
+        for rel in ("tools/ct.py", "tools/sv2json.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Plan.lua"):
+            self.assertIn(rel, text)
+            self.assertTrue(os.path.exists(os.path.join(ROOT, rel)), rel)
+        for word in ("collect", "import-results", "sv2json", "compile", "--dest", "planDigest", "planStore", "claimed", "outcomes",
+                     "contradicted", "unverified", "reviewer", "ct-test-plan/ct"):
+            self.assertIn(word, text)
+        with open(os.path.join(ROOT, "tools", "ct.py"), encoding="utf-8") as f:
+            src = f.read()
+        for cmd in ("collect", "import-results", "sv2json", "compile"):
+            self.assertIn('add_parser("%s")' % cmd, src)
+
+
+class BuildPlugin(unittest.TestCase):
+    def build(self, d):
+        return subprocess.run(["make", "build-plugin", "PLUGIN_DIR=" + os.path.join(d, "plugin")], cwd=ROOT, capture_output=True, text=True)
+
+    def test_plugin_holds_the_manifest_skills_and_tools(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.build(d)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            p = os.path.join(d, "plugin")
+            with open(os.path.join(p, ".claude-plugin", "plugin.json")) as f:
+                manifest = json.load(f)
+            with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as f:
+                version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
+            self.assertEqual((manifest["name"], manifest["version"]), ("checkthat", version))
+            for src, dst in (("ct-test-plan", "plan"), ("ct-verify", "verify")):
+                with open(os.path.join(p, "skills", dst, "SKILL.md"), encoding="utf-8") as a, open(os.path.join(ROOT, "skills", src, "SKILL.md"), encoding="utf-8") as b:
+                    want = b.read().replace("ct-test-plan", "plan").replace("ct-verify", "verify")
+                    got = a.read()
+                self.assertEqual(got, want, dst)
+                self.assertTrue(got.startswith("---\nname: %s\n" % dst), dst)
+                self.assertNotIn("ct-test-plan", got); self.assertNotIn("ct-verify", got)
+                self.assertTrue(os.path.exists(os.path.join(p, "skills", dst, "ct")) == (dst == "plan"))
+            with open(os.path.join(p, "skills", "verify", "SKILL.md"), encoding="utf-8") as f:
+                self.assertIn("../plan/ct", f.read())
+            ctdir = os.path.join(p, "skills", "plan", "ct")
+            for rel in InstallSkill.BUNDLE:
+                self.assertTrue(os.path.exists(os.path.join(ctdir, rel)), rel)
+            with open(os.path.join(ctdir, "VERSION")) as f:
+                self.assertEqual(f.read().strip(), version)
+            self.assertFalse(os.path.exists(os.path.join(p, "skills", "plan", ".venv")))
+
+    def test_claude_validates_the_plugin(self):
+        import shutil
+        if not shutil.which("claude"):
+            self.skipTest("claude is not installed")
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.build(d).returncode, 0)
+            r = subprocess.run(["claude", "plugin", "validate", os.path.join(d, "plugin")], capture_output=True, text=True, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_collect_runs_from_a_copy_of_the_built_plugin(self):
+        import shutil, verify_fixture
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.build(d).returncode, 0)
+            copy = os.path.join(d, "elsewhere", "plugin")
+            shutil.copytree(os.path.join(d, "plugin"), copy)
+            sib = os.path.join(d, "sibling"); os.makedirs(sib)
+            verify_fixture.build(sib)
+            tool = os.path.join(copy, "skills", "plan", "ct", "tools", "ct.py")
+            r = subprocess.run([sys.executable, tool, "collect", "--src", os.path.join(sib, "src"), "--dest", os.path.join(sib, "evidence")],
+                               capture_output=True, text=True, cwd=sib)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue(os.path.exists(os.path.join(sib, "evidence", "runs", "Fx-1", "r2.json")))
+
+    def test_skills_state_the_python_fallback(self):
+        for skill in ("ct-test-plan", "ct-verify"):
+            with open(os.path.join(ROOT, "skills", skill, "SKILL.md"), encoding="utf-8") as f:
+                text = f.read()
+            for needle in ('python3 -c "import yaml, jsonschema"', "python3 -m venv", "pip install -r"):
+                self.assertIn(needle, text, skill)
+
+
+class ReadmeSkills(unittest.TestCase):
+    def test_readme_tells_how_to_install_both_skills_for_each_agent(self):
+        with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
+            text = f.read()
+        for needle in ("make install-skill", "SKILL_DIR=~/.codex/skills", "~/.claude/skills", "ct-test-plan", "ct-verify", "luajit",
+                       "<name>.<role>.yaml", "outside the checkout"):
+            self.assertIn(needle, text)
+
+
+class VerifyFixture(unittest.TestCase):
+    def test_fixture_collects_with_the_known_answers(self):
+        import verify_fixture
+        with tempfile.TemporaryDirectory() as d:
+            verify_fixture.build(d, ambiguous=True)
+            dest = os.path.join(d, "evidence")
+            self.assertEqual(ct.cmd_collect(type("A", (), {"src": os.path.join(d, "src"), "dest": dest, "shots": None})), 0)
+            runs = ct.latest_runs(dest)
+            self.assertEqual(sorted(runs), ["Alt-1", "Bank-1", "Bank-2", "Fx-1"])
+            fx = runs["Fx-1"]["steps"]
+            last = lambda sid: fx[sid]["attempts"][-1]
+            self.assertEqual((last("fx.1")["claimed"], last("fx.1")["outcomes"][0]["result"]), ("pass", "fail"))
+            self.assertEqual(last("fx.2")["outcomes"][0]["result"], "unverified")
+            self.assertTrue(last("fx.3")["outcomes"][0]["diagnostic"])
+            self.assertEqual(runs["Bank-1"]["planDigest"], runs["Bank-2"]["planDigest"])
+            self.assertNotEqual(runs["Bank-1"]["planDigest"], runs["Alt-1"]["planDigest"])
+            for p in ("keepthat-tally.bank.yaml", "keepthat-tally.alt.yaml", "fixture.yaml"):
+                self.assertEqual(ct.validate(ct.load_yaml(os.path.join(d, "plans", p))), [], p)
 
 
 class LoadEnv(unittest.TestCase):
