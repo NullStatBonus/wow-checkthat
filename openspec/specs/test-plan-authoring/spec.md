@@ -6,7 +6,7 @@ Guides an addon developer from a scope of work to a validated CheckThat plan thr
 ## Requirements
 
 ### Requirement: Skill asks before it assumes
-The skill SHALL ask the author for the scope source (current branch, a diff or the session), the target addon, the output path, the plan locale, the depth, the clients in scope and the addon's debug log. It SHALL suggest `plans/` as the output path and SHALL NOT guess an answer the author has not given.
+The skill SHALL ask the author for the scope source (current branch, a diff or the session), the target addon, the output path, the plan locale, the depth, the clients in scope and the addon's debug log. It SHALL ask one question per turn, in dependency order, with the reason and a recommended answer where the repository supports one. It SHALL skip a question that the scope, specs or code already answer and say what it assumed. It SHALL suggest `plans/` as the output path and SHALL NOT guess an answer the author has not given.
 
 #### Scenario: No scope given
 - **WHEN** the author starts the skill without naming a scope
@@ -15,6 +15,14 @@ The skill SHALL ask the author for the scope source (current branch, a diff or t
 #### Scenario: Default output path
 - **WHEN** the skill asks where to write the plan
 - **THEN** it suggests `plans/` and accepts another path
+
+#### Scenario: Scope answers a question
+- **WHEN** the OpenSpec change already names the addon and its slash prefix
+- **THEN** the skill states them and does not ask for them
+
+#### Scenario: One question per turn
+- **WHEN** the interview starts
+- **THEN** the skill asks one question and waits for the answer before the next
 
 ### Requirement: Skill finds the plan tools from any install
 The skill SHALL locate `tools/ct.py`, `schema/test-plan.schema.json` and `docs/test-plan.md` in the bundle installed beside it, else in the checkout two folders above it. A path SHALL count as a root only when the plan tools and format files all exist under it. If it cannot find them, it SHALL ask the author for the CheckThat path and SHALL NOT assume the working directory is the CheckThat repository.
@@ -61,18 +69,30 @@ The skill SHALL cover each changed requirement or scenario in the scope with at 
 - **THEN** the step lists it in `commands`
 
 ### Requirement: Author reviews by bulk or step by step
-After the draft the skill SHALL show coverage gaps and checklist findings, and SHALL let the author accept all suggestions or go through the plan step by step. It SHALL NOT change a step the author has rejected.
+The skill SHALL draft and review one step at a time, showing each step with its evidence choice and client tags and applying only what the author accepts. A rejected new step SHALL stay out of the plan. A rejected edit to an accepted step SHALL leave that step unchanged. Accept all SHALL be available when the author asks. After the last step the skill SHALL show coverage gaps and checklist findings, validate and compile each plan.
 
 #### Scenario: Step-by-step review
 - **WHEN** the author chooses step by step
 - **THEN** the skill shows each step with its findings and applies only the changes the author accepts
 
+#### Scenario: Step rejected
+- **WHEN** the author rejects a drafted step
+- **THEN** the skill leaves it out and moves to the next step
+
+#### Scenario: Edit rejected
+- **WHEN** the author rejects a change to an accepted step
+- **THEN** the step stays as accepted
+
 ### Requirement: Skill validates with the bundled Python
-The skill SHALL run the plan tools with the private Python in its own folder and SHALL report the bundle's version stamp with the validation result.
+The skill SHALL run the plan tools with the private Python in its own folder when one exists, and SHALL report the bundle's version stamp with the validation result. Without a private Python, as in a plugin install, it SHALL use `python3` when that imports PyYAML and jsonschema. When a package is missing it SHALL stop, print the command that creates an environment and installs `requirements.txt`, and SHALL NOT claim the plan was validated.
 
 #### Scenario: Validate a draft
 - **WHEN** the skill validates a draft
 - **THEN** it runs the bundled `ct.py` with the private Python and reports the bundle version
+
+#### Scenario: Plugin install without packages
+- **WHEN** the skill runs from a plugin and `python3` lacks PyYAML or jsonschema
+- **THEN** it prints the setup command and stops without validating
 
 ### Requirement: Skill guides an addon that has no debug log
 When the target addon writes no debug log, the skill SHALL say so once, recommend adding one, and point to the debug-logging guide. It SHALL draft the plan with player checks, SHALL mark the steps that would become log assertions once a log exists, and SHALL NOT invent log lines.
@@ -109,3 +129,51 @@ The skill SHALL mark a step `auto` only when its required assertions are uncondi
 #### Scenario: Auto-fail wanted
 - **WHEN** the author wants a failed step to be recorded without a click
 - **THEN** the skill asks for a timeout and explains what it counts
+
+### Requirement: Skill drafts simple steps by default
+By default the skill SHALL draft each step with one player action and one expected result, in short active sentences. When a check needs more, the skill SHALL split it into consecutive steps. It SHALL draft a compound step, with several actions, several expected results or a multi-part assertion set, only when the author asks, and SHALL say that it does so.
+
+#### Scenario: Check needs two actions
+- **WHEN** a check needs the player to open a window and then press a button
+- **THEN** the skill drafts two steps, one action each
+
+#### Scenario: Author asks for a complex check
+- **WHEN** the author asks for one step that covers a sequence
+- **THEN** the skill drafts it as one step and states that it is compound
+
+### Requirement: Skill splits cross-character checks into one plan per role
+The skill SHALL ask which characters a check involves. For a check that needs more than one it SHALL draft one plan per character role, named `<name>.<role>.yaml`, with no limit on roles. Each plan SHALL be runnable by its character alone. Each preamble SHALL name every partner plan, and a `reviewer` line SHALL name the partner files, the step IDs and the relationship that must hold. The skill SHALL validate and compile every plan and state the import order.
+
+#### Scenario: Two-character check
+- **WHEN** a check needs a run left by one character and an observation by another
+- **THEN** the skill drafts two plan files and each preamble names the other
+
+#### Scenario: Many characters
+- **WHEN** a check compares results from four characters
+- **THEN** the skill drafts four plans and each preamble names the other three
+
+#### Scenario: Single-character scope
+- **WHEN** every check needs one character
+- **THEN** the skill drafts one plan and asks no further character question
+
+### Requirement: The repository builds a plugin
+`make build-plugin` SHALL build a Claude Code plugin folder that holds `ct-test-plan`, `ct-verify`, the plan tools with the files that `collect` needs, and the version stamp. The plugin SHALL pass `claude plugin validate`. `make install-skill` SHALL keep working.
+
+#### Scenario: Build and validate
+- **WHEN** `make build-plugin` runs
+- **THEN** the folder holds the manifest, both skills and the tools, and `claude plugin validate` accepts it
+
+#### Scenario: Decode from the built plugin
+- **WHEN** `collect` runs from the built plugin on a saved variables file with one run
+- **THEN** it extracts that run
+
+### Requirement: Apply and archive offer a plan
+The OpenSpec apply and archive operations SHALL offer the plan skill when a change alters player-visible behavior, where the repository's `openspec/config.yaml` carries that guidance. The offer SHALL be optional and SHALL NOT start the skill unasked.
+
+#### Scenario: Behavior change
+- **WHEN** a change alters a setting or a command
+- **THEN** apply offers the plan skill and waits for the author's answer
+
+#### Scenario: Offer declined
+- **WHEN** the author declines the offer
+- **THEN** nothing starts and apply continues

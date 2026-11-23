@@ -33,3 +33,7 @@ Upload screenshots on CurseForge and Wago with the text from `docs/listing.md`: 
 - The packager treats `CheckThat_Camelot.toc` as the WoW Forever TOC (its name for the Forever client) and `CheckThat_Vanilla.toc` as Classic Era. A TOC named `_Forever` would not be recognized, so Forever would not be offered as a game version.
 - Both TOCs list the same files in the same order (`tools/check-tocs-match.sh`).
 - `CHANGELOG.md` is used as the changelog on every site (`manual-changelog` in `.pkgmeta`).
+
+## Skills plugin
+
+`make build-plugin` builds a Claude Code plugin of the `ct-test-plan` and `ct-verify` skills in `build/plugin/`. It is not part of the addon package and has no release step yet (#53). `make test` builds it and runs `claude plugin validate` on it when `claude` is installed.
