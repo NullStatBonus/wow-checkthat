@@ -208,6 +208,12 @@ function App.OpenReplacesRun(id)
     return run ~= nil and not run.endedAt and cur ~= nil and not cur.endedAt and cur.runId ~= id
 end
 
+-- True when opening this run needs the player's accept: another unfinished run of this character is active.
+function App.OpenAsks(id)
+    local cur = App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    return App.db.runs[id or ""] ~= nil and cur ~= nil and not cur.endedAt and cur.runId ~= id
+end
+
 function App.DeleteRun(id)
     if not App.db.runs[id or ""] then return nil, L["There is no run."] end
     App.db.runs[id] = nil
@@ -460,7 +466,9 @@ function App.Export(runId)
     local run = App.db.runs[runId or shownId() or ""]
     if not run then return nil, L["There is no run."] end
     local copy = ns.Run.Export and ns.Run.Export(run) or run
-    return ns.Codec.Encode(copy)
+    local s, err = ns.Codec.Encode(copy)
+    if s then App.Log("run exported " .. run.runId) end
+    return s, err
 end
 
 function App.Status()

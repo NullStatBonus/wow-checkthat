@@ -103,7 +103,10 @@ function Options.Home(order)
     add(g, "runOpen", { type = "execute", name = L["Open run"], hidden = noRuns,
         confirm = function()
             local id = chosen()
-            if id and ns.App.OpenReplacesRun(id) then return L["Open this run? Your current run leaves the checklist. CheckThat keeps it in the list until newer runs push it out."] end
+            if not (id and ns.App.OpenAsks(id)) then return end
+            ns.App.Log("run open asked " .. id)
+            if ns.App.OpenReplacesRun(id) then return L["Open this run? Your current run leaves the checklist. CheckThat keeps it in the list until newer runs push it out."] end
+            return L["Open this run to look at it? Your current run stays as it is."]
         end,
         disabled = function()
             local id = chosen()
@@ -120,6 +123,7 @@ function Options.Home(order)
     add(g, "runDelete", { type = "execute", name = L["Delete run"], hidden = noRuns, disabled = function() return not chosen() end,
         confirm = function() -- a string would name a handler method, so the text comes from a function
             local text = chosen() and ns.App.RunText(chosen()) or ""
+            if chosen() then ns.App.Log("run delete asked " .. chosen()) end
             return L["Delete the run %s? CheckThat removes its results. You cannot restore them."]:format((ns.Slash.Esc(text):gsub("%%", "%%%%")))
         end,
         func = function()

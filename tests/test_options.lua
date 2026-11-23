@@ -69,7 +69,14 @@ test("home lists past runs with open, export and delete; hidden when there are n
     T.eq(App.Current().runId, first.runId, "the card shows the chosen run")
     local live = assert(App.Start("DontDoThat"))
     g.args.runPick.set(nil, first.runId)
-    T.eq(g.args.runOpen.confirm(), nil, "viewing an ended run takes nothing from a live run")
+    local seen, record = {}, ns.Log.Record
+    ns.Log.Record = function(_, msg) seen[#seen + 1] = msg end
+    local view = g.args.runOpen.confirm()
+    T.ok(view and view:find("look at it") and view:find("stays"), "viewing an ended run still asks while a run is active")
+    T.ok((function() for _, m in ipairs(seen) do if m:find("run open asked ", 1, true) then return true end end end)(), "the question is logged")
+    g.args.runPick.set(nil, live.runId)
+    T.eq(g.args.runOpen.confirm(), nil, "the current run opens without a question")
+    g.args.runPick.set(nil, first.runId)
     local live2 = assert(App.Start("DontDoThat"))
     g.args.runPick.set(nil, live.runId)
     T.ok(g.args.runOpen.confirm():find("current run leaves"), "asks before one unfinished run replaces another")
@@ -82,6 +89,8 @@ test("home lists past runs with open, export and delete; hidden when there are n
     T.ok(shown and shown:find("^!CT1!"), "exports the chosen run")
     local text = g.args.runDelete.confirm()
     T.ok(type(text) == "string" and text:find("^Delete the run") and text:find("DontDoThat"), "the question names the run: " .. tostring(text))
+    T.ok((function() for _, m in ipairs(seen) do if m:find("run delete asked ", 1, true) then return true end end end)(), "the delete question is logged")
+    ns.Log.Record = record
     g.args.runDelete.func()
     T.eq(App.db.runs[first.runId], nil); T.eq(Options.state.run, nil)
     g.args.runPick.set(nil, live2.runId)

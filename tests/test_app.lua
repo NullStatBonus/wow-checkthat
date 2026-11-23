@@ -361,16 +361,24 @@ end)
 test("OpenRun shows an ended run, refuses another character's unfinished run", function()
     local db, env, ids = withRuns(2)
     local before = db.currentByChar[App.Character()]
+    T.ok(not App.OpenAsks(ids[1]), "no active run, no question")
     local opened = App.OpenRun(ids[1])
     T.eq(opened.runId, ids[1]); T.eq(db.currentByChar[App.Character()], before, "viewing changes no current run")
     local run = App.Current()
     T.eq(run.runId, ids[1]); T.ok(run.endedAt, "read-only")
     T.eq(App.Status():find(ids[1], 1, true) ~= nil, true, "status names the run on the card")
+    local seen, record = {}, ns.Log.Record
+    ns.Log.Record = function(_, msg) seen[#seen + 1] = msg end
     local s = assert(App.Export()); T.ok(s:find("^!CT1!"))
+    ns.Log.Record = record
+    T.ok((function() for _, m in ipairs(seen) do if m:find("run exported ", 1, true) then return true end end end)(), "an export is logged")
     local why = select(2, App.CanEnd()); T.ok(why:find("already ended"), "End run acts on the ended run on the card")
     local live = assert(App.Start("KeepThat"))
     T.eq(App.Current().runId, live.runId, "a new run clears the view")
     T.ok(not App.OpenReplacesRun(ids[1]), "viewing an ended run takes nothing from the live run")
+    T.ok(App.OpenAsks(ids[1]), "but it still asks while a run is active")
+    T.ok(not App.OpenAsks(live.runId), "the current run asks nothing")
+    T.ok(not App.OpenAsks("nope"), "no run, no question")
     App.OpenRun(ids[2]); T.eq(App.Current().runId, ids[2]); T.eq(db.currentByChar[App.Character()], live.runId)
     App.OpenRun(live.runId); T.eq(App.Current().runId, live.runId, "opening the current run returns to it")
     env.UnitName = function() return "Other" end

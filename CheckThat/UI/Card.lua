@@ -249,7 +249,7 @@ function Card.EnsureSecure()
     s:SetAttribute("type", "macro")
     s:SetAttribute("useOnKeyDown", false)
     s:RegisterForClicks("AnyUp")
-    A.HideInCombat(s)
+    A.HideInCombat(s); card.combatHide = true
     -- The game's own state driver shows this button again after combat. It must show only with a step that has commands.
     s:HookScript("OnShow", function(self)
         if A.InCombat() or card.secureWanted then return end -- protected in combat; fine when a step wants it
@@ -271,7 +271,14 @@ local function setMacro(step, plan)
     card.pendingMacro = nil
     card.secureWanted = body and card:IsShown() and true or false
     if card.secureWanted then card.hiddenLogged = nil end
-    if body and card:IsShown() then s:SetAttribute("macrotext", body); s:Show() else s:SetAttribute("macrotext", ""); s:Hide() end
+    if card.secureWanted then
+        if not card.combatHide then card.combatHide = true; A.HideInCombat(s) end -- the driver hides it for the whole of combat
+        s:SetAttribute("macrotext", body); s:Show()
+    else
+        -- The driver would show the button again every 0.2 seconds. Out of combat it is safe to release it while unused.
+        if card.combatHide ~= false then card.combatHide = false; A.ReleaseCombatHide(s) end
+        s:SetAttribute("macrotext", ""); s:Hide()
+    end
 end
 
 -- A plan can ask for evidence to be shared at a point: a reload (logs reach saved variables) or the export string.

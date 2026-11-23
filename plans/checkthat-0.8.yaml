@@ -28,8 +28,9 @@ sections:
       text: /ct debug on
     expect: Chat says "Debug recording is on.".
     verify:
-    - player
     - assertions
+    auto: true
+    timeout: 60
     assertions:
     - kind: log
       source: debug
@@ -54,8 +55,8 @@ sections:
     title: View an ended run and come back
     action:
       kind: manual
-      text: Under |cffffd100Past runs|r pick the oldest ended practice run and select |cffffd100Open run|r. Look at the card. Then pick the newest run, which is this one, and select |cffffd100Open run|r again.
-    expect: The card shows "Run ended" with the practice run's results and no Pass button. After the second Open run it shows this step again. No question asks you to confirm.
+      text: Under |cffffd100Past runs|r pick the oldest ended practice run and select |cffffd100Open run|r. Select |cffffd100Accept|r. Look at the card. Then pick the newest run, which is this one, and select |cffffd100Open run|r again.
+    expect: The card shows "Run ended" with the practice run's results and no Pass button. After the second Open run it shows this step again. The second Open run asks nothing.
     verify:
     - player
     - assertions
@@ -63,18 +64,25 @@ sections:
     - kind: log-sequence
       source: debug
       sequence:
+      - pattern: '^%[ct%] run open asked '
       - pattern: '^%[ct%] run opened '
       - pattern: '^%[ct%] run opened '
-      label: Two runs were opened
+      label: The question came, then two runs were opened
   - id: ct8.export
     title: Export an older run
     action:
       kind: manual
       text: Under |cffffd100Past runs|r pick a practice run and select |cffffd100Export run|r.
-    expect: A box shows a string that starts with !CT1!. Press Escape to close it.
+    expect: A box shows a string that starts with !CT1!. Press Escape to close it. The step records itself.
     verify:
-    - player
-    notes: Becomes a log assertion once CheckThat logs "run exported" (issue 46).
+    - assertions
+    auto: true
+    timeout: 90
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run exported '
+      label: A run was exported
   - id: ct8.replace
     title: Open run asks before it replaces your run
     action:
@@ -83,6 +91,18 @@ sections:
     expect: The question says your current run leaves the checklist. After Cancel, the card still shows this step.
     verify:
     - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run open asked '
+      label: The question came
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run opened '
+      absent: true
+      scope: attempt
+      label: Cancel opened no run
   - id: ct8.stale
     title: A run that comes back starts its step again
     action:
@@ -109,10 +129,12 @@ sections:
     - player
     - assertions
     assertions:
-    - kind: log
+    - kind: log-sequence
       source: debug
-      pattern: '^%[ct%] run deleted '
-      label: A run was deleted
+      sequence:
+      - pattern: '^%[ct%] run delete asked '
+      - pattern: '^%[ct%] run deleted '
+      label: The question came, then a run was deleted
 - id: s2
   title: Runs to keep
   requires:
@@ -166,10 +188,16 @@ sections:
       text: Type |cff99ccff/ct log|r, press Ctrl+A, then look near the top of the report.
       commands:
       - /ct log
-    expect: The report holds a line that starts with "Stored:" and names the runs, the limit and the plan copies.
+    expect: The report holds a line that starts with "Stored:" and names the runs, the limit and the plan copies. The step records itself.
     verify:
-    - player
-    notes: Becomes a log assertion once CheckThat logs "report requested" (issue 47).
+    - assertions
+    auto: true
+    timeout: 90
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] report requested: Stored: %d+ runs %(limit %d+%), %d+ plan copies$'
+      label: The report holds the Stored line
 - id: s3
   title: Reload and results
   requires:
@@ -196,7 +224,13 @@ sections:
     action:
       kind: copy-slash
       text: /ct export
-    expect: A box shows a string that starts with !CT1!.
+    expect: A box shows a string that starts with !CT1!. The step records itself.
     verify:
-    - player
-    notes: Becomes a log assertion once CheckThat logs "run exported" (issue 46).
+    - assertions
+    auto: true
+    timeout: 90
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run exported '
+      label: The results were exported

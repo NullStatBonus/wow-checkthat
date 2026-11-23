@@ -66,12 +66,12 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 13. **Start screen over a minimized run.** Start a run and minimize the card with the - button. Import another plan.
    Check: the card widens to full size. The plan title and the text under it stay inside the card and Start run sits at the left edge. With no plan loaded, Import a plan sits at the left edge instead.
    Log: `[ct] imported plan`.
-14. **Reopen a past run.** End one run and start another. Open Esc, Options, AddOns, CheckThat, Home. Under Past runs, pick the ended run and press Open run.
-   Check: the card shows that run as "Run ended" with its results. Start run again: the card returns to your current run with its results intact.
-   Log: `[ct] run opened`.
-15. **Delete a past run.** Under Past runs, pick a run and press Delete run. Answer Yes.
-   Check: the question names the run and comes first. After Yes the run leaves the list. With no run left, Past runs disappears.
-   Log: `[ct] run deleted`.
+14. **Reopen a past run.** End one run and start another. Open Esc, Options, AddOns, CheckThat, Home. Under Past runs, pick the ended run and press Open run. Accept the question.
+   Check: a question comes first and says your current run stays. After you accept, the card shows that run as "Run ended" with its results. Open the current run again: the card returns to it with no question.
+   Log: `[ct] run open asked`, then `[ct] run opened`.
+15. **Delete a past run.** Under Past runs, pick a run and press Delete run. Press Accept.
+   Check: the question names the run and comes first. After Accept the run leaves the list. With no run left, Past runs disappears.
+   Log: `[ct] run delete asked`, then `[ct] run deleted`.
 16. **Runs to keep.** Keep at least six runs. On Advanced, drag Runs to keep down to 5 and back up to 15. Then start a run.
    Check: the list keeps every run while you drag. Lower the slider to 5 and start a run: the list keeps five runs and the oldest are gone. The run on the card stays.
    Log: `[ct] run pruned`.

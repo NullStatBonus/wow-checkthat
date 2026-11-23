@@ -306,6 +306,9 @@ end)
 test("smoke: the Run button shows only with a step that has commands, and is hidden again if the game shows it", function()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
+    local drivers = {}
+    rawset(_G, "RegisterStateDriver", function(f, state) drivers[#drivers + 1] = "register " .. state end)
+    rawset(_G, "UnregisterStateDriver", function(f, state) drivers[#drivers + 1] = "release " .. state end)
     local function cmdStep(id) return { id = id, title = "With " .. id, action = { kind = "copy-slash", text = "/kt log", commands = { "/kt log" } }, expect = "e", verify = { "player" } } end
     local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "R", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = { cmdStep("r.1"),
@@ -323,11 +326,16 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     gameShows(); T.ok(s.shown, "the guard leaves it alone there"); T.ok(not logged(), "and logs nothing")
     ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.2 has no commands
     T.ok(not s.shown, "hidden on a step without commands")
+    T.eq(drivers[#drivers], "release visibility", "released from the combat state driver, so the game stops showing it")
+    ns.Card.Refresh(); ns.Card.Refresh()
+    local n = #drivers
+    ns.Card.Refresh(); T.eq(#drivers, n, "released once, not on every refresh")
     gameShows(); T.ok(not s.shown, "hidden again when the game shows it"); T.ok(logged(), "and the log says so")
     for _ = 1, 5 do gameShows() end                                          -- the state driver shows it about five times a second
     T.eq(hiddenLines(), 1, "one line for the screen, not one for each time the game shows the button")
     ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.3 has commands again
     T.ok(s.shown, "visible again with the next step that has commands")
+    T.eq(drivers[#drivers], "register visibility", "the combat state driver hides it again for combat")
     T.eq(hiddenLines(), 1, "a step with commands logs nothing")
     ns.App.db.ui.pendingStart = "KeepThat"; ns.Card.Refresh()                -- the Start screen of another plan
     local before = hiddenLines()

@@ -68,7 +68,9 @@ function Log.Report()
         local runs, plans = 0, 0
         for _ in pairs(ns.App.db.runs) do runs = runs + 1 end
         for _ in pairs(ns.App.db.planStore) do plans = plans + 1 end
-        out[#out + 1] = ("Stored: %d runs (limit %d), %d plan copies"):format(runs, ns.App.RunLimit(), plans)
+        local stored = ("Stored: %d runs (limit %d), %d plan copies"):format(runs, ns.App.RunLimit(), plans)
+        out[#out + 1] = stored
+        ns.App.Log("report requested: " .. stored)
     end
     out[#out + 1] = ""
     out[#out + 1] = "Failures:"
