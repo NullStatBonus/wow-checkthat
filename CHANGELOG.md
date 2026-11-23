@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+New: **Run menu.** The card header shows a Run control. It opens Import, End run and Clear plan.
+New: Clear plan ends the run and removes the plan. Your results stay for export.
+Changed: The Reload button is gone. Use the Run button or type /reload.
+Changed: After Clear plan, the ended card shows Import a plan in place of Main window.
+Fixed: **Long titles.** A long title ran past the edge of the minimized card. It now stays inside and ends with "...".
+Fixed: The minimized card hid its Run menu behind the step counter. The counter now sits next to the buttons.
+Fixed: The Start screen was too narrow over a minimized run. Its text ran out of the card.
+
 ## 0.6.1
 
 Fixed: **Hidden card.** An automatic step recorded nothing while the card was hidden. It now records the result and the time limit still counts.

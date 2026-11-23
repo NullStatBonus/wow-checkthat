@@ -21,7 +21,12 @@ local function stubFrame(frames)
         if k == "SetShown" then return function(self, v) self.shown = v end end
         if k == "GetWidth" or k == "GetHeight" then return function() return 100 end end
         if k == "CreateFontString" or k == "CreateTexture" or k == "CreateAnimationGroup" then return function() return stubFrame(frames) end end
-        return function() return stubFrame(frames) end -- chainable: GetNormalTexture():SetTexCoord() works
+        -- chainable: GetNormalTexture():SetTexCoord() works. The last arguments of each call are kept in .calls.
+        return function(self, ...)
+            rawset(self, "calls", rawget(self, "calls") or {})
+            self.calls[k] = { n = select("#", ...), ... }
+            return stubFrame(frames)
+        end
     end })
 end
 

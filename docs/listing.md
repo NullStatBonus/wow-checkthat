@@ -14,7 +14,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - See which steps CheckThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
 - Keep your place through `/reload`.
-- End a run you will not finish from the card title or with `/ct end`. The results stay for export.
+- End a run you will not finish from the Run menu in the card header or with `/ct end`. The results stay for export. The same menu imports another plan or clears the current plan.
 - Set card size, opacity and position. Use shared or per-character settings.
 - Commands: `/ct`, `/ct settings`, `/ct import`, `/ct start <addon>`, `/ct end`, `/ct export`, `/ct log`. `/checkthat` works the same as `/ct`.
 

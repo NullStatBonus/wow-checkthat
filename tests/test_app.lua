@@ -248,6 +248,31 @@ test("app end: keeps results, marks the export, blocks verdicts and undo", funct
     for _, e in ipairs(db.log.entries) do if e.msg:find("run ended " .. run.runId, 1, true) then logged = true end end
     T.ok(logged, "the debug log records the end")
 end)
+test("app clear plan: ends the run, forgets the plan, keeps the results exportable", function()
+    local db = boot()
+    db.log.enabled = true
+    App.ImportPlan(assert(ns.Codec.Encode(plan())))
+    local run = assert(App.Start("KeepThat"))
+    App.Begin(); App.Verdict("skip")
+    local digest = run.planDigest
+    T.ok(App.db.plans.KeepThat and #App.Recent() == 1, "the plan is loaded and recent")
+    T.ok(App.ClearPlan("some-other-run") == nil, "a stale confirmation clears nothing")
+    T.eq(run.endedAt, nil); T.ok(App.db.plans.KeepThat, "the plan stays")
+    T.ok(App.ClearPlan(run.runId)); T.eq(run.endedAt, 1000, "the run ended")
+    T.eq(App.db.plans.KeepThat, nil, "no loaded plan")
+    T.eq(App.db.ui.lastImport, nil); T.eq(App.db.ui.pendingStart, nil)
+    T.eq(#App.Recent(), 0, "not in the recent list")
+    T.ok(App.db.planStore[digest], "the stored plan stays for the ended run")
+    local back = assert(ns.Codec.Decode(assert(App.Export())))
+    T.eq(back.steps["kt.1"].verdict, "skip"); T.eq(back.endedAt, 1000)
+    local logged, ended = false, false
+    for _, e in ipairs(db.log.entries) do
+        if e.msg:find("plan cleared KeepThat", 1, true) then logged = true end
+        if e.msg:find("run ended " .. run.runId, 1, true) then ended = true end
+    end
+    T.ok(logged and ended, "the debug log records both the end and the clear")
+    local again, why = App.ClearPlan(); T.ok(again == nil and why:find("already ended"), tostring(why))
+end)
 test("app end with no run", function()
     boot()
     local run, err = App.CanEnd(); T.ok(run == nil and err:find("no run"))

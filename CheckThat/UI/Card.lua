@@ -84,6 +84,12 @@ local function fs(font, color, width, justify)
     return f
 end
 
+-- One line (cut with an ellipsis by the game) or a few wrapped lines; never past the width the font string has.
+local function fit(f, lines)
+    f:SetWordWrap(lines > 1)
+    f:SetMaxLines(lines)
+end
+
 local function place(frame, x, y, anchor)
     frame:ClearAllPoints(); frame:SetPoint("TOPLEFT", anchor or card, "TOPLEFT", x, -y)
 end
@@ -106,13 +112,19 @@ local function build()
 
     -- Header: where we are, and the controls that always stay in the same place.
     card.head = fs("GameFontHighlightSmall", GREY, 120); card.head:SetPoint("TOPLEFT", 12, -9)
-    -- The title opens the Run menu (End run). It shows only while a run is active.
+    -- The Run menu: a control right of the title with a dropdown arrow and a hover highlight. Shown only while a run is active.
     card.headBtn = CreateFrame("Button", nil, card)
-    card.headBtn:SetPoint("TOPLEFT", card.head, "TOPLEFT", 0, 2); card.headBtn:SetPoint("BOTTOMRIGHT", card.head, "BOTTOMRIGHT", 0, -2)
+    card.headBtn:SetSize(46, 18)
+    card.headBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    card.headBtn:GetHighlightTexture():SetAlpha(0.35)
+    card.headBtn.label = card.headBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.headBtn.label:SetPoint("LEFT", 4, 0); card.headBtn.label:SetText(L["Run"])
+    card.texts[#card.texts + 1] = card.headBtn.label
+    card.headBtn.arrow = card.headBtn:CreateTexture(nil, "OVERLAY")
+    card.headBtn.arrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow"); card.headBtn.arrow:SetSize(10, 10)
+    card.headBtn.arrow:SetRotation(-math.pi / 2)
+    card.headBtn.arrow:SetPoint("LEFT", card.headBtn.label, "RIGHT", 3, 0)
     card.headBtn:SetScript("OnClick", function(self) Card.RunMenu(self) end)
-    card.headArrow = card:CreateTexture(nil, "OVERLAY")
-    card.headArrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow"); card.headArrow:SetSize(10, 10)
-    card.headArrow:SetRotation(-math.pi / 2)
     card.step = fs("GameFontHighlightSmall", GREY, 70, "RIGHT"); card.step:SetPoint("TOPRIGHT", -126, -9)
     local close = CreateFrame("Button", nil, card, "UIPanelCloseButton"); close:SetPoint("TOPRIGHT", 3, 3)
     local collapse = makeButton(card, "-", 22); collapse:SetPoint("RIGHT", close, "LEFT", 2, 0)
@@ -133,6 +145,15 @@ local function build()
     card.barFill:SetPoint("TOPLEFT", 12, -26); card.barFill:SetSize(1, 3)
 
     card.title = fs("GameFontHighlightLarge", { 1, 1, 1 }, INNER)
+    -- Over the collapsed title: shows the full text on hover and passes a drag on to the card.
+    card.titleHit = CreateFrame("Frame", nil, card)
+    card.titleHit:EnableMouse(true); card.titleHit:RegisterForDrag("LeftButton")
+    card.titleHit:SetPoint("TOPLEFT", card.title, "TOPLEFT"); card.titleHit:SetPoint("BOTTOMRIGHT", card.title, "BOTTOMRIGHT")
+    card.titleHit:SetScript("OnEnter", function(self) A.Tooltip(self, self.full) end)
+    card.titleHit:SetScript("OnLeave", function() A.TooltipHide() end)
+    for _, ev in ipairs({ "OnDragStart", "OnDragStop" }) do
+        card.titleHit:SetScript(ev, function() local f = card:GetScript(ev); if f then f(card) end end)
+    end
     card.context = fs("GameFontHighlightSmall", GREY, INNER)
     card.evidence = fs("GameFontHighlight", AMBER, INNER)
     card.hint = fs("GameFontHighlightSmall", GREY, INNER)
@@ -160,7 +181,7 @@ local function build()
     card.note:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
     -- Pinned verdict row: fixed positions, native buttons.
-    -- Pass, Partial (mostly works), Fail, Skip: one row, fixed places; Reload (when asked for) and Undo at the right.
+    -- Pass, Partial (mostly works), Fail, Skip: one row, fixed places; Undo at the right.
     card.pass = makeButton(card, L["Pass"], 56); card.partial = makeButton(card, L["Partial"], 56)
     card.fail = makeButton(card, L["Fail"], 56); card.skip = makeButton(card, L["Skip"], 56)
     card.undo = makeButton(card, L["Undo"], 48)
@@ -181,8 +202,6 @@ local function build()
     end
     card.undo:SetScript("OnClick", function() App.Undo(); Card.Refresh() end)
 
-    card.reload = makeButton(card, L["Reload"], 66); card.reload:SetHeight(24)
-    card.reload:SetScript("OnClick", function() App.Log("reload by player"); App.db.ui.shareReload = nil; A.Reload() end)
     card.mainBtn = makeButton(card, L["Main window"], 110); card.mainBtn:SetHeight(24)
     card.mainBtn:SetScript("OnClick", function()
         -- Back to the card's start screen: show the finished run's plan with Start run and Import a plan.
@@ -257,7 +276,7 @@ function Card.AfterVerdict(step)
     if not step then return end
     if step.share == "export" then Card.ExportNow()
     elseif step.share == "reload" then
-        ns.Slash.Print(L["This plan asks for a reload now so the log reaches the saved file. Press Reload on the card."])
+        ns.Slash.Print(L["This plan asks for a reload now so the log reaches the saved file. Type /reload."])
         local run = App.Current()
         App.db.ui.shareReload = run and run.runId or nil -- belongs to this run; cleared when the UI loads again
     end
@@ -276,9 +295,26 @@ function Card.ConfirmEnd()
     if not shown then ns.Slash.Print(L["The confirmation window is not available. The run stays active."]) end
 end
 
--- The Run menu. Where the game has no menu API, a click on the title asks to end the run directly.
+-- Ask first, then end the run and forget its plan. The results stay for export.
+function Card.ConfirmClear()
+    local run, err = App.CanEnd()
+    if not run then ns.Slash.Print(err); return end
+    local runId = run.runId
+    local plan = App.db.planStore[run.planDigest or ""]
+    local name = ns.Slash.Esc(plan and plan.title or run.addon):gsub("%%", "%%%%") -- the dialog formats its text
+    local shown = A.Confirm(L["Clear the plan %s? The run ends, your recorded results stay for export, and the plan leaves your loaded and recent plans."]:format(name), function()
+        local cleared, why = App.ClearPlan(runId)
+        if cleared then ns.Slash.Print(L["Plan cleared. The run ended."]) else ns.Slash.Print(why) end
+        if ns.Options and ns.Options.Notify then ns.Options.Notify() end
+        Card.Refresh()
+    end)
+    if not shown then ns.Slash.Print(L["The confirmation window is not available. The run stays active."]) end
+end
+
+-- The Run menu. Where the game has no menu API, a click on the control asks to end the run directly.
 function Card.RunMenu(owner)
-    if not A.ContextMenu(owner, { { L["End run..."], Card.ConfirmEnd } }) then Card.ConfirmEnd() end
+    local items = { { L["Import..."], Card.ImportPrompt }, { L["End run..."], Card.ConfirmEnd }, { L["Clear plan..."], Card.ConfirmClear } }
+    if not A.ContextMenu(owner, items) then Card.ConfirmEnd() end
 end
 
 function Card.ExportNow()
@@ -319,7 +355,7 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "reload", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "headArrow" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide()
     card.secureWanted = false
@@ -341,22 +377,26 @@ function Card.Refresh()
     local run, ctx, step = App.Current()
     hideAll()
     local collapsed = cfg().collapsed
-    local mini = collapsed and run
+    local pendingAddon = App.db.ui.pendingStart
+    local starting = not run or (pendingAddon and App.db.plans[pendingAddon]) -- the start screen is always full width
+    local mini = collapsed and run and not starting
     card:SetWidth(mini and 280 or 380)
     local inner = mini and 256 or INNER
     card.title:SetWidth(inner); card.barBack:SetWidth(inner)
+    fit(card.title, mini and 1 or 2)
+    -- The counter sits just left of the buttons that are showing (the step buttons are hidden in the collapsed card).
+    card.step:ClearAllPoints(); card.step:SetPoint("RIGHT", mini and card.collapse or card.prevBtn, "LEFT", -6, 0)
     card.collapse:SetText(collapsed and "+" or "-")
-    card.head:SetText(L["CheckThat / Run"])
+    card.head:SetText(L["CheckThat"])
     card.step:SetText("")
-    if run and not run.endedAt and not (App.db.ui.pendingStart and App.db.plans[App.db.ui.pendingStart]) then
+    if run and not run.endedAt and not starting then
+        card.headBtn:ClearAllPoints(); card.headBtn:SetPoint("LEFT", card.head, "LEFT", card.head:GetStringWidth() + 4, 0) -- same line centre as the title
         card.headBtn:Show()
-        card.headArrow:ClearAllPoints(); card.headArrow:SetPoint("LEFT", card.head, "LEFT", card.head:GetStringWidth() + 3, 0); card.headArrow:Show()
     end
-    local pendingAddon = App.db.ui.pendingStart
-    if not run or (pendingAddon and App.db.plans[pendingAddon]) then
+    if starting then
         -- A plan is waiting to start (just imported or picked): it takes focus, even after a finished run.
         local rec = (pendingAddon or App.db.ui.lastImport) and App.db.plans[pendingAddon or App.db.ui.lastImport]
-        place(card.title, 12, 36); setText(card.title, L["CheckThat"])
+        place(card.title, 12, 36); setText(card.title, L["Ready to test"])
         local y = 36 + card.title:GetStringHeight() + 8
         local msg
         if rec then
@@ -367,6 +407,9 @@ function Card.Refresh()
         else msg = L["No plan yet. Select Import a plan and paste a plan string."] end
         place(card.context, 12, y); setText(card.context, msg, BODY)
         y = y + card.context:GetStringHeight() + 12
+        card.start:ClearAllPoints(); card.start:SetPoint("BOTTOMLEFT", 12, 12)
+        card.importAgain:ClearAllPoints() -- the first visible button sits at the left edge
+        if rec then card.importAgain:SetPoint("LEFT", card.start, "RIGHT", 6, 0) else card.importAgain:SetPoint("BOTTOMLEFT", 12, 12) end
         card.importAgain:Show()
         if run and step then card.resume:Show() end -- an unfinished run can still be resumed
         card:SetHeight(y + 36); return
@@ -377,8 +420,10 @@ function Card.Refresh()
     card.barBack:Show(); card.barFill:Show()
     card.barFill:SetWidth(math.max(1, inner * (total > 0 and resolved / total or 0)))
     if collapsed then
-        card.step:SetText(("%d/%d"):format(math.min(resolved + 1, total), total))
-        place(card.title, 12, 32); setText(card.title, step and step.title or (run.endedAt and L["Run ended"] or L["Run complete"]))
+        card.step:SetText(("%d/%d"):format(step and run.current or (run.endedAt and resolved or total), total))
+        local shownTitle = step and step.title or (run.endedAt and L["Run ended"] or L["Run complete"])
+        place(card.title, 12, 32); setText(card.title, shownTitle)
+        card.titleHit.full = shownTitle; card.titleHit:Show()
         card:SetHeight(40 + math.min(card.title:GetStringHeight(), 36)); return
     end
     card.step:SetText(step and L["Step %d/%d"]:format(run.current, total) or ("%d/%d"):format(run.endedAt and resolved or total, total))
@@ -390,16 +435,17 @@ function Card.Refresh()
         place(card.tally, 12, y); setText(card.tally, L["%d passed   %d partial   %d failed   %d skipped"]:format(c.pass, c.partial, c.fail, c.skip), BODY)
         y = y + card.tally:GetStringHeight() + 8
         place(card.context, 12, y)
-        setText(card.context, L["Export results to share this run. The game saves the evidence to disk when you reload or log out."] .. "\n" .. (ended and "" or ctx.plan.handoff or ""), GREY)
+        local ask = App.db.ui.shareReload == run.runId and not ended -- the last step asked for a reload so the log reaches the saved file
+        setText(card.context, L["Export results to share this run. The game saves the evidence to disk when you reload or log out."] .. "\n" .. (ended and "" or ctx.plan.handoff or "")
+            .. (ask and ("\n" .. L["Type /reload now so Claude can read the log."]) or ""), GREY)
         y = y + card.context:GetStringHeight() + 12
         if not ended then card.prevBtn:Show() end
         card.exportBtn:ClearAllPoints(); card.exportBtn:SetPoint("BOTTOMLEFT", 12, 12); card.exportBtn:Show()
-        card.mainBtn:ClearAllPoints(); card.mainBtn:SetPoint("LEFT", card.exportBtn, "RIGHT", 6, 0); card.mainBtn:Show()
+        -- Main window goes back to the loaded plan. With no plan loaded it would show the same screen, so Import a plan takes its place.
+        local loaded = App.db.plans[run.addon] or (App.db.ui.lastImport and App.db.plans[App.db.ui.lastImport])
+        local second = loaded and card.mainBtn or card.importAgain
+        second:ClearAllPoints(); second:SetPoint("LEFT", card.exportBtn, "RIGHT", 6, 0); second:Show()
         if not ended then card.undo:Show() end
-        if App.db.ui.shareReload == run.runId and not ended then -- the last step asked for a reload so the log reaches the saved file
-            card.reload:ClearAllPoints(); card.reload:SetPoint("BOTTOMLEFT", 12, 42); card.reload:Show()
-            y = y + 30
-        end
         card:SetHeight(y + 36); return
     end
     local rec0 = run.steps[step.id]
@@ -499,8 +545,8 @@ function Card.Refresh()
     end
     local hint = {}
     if step.screenshot then hint[#hint + 1] = L["Press Print Screen while the result is on screen."] end
-    if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Press Reload when done. This step resumes after."] end
-    if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Reload now so Claude can read the log."] end
+    if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Type /reload when done. This step resumes after."] end
+    if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Type /reload now so Claude can read the log."] end
     if #hint > 0 then place(card.hint, 12, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
     y = y + 6
     local noteKey = noteKeyOf(run, step, rec0)
@@ -509,14 +555,11 @@ function Card.Refresh()
     place(card.note, 62, y - 1); card.note:Show()
     y = y + 34
     for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo" }) do card[k]:Show() end
-    -- The secure button sits beside the first command; Reload sits in the verdict row only when asked for.
+    -- The secure button sits beside the first command. A reload is the player's /reload, or the Run button of a step that lists it.
     card.secureAnchor = firstCopy or false
     setMacro(step, ctx.plan)
     Card.PlaceSecure()
     A.After(0.2, Card.PlaceSecure) -- layout settles a moment after the first show
-    local needReload = (step.reload == "after_action" and not reloaded) or step.action.kind == "reload" or App.db.ui.shareReload == run.runId
-    card.reload:ClearAllPoints(); card.reload:SetPoint("RIGHT", card.undo, "LEFT", -6, 0)
-    card.reload:SetShown(needReload)
     card:SetHeight(y + 40)
 end
 
