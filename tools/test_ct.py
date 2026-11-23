@@ -567,8 +567,10 @@ class BuildPlugin(unittest.TestCase):
 
 class ReadmeSkills(unittest.TestCase):
     def test_readme_tells_how_to_install_both_skills_for_each_agent(self):
-        with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
-            text = f.read()
+        text = ""
+        for name in ("README.md", os.path.join("docs", "skills.md")):
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                text += f.read()
         for needle in ("make install-skill", "SKILL_DIR=~/.codex/skills", "~/.claude/skills", "ct-test-plan", "ct-verify", "luajit",
                        "<name>.<role>.yaml", "outside the checkout"):
             self.assertIn(needle, text)

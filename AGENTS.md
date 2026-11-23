@@ -4,7 +4,7 @@
 
 When player-visible behavior, a setting, or a command changes, update the supporting docs in the same change.
 
-- Cover affected features, settings, commands, and “Good to know” limits in `README.md`.
+- Cover affected features, settings, commands, and “Good to know” limits in `README.md`. Keep the README short: one or two lines for each feature. Put how a feature behaves, with its debug log lines, in `docs/features.md`. Plan writing is in `docs/authoring-plans.md`, evidence collection in `docs/harvesting.md` and the skills in `docs/skills.md`.
 - Update the CurseForge/Wago text in `docs/listing.md`. Update its summary when the headline behavior changes.
 - Update `docs/test-plan.md` with the relevant manual checks. Keep section numbers unique and in order.
 - Document every new setting in the README and include its value in the debug report.
