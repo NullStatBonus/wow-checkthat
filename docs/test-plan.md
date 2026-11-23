@@ -31,7 +31,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: chat says "Debug recording is on."
    Log: `[ct] debug on`.
 2. **Import opens the window.** Type `/ct import`, paste the contents of `build/selftest.ct`, press Import, then type `/ct start CheckThat`.
-   Check: the window opens at once with the plan title and a Start run button. After you select Start run (or type `/ct start CheckThat`) the card shows "Turn debug recording on" with a copy box, a progress bar and Pass, Partial, Fail, Skip and Undo at the bottom.
+   Check: the window opens at once with "Ready to test", the plan title and a Start run button. After you select Start run (or type `/ct start CheckThat`) the card shows "Turn debug recording on" with a copy box, a progress bar and Pass, Partial, Fail, Skip and Undo at the bottom.
    Log: `[ct] run started`.
 3. **Recent plans.** Type `/ct import` again.
    Check: a "Recent plans" button lists the plan you imported. Choosing it opens the window with Start run and no paste.

@@ -75,6 +75,8 @@ test("the Run control shows while a run is active and says Run with an arrow", f
     T.ok(card.headBtn.shown and card.headBtn.label.text == "Run", "a visible Run control")
     T.ok(card.headBtn.arrow and card.headBtn.calls.SetHighlightTexture, "dropdown arrow and hover highlight")
     T.eq(card.head.text, "CheckThat", "the label is no longer a heading that hides the menu")
+    local c = card.headBtn.calls.SetPoint
+    T.ok(c[1] == "LEFT" and c[2] == card.head, "centered on the title line, not at a fixed offset")
     ns.App.End(run.runId); ns.Card.Refresh()
     T.ok(not card.headBtn.shown, "no menu on an ended run")
 end)
@@ -139,6 +141,7 @@ test("the start screen stays full width and keeps its text inside, even over a c
     ns.Card.Refresh()
     T.eq(card.calls.SetWidth[1], 380, "the start screen is full width")
     T.ok(card.start.shown, "Start run is visible")
+    T.eq(card.title.text, "Ready to test", "the start screen does not repeat the header")
     collapse(false)
 end)
 

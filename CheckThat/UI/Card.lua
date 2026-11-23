@@ -390,13 +390,13 @@ function Card.Refresh()
     card.head:SetText(L["CheckThat"])
     card.step:SetText("")
     if run and not run.endedAt and not starting then
-        card.headBtn:ClearAllPoints(); card.headBtn:SetPoint("TOPLEFT", card, "TOPLEFT", 12 + card.head:GetStringWidth() + 4, -7)
+        card.headBtn:ClearAllPoints(); card.headBtn:SetPoint("LEFT", card.head, "LEFT", card.head:GetStringWidth() + 4, 0) -- same line centre as the title
         card.headBtn:Show()
     end
     if starting then
         -- A plan is waiting to start (just imported or picked): it takes focus, even after a finished run.
         local rec = (pendingAddon or App.db.ui.lastImport) and App.db.plans[pendingAddon or App.db.ui.lastImport]
-        place(card.title, 12, 36); setText(card.title, L["CheckThat"])
+        place(card.title, 12, 36); setText(card.title, L["Ready to test"])
         local y = 36 + card.title:GetStringHeight() + 8
         local msg
         if rec then
