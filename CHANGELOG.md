@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+New: **End run.** Click the card title and choose End run, or type /ct end. CheckThat asks first. The results stay.
+New: An ended run shows "Run ended" with Export results. The export and the debug report mark the run ended.
+
 ## 0.5.3
 
 Fixed: **Large plan strings.** A small pasted plan string could expand to a huge size and freeze the game while you imported it. Import now stops at the size limit and shows "decoded data too large".

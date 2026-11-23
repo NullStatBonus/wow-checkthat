@@ -341,4 +341,31 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     s.Hide = nil
     T.eq(hides, 0, "nothing called on the button in combat")
 end)
+test("smoke: End run from the Run menu asks first, then closes the run and shows its results", function()
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    local run = ns.App.Start("KeepThat")
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.ok(card.headBtn.shown, "the Run menu is on the title while a run is active")
+    ns.App.Verdict("skip"); ns.Card.Refresh()
+    st.popup = nil
+    card.headBtn.scripts.OnClick(card.headBtn) -- the stub client has no menu API: the click asks directly
+    T.ok(st.popup and st.popup.text:find("End this run%?"), "asks first")
+    T.eq(run.endedAt, nil, "nothing ends before the answer")
+    -- a confirmation that outlives its run ends nothing
+    local stale = st.popup.OnAccept
+    local run2 = ns.App.Start("KeepThat")
+    stale(); T.eq(run2.endedAt, nil, "the new run is untouched")
+    st.popup = nil
+    ns.Card.ConfirmEnd(); st.popup.OnAccept()
+    T.ok(run2.endedAt, "confirmed: the run ended")
+    ns.Card.Refresh()
+    T.eq(card.title.text, "Run ended")
+    T.ok(card.exportBtn.shown and card.mainBtn.shown, "Export results and Main window stay")
+    T.ok(not card.undo.shown and not card.prevBtn.shown and not card.resume.shown, "no Undo, back or Resume")
+    T.ok(not card.headBtn.shown, "no Run menu on an ended run")
+    local lines = ns.Slash.Run("end", { endRun = function() error("must not ask") end })
+    T.ok(lines[1]:find("already ended"), lines[1])
+    T.ok(ns.Slash.Run("pass", { verdict = function(c, n) local _, err = ns.App.Verdict(c, n); return { err } end })[1]:find("has ended"))
+end)
 finish()

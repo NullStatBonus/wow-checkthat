@@ -106,6 +106,13 @@ local function build()
 
     -- Header: where we are, and the controls that always stay in the same place.
     card.head = fs("GameFontHighlightSmall", GREY, 120); card.head:SetPoint("TOPLEFT", 12, -9)
+    -- The title opens the Run menu (End run). It shows only while a run is active.
+    card.headBtn = CreateFrame("Button", nil, card)
+    card.headBtn:SetPoint("TOPLEFT", card.head, "TOPLEFT", 0, 2); card.headBtn:SetPoint("BOTTOMRIGHT", card.head, "BOTTOMRIGHT", 0, -2)
+    card.headBtn:SetScript("OnClick", function(self) Card.RunMenu(self) end)
+    card.headArrow = card:CreateTexture(nil, "OVERLAY")
+    card.headArrow:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow"); card.headArrow:SetSize(10, 10)
+    card.headArrow:SetRotation(-math.pi / 2)
     card.step = fs("GameFontHighlightSmall", GREY, 70, "RIGHT"); card.step:SetPoint("TOPRIGHT", -126, -9)
     local close = CreateFrame("Button", nil, card, "UIPanelCloseButton"); close:SetPoint("TOPRIGHT", 3, 3)
     local collapse = makeButton(card, "-", 22); collapse:SetPoint("RIGHT", close, "LEFT", 2, 0)
@@ -256,6 +263,24 @@ function Card.AfterVerdict(step)
     end
 end
 
+-- Ask first, then end the current run. The answer re-checks that the run is still the same one.
+function Card.ConfirmEnd()
+    local run, err = App.CanEnd()
+    if not run then ns.Slash.Print(err); return end
+    local runId = run.runId
+    local shown = A.Confirm(L["End this run? Your recorded results will be kept. You cannot resume this run."], function()
+        local ended, why = App.End(runId)
+        if ended then ns.Slash.Print(L["Run ended."]) else ns.Slash.Print(why) end
+        Card.Refresh()
+    end)
+    if not shown then ns.Slash.Print(L["The confirmation window is not available. The run stays active."]) end
+end
+
+-- The Run menu. Where the game has no menu API, a click on the title asks to end the run directly.
+function Card.RunMenu(owner)
+    if not A.ContextMenu(owner, { { L["End run..."], Card.ConfirmEnd } }) then Card.ConfirmEnd() end
+end
+
 function Card.ExportNow()
     local s, err = App.Export()
     if s then ns.Export.Show(L["Results string. Share it with Claude."], s) else ns.Slash.Print(err) end
@@ -294,7 +319,7 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "reload", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "reload", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "headArrow" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide()
     card.secureWanted = false
@@ -323,6 +348,10 @@ function Card.Refresh()
     card.collapse:SetText(collapsed and "+" or "-")
     card.head:SetText(L["CheckThat / Run"])
     card.step:SetText("")
+    if run and not run.endedAt and not (App.db.ui.pendingStart and App.db.plans[App.db.ui.pendingStart]) then
+        card.headBtn:Show()
+        card.headArrow:ClearAllPoints(); card.headArrow:SetPoint("LEFT", card.head, "LEFT", card.head:GetStringWidth() + 3, 0); card.headArrow:Show()
+    end
     local pendingAddon = App.db.ui.pendingStart
     if not run or (pendingAddon and App.db.plans[pendingAddon]) then
         -- A plan is waiting to start (just imported or picked): it takes focus, even after a finished run.
@@ -349,24 +378,25 @@ function Card.Refresh()
     card.barFill:SetWidth(math.max(1, inner * (total > 0 and resolved / total or 0)))
     if collapsed then
         card.step:SetText(("%d/%d"):format(math.min(resolved + 1, total), total))
-        place(card.title, 12, 32); setText(card.title, step and step.title or L["Run complete"])
+        place(card.title, 12, 32); setText(card.title, step and step.title or (run.endedAt and L["Run ended"] or L["Run complete"]))
         card:SetHeight(40 + math.min(card.title:GetStringHeight(), 36)); return
     end
-    card.step:SetText(step and L["Step %d/%d"]:format(run.current, total) or ("%d/%d"):format(total, total))
+    card.step:SetText(step and L["Step %d/%d"]:format(run.current, total) or ("%d/%d"):format(run.endedAt and resolved or total, total))
     if not step then
-        -- Results and handoff.
-        place(card.title, 12, 36); setText(card.title, L["Run complete"])
+        -- Results and handoff. An ended run shows the same screen, with nothing to undo or step through.
+        local ended = run.endedAt
+        place(card.title, 12, 36); setText(card.title, ended and L["Run ended"] or L["Run complete"])
         local y = 36 + card.title:GetStringHeight() + 6
         place(card.tally, 12, y); setText(card.tally, L["%d passed   %d partial   %d failed   %d skipped"]:format(c.pass, c.partial, c.fail, c.skip), BODY)
         y = y + card.tally:GetStringHeight() + 8
         place(card.context, 12, y)
-        setText(card.context, L["Export results to share this run. The game saves the evidence to disk when you reload or log out."] .. "\n" .. (ctx.plan.handoff or ""), GREY)
+        setText(card.context, L["Export results to share this run. The game saves the evidence to disk when you reload or log out."] .. "\n" .. (ended and "" or ctx.plan.handoff or ""), GREY)
         y = y + card.context:GetStringHeight() + 12
-        card.prevBtn:Show()
+        if not ended then card.prevBtn:Show() end
         card.exportBtn:ClearAllPoints(); card.exportBtn:SetPoint("BOTTOMLEFT", 12, 12); card.exportBtn:Show()
         card.mainBtn:ClearAllPoints(); card.mainBtn:SetPoint("LEFT", card.exportBtn, "RIGHT", 6, 0); card.mainBtn:Show()
-        card.undo:Show()
-        if App.db.ui.shareReload == run.runId then -- the last step asked for a reload so the log reaches the saved file
+        if not ended then card.undo:Show() end
+        if App.db.ui.shareReload == run.runId and not ended then -- the last step asked for a reload so the log reaches the saved file
             card.reload:ClearAllPoints(); card.reload:SetPoint("BOTTOMLEFT", 12, 42); card.reload:Show()
             y = y + 30
         end

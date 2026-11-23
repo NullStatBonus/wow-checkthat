@@ -1,6 +1,6 @@
 -- /ct commands. Run(args, deps) is plain Lua: it returns the lines to print and calls deps for anything
 -- that touches the game, so tests can drive it with fakes.
--- deps = { open(page), card(), importPrompt(), export(), macro(), reload(), report(), confirmClear(), setDebug(on), verdict(cmd, note) }
+-- deps = { open(page), card(), importPrompt(), export(), macro(), reload(), report(), confirmClear(), setDebug(on), verdict(cmd, note), endRun() }
 local _, ns = ...
 local L = ns.L
 
@@ -24,7 +24,7 @@ function Slash.Run(args, deps)
     local cmd, rest = (args or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     local App = ns.App
-    local noArgs = { import = true, export = true, macro = true, reload = true, undo = true, back = true, next = true }
+    local noArgs = { import = true, export = true, macro = true, reload = true, undo = true, back = true, next = true, ["end"] = true }
     if noArgs[cmd] and rest ~= "" then return { L["Usage: /ct %s takes no arguments."]:format(cmd) } end
     if cmd == "" then deps.card(); return {}
     elseif cmd == "settings" then
@@ -50,7 +50,7 @@ function Slash.Run(args, deps)
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
         elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required)."] }
         elseif topic == "runs" then return {
-            L["Runs: /ct import, /ct start <addon>, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload."] }
+            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
         return { L["Help: /ct help appearance, /ct help diagnostics, /ct help runs. Open /ct settings [page] or read /ct status [topic]."] }
     elseif cmd == "status" then
@@ -96,6 +96,11 @@ function Slash.Run(args, deps)
         if not App.Undo() then return { L["Nothing to undo."] } end
         deps.card(true)
         return { L["Undone."] }
+    elseif cmd == "end" then
+        local run, err = App.CanEnd()
+        if not run then return { err } end
+        deps.endRun()
+        return {}
     elseif cmd == "export" then deps.export(); return {}
     elseif cmd == "macro" then deps.macro(); return {}
     elseif cmd == "reload" then deps.reload(); return {}
@@ -118,6 +123,7 @@ function Slash.Register(addon)
                 ns.Log.Clear(); Slash.Print(L["Debug log cleared."])
             end)
         end,
+        endRun = function() if ns.Card then ns.Card.ConfirmEnd() end end,
         verdict = function(cmd, note)
             local a, err, step = ns.App.Verdict(cmd, note)
             if ns.Card then ns.Card.AfterVerdict(step); ns.Card.Refresh() end

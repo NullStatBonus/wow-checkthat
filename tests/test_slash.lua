@@ -92,4 +92,17 @@ test("registers /ct and /checkthat with one handler, and no other command", func
     for _ in pairs(handlers) do n = n + 1 end
     T.eq(n, 2, "nothing else is registered")
 end)
+test("end asks through the card when a run can end", function()
+    local App = ns.App
+    local was = App.CanEnd
+    called.endRun = nil
+    App.CanEnd = function() return {} end
+    T.eq(#run("end"), 0); T.ok(called.endRun, "the shared confirmation runs")
+    called.endRun = nil
+    App.CanEnd = function() return nil, "There is no run." end
+    T.ok(run("end")[1]:find("no run")); T.ok(called.endRun == nil, "nothing is asked without a run")
+    T.ok(run("end now")[1]:find("takes no arguments"))
+    App.CanEnd = was
+    T.ok(run("help runs")[1]:find("/ct end", 1, true))
+end)
 finish()
