@@ -3,7 +3,7 @@ kind: plan
 addon: CheckThat
 title: CheckThat 0.8 Past runs and run limit
 preamble: |-
-  Before you start this plan, make practice runs. Import |cff99ccffbuild/dontdothat.ct|r with |cff99ccff/ct import|r. Then do this five times: type |cff99ccff/ct start DontDoThat|r, type |cff99ccff/ct end|r and confirm. After the fifth run, type |cff99ccff/ct start DontDoThat|r once more and leave that run open. Then import and start this plan. Type |cff99ccff/ct debug on|r in the first step. Do not press End run on this plan before the last step.
+  Before you start this plan, make practice runs. Import |cff99ccffbuild/dontdothat.ct|r with |cff99ccff/ct import|r. Then do this five times: type |cff99ccff/ct start DontDoThat|r, type |cff99ccff/ct end|r and confirm. After the fifth run, type |cff99ccff/ct start DontDoThat|r once more and do not end that run. It must stay open. Then import and start this plan. Type |cff99ccff/ct debug on|r in the first step. Do not press End run on this plan before the last step.
 handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then delete the practice runs and set Runs to keep back to 20.
 logs:
   debug:
@@ -47,7 +47,7 @@ sections:
       text: Type |cff99ccff/ct settings home|r and look under |cffffd100Past runs|r.
       commands:
       - /ct settings home
-    expect: The list shows at least seven runs. This run is first, then your practice runs. Each entry starts with a date and time. With fewer runs, stop and make more practice runs first.
+    expect: The list shows at least seven runs. This run is first, then your practice runs. Each entry starts with a date and time. The practice run right below this one is the one you left open. With fewer runs, stop and make more practice runs first.
     verify:
     - player
   - id: ct8.view
@@ -79,7 +79,7 @@ sections:
     title: Open run asks before it replaces your run
     action:
       kind: manual
-      text: Pick the practice run that is still open and select |cffffd100Open run|r. Read the question. Select |cffffd100Cancel|r.
+      text: Pick the practice run listed right below this run. It is the one you left open. Select |cffffd100Open run|r. Read the question. Select |cffffd100Cancel|r.
     expect: The question says your current run leaves the checklist. After Cancel, the card still shows this step.
     verify:
     - player
@@ -87,7 +87,7 @@ sections:
     title: A run that comes back starts its step again
     action:
       kind: manual
-      text: Pick the open practice run and select |cffffd100Open run|r, then |cffffd100Accept|r. Type |cff99ccff/ct status|r. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
+      text: Pick the practice run listed right below this run and select |cffffd100Open run|r, then |cffffd100Accept|r. Type |cff99ccff/ct status|r. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
       commands:
       - /ct status
     expect: Back on this step, the check below is not green yet, because the status line came from the other run. Type |cff99ccff/ct status|r again and the check turns green. Press Pass only after that.
