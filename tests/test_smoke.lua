@@ -207,16 +207,19 @@ test("smoke: an auto step passes by itself, shows its countdown and waits while 
     card.prevBtn.scripts.OnClick()
     T.ok(card.recorded.text:find("recorded by CheckThat"), "settled step is marked: " .. tostring(card.recorded.text))
     card.nextBtn.scripts.OnClick()
-    -- a hidden card records nothing
+    -- a hidden card still settles an open auto step, from the loop it left running
     card:Hide()
-    KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "map opened"
-    T.eq(ns.Card.AutoSettle(), nil, "hidden card records nothing")
-    T.eq(select(1, ns.App.Current()).steps["au.2"].verdict, "pending")
     card.ticking = false; st.timers = {}
-    ns.Card.Show()                                       -- queues the card's refresh loop
+    ns.Card.Show(); card:Hide()                          -- queues the loop, then hides the card
+    KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "map opened"
     local queued = st.timers; st.timers = {}             -- a loop that re-queues itself must not run forever
     for _, fn in ipairs(queued) do fn() end
-    T.eq(select(1, ns.App.Current()).steps["au.2"].verdict, "pass", "the refresh loop settles it once the card is shown again")
+    T.eq(select(1, ns.App.Current()).steps["au.2"].verdict, "pass", "the loop settles it with the card hidden")
+    local again = st.timers; st.timers = {}; for _, fn in ipairs(again) do fn() end -- next tick sees no auto step
+    T.eq(card.ticking, false, "the loop stops: the card is hidden and the next step is not auto")
+    ns.Card.Show()
+    T.ok(card.title.text:find("Third"), "the card opens on the next step")
+    T.eq(card.ticking, true, "showing the card restarts the loop")
 end)
 test("smoke: an auto step records nothing in combat, behind a Start screen or with the UI hidden, and keeps a typed note", function()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end

@@ -24,4 +24,4 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Results are saved when the game reloads or logs out.
 - Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `CheckThat` folder in `Interface/AddOns/`.
 - Run is not available in combat. CheckThat shows it again when combat ends.
-- Automatic steps record a result only while the card is on screen. They read logs and never send input.
+- Automatic steps record a result also while the card is hidden. They pause while the game interface is hidden. They read logs and never send input.

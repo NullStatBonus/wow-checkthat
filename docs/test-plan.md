@@ -73,9 +73,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 6. **Automatic step shows who records it.** Press < on the card after an automatic step finished.
    Check: the finished step says "recorded by CheckThat" next to Recorded: Pass.
    Log: `[ct] step self.secure pass auto evidence matched`.
-7. **Hidden card waits.** Setup: on the Run button step, hide the card with `/ct` and type `/ct status`. Then type `/ct` to show the card.
-   Check: the card moves on to the next step within a second of showing.
-   Log: `[ct] status requested`, then `[ct] step self.secure pass auto evidence matched` after the card is shown.
+7. **Hidden card still records.** Setup: on the Run button step, hide the card with `/ct` and type `/ct status`. Then type `/ct` to show the card.
+   Check: the card opens on the next step.
+   Log: `[ct] status requested`, then `[ct] step self.secure pass auto evidence matched` before the card is shown.
 8. **Export window covers the Run button.** On the Export results step, click Run (or type `/ct export`).
    Check: the results window opens over the card and the Run button is hidden behind it. Clicking the window does not press Run.
    Log: none; on screen only.
