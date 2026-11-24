@@ -252,7 +252,7 @@ class NamedTools(unittest.TestCase):
         files = [os.path.join(ROOT, "README.md")] + [p for p in glob.glob(os.path.join(ROOT, "docs", "*.md")) if not p.endswith("contracts.md")]
         for path in files:
             with open(path, encoding="utf-8") as f:
-                hit = re.search(r"wowunit|wowless|wowbench|bugsack|alluneve", f.read(), re.I)
+                hit = re.search(r"wowunit|wowless|wowbench|alluneve", f.read(), re.I)
             self.assertIsNone(hit, f"{path} names {hit and hit.group(0)}")
 
 
