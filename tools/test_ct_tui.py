@@ -138,6 +138,20 @@ class Logic(unittest.TestCase):
         self.assertIn("UNICODE-STACK", ct_tui.detail_text(rid, runs[rid], "a", self.d))
         self.assertIn("UNICODE-STACK", ct.report_text(runs, self.d))
 
+    def test_the_rich_detail_shows_every_part_and_never_reads_evidence_as_markup(self):
+        rec = {"verdict": "pass", "attempts": [at(1, "pass", note="[bold]odd[/] note", evidence="contradicts", outcomes=[
+            {"result": "fail", "why": "line [/x] seen"}, {"result": "pass", "why": "ok", "diagnostic": True}, {"result": "unverified", "why": "nothing"}],
+            excerpt={"debug": ["one [red]", "two"]})]}
+        os.makedirs(os.path.join(self.d, "errors"))
+        with open(os.path.join(self.d, "errors", "x.json"), "w") as fh:
+            json.dump({"runs": ["R-x"], "errors": ["105.001 [K] boom"], "errorStacks": ["105.001 a.lua:1 / [C]: in function 'pcall'"]}, fh)
+        r = run("R-x", {"a": rec}, 8000)
+        rec["attempts"][0]["verdict"] = "fail"; rec["verdict"] = "pass"
+        shown = ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("R-x", r, "a", self.d)))
+        for want in ("FAIL", "the evidence overrules this pass", "attempts", "[bold]odd[/] note", "✗", "diagnostic", "line [/x] seen", "log debug - 2 new lines", "  1 one [red]", "error 105.001", "→ a.lua:1", "→ [C]: in function 'pcall'"):
+            self.assertIn(want, shown)
+        self.assertEqual(ct_tui.render_plain(ct_tui.detail_render(None)).strip(), "The run has no record of this step.")
+
     def test_browse_is_the_same_viewer_and_refuses_without_a_terminal(self):
         import io, contextlib
         with contextlib.redirect_stderr(io.StringIO()):
@@ -195,10 +209,11 @@ class Screens(unittest.TestCase):
             await pilot.press("slash"); await pilot.pause()
             self.assertEqual(self.keys(app), ["z"])
             await pilot.press("slash", "up", "up", "up", "enter"); await pilot.pause()   # all categories again; the cursor stayed on z, go up to a and open it
-            body = str(app.screen.query_one("#body").render())
-            self.assertIn("attempt 2 of 2", body)
+            body = ct_tui.render_plain(app.screen.shown)
+            self.assertIn("attempt 2 of 2", body); self.assertIn("second", body)
             await pilot.press("left_square_bracket"); await pilot.pause()
-            self.assertIn("note: first", str(app.screen.query_one("#body").render()))
+            shown = ct_tui.render_plain(app.screen.shown)
+            self.assertIn("attempt 1 of 2", shown); self.assertIn("first", shown)
             await pilot.press("escape", "escape"); await pilot.pause()
             self.assertEqual(self.keys(app), ["R-bad", "R-un", "R-ok"])
         self.drive(script)
@@ -230,7 +245,7 @@ class Screens(unittest.TestCase):
             await pilot.press("enter"); await pilot.pause()   # R-mk is the newest failing run
             self.assertEqual(self.keys(app), ["[red]", "[/red]"])
             await pilot.press("enter"); await pilot.pause()
-            self.assertIn("[/red] note", str(app.screen.query_one("#body").render()))
+            self.assertIn("[/red] note", ct_tui.render_plain(app.screen.shown))
         self.drive(script)
 
     def test_a_vanished_run_closes_its_screens_and_what_is_open_over_them(self):
@@ -248,16 +263,16 @@ class Screens(unittest.TestCase):
         ct.write_revision(self.d, run("R-open", {"a": rec}, 8000))
         async def script(app, pilot):
             await pilot.press("enter", "enter"); await pilot.pause()
-            body = lambda: str(app.screen.query_one("#body").render())
-            self.assertIn("note: two", body()); self.assertIn("a newer attempt (3) is still open", body())
+            body = lambda: ct_tui.render_plain(app.screen.shown)
+            self.assertIn("attempt 2 of 3", body()); self.assertIn("two", body()); self.assertIn("a newer attempt (3) is still open", body())
             await pilot.press("left_square_bracket"); await pilot.pause()
-            self.assertIn("note: one", body())
+            self.assertIn("attempt 1 of 3", body()); self.assertIn("one", body())
         self.drive(script)
 
     def test_a_narrow_terminal_still_works(self):
         async def script(app, pilot):
             await pilot.press("enter", "enter"); await pilot.pause()
-            self.assertIn("result: FAIL", str(app.screen.query_one("#body").render()))
+            self.assertIn("FAIL", ct_tui.render_plain(app.screen.shown))
         self.drive(script, size=(40, 12))
 
     def test_export_shows_what_it_will_do_then_writes(self):

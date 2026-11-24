@@ -38,7 +38,7 @@ The viewer only reads. Collect in a shell, as before. The screen reloads when th
 | --- | --- | --- |
 | Runs | run, plan, revision, fail and unverified counts, age. Failures first, then unverified, newest first. A line above says how many problems `status` finds. | Enter opens a run |
 | Steps | step, category, result, reason, in plan order. The line above shows the filter and how many of the steps show. | `f` cycles all, fail, unverified. `/` cycles the categories. Enter opens a step. Esc goes back. |
-| Step | The result and the player's verdict first (it says when the evidence overrules a pass). Then one attempt: note, each required and diagnostic check, the log lines kept, and the errors raised while it was open with their stacks. | `[` and `]` move between attempts. Esc goes back. |
+| Step | A colored banner with the result (red fail, yellow unverified, green pass) and the player's verdict. It warns when the evidence overrules a pass. Below it an attempt strip (the shown attempt is filled, an open one is hollow) and one attempt: its facts, the note, a table of required and diagnostic checks, the log lines kept with line numbers, and each error raised while it was open with its stack, frame by frame. | `[` and `]` move between attempts. Esc goes back. |
 
 Everywhere: `e` shows what an export will write (scope, format, file, stacks) and writes it on Enter. `c` shows the collect command. `?` shows the keys. `q` quits. Evidence shows as plain text. Stacks stay out of a JSON or JUnit export until you press `s`, because they can hold private paths.
 

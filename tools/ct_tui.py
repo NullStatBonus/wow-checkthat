@@ -54,23 +54,44 @@ def _when(t):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if isinstance(t, (int, float)) else "?"
 
 
-def detail_text(rid, r, sid, dest=None, n=None):
-    """The classified result first, then one attempt (the latest finished by default) with its notes, outcomes,
-    log lines and the errors raised while it was open."""
+def detail_data(rid, r, sid, dest=None, n=None):
+    """What the step screen shows, as plain data: the classified result, the attempts, one attempt in full and the errors
+    raised while it was open. None when the run has no record of the step."""
     rec = (r.get("steps") or {}).get(sid)
     if rec is None:
-        return "The run has no record of step %s." % sid
+        return None
     result, why = ct.classify(rec)
-    out = ["%s / %s" % (rid, sid), "result: %s%s" % (result.upper(), " - " + why if why else ""),
-           "player verdict: %s%s" % (rec.get("verdict"), "   (the evidence says otherwise)" if rec.get("verdict") in ("pass", "partial") and result in ("fail", "unverified") else "")]
     ats = rec.get("attempts") or []
+    d = {"rid": rid, "sid": sid, "result": result, "why": why, "verdict": rec.get("verdict"),
+         "overruled": rec.get("verdict") in ("pass", "partial") and result in ("fail", "unverified"),
+         "attempts": [{"n": a.get("n"), "verdict": a.get("verdict")} for a in ats], "at": None, "pos": None, "newer_open": None, "errors": []}
     if not ats:
-        return "\n".join(out + ["", "No attempts."])
+        return d
     at = shown_attempt(rec, n)
-    pos = ats.index(at)
-    out += ["", "attempt %s of %d  ([ and ] move)" % (at.get("n"), len(ats))]
-    if pos < len(ats) - 1 and not ats[-1].get("verdict"):
-        out.append("a newer attempt (%s) is still open" % ats[-1].get("n"))
+    d["at"], d["pos"] = at, ats.index(at)
+    if d["pos"] < len(ats) - 1 and not ats[-1].get("verdict"):
+        d["newer_open"] = ats[-1].get("n")
+    if dest and at.get("verdict") in ("fail", "unverified"):
+        errs, stks = ct.load_errors(dest, ct.stored_id(rid, r))
+        hits, ambiguous = ct.stack_hits(r, stks)
+        for key in hits.get((sid, at.get("n")), []):
+            d["errors"].append({"key": key, "ambiguous": key in ambiguous, "text": errs.get(key, "(error line no longer saved)"), "stack": stks[key]})
+    return d
+
+
+def detail_text(rid, r, sid, dest=None, n=None):
+    """detail_data as plain lines: for tests, and for any place that has no colors."""
+    d = detail_data(rid, r, sid, dest, n)
+    if d is None:
+        return "The run has no record of step %s." % sid
+    out = ["%s / %s" % (rid, sid), "result: %s%s" % (d["result"].upper(), " - " + d["why"] if d["why"] else ""),
+           "player verdict: %s%s" % (d["verdict"], "   (the evidence says otherwise)" if d["overruled"] else "")]
+    at = d["at"]
+    if at is None:
+        return "\n".join(out + ["", "No attempts."])
+    out += ["", "attempt %s of %d  ([ and ] move)" % (at.get("n"), len(d["attempts"]))]
+    if d["newer_open"] is not None:
+        out.append("a newer attempt (%s) is still open" % d["newer_open"])
     out.append("verdict: %s   claimed: %s   by: %s   evidence: %s" % (at.get("verdict"), at.get("claimed"), at.get("by"), at.get("evidence")))
     out.append("opened %s, finished %s" % (_when(at.get("started")), _when(at.get("finished"))))
     if at.get("note"):
@@ -80,15 +101,101 @@ def detail_text(rid, r, sid, dest=None, n=None):
     for src, lines in sorted((at.get("excerpt") or {}).items()):
         out.append("log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
         out.extend("  " + str(line) for line in lines)
-    if dest and at.get("verdict") in ("fail", "unverified"):
-        errs, stks = ct.load_errors(dest, ct.stored_id(rid, r))
-        hits, ambiguous = ct.stack_hits(r, stks)
-        for key in hits.get((sid, at.get("n")), []):
-            out.append("error %s%s: %s" % (key, " (time also fits another attempt)" if key in ambiguous else "", errs.get(key, "(error line no longer saved)")))
-            out.append("  stack: " + stks[key])
+    for e in d["errors"]:
+        out.append("error %s%s: %s" % (e["key"], " (time also fits another attempt)" if e["ambiguous"] else "", e["text"]))
+        out.append("  stack: " + e["stack"])
     if len(out) > MAX_DETAIL_LINES:
         out = out[:MAX_DETAIL_LINES] + ["... %d more lines" % (len(out) - MAX_DETAIL_LINES)]
     return "\n".join(out)
+
+
+COLORS = {"fail": "red", "unverified": "yellow", "pass": "green", "partial": "cyan", "skip": "grey62", "skipped": "grey62"}
+MARKS = {"pass": "✓", "fail": "✗", "unverified": "?"}
+MAX_CHECK_ROWS = 200
+
+
+def detail_render(d):
+    """The step screen as Rich panels: a result banner, an attempt strip, the attempt's facts and checks, its log lines and
+    the errors raised while it was open. Evidence goes in as Text, never as markup."""
+    from rich import box
+    from rich.console import Group
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    if d is None:
+        return Text("The run has no record of this step.")
+    col = COLORS.get(d["result"], "white")
+    head = Text()
+    head.append(" %s " % d["result"].upper(), style="bold black on " + col)
+    head.append("  " + d["sid"], style="bold")
+    head.append("   " + d["rid"], style="dim")
+    sub = Text()
+    if d["why"]:
+        sub.append(d["why"] + "\n", style=col)
+    sub.append("player verdict  ", style="dim")
+    sub.append(str(d["verdict"]), style="bold " + COLORS.get(d["verdict"], "white"))
+    if d["overruled"]:
+        sub.append("   ⚠ the evidence overrules this pass", style="bold " + col)
+    parts = [Panel(Group(head, sub), border_style=col, box=box.HEAVY)]
+    at = d["at"]
+    if at is None:
+        return Group(*parts, Text("No attempts.", style="dim"))
+    strip = Text("attempts  ", style="dim")
+    for a in d["attempts"]:
+        c = COLORS.get(a["verdict"], "grey62")
+        strip.append(" %s " % a["n"], style=("bold black on " + c) if a["n"] == at.get("n") else c)
+        strip.append(" " if a["verdict"] else "◌ ", style="dim")
+    strip.append("   [ earlier   ] later", style="dim")
+    if d["newer_open"] is not None:
+        strip.append("\na newer attempt (%s) is still open" % d["newer_open"], style="yellow")
+    parts.append(strip)
+    facts = Table.grid(padding=(0, 2))
+    for label, value in (("verdict", at.get("verdict")), ("claimed", at.get("claimed")), ("by", at.get("by")), ("evidence", at.get("evidence")),
+                         ("opened", _when(at.get("started"))), ("finished", _when(at.get("finished")))):
+        facts.add_row(Text(label, style="dim"), Text(str(value)))
+    body = [facts]
+    s, f = at.get("started"), at.get("finished")
+    if isinstance(s, (int, float)) and isinstance(f, (int, float)):
+        facts.add_row(Text("took", style="dim"), Text("%ds" % max(0, f - s)))
+    if at.get("note"):
+        body.append(Panel(Text(" ".join(str(at["note"]).split())), title=Text("note"), title_align="left", border_style="dim"))
+    outs = at.get("outcomes") or []
+    if outs:
+        t = Table(box=box.SIMPLE_HEAD, expand=True, pad_edge=False)
+        for h in ("", "check", "result"):
+            t.add_column(h, no_wrap=True)
+        t.add_column("why", ratio=1)
+        for o in outs[:MAX_CHECK_ROWS]:
+            rc = COLORS.get(o.get("result"), "white")
+            t.add_row(Text(MARKS.get(o.get("result"), "·"), style="bold " + rc), Text("diagnostic" if o.get("diagnostic") else "required", style="dim" if o.get("diagnostic") else ""),
+                      Text(str(o.get("result")), style=rc), Text(str(o.get("why", ""))))
+        body.append(t)
+        if len(outs) > MAX_CHECK_ROWS:
+            body.append(Text("... %d more checks" % (len(outs) - MAX_CHECK_ROWS), style="dim"))
+    for src, lines in sorted((at.get("excerpt") or {}).items()):
+        txt = Text()
+        for i, line in enumerate(lines, 1):
+            txt.append("%3d " % i, style="dim")
+            txt.append(str(line) + ("\n" if i < len(lines) else ""))
+        body.append(Panel(txt, title=Text("log %s - %d new line%s" % (src, len(lines), "" if len(lines) == 1 else "s")), title_align="left", border_style="blue"))
+    for e in d["errors"]:
+        txt = Text(e["text"], style="bold red")
+        for frame in e["stack"].split(" / "):
+            txt.append("\n  → ", style="dim")
+            txt.append(frame, style="dim" if frame.startswith("[C]") else "")
+        title = "error %s%s" % (e["key"], " - time also fits another attempt" if e["ambiguous"] else "")
+        body.append(Panel(txt, title=Text(title), title_align="left", border_style="red"))
+    parts.append(Panel(Group(*body), title=Text("attempt %s of %d" % (at.get("n"), len(d["attempts"]))), title_align="left", border_style=COLORS.get(at.get("verdict"), "grey62")))
+    return Group(*parts)
+
+
+def render_plain(renderable, width=100):
+    """A Rich renderable as plain text, for tests and logs."""
+    import io
+    from rich.console import Console
+    c = Console(record=True, width=width, file=io.StringIO(), force_terminal=False)
+    c.print(renderable)
+    return c.export_text()
 
 
 EXPORTS = {"md": ("REPORT.md", "Markdown"), "json": ("REPORT.json", "JSON"), "junit": ("REPORT.xml", "JUnit XML")}
@@ -262,7 +369,7 @@ def make_app(store, interval=2.0):
 
         def __init__(self, rid, sid):
             super().__init__()
-            self.rid, self.sid, self.n = rid, sid, None
+            self.rid, self.sid, self.n, self.shown = rid, sid, None, None
 
         def compose(self):
             yield Header()
@@ -277,7 +384,8 @@ def make_app(store, interval=2.0):
             r = self.app.store.runs.get(self.rid)
             if r is None:
                 return
-            self.query_one("#body", Static).update(detail_text(self.rid, r, self.sid, self.app.store.dest, self.n))
+            self.shown = detail_render(detail_data(self.rid, r, self.sid, self.app.store.dest, self.n))
+            self.query_one("#body", Static).update(self.shown)
 
         def action_move(self, delta):
             r = self.app.store.runs.get(self.rid) or {}
