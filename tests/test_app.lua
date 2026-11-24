@@ -42,6 +42,67 @@ test("a step that is already open keeps one error stack, a new attempt wants ano
     App.Begin(); T.eq(n, 1, "the same open attempt: no second stack")
     ns.Errors.StepStarted = real
 end)
+test("a run of a newer major format is kept aside untouched, and comes back when this version can read it", function()
+    local db, env = boot()
+    local future = { kind = "results", ct = 2, runId = "Future-1", planDigest = "futuredigest", steps = "not even a table", started = 5, note = { deep = { 1, 2 } } }
+    local copy = { kind = "results", ct = 2, runId = "Future-1", planDigest = "futuredigest", steps = "not even a table", started = 5 }
+    db.runs["Future-1"] = future
+    db.planStore.futuredigest = { addon = "KeepThat" }
+    db.currentByChar["Tester-Realm"] = "Future-1"
+    App.Init(db, env)
+    T.eq(db.runs["Future-1"], nil, "no other code sees it"); T.ok(db.future["Future-1"] == future, "the very same table, untouched")
+    for k, v in pairs(copy) do T.eq(future[k], v, k) end
+    T.eq(App.FutureCount(), 1); T.eq(#App.Runs(), 0)
+    T.eq(App.Current(), nil, "it is not the current run")
+    local oldMin = App.RUN_LIMIT.min; App.RUN_LIMIT.min = 1; db.runLimit = 1
+    for i = 1, 4 do db.runs["Old-" .. i] = { kind = "results", ct = 1, runId = "Old-" .. i, started = i, steps = {}, order = {}, character = "X" } end
+    App.PruneRuns()
+    App.RUN_LIMIT.min = oldMin
+    T.ok(db.future["Future-1"] == future, "pruning does not touch it, and it takes no place in the limit")
+    T.ok(db.planStore.futuredigest, "its plan stays")
+    db.runs["Odd-1"] = { ct = 3 }  -- a run with no plan digest: the plans stored now stay
+    db.planStore.other = { addon = "x" }
+    App.SplitFuture(db)
+    App.PrunePlans()
+    T.ok(db.planStore.other, "plans stored when it was set aside stay: it may need any of them")
+    db.planStore.later = { addon = "y" }
+    App.PrunePlans()
+    T.eq(db.planStore.later, nil, "a plan stored later is pruned as usual")
+    db.future["Odd-1"] = nil
+    local saved = ns.Run.MAJOR; ns.Run.MAJOR = 2
+    App.SplitFuture(db)
+    ns.Run.MAJOR = saved
+    T.ok(db.runs["Future-1"] == future, "it returns when this version reads its format"); T.eq(db.future, nil, "nothing is left aside")
+end)
+test("a ct that is not a whole number up to the known major is a run this version cannot read", function()
+    local O = ns.Run.Opaque
+    T.eq(O({}), false, "no ct: a run from before it was kept"); T.eq(O({ ct = 1 }), false)
+    for _, c in ipairs({ 2, 2.0, 1.5, 0, -1, "1", "2", true, {} }) do T.eq(O({ ct = c }), true, tostring(c)) end
+end)
+test("a run set aside keeps its id: a new run never takes it, and a restore never overwrites a readable run", function()
+    local db, env = boot()
+    db.runs["KeepThat-1000-X"] = { ct = 2, runId = "KeepThat-1000-X", planDigest = "d", steps = "new" }
+    App.Init(db, env)
+    local future = db.future["KeepThat-1000-X"]
+    db.runs["KeepThat-1000-X"] = { ct = 1, runId = "KeepThat-1000-X", steps = {}, order = {} }   -- a readable namesake appears
+    local mine = db.runs["KeepThat-1000-X"]
+    local saved = ns.Run.MAJOR; ns.Run.MAJOR = 2
+    App.SplitFuture(db)
+    ns.Run.MAJOR = saved
+    T.ok(db.runs["KeepThat-1000-X"] == mine, "the readable run is not overwritten")
+    T.ok(db.future["KeepThat-1000-X"] == future, "both entries stay")
+end)
+test("a new run never takes the id of a run set aside", function()
+    local db, env = boot()
+    App.Init(db, env)
+    local id = ("KeepThat-%d-%s"):format(1000, ns.Run.Tag(App.Character()))
+    db.runs[id] = { ct = 2, runId = id, planDigest = "d", steps = "new" }
+    App.SplitFuture(db)
+    local aside = db.future[id]
+    App.ImportPlan(assert(ns.Codec.Encode(plan())))
+    local run = App.Start("KeepThat")
+    T.eq(run.runId, id .. "x", "the id is taken"); T.ok(db.future[id] == aside, "the run set aside is unchanged"); T.ok(db.runs[run.runId] == run)
+end)
 test("character key falls back when the realm name is empty", function()
     local db, env = boot()
     env.GetRealmName = function() return "" end

@@ -150,7 +150,7 @@ Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categor
     Log: `[errors] another addon took the error handler: set ours again` and no `recorded an error` line.
 11. **A failed step keeps its log lines and the check that failed.** Type `/ct run self.exact`. Click Run twice in a row.
     Check: the step records Fail (red) and the game stays responsive.
-    Log: the failed attempt of `self.exact` in `CheckThatDB.global.runs` holds `excerpt` with the new fact lines (at most 20, each at most 200 characters), and `tools/ct.py report` prints them under the attempt. The outcome that failed also holds `rule`, `source`, `window`, `matched` and `hits` (each hit has `n` and `line`), and the report prints a `check` line and the lines that decided it, marked `>` in the excerpt.
+    Log: the failed attempt of `self.exact` in `CheckThatDB.global.runs` holds `excerpt` with the new fact lines (at most 20, each at most 200 characters), and `tools/ct.py report` prints them under the attempt. The outcome that failed also holds `rule`, `source`, `window`, `matched` and `hits` (each hit has `n` and `line`), and the report prints a `check` line and the lines that decided it, marked `>` in the excerpt. The run also holds `formatRev = 1` and `writerVersion` equal to the TOC version, and the finished attempt holds `formatRev`.
 
 ## 6. Plan skills (no game needed)
 

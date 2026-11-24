@@ -191,6 +191,15 @@ class Logic(unittest.TestCase):
         shown = ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("Old-1", r, "a", self.d)))
         self.assertIn("no matching log line", shown); self.assertNotIn("check 1 -", shown)   # the why is all it has; no rule panel
 
+    def test_stamps_show_for_a_new_run_and_say_nothing_for_an_old_one(self):
+        r = run("R-w", {"a": {"verdict": "fail", "attempts": [at(1, "fail")]}}, 8000, formatRev=1, writerVersion="0.15.0")
+        self.assertEqual(ct_tui.wrote_text(r), "saved by CheckThat 0.15.0, format revision 1")
+        self.assertIn("saved by CheckThat 0.15.0, format revision 1", ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("R-w", r, "a"))))
+        self.assertIn("saved by CheckThat 0.15.0", ct_tui.detail_text("R-w", r, "a"))
+        old = run("R-o", {"a": {"verdict": "fail", "attempts": [at(1, "fail")]}}, 8000)
+        self.assertEqual(ct_tui.wrote_text(old), None)
+        self.assertNotIn("saved by", ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("R-o", old, "a"))))
+
     def test_browse_is_the_same_viewer_and_refuses_without_a_terminal(self):
         import io, contextlib
         with contextlib.redirect_stderr(io.StringIO()):

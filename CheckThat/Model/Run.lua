@@ -15,6 +15,27 @@ function Run.Tag(s)
     return ("%04x"):format(h % 65536)
 end
 
+-- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
+-- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
+-- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
+Run.MAJOR, Run.FORMAT_REV = 1, 1
+
+-- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
+-- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
+function Run.Opaque(run)
+    if type(run) ~= "table" or run.ct == nil then return false end
+    local c = run.ct
+    if type(c) ~= "number" or c ~= c or c % 1 ~= 0 or c < 1 then return true end
+    return c > Run.MAJOR
+end
+
+-- Says which format and which CheckThat wrote the latest content of a run.
+local function stamp(run)
+    if (run.formatRev or 0) < Run.FORMAT_REV then run.formatRev = Run.FORMAT_REV end
+    local v = ns.version
+    if type(v) == "string" and v ~= "" and v ~= "unknown" then run.writerVersion = v end
+end
+
 -- ctx: { plan, client, build, character, now, env, selected }
 -- selected is a list of category ids to run, or nil for every category. Returns nil and a reason when no step is left.
 function Run.New(ctx)
@@ -52,6 +73,7 @@ function Run.New(ctx)
         run.steps[e.step.id] = { attempts = {}, verdict = "inapplicable" }
     end
     if #run.order == 0 then return nil, "no steps" end
+    stamp(run)
     return run
 end
 
@@ -60,6 +82,7 @@ function Run.Normalize(run, plan, client)
     if run.categories then return run end
     local cats = ns.Plan.Categories(plan)
     run.revision = (run.revision or 0) + 1 -- the content changes, so a copy collected before is not the same revision
+    stamp(run)
     run.categories, run.cat, run.selected = {}, {}, {}
     for _, c in ipairs(cats) do
         run.categories[#run.categories + 1] = { id = c.id, title = c.title }
@@ -220,7 +243,7 @@ function Run.Rerun(run, ctx, id)
     return n
 end
 
-function Run.Touch(run, now) run.revision = run.revision + 1; run.updated = now end
+function Run.Touch(run, now) run.revision = run.revision + 1; run.updated = now; stamp(run) end
 
 local function stepOf(ctx, id)
     for _, sec in ipairs(ctx.plan.sections) do
@@ -398,6 +421,7 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     end
     a.claimed, a.by = verdict, by
     a.verdict, a.note, a.finished = effective, note, ctx.now
+    a.formatRev = Run.FORMAT_REV -- the format this attempt was written in (a run can hold attempts of several versions)
     -- A failed or unverified attempt keeps the log lines that arrived while it was open, so a reviewer need not find
     -- them in a log that may have rolled since.
     if effective == "fail" or effective == "unverified" then

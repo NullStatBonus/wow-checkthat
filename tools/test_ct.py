@@ -1337,11 +1337,145 @@ class Results(unittest.TestCase):
             run = json.load(fh)
         self.assertEqual(list(jsonschema.Draft202012Validator(schema).iter_errors(run)), [])
         ct.read_run(path)
+        self.assertEqual((run["ct"], run["formatRev"]), (1, 1)); self.assertEqual(run["steps"]["a"]["attempts"][0]["formatRev"], 1)   # stamped by the addon
         outs = run["steps"]["a"]["attempts"][0]["outcomes"]
         self.assertEqual((outs[0]["rule"], outs[0]["hits"][0]["line"]), ('absent: contains "boom"', "boom here"))
         self.assertEqual((outs[1]["stoppedAt"], outs[1]["matched"]), (2, 1)); self.assertEqual(outs[2]["observed"], "2")
         text = ct.report_text({"R": run})
         self.assertIn('check 1 (required, fail): absent: contains "boom"', text); self.assertIn("stopped at item 2", text)
+
+    def test_a_newer_major_is_refused_before_anything_reads_its_shape_and_the_reason_is_said(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        p = os.path.join(d, "r1.json")
+        with open(p, "w") as fh:
+            json.dump({"ct": 2, "steps": "a newer shape", "formatRev": 9}, fh)
+        with self.assertRaises(ValueError) as cm:
+            ct.read_run(p)
+        self.assertIn("format 2 is newer than this tool reads (1)", str(cm.exception))
+        with self.assertRaises(ValueError):
+            ct.write_revision(d, {"ct": 2, "runId": "F-1", "revision": 1, "steps": {}})
+        with open(p, "w") as fh:
+            json.dump({"ct": 1, "formatRev": 99, "writerVersion": "9.9.9", "steps": {}, "somethingNew": [1]}, fh)
+        self.assertEqual(ct.read_run(p)["formatRev"], 99)   # a higher revision is only more optional keys: read it
+
+    def test_status_and_report_say_a_newer_revision_was_skipped_and_strict_fails(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        with open(os.path.join(d, "runs", "R-1", "r3.json"), "w") as fh:
+            json.dump({"ct": 2, "steps": {}}, fh)
+        problems = ct.status_data(d)[1]
+        self.assertTrue(any("r3.json is unreadable (format 2 is newer than this tool reads (1)" in p for p in problems), problems)
+        code, out, err = self.cli("report", "--dest", d, "--format", "json")
+        self.assertEqual(code, 0); self.assertIn("r3.json is unreadable (format 2 is newer", err); self.assertIn("shows an older revision", err)
+        code, out, err = self.cli("report", "--dest", d, "--format", "json", "--strict")
+        self.assertEqual(code, 1); self.assertIn("1 run(s) have a revision that could not be read", err)
+
+    def test_collect_names_a_run_a_newer_checkthat_saved_and_stores_nothing_of_it(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write('CheckThatDB = {["global"] = {["runs"] = {}, ["future"] = {["F-1"] = {["ct"] = 2, ["runId"] = "F-1", ["revision"] = 4, ["steps"] = {}}}}}\n')
+        dest = os.path.join(d, "dest")
+        ct.cmd_collect(type("A", (), {"src": os.path.join(d, "src"), "dest": dest, "shots": None}))
+        self.assertEqual(ct.latest_runs(dest), {})
+        rows, problems, _ = ct.status_data(dest)
+        self.assertTrue(any("F-1" in p and "format 2 is newer" in p for p in problems), problems)
+
+    def test_the_stamps_are_in_json_status_and_schema(self):
+        import jsonschema
+        runs = self.run_with(self.steps(), formatRev=1, writerVersion="0.15.0")
+        m = json.loads(ct.report_json(runs))["runs"][0]
+        self.assertEqual((m["formatRev"], m["writerVersion"]), (1, "0.15.0"))
+        d = self.dest_with(runs)
+        row = ct.status_data(d)[0][0]
+        self.assertEqual((row["formatRev"], row["writerVersion"]), (1, "0.15.0"))
+        with open(os.path.join(ROOT, "schema", "run-results.schema.json")) as fh:
+            schema = json.load(fh)
+        ok = lambda run: not list(jsonschema.Draft202012Validator(schema).iter_errors(run))
+        steps = {"a": {"attempts": [{"n": 1, "formatRev": 1}]}}
+        self.assertTrue(ok({"ct": 1, "formatRev": 3, "writerVersion": "1.2.3", "steps": steps}))
+        self.assertTrue(ok({"steps": steps}), "an older run has no stamp")
+        for bad in ({"ct": 2}, {"formatRev": 0}, {"formatRev": "1"}, {"writerVersion": 3}):
+            self.assertFalse(ok(dict({"steps": steps}, **bad)), bad)
+        self.assertFalse(ok({"steps": {"a": {"attempts": [{"n": 1, "formatRev": 0}]}}}))
+
+    def test_the_results_format_page_matches_the_code(self):
+        with open(os.path.join(ROOT, "CheckThat", "Model", "Run.lua"), encoding="utf-8") as fh:
+            major, rev = re.search(r"Run\.MAJOR, Run\.FORMAT_REV = (\d+), (\d+)", fh.read()).groups()
+        with open(os.path.join(ROOT, "docs", "results-format.md"), encoding="utf-8") as fh:
+            page = fh.read()
+        self.assertIn("Current: **ct %s, formatRev %s.**" % (major, rev), page)
+        self.assertTrue(re.search(r"^\| %s \| \d+\.\d+\.\d+ \|" % rev, page, re.M), "the revision table has a row for the current formatRev")
+        self.assertEqual(int(major), ct.SUPPORTED_MAJOR, "ct.py reads the major the addon writes")
+        with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as fh:
+            version = re.search(r"^## Version:\s*(\S+)", fh.read(), re.M).group(1)
+        row = re.search(r"^\| %s \| (\d+\.\d+\.\d+) \|" % rev, page, re.M).group(1)
+        self.assertLessEqual(tuple(map(int, row.split("."))), tuple(map(int, version.split("."))), "a revision cannot be newer than the addon")
+
+    def test_ct_must_be_a_whole_number_from_one_and_a_stored_newer_revision_is_kept_not_crashed_on(self):
+        for good in ({}, {"ct": 1}, {"ct": 1.0}):
+            ct.check_major(good)
+        for bad in (2, 2.0, "2", "1", True, 1.5, 0, -1, None, [], float("nan"), float("inf")):
+            with self.assertRaises(ct.MajorError, msg=repr(bad)):
+                ct.check_major({"ct": bad})
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        os.makedirs(os.path.join(d, "runs", "R-1"))
+        stored = os.path.join(d, "runs", "R-1", "r1.json")
+        with open(stored, "w") as fh:
+            json.dump({"ct": 2, "steps": "future"}, fh)
+        with self.assertRaises(ct.MajorError) as cm:
+            ct.write_revision(d, {"runId": "R-1", "revision": 1, "steps": {}})
+        self.assertIn("the stored r1.json is kept as it is", str(cm.exception))
+        with open(stored) as fh:
+            self.assertEqual(json.load(fh), {"ct": 2, "steps": "future"})
+
+    def collect_sv(self, body):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write(body)
+        return d, type("A", (), {"src": os.path.join(d, "src"), "dest": os.path.join(d, "dest"), "shots": None})
+
+    def test_a_run_set_aside_does_not_mask_a_readable_run_with_the_same_id_and_strict_stays_failed_until_it_is_stored(self):
+        d, args = self.collect_sv('CheckThatDB = {["global"] = {["runs"] = {["R-1"] = {["ct"] = 1, ["runId"] = "R-1", ["revision"] = 3, ["steps"] = {["a"] = {["verdict"] = "pass", ["attempts"] = {}}}, ["order"] = {"a"}}}, '
+                                  '["future"] = {["R-1"] = {["ct"] = 2, ["runId"] = "R-1", ["revision"] = 9, ["steps"] = {}}}}}\n')
+        ct.cmd_collect(args)
+        runs = ct.latest_runs(args.dest)
+        self.assertEqual(runs["R-1"]["revision"], 3)   # the readable one is stored, not masked
+        self.assertIn("R-1", ct.load_refused(args.dest))
+        code, out, err = self.cli("report", "--dest", args.dest, "--format", "json", "--strict")
+        self.assertEqual(code, 1); self.assertIn("1 run(s) have a revision that could not be read", err)
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables", "CheckThat.lua")
+        with open(sv, "w") as fh:   # the next collect: the run is readable now (the addon moved it back)
+            fh.write('CheckThatDB = {["global"] = {["runs"] = {["R-1"] = {["ct"] = 1, ["runId"] = "R-1", ["revision"] = 9, ["steps"] = {["a"] = {["verdict"] = "pass", ["attempts"] = {}}}, ["order"] = {"a"}}}}}\n')
+        ct.cmd_collect(args)
+        self.assertEqual(ct.load_refused(args.dest), {})
+        self.assertEqual(self.cli("report", "--dest", args.dest, "--format", "json", "--strict")[0], 0)
+
+    def test_a_readable_copy_in_another_account_does_not_clear_a_refusal_of_the_same_run(self):
+        d, args = self.collect_sv('CheckThatDB = {["global"] = {["runs"] = {}, ["future"] = {["R-1"] = {["ct"] = 2, ["runId"] = "R-1", ["revision"] = 9, ["steps"] = {}}}}}\n')
+        b = os.path.join(d, "src", "Account", "B", "SavedVariables"); os.makedirs(b)
+        with open(os.path.join(b, "CheckThat.lua"), "w") as fh:
+            fh.write('CheckThatDB = {["global"] = {["runs"] = {["R-1"] = {["ct"] = 1, ["runId"] = "R-1", ["revision"] = 4, ["steps"] = {}, ["order"] = {}}}}}\n')
+        ct.cmd_collect(args)
+        self.assertEqual(ct.latest_runs(args.dest)["R-1"]["revision"], 4)
+        self.assertIn("R-1", ct.load_refused(args.dest), "the other account's run is not the one that was refused")
+
+    def test_a_ct_with_a_fraction_is_refused(self):
+        with self.assertRaises(ct.MajorError):
+            ct.check_major({"ct": 1.5})
+
+    def test_report_says_when_a_refused_run_is_not_in_the_report_at_all(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        ct.set_refused(d, "Other-9", 2, "format 2 is newer than this tool reads (1)")
+        code, out, err = self.cli("report", "--dest", d, "--format", "json")
+        self.assertIn("run Other-9: the collected copy is unreadable (format 2 is newer", err); self.assertIn("the run is not in this report", err)
+        self.assertTrue(any("Other-9" in p and "not stored" in p for p in ct.status_data(d)[1]))
+
+    def test_import_checks_the_major_before_the_kind(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        s = ct.encode({"ct": 2, "kind": "renamed", "runId": "F-1", "revision": 1})
+        code, out, err = self.cli("import-results", s, "--dest", d)
+        self.assertEqual(code, 1); self.assertIn("format 2 is newer than this tool reads", err); self.assertNotIn("not a results string", err)
 
     def test_collect_keeps_the_error_lines_and_stacks(self):
         d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)

@@ -57,6 +57,13 @@ def _when(t):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if isinstance(t, (int, float)) else "?"
 
 
+def wrote_text(r):
+    """Who wrote the run, from the stamps CheckThat 0.15.0 and later add. None for an older run: it says nothing, it does not guess."""
+    v, f = r.get("writerVersion"), r.get("formatRev")
+    bits = (["CheckThat " + str(v)] if v else []) + (["format revision %s" % f] if f else [])
+    return "saved by " + ", ".join(bits) if bits else None
+
+
 def detail_data(rid, r, sid, dest=None, n=None):
     """What the step screen shows, as plain data: the classified result, the attempts, one attempt in full and the errors
     raised while it was open. None when the run has no record of the step."""
@@ -67,7 +74,8 @@ def detail_data(rid, r, sid, dest=None, n=None):
     ats = rec.get("attempts") or []
     d = {"rid": rid, "sid": sid, "result": result, "why": why, "verdict": rec.get("verdict"),
          "overruled": rec.get("verdict") in ("pass", "partial") and result in ("fail", "unverified"),
-         "attempts": [{"n": a.get("n"), "verdict": a.get("verdict")} for a in ats], "at": None, "pos": None, "newer_open": None, "errors": []}
+         "attempts": [{"n": a.get("n"), "verdict": a.get("verdict")} for a in ats], "at": None, "pos": None, "newer_open": None, "errors": [],
+         "wrote": wrote_text(r)}
     if not ats:
         return d
     at = shown_attempt(rec, n)
@@ -89,6 +97,8 @@ def detail_text(rid, r, sid, dest=None, n=None):
         return "The run has no record of step %s." % sid
     out = ["%s / %s" % (rid, sid), "result: %s%s" % (d["result"].upper(), " - " + d["why"] if d["why"] else ""),
            "player verdict: %s%s" % (d["verdict"], "   (the evidence says otherwise)" if d["overruled"] else "")]
+    if d.get("wrote"):
+        out.append(d["wrote"])
     at = d["at"]
     if at is None:
         return "\n".join(out + ["", "No attempts."])
@@ -140,6 +150,8 @@ def detail_render(d):
     sub.append(str(d["verdict"]), style="bold " + COLORS.get(d["verdict"], "white"))
     if d["overruled"]:
         sub.append("   ⚠ the evidence overrules this pass", style="bold " + col)
+    if d.get("wrote"):
+        sub.append("\n" + d["wrote"], style="dim")
     parts = [Panel(Group(head, sub), border_style=col, box=box.HEAVY)]
     at = d["at"]
     if at is None:

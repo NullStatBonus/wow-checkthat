@@ -12,7 +12,8 @@
    "const": "results"
   },
   "ct": {
-   "type": "integer"
+   "const": 1,
+   "description": "The major version. It rises only for a change that breaks a reader; a reader of an older major leaves the run alone."
   },
   "runId": {
    "type": "string"
@@ -89,6 +90,15 @@
    "additionalProperties": {
     "$ref": "#/$defs/step"
    }
+  },
+  "formatRev": {
+   "type": "integer",
+   "minimum": 1,
+   "description": "The newest format revision that wrote this run. It rises with every additive change and never goes down on a run. Absent in a run saved before 0.15.0: read it as unknown."
+  },
+  "writerVersion": {
+   "type": "string",
+   "description": "The CheckThat version (TOC) that last changed the run. Absent when unknown."
   }
  },
  "$defs": {
@@ -173,6 +183,11 @@
       }
      },
      "description": "Failed or unverified attempts only: the first 20 new lines of each log the step checks, each cut to 200 characters. Position i is hit position n=i of an attempt-scope check on the same source."
+    },
+    "formatRev": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "The format revision this attempt was finished in. Absent in an attempt saved before 0.15.0."
     }
    }
   },

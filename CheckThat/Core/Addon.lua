@@ -34,6 +34,12 @@ function addon:OnEnable()
         ns.Slash.Print(L["Reloaded. Your run continues on the same step."])
         ns.Slash.Print(ns.App.Status())
     end
+    local newer = ns.App.FutureCount()
+    if newer > 0 then
+        ns.App.Log(("%d saved run(s) need a newer CheckThat; kept untouched"):format(newer))
+        ns.Slash.Print(newer == 1 and L["One saved run needs a newer CheckThat. It is kept as it is."]
+            or L["%d saved runs need a newer CheckThat. They are kept as they are."]:format(newer))
+    end
     ns.Listen(self, "PLAYER_REGEN_ENABLED", function() if ns.Card then ns.Card.Refresh() end end)
     ns.Listen(self, "PLAYER_LOGOUT", function() ns.App.Log("logout"); if ns.Tracker then ns.Tracker.Leaving() end end)
 end

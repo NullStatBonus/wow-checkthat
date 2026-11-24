@@ -307,6 +307,7 @@ def note_problem(dest, text):
 def write_revision(dest, run):
     """Store one run revision. Refuse a path outside dest and a different run that reuses an id and revision.
     Returns "new", "same" or "conflict"."""
+    check_major(run)
     base = os.path.realpath(os.path.join(dest, "runs"))
     rp = os.path.realpath(os.path.join(base, safe_name(run["runId"])))
     if os.path.dirname(rp) != base:
@@ -320,9 +321,17 @@ def write_revision(dest, run):
     if os.path.exists(rj):
         try:
             with open(rj) as fh:
-                same = canonical(export_form(json.load(fh))) == canonical(export_form(run))
-        except ValueError:
-            same = False   # a damaged stored file is not the same run
+                stored = json.load(fh)
+        except (ValueError, OSError):
+            return "conflict"   # a damaged stored file is not the same run
+        try:
+            check_major(stored)
+        except MajorError as e:
+            raise MajorError("the stored %s is kept as it is: %s" % (os.path.basename(rj), e))
+        try:
+            same = canonical(export_form(stored)) == canonical(export_form(run))
+        except (AttributeError, TypeError, ValueError):
+            same = False
         return "same" if same else "conflict"
     with open(rj, "w") as fh:
         fh.write(text)
@@ -610,13 +619,21 @@ def collect_src(src, base, dest):
             runs = (glob_db.get("runs") if isinstance(glob_db, dict) else None) or (db.get("runs") if isinstance(db, dict) else None) or {}
             if not isinstance(runs, dict):
                 runs = {}
-            for rid, run in runs.items():
+            future = glob_db.get("future") if isinstance(glob_db, dict) else None   # runs a newer CheckThat set aside: refused below, and said so
+            future = future if isinstance(future, dict) else {}
+            for table, rid, run in [("runs", k, v) for k, v in runs.items()] + [("future", k, v) for k, v in future.items()]:   # each table on its own: an id can be in both
+                if not isinstance(run, dict):
+                    continue
                 run = dict(run); run.setdefault("runId", rid)
                 try:
                     res = write_revision(dest, run)
+                except MajorError as e:
+                    print("warning: run %r not stored: %s" % (rid, e), file=sys.stderr)
+                    set_refused(dest, rid, run.get("revision"), " ".join(str(e).split())); continue
                 except (ValueError, OSError, TypeError) as e:
                     print("skip run %r: %s" % (rid, e), file=sys.stderr)
                     note_problem(dest, "run %s was not stored: %s" % (rid, " ".join(str(e).split()))); continue
+                clear_refused(dest, rid, run.get("revision"))   # stored now, and as new as the refused one: that refusal is over
                 if res == "new":
                     new_runs += 1
                 elif res == "conflict":
@@ -664,15 +681,20 @@ def run_shots(dest, rid):
     return out
 
 
-def latest_runs(dest):
+def latest_runs(dest, skipped=None):
+    """The newest readable revision of each run. skipped, when given, gets (run id, file, reason) for each newer revision that was unreadable."""
     runs = {}
     for rp in glob.glob(os.path.join(dest, "runs", "*")):
         for p in reversed(rev_files(rp)):   # newest readable revision; status names a damaged one
             try:
                 runs[os.path.basename(rp)] = read_run(p)
                 break
-            except (ValueError, OSError):
-                continue
+            except (ValueError, OSError) as e:
+                if skipped is not None:
+                    skipped.append((os.path.basename(rp), os.path.basename(p), " ".join(str(e).split())))
+    if skipped is not None:
+        for rid, info in sorted(load_refused(dest).items()):
+            skipped.append((rid, "the collected copy", info.get("reason", "")))
     return runs
 
 def rev_files(rp):
@@ -703,10 +725,53 @@ def outcome_ok(o):
         and all(o.get(k) is None or (isinstance(o[k], int) and not isinstance(o[k], bool) and o[k] >= 0) for k in ("matched", "window")) \
         and (o.get("stoppedAt") is None or _pos(o.get("stoppedAt")))
 
+SUPPORTED_MAJOR = 1   # the `ct` of the run record this tool reads (CheckThat/Model/Run.lua Run.MAJOR); a higher one is refused, never guessed at
+
+class MajorError(ValueError):
+    """A run this tool must not interpret: a newer major format, or a `ct` that is not a whole number."""
+
+def check_major(run):
+    """An absent ct is a run from before it was kept. A present one must be a whole number from 1 to SUPPORTED_MAJOR (2.0 is 2)."""
+    if not isinstance(run, dict) or "ct" not in run:
+        return
+    c = run["ct"]
+    if isinstance(c, bool) or not isinstance(c, (int, float)) or c != c or c in (float("inf"), float("-inf")) or c != int(c) or c < 1:
+        raise MajorError("ct %r is not a whole number from 1: not a run this tool can read" % (c,))
+    if int(c) > SUPPORTED_MAJOR:
+        raise MajorError("format %d is newer than this tool reads (%d): use a newer tools folder" % (int(c), SUPPORTED_MAJOR))
+
+def refused_path(dest):
+    return os.path.join(dest, "refused.json")
+
+def load_refused(dest):
+    try:
+        with open(refused_path(dest)) as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def set_refused(dest, rid, revision, reason):
+    """A run collect could not store because of its format. report and status keep saying so until a later collect stores it."""
+    d = load_refused(dest)
+    d[rid] = {"revision": revision, "reason": reason}
+    with open(refused_path(dest), "w") as fh:
+        json.dump(d, fh, indent=1, sort_keys=True)
+
+def clear_refused(dest, rid, stored_revision=None):
+    """Drop the refusal of a run once a revision at least as new as the refused one is stored."""
+    d = load_refused(dest)
+    refused = (d.get(rid) or {}).get("revision")
+    if rid in d and not (isinstance(refused, int) and isinstance(stored_revision, int) and stored_revision < refused):
+        d.pop(rid)
+        with open(refused_path(dest), "w") as fh:
+            json.dump(d, fh, indent=1, sort_keys=True)
+
 def read_run(path):
     """One stored revision. Raises ValueError (or OSError) when it is not a run record."""
     with open(path) as fh:
         run = json.load(fh)
+    check_major(run)   # before the shape: a newer format may have changed it
     if isinstance(run, dict) and run.get("steps") == []:
         run["steps"] = {}   # an empty Lua table decodes to a list
     if not isinstance(run, dict) or not isinstance(run.get("steps"), dict) or not isinstance(run.get("order", []), list):
@@ -975,7 +1040,8 @@ def run_model(rid, r, stacks=None, lines=False):
         if stacks and result in ("fail", "unverified"):
             s["stacks"] = [t for at in rec.get("attempts") or [] for t in stacks.get((sid, at.get("n")), [])]
         steps.append(s)
-    return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "revision": r.get("revision"), "client": r.get("client"),
+    return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "revision": r.get("revision"), "formatRev": r.get("formatRev"),
+            "writerVersion": r.get("writerVersion"), "client": r.get("client"),
             "build": r.get("build"), "character": r.get("character"), "counts": counts,
             "categories": [{"id": c, "title": t, "state": st, "resolved": a, "total": b} for c, t, st, a, b in category_states(r)],
             "steps": steps}
@@ -1060,10 +1126,10 @@ def status_data(dest, now=None):
         for p in files:
             try:
                 good = (p, read_run(p))
-            except (ValueError, OSError):
-                bad.append(os.path.basename(p))
-        for b in bad:
-            problems.append("run %s: %s is unreadable%s" % (rid, b, "; showing the newest readable revision" if good else ""))
+            except (ValueError, OSError) as e:
+                bad.append((os.path.basename(p), " ".join(str(e).split())))
+        for b, why in bad:
+            problems.append("run %s: %s is unreadable (%s)%s" % (rid, b, why, "; showing the newest readable revision" if good else ""))
         if not good:
             continue
         r = good[1]
@@ -1076,9 +1142,12 @@ def status_data(dest, now=None):
                      "resolved": resolved, "eligible": len(eligible), "pass": c.get("pass", 0) + c.get("partial", 0), "fail": c.get("fail", 0),
                      "unverified": c.get("unverified", 0), "open": sum(1 for s in eligible if s["verdict"] in ("pending", "unverified")),
                      "ageSeconds": (now - (r.get("updated") or r.get("started"))) if isinstance(r.get("updated") or r.get("started"), (int, float)) else None,
-                     "sizeEstimate": size, "sizeLimit": MAX_INFLATED, "finished": bool(r.get("endedAt")), "unreadableRevisions": bad})
+                     "sizeEstimate": size, "sizeLimit": MAX_INFLATED, "finished": bool(r.get("endedAt")), "unreadableRevisions": [b for b, _ in bad],
+                     "formatRev": r.get("formatRev"), "writerVersion": r.get("writerVersion")})
         if size > MAX_INFLATED * 0.8:
             problems.append("run %s: about %d of %d bytes: close to the export limit" % (rid, size, MAX_INFLATED))
+    for rid, info in sorted(load_refused(dest).items()):
+        problems.append("run %s: not stored, %s" % (rid, info.get("reason", "format not readable")))
     log = os.path.join(dest, "problems.log")
     if os.path.exists(log):
         with open(log) as fh:
@@ -1167,7 +1236,7 @@ def main(argv=None):
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
-    p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, or there are no runs")
+    p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, there are no runs, or a revision could not be read")
     p.add_argument("--lines", action="store_true", help="put the log lines that decided each check (and values the checks saw) in json and junit; they can hold private data")
     p.add_argument("--stacks", action="store_true", help="put saved error call stacks in json and junit (md always shows them); they can hold private paths")
     p.add_argument("--out", help="write the json or junit report to this file")
@@ -1233,7 +1302,11 @@ def main(argv=None):
         if os.path.exists(s):
             s = open(s).read()
         run = decode(s)
-        if run.get("kind") != "results":
+        try:
+            check_major(run)   # before kind or anything else: a newer major may have renamed them
+        except MajorError as e:
+            print("not imported:", e, file=sys.stderr); return 1
+        if not isinstance(run, dict) or run.get("kind") != "results":
             print("not a results string", file=sys.stderr); return 1
         try:
             res = write_revision(a.dest, run)
@@ -1244,7 +1317,10 @@ def main(argv=None):
             return 1
         print("imported" if res == "new" else "already imported", run["runId"], "rev", run.get("revision")); return 0
     if a.cmd == "report":
-        runs = latest_runs(a.dest)
+        skipped = []
+        runs = latest_runs(a.dest, skipped)
+        for rid, f, why in skipped:
+            print("warning: run %s: %s is unreadable (%s); %s" % (rid, f, why, "the report shows an older revision" if rid in runs else "the run is not in this report"), file=sys.stderr)
         if a.format == "md":
             txt = report_text(runs, a.dest, failed_only=a.failed_only)
             os.makedirs(a.dest, exist_ok=True)
@@ -1255,6 +1331,9 @@ def main(argv=None):
             open(a.out, "w").write(txt)
         else:
             print(txt)
+        if a.strict and skipped:
+            print("strict: %d run(s) have a revision that could not be read" % len({s[0] for s in skipped}), file=sys.stderr)
+            return 1
         if a.strict and (not runs or bad_steps(models(runs))):
             print("strict: %s" % ("no runs" if not runs else "%d step(s) failed or are unverified" % bad_steps(models(runs))), file=sys.stderr)
             return 1

@@ -84,7 +84,7 @@ When a step opens, CheckThat saves where each log that the step checks stands: i
 
 ## Which lines decided a check
 
-A check that did not pass says what it looked at, so a reviewer or another tool can name the log lines that decided it. CheckThat saves this on the outcome of the attempt (the same read the check judged, so the lines cannot differ from the result). The results string stays version 1 and every key is optional: a run saved by an earlier version has none of them, and a tool reads that as unknown, never as zero.
+A check that did not pass says what it looked at, so a reviewer or another tool can name the log lines that decided it. CheckThat saves this on the outcome of the attempt (the same read the check judged, so the lines cannot differ from the result). The results string stays version 1 and every key is optional (see [Results format](results-format.md) for the version numbers and the rules for a tool that reads a run): a run saved by an earlier version has none of them, and a tool reads that as unknown, never as zero.
 
 | Key | Meaning |
 | --- | --- |

@@ -7,12 +7,42 @@ ns.App = App
 local function now(self) return (self.env.time and self.env.time()) or 0 end
 
 -- db is the saved global table. opts.debug() says whether recording is on (default: db.log.enabled).
+-- A run saved in a newer major format is kept aside, untouched: this version cannot read it right, and a pass over it
+-- (normalizing, touching, pruning, counting) could damage it. Every other part of the addon then never sees it. It moves back
+-- when a CheckThat that reads its format loads it.
+function App.SplitFuture(db)
+    for id, run in pairs(db.runs) do
+        if ns.Run.Opaque(run) then
+            db.future = db.future or {}
+            if db.future[id] == nil then
+                db.future[id], db.runs[id] = run, nil
+                -- Which plan it needs is unknown, so the plans stored now stay. Plans imported later can still go.
+                if type(run.planDigest) ~= "string" then
+                    db.futureKeep = db.futureKeep or {}
+                    for digest in pairs(db.planStore or {}) do db.futureKeep[digest] = true end
+                end
+            end -- else an entry with that id is already aside: both stay where they are
+        end
+    end
+    for id, run in pairs(db.future or {}) do
+        if not ns.Run.Opaque(run) and db.runs[id] == nil then db.runs[id], db.future[id] = run, nil end -- never over a readable run
+    end
+    if db.future and next(db.future) == nil then db.future, db.futureKeep = nil, nil end
+end
+
+function App.FutureCount()
+    local n = 0
+    for _ in pairs(App.db and App.db.future or {}) do n = n + 1 end
+    return n
+end
+
 function App.Init(db, env, opts)
     App.env = env or _G
     db.plans = db.plans or {}
     db.planStore = db.planStore or {}
     db.currentByChar = db.currentByChar or {}
     db.runs = db.runs or {}
+    App.SplitFuture(db)
     db.log = db.log or { entries = {} }
     db.ui = db.ui or {}
     db.ui.shareReload = nil -- a reload request lasts until the next load
@@ -115,6 +145,10 @@ end
 -- A stored plan copy stays only while a run, a loaded plan or a recent-list entry names it.
 function App.PrunePlans()
     local keep = {}
+    for _, r in pairs(App.db.future or {}) do
+        if type(r.planDigest) == "string" then keep[r.planDigest] = true end
+    end
+    for digest in pairs(App.db.futureKeep or {}) do keep[digest] = true end -- a run that names no plan may need one stored when it was set aside
     for _, r in pairs(App.db.runs) do if r.planDigest then keep[r.planDigest] = true end end
     for _, p in pairs(App.db.plans) do keep[p.digest] = true end
     for _, e in ipairs(App.db.ui.recent or {}) do keep[e.digest] = true end
@@ -355,7 +389,7 @@ function App.Start(addon, picks)
     local run = ns.Run.New(ctx)
     if not run then return nil, picks and L["Pick at least one category that has steps for this client."] or L["The plan has no steps for this client."] end
     if ns.Errors then ns.Errors.Hook(); ns.Errors.Rebase() end
-    while App.db.runs[run.runId] do run.runId = run.runId .. "x" end
+    while App.db.runs[run.runId] or (App.db.future and App.db.future[run.runId]) do run.runId = run.runId .. "x" end
     App.db.runs[run.runId] = run
     App.db.currentByChar[App.Character()] = run.runId
     if App.db.ui.view then App.db.ui.view[App.Character()] = nil end

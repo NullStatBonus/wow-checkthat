@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0
+
+New: **Saved runs say which version wrote them.** A run and each finished attempt now carry a format revision. A run carries the CheckThat version too. Tools use them to read old and new runs.
+New: **Newer runs stay safe.** After you go back to an older CheckThat, a run saved by a newer one is kept as it is. A chat line tells you.
+
 ## 0.14.0
 
 New: **Failed checks name their log lines.** A check that does not pass saves its rule, how many lines matched and the lines that decided it. Reports and viewers show them.
