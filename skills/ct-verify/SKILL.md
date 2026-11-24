@@ -33,6 +33,8 @@ Pass `--dest` every time, because the default sits under the tools root.
 - Saved variables: `$PY $CT/tools/ct.py collect --wow <game folder> --dest <evidence>` (or `--src <WTF folder>`).
 - An export string: `$PY $CT/tools/ct.py import-results <string or file> --dest <evidence>`.
 
+After collecting, run `$PY $CT/tools/ct.py status --dest <evidence>`. It lists every unreadable revision, every conflict or decode failure `collect` logged and any run near the 2 MB export limit, and exits 1 when something is wrong. Tell the author what it names before you read steps. It does not judge test results.
+
 `collect` exits 1 and names the file when it cannot decode a saved-variables file. Report that and stop. A run folder holds `r<N>.json` revisions. Use the highest revision of each run ID. Zero new revisions is fine when you collected the same data before.
 
 ## 3. Bind each run to its plan
@@ -45,7 +47,9 @@ A run stores `planDigest`, not the plan. The digest is the 8-hex field of the co
 
 ## 4. Read each step
 
-A step record holds the effective `verdict` and attempts. Run revisions need not be contiguous (`r2.json` can be the first). Each attempt holds `claimed` (what the player or CheckThat recorded), `by` (`player` or `auto`), `evidence` (`matched`, `contradicts`, `unverified` or `diagnostic-only`) and `outcomes`, one per assertion in plan order, each `result` (`pass`, `fail`, `unverified`), `why`, and `diagnostic`. A failed or unverified attempt may also hold `excerpt`: the first new lines of each log the step checks, keyed by log source. Quote them when you explain a failure. Use the last finished attempt.
+`$PY $CT/tools/ct.py report --dest <evidence>` prints a `result:` line for each run, keeps the failed or unverified attempts of a step that later passed, and shows the Lua error stack raised during a failed or unverified attempt (matched by time, so it may say it also fits another attempt). `report --failed-only` keeps only the failing steps, and `show <run> <step>` prints one step with every attempt. `--format json` gives step results and, for each attempt, the checks that did not pass with their rule, counts and hit positions (add `--lines` for the line text and values, `--stacks` for error stacks), and `--strict` exits 1 on any failed or unverified step.
+
+A step record holds the effective `verdict` and attempts. Run revisions need not be contiguous (`r2.json` can be the first). Each attempt holds `claimed` (what the player or CheckThat recorded), `by` (`player` or `auto`), `evidence` (`matched`, `contradicts`, `unverified` or `diagnostic-only`) and `outcomes`, one per assertion in plan order, each `result` (`pass`, `fail`, `unverified`), `why`, and `diagnostic`. A check that did not pass also keeps what it looked at: `kind`, `scope`, `source`, `rule` (what it required, in words, with the plan's literals) and `shape` (the same without them), `window` and `matched` (counts), and `hits`, up to three `{n, line}` where `n` is the position inside the lines the check read. These are the log lines that decided the check: name them when you explain a failure, and cite the `rule`. A hit can carry `item` (sequence) or `value` (fact); a sequence has `stoppedAt`; a state check has `observed`; `trimmed` means hit text was dropped for size, which is not "nothing matched". An older run has none of this: use `why`. `schema/run-results.schema.json` describes it. A run has `ct` (the major: refuse a higher one and say so), `formatRev` and `writerVersion` (who wrote it; absent in a run saved before 0.15.0, so read absent as unknown), and a finished attempt has `formatRev`. [docs/results-format.md](../../docs/results-format.md) has the rules; `ct.py status` names a revision it cannot read and why. A failed or unverified attempt may also hold `excerpt`: the first new lines of each log the step checks, keyed by log source. Quote them when you explain a failure. Use the last finished attempt.
 
 A run may hold `categories`, `cat` (step id to category) and `selected`. `report` prints one `categories:` line with blue, yellow, red, green or grey for each category; a run saved before categories has none. The effective verdict can stay `pass` while the evidence contradicts it, so never read the verdict alone. `claimed` and `by` sit on the attempt, not on the step. Report four things apart for every step: effective verdict (`pass`, `partial`, `fail`, `unverified`, `skip`, `pending`, `inapplicable`, `deselected`; a deselected step was not picked at the start and is not a gap), claimed verdict, who set it, and the evidence.
 
@@ -65,7 +69,7 @@ For each `reviewer` line that names partner files, step IDs and a relationship:
 
 ## 6. Report
 
-Print one table per run (step, effective, claimed, by, evidence, citation), then the cross-character results, then a short list of: contradicted steps, unverified steps, steps with no evidence, and suggested assertions or log lines. Say what you could not judge and why (partial input, plan not established, missing role). Do not edit the plan; the author decides what to change. Do not commit the evidence folder.
+Start with the `status` result (healthy or not) in one line. Print one table per run (step, effective, claimed, by, evidence, citation), then the cross-character results, then a short list of: contradicted steps, unverified steps, steps with no evidence, and suggested assertions or log lines. Say what you could not judge and why (partial input, plan not established, missing role). Do not edit the plan; the author decides what to change. Do not commit the evidence folder.
 
 ## Rules
 

@@ -126,28 +126,121 @@ local function judgeCount(n, c, lines, exact, src, a)
     return "pass"
 end
 
--- Result: "pass" | "fail" | "unverified"
-function Evidence.CheckLog(a, snapshots, plan, env)
-    local lines, exact, src = window(a, snapshots, plan, env)
-    if not lines then return "unverified", exact end
+-- What a check looked at, kept with a failed or unverified outcome so a reviewer (or any tool) can name the lines that
+-- decided it. Built from the same lines the check judged. Positions n count from 1 inside that window: the lines
+-- after the step opened, or the whole retained log for scope session. All values are cut and plain.
+Evidence.HITS, Evidence.HIT_LEN, Evidence.RULE_LEN, Evidence.VALUE_LEN = 3, 200, 120, 80
+
+local function cut(s, n)
+    s = tostring(s):gsub("%c", " ")
+    return #s > n and s:sub(1, n) or s
+end
+
+local function valText(v)
+    if type(v) == "table" then
+        local t = {}
+        for i = 1, math.min(#v, 4) do t[i] = tostring(v[i]) end
+        return "{" .. table.concat(t, ",") .. "}"
+    end
+    return tostring(v)
+end
+
+-- lit false leaves the plan's literals out ("…"): the shape of a rule is safe to hand to a tool that may not show log text.
+local function matcherText(a, lit)
+    local function q(s) return lit and cut(s, 60) or "…" end
+    if a.equals ~= nil then return ('equals "%s"'):format(q(a.equals)) end
+    if a.contains ~= nil then return ('contains "%s"'):format(q(a.contains)) end
+    if a.pattern ~= nil then return ('pattern "%s"'):format(q(a.pattern)) end
+    return "a line"
+end
+
+local function countText(c)
+    if c.exactly ~= nil then return "exactly " .. tostring(c.exactly) end
+    if c.min ~= nil and c.max ~= nil then return tostring(c.min) .. " to " .. tostring(c.max) end
+    if c.min ~= nil then return "at least " .. tostring(c.min) end
+    if c.max ~= nil then return "at most " .. tostring(c.max) end
+    return "any number"
+end
+
+local function ruleOf(a, lit)
+    local r
+    if a.kind == "log" then
+        local m = matcherText(a, lit)
+        if a.count then r = "count " .. countText(a.count) .. ": " .. m
+        elseif a.absent then r = "absent: " .. m
+        else r = "present: " .. m end
+    elseif a.kind == "log-sequence" then
+        r = ("sequence of %d lines"):format(#(a.sequence or {}))
+    elseif a.kind == "fact" then
+        r = ("fact [%s] %s %s %s"):format(cut(a.addon, 30), cut(a.key, 40), tostring(a.op), lit and cut(valText(a.value), 40) or "…")
+        if a.count then r = r .. ", count " .. countText(a.count) elseif a.which then r = r .. ", " .. tostring(a.which) end
+    else
+        r = ("%s %s %s %s"):format(tostring(a.probe), cut(a.name or "", 40), tostring(a.op), lit and cut(valText(a.value), 40) or "…")
+    end
+    return cut(r, Evidence.RULE_LEN)
+end
+
+local function baseDetail(a)
+    return { kind = a.kind, scope = (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and (a.scope == "session" and "session" or "attempt") or nil,
+             source = a.source, label = a.label, rule = ruleOf(a, true), shape = ruleOf(a, false) }
+end
+
+-- The first HITS entries of positions pos (a list of window positions), starting at pos[from].
+local function takeHits(lines, pos, from, extra)
+    local hits = {}
+    for k = from, math.min(#pos, from + Evidence.HITS - 1) do
+        local i = pos[k]
+        local h = { n = i, line = cut(lines[i], Evidence.HIT_LEN) }
+        if extra then extra(h, k) end
+        hits[#hits + 1] = h
+    end
+    return #hits > 0 and hits or nil
+end
+
+-- A count that went over its upper bound keeps the first line past the bound, then those after it.
+local function overflowFrom(c, n, result)
+    local hi = c and (c.exactly or c.max)
+    if result == "fail" and hi and hi < n then return hi + 1 end
+    return 1
+end
+
+local function describeLog(a, lines, result)
+    local d = baseDetail(a)
+    if not lines then return d end
+    local pos = {}
+    for i, l in ipairs(lines) do if lineMatches(a, l) then pos[#pos + 1] = i end end
+    d.window, d.matched = #lines, #pos
+    d.hits = takeHits(lines, pos, overflowFrom(a.count, #pos, result))
+    return d
+end
+
+-- Result: "pass" | "fail" | "unverified", the reason, and (when wantDetail) what the check looked at.
+local function judgeLog(a, lines, exact, src)
     if a.count then
         local n = 0
         for _, l in ipairs(lines) do if lineMatches(a, l) then n = n + 1 end end
         return judgeCount(n, a.count, lines, exact, src, a)
     end
     if a.absent and a.scope ~= "session" and exact == false then
-        for _, l in ipairs(lines) do if lineMatches(a, l) then return "fail" end end
+        for _, l in ipairs(lines) do if lineMatches(a, l) then return "fail", "a forbidden line appeared" end end
         return "unverified", "log rolled over; a line that is absent cannot be shown"
     end
     local found
     for _, l in ipairs(lines) do if lineMatches(a, l) then found = true; break end end
     if a.absent then
-        if found then return "fail" end
+        if found then return "fail", "a forbidden line appeared" end
         if #lines == 0 and not src.quiet then return "unverified", "no new log lines (is debug on?)" end
         return "pass"
     end
     if found then return "pass" end
     return "unverified", "no matching log line"
+end
+
+function Evidence.CheckLog(a, snapshots, plan, env, wantDetail)
+    local lines, exact, src = window(a, snapshots, plan, env)
+    if not lines then return "unverified", exact, wantDetail and describeLog(a, nil) or nil end
+    local r, why = judgeLog(a, lines, exact, src)
+    return r, why, wantDetail and r ~= "pass" and describeLog(a, lines, r) or nil -- a pass keeps none: no second scan -- a pass keeps none: no second scan
 end
 
 -- A fact is stored as the line "[addon] key=value". The value reads as a boolean, a number, or else text.
@@ -220,75 +313,124 @@ function Evidence.Probe(a, env)
 end
 
 -- Ordered matches: each item must appear after the previous one in the attempt window.
-function Evidence.CheckSequence(a, snapshots, plan, env)
+function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
+    local function bad(why, lines) return "unverified", why, wantDetail and (function() local d = baseDetail(a); if lines then d.window = #lines end; return d end)() or nil end
     local src = plan.logs and plan.logs[a.source]
-    if not src then return "unverified", "unknown log source" end
+    if not src then return bad("unknown log source") end
     local current = Evidence.ReadLog(src, env)
-    if not current then return "unverified", "log not readable (is debug on and the addon loaded?)" end
-    if missingPosition(a, snapshots) then return "unverified", "log position missing (the step opened without it)" end
+    if not current then return bad("log not readable (is debug on and the addon loaded?)") end
+    if missingPosition(a, snapshots) then return bad("log position missing (the step opened without it)") end
     if a.scope ~= "session" and snapshots and snapshots[a.source] and snapshots[a.source].unavailable then
-        return "unverified", "log was not readable when the step opened"
+        return bad("log was not readable when the step opened")
     end
     local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[a.source], current, src.cap)
-    if not lines then return "unverified", "log rolled over; evidence lost" end
-    local want = 1
-    for _, l in ipairs(lines) do
-        if want <= #a.sequence and lineMatches(a.sequence[want], l) then want = want + 1 end
+    if not lines then return bad("log rolled over; evidence lost") end
+    local want, lastAt = 1, nil
+    for i, l in ipairs(lines) do
+        if want <= #a.sequence and lineMatches(a.sequence[want], l) then want = want + 1; lastAt = i end
     end
-    if want > #a.sequence then return "pass" end
-    return "unverified", ("sequence stopped at item %d"):format(want)
+    local done = want > #a.sequence
+    local d
+    if wantDetail and not done then
+        d = baseDetail(a)
+        d.window, d.matched = #lines, want - 1
+        if lastAt then d.hits = { { item = want - 1, n = lastAt, line = cut(lines[lastAt], Evidence.HIT_LEN) } } end
+        if not done then d.stoppedAt = want end
+    end
+    if done then return "pass", nil, d end
+    return "unverified", ("sequence stopped at item %d"):format(want), d
 end
 
 -- A fact assertion. No fact is unverified, facts that break the operator fail. With count, the facts that pass
 -- the operator are counted. The operator missing passes when no fact arrived.
-function Evidence.CheckFact(a, snapshots, plan, env)
-    local op = ops[a.op]
-    if not op then return "unverified", "unknown op" end
-    local lines, exact, src = window(a, snapshots, plan, env)
-    if not lines then return "unverified", exact end
-    local values = {}
-    for _, l in ipairs(lines) do
-        local addon, key, v = Evidence.ParseFact(l)
-        if addon == a.addon and key == a.key then values[#values + 1] = v end
+local function describeFact(a, lines, cands, op, result)
+    local d = baseDetail(a)
+    d.window = #lines
+    local okpos, badpos = {}, {}
+    for k, c in ipairs(cands) do if op(c.v, a.value, a) then okpos[#okpos + 1] = k else badpos[#badpos + 1] = k end end
+    d.matched = #okpos
+    local function pick(ks, from)
+        local pos = {}
+        for _, k in ipairs(ks) do pos[#pos + 1] = cands[k].n end
+        return takeHits(lines, pos, from or 1, function(h, j) h.value = cut(valText(cands[ks[j]].v), Evidence.VALUE_LEN) end)
     end
+    local all = {}
+    for k = 1, #cands do all[k] = k end
+    if a.count then
+        d.hits = pick(okpos, overflowFrom(a.count, #okpos, result))
+    elseif a.op == "missing" then
+        d.matched = #cands
+        d.hits = pick(all)
+    elseif #cands > 0 then
+        local which = a.which or "last"
+        if which == "last" then d.hits = pick({ #cands })
+        elseif which == "any" then d.hits = pick(badpos, math.max(1, #badpos - Evidence.HITS + 1))   -- the last rejected facts
+        elseif result ~= "pass" then d.hits = pick(badpos)   -- all: facts that broke the operator
+        end
+    end
+    return d
+end
+
+function Evidence.CheckFact(a, snapshots, plan, env, wantDetail)
+    local op = ops[a.op]
+    if not op then return "unverified", "unknown op", wantDetail and baseDetail(a) or nil end
+    local lines, exact, src = window(a, snapshots, plan, env)
+    if not lines then return "unverified", exact, wantDetail and baseDetail(a) or nil end
+    local values, cands = {}, {}
+    for i, l in ipairs(lines) do
+        local addon, key, v = Evidence.ParseFact(l)
+        if addon == a.addon and key == a.key then values[#values + 1] = v; cands[#cands + 1] = { n = i, v = v } end
+    end
+    local r, why
     if a.count then
         local n = 0
         for _, v in ipairs(values) do if op(v, a.value, a) then n = n + 1 end end
-        return judgeCount(n, a.count, lines, exact, src, a)
+        r, why = judgeCount(n, a.count, lines, exact, src, a)
+    elseif a.op == "missing" then
+        if #values > 0 then r, why = "fail", "the fact arrived"
+        else r, why = judgeCount(0, { exactly = 0 }, lines, exact, src, a) end
+    elseif #values == 0 then
+        r, why = "unverified", "no matching fact"
+    else
+        local which = a.which or "last"
+        if which == "last" then
+            if op(values[#values], a.value, a) then r = "pass" else r, why = "fail", "the last fact did not match" end
+        else
+            local any, all = false, true
+            for _, v in ipairs(values) do
+                if op(v, a.value, a) then any = true else all = false end
+            end
+            if which == "any" then
+                if any then r = "pass" else r, why = "fail", "no fact matched" end
+            elseif all and a.scope ~= "session" and exact == false then
+                r, why = "unverified", "log rolled over; a fact that could contradict may be lost"
+            elseif all then r = "pass"
+            else r, why = "fail", "a fact did not match" end
+        end
     end
-    if a.op == "missing" then
-        if #values > 0 then return "fail", "the fact arrived" end
-        return judgeCount(0, { exactly = 0 }, lines, exact, src, a)
-    end
-    if #values == 0 then return "unverified", "no matching fact" end
-    local which = a.which or "last"
-    if which == "last" then return op(values[#values], a.value, a) and "pass" or "fail", nil end
-    local any, all = false, true
-    for _, v in ipairs(values) do
-        if op(v, a.value, a) then any = true else all = false end
-    end
-    if which == "any" then return any and "pass" or "fail" end
-    if all and a.scope ~= "session" and exact == false then return "unverified", "log rolled over; a fact that could contradict may be lost" end
-    return all and "pass" or "fail"
+    return r, why, wantDetail and r ~= "pass" and describeFact(a, lines, cands, op, r) or nil
 end
 
-function Evidence.CheckState(a, env)
-    if not ns.Plan.PROBES[a.probe] then return "unverified", "unknown probe" end
+function Evidence.CheckState(a, env, wantDetail)
+    local d = wantDetail and baseDetail(a) or nil -- cheap: no log scan; dropped by the caller for a pass
+    if not ns.Plan.PROBES[a.probe] then return "unverified", "unknown probe", d end
     local op = ops[a.op]
-    if not op then return "unverified", "unknown op" end
+    if not op then return "unverified", "unknown op", d end
     local x = Evidence.Probe(a, env)
+    if d and x ~= nil then d.observed = type(x) == "table" and "table" or cut(tostring(x), Evidence.VALUE_LEN) end
     if a.op == "missing" then -- a path that is not there, in a global that is
         local root = a.probe == "global-value" and a.path and (env or _G)[a.name]
-        if type(root) ~= "table" then return "unverified", "value unavailable" end
-    elseif x == nil and a.op ~= "exists" then return "unverified", "value unavailable" end
-    return op(x, a.value, a) and "pass" or "fail"
+        if type(root) ~= "table" then return "unverified", "value unavailable", d end
+    elseif x == nil and a.op ~= "exists" then return "unverified", "value unavailable", d end
+    return op(x, a.value, a) and "pass" or "fail", nil, d
 end
 
-function Evidence.Check(a, snapshots, plan, env)
-    if a.kind == "log" then return Evidence.CheckLog(a, snapshots, plan, env) end
-    if a.kind == "log-sequence" then return Evidence.CheckSequence(a, snapshots, plan, env) end
-    if a.kind == "fact" then return Evidence.CheckFact(a, snapshots, plan, env) end
-    return Evidence.CheckState(a, env)
+-- Result, reason and, with wantDetail, the record of what the check looked at (see describeLog).
+function Evidence.Check(a, snapshots, plan, env, wantDetail)
+    if a.kind == "log" then return Evidence.CheckLog(a, snapshots, plan, env, wantDetail) end
+    if a.kind == "log-sequence" then return Evidence.CheckSequence(a, snapshots, plan, env, wantDetail) end
+    if a.kind == "fact" then return Evidence.CheckFact(a, snapshots, plan, env, wantDetail) end
+    return Evidence.CheckState(a, env, wantDetail)
 end
 
 -- Live view of the required checks of a step, without recording anything. Each item:

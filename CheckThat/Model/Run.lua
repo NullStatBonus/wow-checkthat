@@ -15,6 +15,27 @@ function Run.Tag(s)
     return ("%04x"):format(h % 65536)
 end
 
+-- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
+-- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
+-- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
+Run.MAJOR, Run.FORMAT_REV = 1, 1
+
+-- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
+-- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
+function Run.Opaque(run)
+    if type(run) ~= "table" or run.ct == nil then return false end
+    local c = run.ct
+    if type(c) ~= "number" or c ~= c or c % 1 ~= 0 or c < 1 then return true end
+    return c > Run.MAJOR
+end
+
+-- Says which format and which CheckThat wrote the latest content of a run.
+local function stamp(run)
+    if (run.formatRev or 0) < Run.FORMAT_REV then run.formatRev = Run.FORMAT_REV end
+    local v = ns.version
+    if type(v) == "string" and v ~= "" and v ~= "unknown" then run.writerVersion = v end
+end
+
 -- ctx: { plan, client, build, character, now, env, selected }
 -- selected is a list of category ids to run, or nil for every category. Returns nil and a reason when no step is left.
 function Run.New(ctx)
@@ -52,6 +73,7 @@ function Run.New(ctx)
         run.steps[e.step.id] = { attempts = {}, verdict = "inapplicable" }
     end
     if #run.order == 0 then return nil, "no steps" end
+    stamp(run)
     return run
 end
 
@@ -60,6 +82,7 @@ function Run.Normalize(run, plan, client)
     if run.categories then return run end
     local cats = ns.Plan.Categories(plan)
     run.revision = (run.revision or 0) + 1 -- the content changes, so a copy collected before is not the same revision
+    stamp(run)
     run.categories, run.cat, run.selected = {}, {}, {}
     for _, c in ipairs(cats) do
         run.categories[#run.categories + 1] = { id = c.id, title = c.title }
@@ -220,7 +243,7 @@ function Run.Rerun(run, ctx, id)
     return n
 end
 
-function Run.Touch(run, now) run.revision = run.revision + 1; run.updated = now end
+function Run.Touch(run, now) run.revision = run.revision + 1; run.updated = now; stamp(run) end
 
 local function stepOf(ctx, id)
     for _, sec in ipairs(ctx.plan.sections) do
@@ -259,6 +282,40 @@ function Run.Begin(run, ctx, id)
     run.current = Run.IndexOf(run, id)
     Run.Touch(run, ctx.now)
     return a
+end
+
+Run.EXCERPT_BUDGET = 60000 -- bytes of kept log lines in one run; the export has a 2 MB limit
+
+-- Bytes of the evidence text an attempt keeps: its excerpt lines, and the line and value text of its check hits.
+local function excerptBytes(at)
+    local n = 0
+    for _, lines in pairs(at.excerpt or {}) do for _, l in ipairs(lines) do n = n + #l end end
+    for _, o in ipairs(at.outcomes or {}) do
+        n = n + #(o.observed or "")
+        for _, h in ipairs(o.hits or {}) do n = n + #(h.line or "") + #(h.value or "") end
+    end
+    return n
+end
+
+-- Keeps the newest evidence text of a run inside the budget: the oldest attempts lose their excerpt and check hits first
+-- (a check keeps its rule, counts and reason, and is marked trimmed).
+function Run.TrimExcerpts(run)
+    local all, total = {}, 0
+    for _, rec in pairs(run.steps) do
+        for _, at in ipairs(rec.attempts or {}) do
+            local b = excerptBytes(at)
+            if b > 0 then all[#all + 1], total = { at = at, b = b }, total + b end
+        end
+    end
+    table.sort(all, function(x, y) return (x.at.finished or 0) < (y.at.finished or 0) end)
+    for _, e in ipairs(all) do
+        if total <= Run.EXCERPT_BUDGET then break end
+        e.at.excerpt, total = nil, total - e.b
+        for _, o in ipairs(e.at.outcomes or {}) do
+            if o.hits or o.observed then o.trimmed = true end -- a reader can tell dropped text from none
+            o.hits, o.observed = nil, nil
+        end
+    end
 end
 
 -- A step is open until it has a result; one stuck on missing evidence (unverified) is still open.
@@ -340,8 +397,11 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     local anyFail, anyUnverified, required = false, false, 0
     if verdict ~= "skip" then
         for i, as in ipairs(step.assertions or {}) do
-            local r, why = ns.Evidence.Check(as, a.snapshots, ctx.plan, ctx.env)
-            a.outcomes[i] = { result = r, why = why, diagnostic = as.diagnostic or nil }
+            local r, why, detail = ns.Evidence.Check(as, a.snapshots, ctx.plan, ctx.env, true)
+            local o = { result = r, why = why, diagnostic = as.diagnostic or nil }
+            -- A check that did not pass keeps what it looked at (also in a passing attempt: a diagnostic never gates it).
+            if r ~= "pass" and detail then for k, v in pairs(detail) do o[k] = v end end
+            a.outcomes[i] = o
             if not as.diagnostic then
                 required = required + 1
                 if r == "fail" then anyFail = true elseif r == "unverified" then anyUnverified = true end
@@ -361,12 +421,14 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     end
     a.claimed, a.by = verdict, by
     a.verdict, a.note, a.finished = effective, note, ctx.now
+    a.formatRev = Run.FORMAT_REV -- the format this attempt was written in (a run can hold attempts of several versions)
     -- A failed or unverified attempt keeps the log lines that arrived while it was open, so a reviewer need not find
     -- them in a log that may have rolled since.
     if effective == "fail" or effective == "unverified" then
         local ok, ex = pcall(ns.Evidence.Excerpt, step, a.snapshots, ctx.plan, ctx.env)
         a.excerpt = ok and ex or nil
     end
+    Run.TrimExcerpts(run) -- also for a passing attempt: a failing diagnostic keeps check hits
     a.snapshots = nil
     verdict = effective
     rec.verdict = verdict

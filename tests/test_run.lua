@@ -71,6 +71,52 @@ test("a log that rolled keeps no excerpt and an unreadable one never stops the r
     env.DB = nil
     local a = R.Verdict(run, ctx, "a", "pass"); T.eq(a.verdict, "unverified"); T.eq(a.excerpt, nil)
 end)
+test("a run keeps the newest excerpts inside the byte budget and drops the oldest first", function()
+    local run, ctx, env = mk()
+    ctx.plan.sections[1].steps[1].assertions[1].absent = true
+    local old = R.EXCERPT_BUDGET; R.EXCERPT_BUDGET = 700
+    for i = 1, 4 do
+        ctx.now = 100 + i
+        R.Begin(run, ctx, "a")
+        env.DB.log[#env.DB.log + 1] = ("ok line %d "):format(i) .. ("x"):rep(150)
+        R.Verdict(run, ctx, "a", "pass")
+        run.steps.a.verdict = "pending"
+    end
+    R.EXCERPT_BUDGET = old
+    local at = run.steps.a.attempts
+    T.eq(at[1].excerpt, nil, "the oldest lost its lines"); T.eq(at[2].excerpt, nil)
+    T.ok(at[3].excerpt and at[4].excerpt, "the newest kept them")
+end)
+test("a new run says which format and which CheckThat wrote it, and each finished attempt says its format", function()
+    ns.version = "9.9.9"
+    local run, ctx = mk()
+    T.eq(run.ct, 1); T.eq(run.formatRev, R.FORMAT_REV); T.eq(run.writerVersion, "9.9.9")
+    T.eq(run.steps.a.attempts[1], nil, "no attempt yet")
+    R.Begin(run, ctx, "a"); local a = R.Verdict(run, ctx, "a", "skip")
+    T.eq(a.formatRev, R.FORMAT_REV, "stamped when it finishes")
+    T.eq(R.Export(run).formatRev, R.FORMAT_REV); T.eq(R.Export(run).writerVersion, "9.9.9")
+    ns.version = "unknown"
+    R.Touch(run, 500)
+    T.eq(run.writerVersion, "9.9.9", "an unknown version never replaces a known one")
+end)
+test("a run keeps the newest format it was written in, and a later writer updates who wrote it", function()
+    ns.version = "1.0.0"
+    local run, ctx = mk()
+    run.formatRev, run.writerVersion = R.FORMAT_REV + 3, "5.0.0" -- written by a newer CheckThat that knew more
+    ns.version = "1.0.1"; R.Touch(run, 600)
+    T.eq(run.formatRev, R.FORMAT_REV + 3, "an older writer cannot lower it"); T.eq(run.writerVersion, "1.0.1")
+end)
+test("a run saved before the stamp is stamped when it changes, never before", function()
+    ns.version = "2.0.0"
+    local run, ctx = mk()
+    run.formatRev, run.writerVersion = nil, nil
+    T.eq(run.formatRev, nil)
+    R.Touch(run, 700)
+    T.eq(run.formatRev, R.FORMAT_REV); T.eq(run.writerVersion, "2.0.0")
+end)
+test("a run of a newer major format is opaque", function()
+    T.eq(R.Opaque({ ct = R.MAJOR + 1 }), true); T.eq(R.Opaque({ ct = R.MAJOR }), false); T.eq(R.Opaque({}), false); T.eq(R.Opaque(nil), false)
+end)
 test("diagnostic assertions never gate", function()
     local run, ctx = mk()
     ctx.plan.sections[1].steps[1].assertions[1].diagnostic = true

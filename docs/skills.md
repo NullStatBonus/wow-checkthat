@@ -8,7 +8,9 @@ Two skills help addon developers write plans and read finished runs back. They a
   - Examples: `skills/ct-test-plan/keepthat-tally.bank.yaml` and `keepthat-tally.alt.yaml`.
 - **`ct-verify`** reads a finished run back against its plan.
   - It collects the saved variables (or reads an `/ct export` string), matches each step to its recorded result and evidence, and compares runs across characters.
-  - It reports pass, fail, unverified and contradicted steps.
+  - It checks the evidence folder first (`ct.py status`), then reports pass, fail, unverified and contradicted steps, with earlier failed or unverified attempts and error stacks.
+  - `ct.py browse` opens a read-only terminal viewer of the collected evidence. It is optional and needs Textual.
+  - `ct.py report --format json` or `--format junit`, with `--strict`, gives results to a script or a CI job.
   - It never edits a plan and never runs the game.
   - Collected evidence goes to a folder you name, `evidence/` by default. Keep it out of Git.
 

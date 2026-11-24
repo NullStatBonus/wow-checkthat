@@ -80,7 +80,33 @@ When a step opens, CheckThat saves where each log that the step checks stands: i
 - Only when the last lines it saved are all the same line (a flood) can it not show that a line is absent. A "must not appear" check then stays unverified unless the line is there (then it fails).
 - A plan can say how many lines a log keeps (`cap` on the log source). A log that holds fewer lines has never dropped one, so where the step opened is certain, also when the last lines are alike. CheckThat's own lists have caps: errors 100, facts 300. The sample and full plans for KeepThat (300), DontDoThat (500), ClosestVendor (300) and CheckThat (300) declare the cap of the addon's debug log, so an absence check or an exact count on those logs can pass while the log holds fewer lines. `tools/ct.py from-md` adds the same caps. Source lines are in `docs/contracts.md`.
 - Runs saved by an earlier version keep working.
-- **Excerpt.** When an attempt records fail or unverified, CheckThat keeps the first 20 new lines (each cut to 200 characters) of every log the step checks, as `excerpt` on the attempt. A log that cannot be read, or whose start is lost, adds none. A pass keeps none. The results string stays version 1: the field is added, and older readers ignore it. `tools/ct.py report` prints the lines under the attempt. Debug lines can hold private data, so check an excerpt before you share a results string.
+- **Excerpt.** When an attempt records fail or unverified, CheckThat keeps the first 20 new lines (each cut to 200 characters) of every log the step checks, as `excerpt` on the attempt. A log that cannot be read, or whose start is lost, adds none. A pass keeps none. A run keeps at most about 60 000 bytes of them and of the check hit text below: the oldest attempts lose theirs first, so an export stays under its 2 MB limit. The results string stays version 1: the field is added, and older readers ignore it. `tools/ct.py report` prints the lines under the attempt. Debug lines can hold private data, so check an excerpt before you share a results string.
+
+## Which lines decided a check
+
+A check that did not pass says what it looked at, so a reviewer or another tool can name the log lines that decided it. CheckThat saves this on the outcome of the attempt (the same read the check judged, so the lines cannot differ from the result). The results string stays version 1 and every key is optional (see [Results format](results-format.md) for the version numbers and the rules for a tool that reads a run): a run saved by an earlier version has none of them, and a tool reads that as unknown, never as zero.
+
+| Key | Meaning |
+| --- | --- |
+| `kind` | `log`, `log-sequence`, `fact` or `state`. |
+| `scope` | `attempt` (the lines after the step opened) or `session` (the whole retained log). Logs and facts only. |
+| `source` | The log source the check read. |
+| `label` | The label the plan gave the check, if any. |
+| `rule` | What the check required, in words, at most 120 characters: `absent: contains "FAILED"`, `count at most 1: pattern "ERR"`, `sequence of 3 lines`, `fact [KT] level eq 3, all`. It holds the plan's literals, which can be a log line. |
+| `shape` | The same rule with the plan's literals left out: `absent: contains "…"`, `fact [KT] level eq …`. Safe to show where log text is not. |
+| `window` | How many lines the check looked at. |
+| `matched` | How many matched: lines, facts that pass the operator, or sequence items found in a row. Missing when the window was lost. |
+| `hits` | At most 3 of `{ n, line }`: `n` counts from 1 inside the window, `line` is the text cut to 200 characters. A sequence hit also has `item`, a fact hit also has `value`. |
+| `stoppedAt` | A sequence: the first item that was not found. |
+| `observed` | A state check: the value it read, cut to 80 characters. |
+| `trimmed` | `true` when the hit text was dropped to keep the run small, so a missing `hits` is not "nothing matched". |
+
+- **Which hits.** A forbidden line: the first lines that match. A count over its bound: the first line past the bound, then those after it. A sequence: the last item reached. A fact with `last`: the last fact. With `all`: the first facts that broke the operator, even when later ones passed. With `any`: the last facts that were rejected. With `missing`: the facts that arrived. A line that was never there (unverified, no match) has `matched: 0` and no `hits`.
+- **Which outcomes.** Every outcome that is not a pass, also in an attempt that passed (a failing diagnostic never gates it). Passing outcomes keep none of these keys, and the check does not build them.
+- **Position and excerpt.** For `scope: attempt` the position `n` is the same position as line `n` of the excerpt of that source, when `n` is 20 or less. Hits carry their own text, so a hit past line 20 is still shown.
+- **Size.** Hit text and `observed` count toward the byte budget of a run with the excerpt, for every attempt that kept them (also a passing one). The oldest attempts lose them first, keep `rule`, `shape`, `matched`, `window` and `why`, and set `trimmed` on each check that lost text.
+- **Privacy.** Hit lines and values come from debug logs and can hold private data, as the excerpt can. Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
+- **Contract.** `schema/run-results.schema.json` describes the run record. `tools/ct.py` rejects a revision whose hits are malformed and names it in `status`.
 
 ## Automatic steps
 

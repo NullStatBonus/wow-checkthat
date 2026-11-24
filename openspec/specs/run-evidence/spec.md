@@ -241,7 +241,7 @@ CheckThat SHALL keep at most the configured number of runs, newest first, and MU
 - **THEN** the oldest non-current run is deleted and its plan copy follows the pruning rule
 
 ### Requirement: The report lists every step
-The central report (`ct.py report`) SHALL print, for each run, a table with one row per step in plan order: step id, verdict, evidence state, attempt count and note. Detail lines for attempts and evidence SHALL stay for steps that did not pass.
+The central report (`ct.py report`) SHALL print, for each run, a `result:` line (ok, UNVERIFIED or FAIL with counts) and a table with one row per step in plan order: step id, verdict, evidence state, attempt count and note. Detail lines for attempts and evidence SHALL stay for steps that did not pass. A step that passed after a failed or unverified attempt SHALL list those attempts too.
 
 #### Scenario: Passing step with evidence
 - **WHEN** a run holds a step that passed through a log assertion
@@ -258,6 +258,10 @@ The central report (`ct.py report`) SHALL print, for each run, a table with one 
 #### Scenario: Unverified evidence
 - **WHEN** a step has an assertion outcome that is unverified or has no result
 - **THEN** its row shows evidence state missing
+
+#### Scenario: A pass after a rerun
+- **WHEN** a step failed once and passed on its second attempt
+- **THEN** the report lists the failed attempt under the step
 
 ### Requirement: Fact assertions are judged on parsed values
 A fact assertion SHALL read the facts of the named addon and key that arrived since the attempt opened. A value SHALL be a boolean for `true` and `false`, a number when it reads as one, else text. With no matching fact the result SHALL be unverified. With facts that break the operator the result SHALL be fail. `which: last` judges the newest fact, `any` passes when one matches, and `all` passes when every one matches.
@@ -363,7 +367,7 @@ Each recorded Lua error line SHALL read `<time>.<counter> [<addon>] <message>`, 
 - **THEN** CheckThat sets its own again within a second, and a flood of replacements logs only a few lines
 
 ### Requirement: A failed attempt keeps the log lines that arrived
-When an attempt records fail or unverified, it SHALL keep, for each log its step checks (not `session` scope), the first 20 new lines, each cut to 200 characters, as `excerpt`. A pass SHALL keep none. A log that cannot be read, or whose start is lost, SHALL add none. The results string SHALL stay version 1. The report SHALL print the lines under the attempt.
+When an attempt records fail or unverified, it SHALL keep, for each log its step checks (not `session` scope), the first 20 new lines, each cut to 200 characters, as `excerpt`. A pass SHALL keep none. A log that cannot be read, or whose start is lost, SHALL add none. A run SHALL keep at most about 60 000 bytes of excerpt lines and check hit text together: when it holds more, the attempts that finished earliest lose their excerpt and hit text first. The results string SHALL stay version 1. The report SHALL print the lines under the attempt.
 
 #### Scenario: A failure
 - **WHEN** a step fails after 30 new log lines
@@ -372,3 +376,200 @@ When an attempt records fail or unverified, it SHALL keep, for each log its step
 #### Scenario: A pass
 - **WHEN** a step passes
 - **THEN** its attempt holds no excerpt
+
+#### Scenario: Over the budget
+- **WHEN** the excerpts and hits of a run exceed the budget
+- **THEN** the oldest attempts lose theirs and the newest keep them
+
+### Requirement: One error stack for each attempt
+CheckThat SHALL ask for an error stack only when a step opens a new attempt, not when the card refreshes an attempt that is already open.
+
+#### Scenario: Card refresh
+- **WHEN** the card refreshes a step whose attempt is open
+- **THEN** no second stack is requested
+
+### Requirement: The report shows error stacks
+`collect` SHALL keep the saved error lines and call stacks. The report SHALL print, under a failed or unverified attempt, each error whose `<time>.<counter>` key falls in the attempt's open time, with its stack, and SHALL say when the time also fits another attempt. Json and junit reports SHALL leave stacks out unless asked.
+
+#### Scenario: A stack in the window
+- **WHEN** an error with a stack was raised while a failed attempt was open
+- **THEN** the report prints the error and its stack under that attempt
+
+#### Scenario: Stacks stay private by default
+- **WHEN** a json or junit report is made without `--stacks`
+- **THEN** it holds no stack text
+
+### Requirement: The report has machine-readable formats
+`ct.py report` SHALL support `--format json` and `--format junit`, and `--strict`. One rule SHALL classify each step for every format: a pass or partial claim with a failed required outcome is a fail, one with a required outcome without a result is unverified. Fail and unverified are failures in JUnit; pending, skip, deselected and inapplicable are skipped with a reason; partial passes. `--strict` SHALL exit 1 when any step failed or is unverified, or no run exists.
+
+#### Scenario: CI gate
+- **WHEN** `report --format junit --strict` runs over a run with a failed step
+- **THEN** the XML holds a failure for that step and the exit code is 1
+
+### Requirement: Status checks the evidence folder
+`ct.py status` SHALL print one row for each run at its newest readable revision (steps done over steps that apply, fail, unverified and open counts, age, estimated export size), and SHALL name every unreadable revision, every conflict or decode failure `collect` logged, and any run over 80% of the 2 MB export limit. It SHALL exit 1 when it names a problem or finds no run, and SHALL NOT judge test results.
+
+#### Scenario: A damaged revision
+- **WHEN** the newest revision file of a run is not valid JSON
+- **THEN** status names it, still shows the newest readable revision and exits 1
+
+#### Scenario: A clean folder
+- **WHEN** every revision is readable and nothing conflicts
+- **THEN** status says there are no problems and exits 0
+
+### Requirement: Open-attempt snapshots are not a conflict
+`collect` and `import-results` SHALL compare two stored copies of one run revision as an export would hold them. Copies that differ only by open-attempt snapshots SHALL NOT conflict.
+
+#### Scenario: Collected, then imported
+- **WHEN** a revision is collected from saved variables and the same revision is imported from `/ct export`
+- **THEN** the second store reports the same revision, not a conflict
+
+### Requirement: The report can be narrowed and one step shown
+`ct.py report --failed-only` SHALL keep only the runs and steps that failed or are unverified, by the same rule as `--strict`, and say when there are none. `ct.py show <run>` SHALL print one run as the report does, and `ct.py show <run> <step>` SHALL print that step with every attempt, log excerpt and error stack. A run name SHALL be an exact id or part of an id that names one run. An unknown or unclear run or step SHALL exit 2 and list the choices.
+
+#### Scenario: One step with its history
+- **WHEN** `show R-1 a` runs for a step that failed once and then passed
+- **THEN** both attempts print and no other step does
+
+#### Scenario: An unclear name
+- **WHEN** `show` names a step the run does not have
+- **THEN** it exits 2 and lists the run's steps
+
+### Requirement: Status can be watched
+`ct.py status --watch` SHALL print the status again every `--interval` seconds until interrupted, and SHALL return the exit code of the last status. It SHALL NOT combine with `--json`.
+
+#### Scenario: Two rounds
+- **WHEN** the watch runs two rounds over a healthy folder
+- **THEN** it prints twice and returns 0
+
+### Requirement: A read-only viewer browses the evidence
+`ct.py browse` (and `tools/ct_tui.py`) SHALL open a read-only terminal viewer with a runs screen (failures first, then unverified, newest first), a steps screen in plan order that can be narrowed by result and category, and a step screen that shows the classified result and the player's verdict first, then one attempt with its note, checks, log lines and error stacks. It SHALL show evidence as plain text.
+
+#### Scenario: Failing runs first
+- **WHEN** the viewer opens over a failing run, an unverified run and a passing run
+- **THEN** the runs screen lists them in that order
+
+### Requirement: The viewer follows the evidence folder
+The viewer SHALL reload when the evidence folder changes, SHALL keep the selected item by id, and SHALL keep the newest readable revision of a run that is being written.
+
+#### Scenario: A reload keeps the selection
+- **WHEN** the evidence changes so the selected run moves to another row
+- **THEN** the cursor stays on that run
+
+### Requirement: The viewer needs a terminal and says so
+Without a terminal or without Textual, the viewer SHALL exit 2 and print the equivalent commands or the install command. It SHALL check for a terminal before it imports Textual.
+
+#### Scenario: No terminal
+- **WHEN** the viewer starts with its output redirected
+- **THEN** it prints the `status`, `report --failed-only` and `show` commands and exits 2
+
+### Requirement: The viewer exports after it shows what it will write
+The viewer SHALL show the scope, format, file and whether stacks are included before it writes a report, and SHALL leave stacks out of a JSON or JUnit export unless the user adds them.
+
+#### Scenario: Stacks are opt-in
+- **WHEN** the export dialog is set to JSON and the user has not asked for stacks
+- **THEN** it says the stacks are left out and the file holds none
+
+### Requirement: The viewer's runs and steps screens show state in words and marks
+The viewer SHALL show each run's and step's state as a word and a mark (color only helps), SHALL count each run once with fail before unverified and call the rest "no flags", and SHALL show steps done over steps that apply. Below 76 columns the screens SHALL show only the result, the id and (for runs) the done fraction; from 76 columns they SHALL add the other columns. A category chip SHALL follow the evidence-based result of its steps. A filter with no match SHALL say so.
+
+#### Scenario: A narrow terminal
+- **WHEN** the terminal is 40 columns wide
+- **THEN** the runs table has the result, run and done columns, and a resize to 100 columns brings back plan, revision, counts and age
+
+#### Scenario: An overturned pass
+- **WHEN** a step's pass is contradicted by its required evidence
+- **THEN** its category chip is red, not green
+
+### Requirement: A check that did not pass records what it looked at
+Each check outcome that is not a pass SHALL record, from the same lines the check judged, its `kind`, `scope`, `source`, `label`, a `rule` in words, `window` (lines looked at), `matched`, and up to 3 `hits` of `{n, line}` where `n` is the 1-based position inside the window and `line` is cut to 200 characters. This SHALL hold also for a failing diagnostic in a passing attempt. A passing outcome SHALL record none of these. Every key SHALL be optional and the results string SHALL stay version 1.
+
+#### Scenario: A forbidden line
+- **WHEN** an absent check fails because two new lines match
+- **THEN** its outcome says `a forbidden line appeared`, has `matched` 2 and a hit for each line with its position
+
+#### Scenario: A count over its bound
+- **WHEN** a count allows one match and three lines match
+- **THEN** the first hit is the second matching line
+
+#### Scenario: A sequence that stopped
+- **WHEN** a sequence of three lines finds two
+- **THEN** the outcome has `matched` 2, `stoppedAt` 3 and a hit for item 2
+
+#### Scenario: No match
+- **WHEN** a check finds no matching line
+- **THEN** it records `matched` 0 and no hits
+
+### Requirement: Sequence, fact and state checks add their own detail
+A sequence SHALL record `item` on its hit and `stoppedAt`. A fact hit SHALL record its `value`. A state check SHALL record `observed`.
+
+#### Scenario: A fact
+- **WHEN** a fact check fails on its last fact
+- **THEN** the hit is that fact's line, with its position and value
+
+### Requirement: Hit text that is dropped for size is marked
+When a run is over its byte budget, an attempt that loses its hit text or observed value SHALL keep each check's `rule`, `shape`, `matched`, `window` and reason and SHALL mark the check `trimmed`. The budget SHALL hold for every attempt that kept such text, a passing one too.
+
+#### Scenario: Trimmed
+- **WHEN** the budget forces the oldest attempt to drop its hits
+- **THEN** its failed checks keep their rule and counts, have no hits and are marked trimmed
+
+### Requirement: Tools can read the check detail
+`schema/run-results.schema.json` SHALL describe the run record with these keys. `ct.py` SHALL treat a revision with malformed hits or counts as unreadable. The Markdown report SHALL print each check that did not pass with its rule, counts and hit lines, and mark the hit lines in the excerpt.
+
+#### Scenario: A run the addon wrote
+- **WHEN** a run saved by the addon with a failed check is validated
+- **THEN** it passes the schema and the report names the rule and the lines
+
+### Requirement: Machine reports keep log text opt-in
+JSON and JUnit reports SHALL include the rule's `shape` (the rule with the plan's literals left out), counts and hit positions, and SHALL include line text, values and the full rule only when asked. JUnit SHALL take a failure's checks from the attempt its result comes from.
+
+#### Scenario: Line text is opt-in
+- **WHEN** a JSON report is made without `--lines`
+- **THEN** it has hit positions and no line text
+
+### Requirement: A saved run says which format and which CheckThat wrote it
+A run SHALL carry `ct` (the major version), `formatRev` (the newest revision that wrote it, never lowered by a writer) and `writerVersion` (the CheckThat version that last changed it, omitted when unknown). A finished attempt SHALL carry `formatRev`. A run saved before has none of these and a reader SHALL treat their absence as unknown. The results string SHALL stay version 1.
+
+#### Scenario: A new run
+- **WHEN** a run starts and an attempt finishes
+- **THEN** the run holds `ct`, `formatRev` and `writerVersion`, and the attempt holds `formatRev`
+
+#### Scenario: An older writer
+- **WHEN** a run with a higher `formatRev` is changed by this version
+- **THEN** its `formatRev` stays at the higher value
+
+### Requirement: A run of a newer major format is kept aside untouched
+When the addon loads, a run whose `ct` is higher than the major it knows, or is present and not a whole number, SHALL be moved, as the same table, out of the runs the addon uses, SHALL NOT be counted, shown, resumed, pruned or changed, and its plan SHALL be kept (when the run names none, the plans stored at that moment). The addon SHALL tell the player how many such runs there are.
+
+#### Scenario: Kept aside
+- **WHEN** the saved variables hold a run with a higher `ct` and the runs are pruned
+- **THEN** that run is unchanged and takes no place in the limit
+
+### Requirement: A run set aside keeps its id and comes back safely
+A new run SHALL NOT take the id of a run set aside. A run set aside SHALL move back when the addon reads its major, and never over a readable run with the same id.
+
+#### Scenario: A namesake
+- **WHEN** a readable run appears with the id of a run set aside and the addon then reads that run's major
+- **THEN** both runs stay where they are
+
+### Requirement: The tools refuse a newer major before they read it
+`ct.py` SHALL refuse a run whose `ct` is higher than it reads, or present and not a whole number, before it checks any other key, SHALL name the file and the number, and SHALL accept a higher `formatRev`. `collect` and `import-results` SHALL refuse such a run.
+
+#### Scenario: A newer revision of a run
+- **WHEN** the newest revision file of a run is in a newer major format and an older one is readable
+- **THEN** `status` names the file and the reason, `report` warns, and `report --strict` exits 1
+
+### Requirement: A refusal is kept until the run is stored
+`collect` SHALL store nothing of a refused run and SHALL keep the refusal until a revision at least as new is stored. `report` SHALL warn when it shows an older revision, or none, because a newer one could not be read, and `report --strict` SHALL fail.
+
+#### Scenario: A refusal outlives the collect
+- **WHEN** `collect` refused a run and an older revision of it is stored
+- **THEN** `report --strict` exits 1 until a revision at least as new as the refused one is stored
+
+### Requirement: The format page matches the code
+`docs/results-format.md` SHALL state the current `ct` and `formatRev` and list a row for the current revision, and a test SHALL fail when it does not agree with `Run.MAJOR`, `Run.FORMAT_REV` and the major `ct.py` reads.
+
+#### Scenario: A revision without a row
+- **WHEN** `Run.FORMAT_REV` is raised and the page is not updated
+- **THEN** the tools tests fail

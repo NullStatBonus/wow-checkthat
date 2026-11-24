@@ -1,0 +1,304 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/NullStatBonus/wow-checkthat/schema/run-results.schema.json",
+ "title": "CheckThat run record",
+ "description": "One revision of a run, as stored in CheckThatDB.global.runs, in a /ct export results string, and in evidence/runs/<id>/r<revision>.json. Unknown keys are allowed so an older reader keeps working. A key an older run lacks is simply absent: read it as unknown, never as zero or false.",
+ "type": "object",
+ "required": [
+  "steps"
+ ],
+ "properties": {
+  "kind": {
+   "const": "results"
+  },
+  "ct": {
+   "const": 1,
+   "description": "The major version. It rises only for a change that breaks a reader; a reader of an older major leaves the run alone."
+  },
+  "runId": {
+   "type": "string"
+  },
+  "revision": {
+   "type": "integer",
+   "minimum": 0
+  },
+  "addon": {
+   "type": "string"
+  },
+  "planDigest": {
+   "type": "string"
+  },
+  "planTitle": {
+   "type": "string"
+  },
+  "client": {
+   "type": "string"
+  },
+  "build": {
+   "type": "string"
+  },
+  "character": {
+   "type": "string"
+  },
+  "started": {
+   "type": "number"
+  },
+  "updated": {
+   "type": "number"
+  },
+  "endedAt": {
+   "type": "number"
+  },
+  "order": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "categories": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "id"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "cat": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "string"
+   },
+   "description": "step id to category id"
+  },
+  "selected": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "boolean"
+   }
+  },
+  "steps": {
+   "type": "object",
+   "additionalProperties": {
+    "$ref": "#/$defs/step"
+   }
+  },
+  "formatRev": {
+   "type": "integer",
+   "minimum": 1,
+   "description": "The newest format revision that wrote this run. It rises with every additive change and never goes down on a run. Absent in a run saved before 0.15.0: read it as unknown."
+  },
+  "writerVersion": {
+   "type": "string",
+   "description": "The CheckThat version (TOC) that last changed the run. Absent when unknown."
+  }
+ },
+ "$defs": {
+  "verdict": {
+   "enum": [
+    "pending",
+    "pass",
+    "partial",
+    "fail",
+    "skip",
+    "unverified",
+    "inapplicable",
+    "deselected"
+   ]
+  },
+  "step": {
+   "type": "object",
+   "properties": {
+    "verdict": {
+     "$ref": "#/$defs/verdict"
+    },
+    "evidence": {
+     "type": "string"
+    },
+    "attempts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/attempt"
+     }
+    }
+   }
+  },
+  "attempt": {
+   "type": "object",
+   "properties": {
+    "n": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "started": {
+     "type": "number"
+    },
+    "finished": {
+     "type": "number"
+    },
+    "verdict": {
+     "$ref": "#/$defs/verdict"
+    },
+    "claimed": {
+     "$ref": "#/$defs/verdict"
+    },
+    "by": {
+     "enum": [
+      "player",
+      "auto"
+     ]
+    },
+    "evidence": {
+     "enum": [
+      "matched",
+      "contradicts",
+      "unverified",
+      "diagnostic-only"
+     ]
+    },
+    "note": {
+     "type": "string"
+    },
+    "outcomes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/outcome"
+     },
+     "description": "One per check of the step, in plan order (the position is the check's index)."
+    },
+    "excerpt": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "description": "Failed or unverified attempts only: the first 20 new lines of each log the step checks, each cut to 200 characters. Position i is hit position n=i of an attempt-scope check on the same source."
+    },
+    "formatRev": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "The format revision this attempt was finished in. Absent in an attempt saved before 0.15.0."
+    }
+   }
+  },
+  "outcome": {
+   "type": "object",
+   "required": [
+    "result"
+   ],
+   "properties": {
+    "result": {
+     "enum": [
+      "pass",
+      "fail",
+      "unverified"
+     ]
+    },
+    "why": {
+     "type": "string"
+    },
+    "diagnostic": {
+     "type": "boolean",
+     "description": "A diagnostic check never gates the verdict."
+    },
+    "kind": {
+     "enum": [
+      "log",
+      "log-sequence",
+      "fact",
+      "state"
+     ],
+     "description": "This key and the ones after it are kept only for a check that did not pass."
+    },
+    "scope": {
+     "enum": [
+      "attempt",
+      "session"
+     ],
+     "description": "attempt: the lines after the step opened. session: the whole retained log."
+    },
+    "source": {
+     "type": "string",
+     "description": "The log source the check read."
+    },
+    "label": {
+     "type": "string"
+    },
+    "rule": {
+     "type": "string",
+     "description": "What the check required, in words (at most 120 characters). It holds the plan's literals, which can be a log line: show it only where log text may be shown."
+    },
+    "matched": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "Lines (or facts, or sequence items in a row) that matched. Absent when the window was lost."
+    },
+    "window": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "How many lines the check looked at."
+    },
+    "stoppedAt": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "A sequence: the first item that was not found."
+    },
+    "observed": {
+     "type": "string",
+     "description": "A state check: the value it read, cut to 80 characters."
+    },
+    "trimmed": {
+     "const": true,
+     "description": "The hit text was dropped to keep the run under its size budget."
+    },
+    "hits": {
+     "type": "array",
+     "maxItems": 3,
+     "items": {
+      "$ref": "#/$defs/hit"
+     }
+    },
+    "shape": {
+     "type": "string",
+     "description": "The rule with the plan's literals left out (contains \"…\"). Safe to show where log text is not."
+    }
+   }
+  },
+  "hit": {
+   "type": "object",
+   "required": [
+    "n"
+   ],
+   "properties": {
+    "n": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "1-based position inside the lines the check looked at."
+    },
+    "item": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "A sequence: which item this line matched."
+    },
+    "line": {
+     "type": "string",
+     "description": "The log line, cut to 200 characters."
+    },
+    "value": {
+     "type": "string",
+     "description": "A fact: the parsed value, cut to 80 characters."
+    }
+   }
+  }
+ }
+}

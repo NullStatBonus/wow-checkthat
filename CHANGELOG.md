@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.15.0
+
+New: **Saved runs say which version wrote them.** A run and each finished attempt now carry a format revision. A run carries the CheckThat version too. Tools use them to read old and new runs.
+New: **Newer runs stay safe.** After you go back to an older CheckThat, a run saved by a newer one is kept as it is. A chat line tells you.
+
+## 0.14.0
+
+New: **Failed checks name their log lines.** A check that does not pass saves its rule, how many lines matched and the lines that decided it. Reports and viewers show them.
+Changed: **Clearer reasons.** A forbidden line or a fact that does not match now says so. Before, the reason was empty.
+
+## 0.13.1
+
+Fixed: **Large exports.** A run with many failed steps saved more log lines than an export holds. CheckThat now keeps the newest lines and drops the oldest.
+Fixed: **One error stack for each attempt.** A step that stayed open when the card refreshed kept a second error stack. It now keeps one.
+
 ## 0.13.0
 
 New: **Log lines kept with a failed step.** A failed or unverified step saves the first new lines of the logs it checks. The report shows them.

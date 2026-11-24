@@ -19,7 +19,7 @@ test-py:
 # Install the ct-test-plan and ct-verify skills with everything they run, outside this checkout: the skill text,
 # a bundle of the plan tools (same layout as the checkout), and a private Python with PyYAML and
 # jsonschema. SKILL_DIR changes the target; SKILL_NO_VENV=1 skips the pip step (tests).
-BUNDLE := tools/ct.py schema/test-plan.schema.json docs/test-plan.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md CheckThat/Model/Plan.lua CheckThat/Model/Json.lua tools/sv2json.lua requirements.txt
+BUNDLE := tools/ct.py schema/test-plan.schema.json docs/test-plan.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md CheckThat/Model/Plan.lua CheckThat/Model/Json.lua tools/sv2json.lua requirements.txt tools/ct_tui.py requirements-tui.txt
 
 install-skill:
 	@root=$$(pwd -P); mkdir -p "$(SKILL_DIR)" || exit 1; dest=$$(cd "$(SKILL_DIR)" && pwd -P); \
