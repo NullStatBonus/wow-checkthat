@@ -169,6 +169,28 @@ class Logic(unittest.TestCase):
         plain = ct_tui.detail_text("R-h", r, "a")
         self.assertIn('check 1 (required, fail): absent: contains "FAILED"', plain); self.assertIn("line 2: [kt] FAILED [x] one", plain)
 
+    def test_a_run_saved_before_categories_excerpts_and_check_detail_still_shows_everywhere(self):
+        legacy = {"runId": "Old-1", "planTitle": "old", "addon": "KeepThat", "revision": 4, "started": 1000, "order": ["a", "b", "c"],
+                  "steps": {"a": {"verdict": "fail", "attempts": [{"n": 1, "verdict": "fail", "note": "broke", "outcomes": [{"result": "fail"}, {"result": "unverified", "why": "no matching log line"}]}]},
+                            "b": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}, "c": {"verdict": "pending", "attempts": []}}}   # no categories, cat, selected, excerpt, rule, hits
+        ct.write_revision(self.d, legacy)
+        runs = ct.latest_runs(self.d)
+        r = runs["Old-1"]
+        rows = {x["id"]: x for x in ct_tui.run_rows(runs, 5000)}
+        self.assertEqual((rows["Old-1"]["fail"], rows["Old-1"]["eligible"]), (1, 3))
+        for wide in (False, True):
+            ct_tui.run_cells(rows["Old-1"], wide)
+            for s in ct_tui.step_rows("Old-1", r)[0]:
+                ct_tui.step_cells(s, wide)
+            ct_tui.steps_header("Old-1", r, "all", None, 3, 3, wide)
+        self.assertEqual(ct_tui.category_chips("Old-1", r), [])
+        for sid in ("a", "b", "c"):
+            for width in (100, 40):
+                ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("Old-1", r, sid, self.d)), width)
+            ct_tui.detail_text("Old-1", r, sid, self.d)
+        shown = ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("Old-1", r, "a", self.d)))
+        self.assertIn("no matching log line", shown); self.assertNotIn("check 1 -", shown)   # the why is all it has; no rule panel
+
     def test_browse_is_the_same_viewer_and_refuses_without_a_terminal(self):
         import io, contextlib
         with contextlib.redirect_stderr(io.StringIO()):
