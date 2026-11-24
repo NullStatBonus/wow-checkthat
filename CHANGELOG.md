@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0
+
+New: **Choose categories on the card.** A plan with more than eight categories has a Choose categories button. It opens a list you can page. Home pages its list too.
+New: **Remove a category from a run.** A category with no result can leave the run. The Categories window row menu has Remove from run.
+New: **Key bindings for results.** Pass, Partial, Fail and Skip can have keys. No key is set until you set one.
+Fixed: **Report stacks.** A step that failed and then passed lost the error stack of its failed attempt. Json and junit reports now keep it.
+Fixed: **Reopened steps in the report.** After Undo or a rerun, the table showed the old note and evidence. It now says "awaiting retry".
+Fixed: **Results from slash commands.** A result from a slash command kept no error stack. It now asks for one.
+
 ## 0.15.0
 
 New: **Saved runs say which version wrote them.** A run and each finished attempt now carry a format revision. A run carries the CheckThat version too. Tools use them to read old and new runs.

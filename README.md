@@ -26,7 +26,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)
 - **Past runs.** Home lists stored runs. Open, export or delete one. [Details](docs/features.md#past-runs)
 - **Categories.** A plan groups its steps into categories. Pick them when you start a run, add one later, jump to one, or run one again. [Details](docs/features.md#categories-and-the-tracker)
-- **Progress tracker.** One bar segment for each category in blue, yellow, red or green (grey when skipped), and a caption that says the result in words. The Categories window (`/ct tracker`) lists every category, also with a dozen or more. [Details](docs/features.md#categories-and-the-tracker)
+- **Progress tracker.** One bar segment for each category in blue, yellow, red or green (grey when skipped), and a caption that says the result in words. The Categories window (`/ct tracker`) lists every category, also with a dozen or more. A row can also take a category out of the run while it has no result. [Details](docs/features.md#categories-and-the-tracker)
 - **Unit-test checks.** A step can check a fact's value (range, tolerance, type, list, pattern), count how many times something happened, and check that no Lua error appeared. [Details](docs/features.md#unit-test-checks)
 - **Reload safe.** The run and its place survive `/reload`.
 - **Screenshots.** A step can ask for Print Screen. CheckThat never captures. [Details](docs/harvesting.md#screenshots)
@@ -77,7 +77,8 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 ## Good to know
 
 - Results are saved when the game reloads or logs out.
-- A plan with more than 8 categories shows one overall bar on the card, and the card start screen lists no checkboxes for it. Use `/ct tracker` to see each category and the Home page to pick them. Home lists up to 24.
+- A plan with more than 8 categories shows one overall bar on the card. Its start screen has a Choose categories button that opens a paged list, and Home pages its list 24 at a time. Use `/ct tracker` to see each category.
+- Pass, Partial, Fail and Skip have key bindings under Key Bindings, AddOns, CheckThat. No key is set by default. A key works only while the card shows a step.
 - Blue on the tracker means untested, also while some steps of the category have results. Yellow means partial or unverified. Red means fail, green means pass, and grey means all skipped. [Details](docs/features.md#categories-and-the-tracker)
 - CheckThat records Lua errors only while a run is open. With BugGrabber loaded, CheckThat reads BugGrabber's error counts instead of setting its own handler. When an addon takes the handler later, CheckThat sets its own again within a second while the card is shown, or when a result is judged. Each error line names the addon from its file path (`[KeepThat]`), and the first error of a step keeps a short call stack for `/ct log`. BugGrabber and BugSack are optional: CheckThat works without them and reads BugGrabber's list when it holds the handler.
 - Run is not available in combat. It comes back when combat ends.

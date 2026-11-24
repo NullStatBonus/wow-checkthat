@@ -485,6 +485,60 @@ test("the opacity setting reaches the overall bar and hides the tracker at zero 
     ns.Card.ApplyAppearance()
 end)
 
+test("with more than eight categories the card offers the picker, which pages and shares the picked set", function()
+    ns.addon.db.profile.card.collapsed = false
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(30)))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.cleared = nil
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.eq(card.chooseBtn.shown, true); T.eq(card.pickNote.text, "30 of 30 categories picked.")
+    card.chooseBtn.scripts.OnClick(card.chooseBtn)
+    local pk = _G.CheckThatPicker
+    pk.down.scripts.OnClick(pk.down); pk.down.scripts.OnClick(pk.down)
+    T.eq(pk.rows[1].label.text, "Cat 29: 2 steps", "a short last page keeps 14-row steps")
+    pk.up.scripts.OnClick(pk.up)
+    T.eq(pk.rows[1].label.text, "Cat 15: 2 steps")
+    pk:Hide()
+    T.ok(not card.picks[9] or not card.picks[9].check.shown, "no inline boxes above eight")
+    card.chooseBtn.scripts.OnClick(card.chooseBtn)
+    local win = _G.CheckThatPicker
+    T.eq(win:IsShown(), true); T.eq(win.rows[14].check.shown, true); T.eq(win.rows[15], nil)
+    T.eq(win.more.text, "Showing 1 to 14 of 30. Use the mouse wheel to see more.")
+    win.down.scripts.OnClick(win.down)
+    T.eq(win.rows[1].label.text, "Cat 15: 2 steps")
+    win.rows[1].check.GetChecked = function() return false end
+    win.rows[1].check.scripts.OnClick(win.rows[1].check)
+    T.eq(ns.App.db.ui.cleared.KeepThat.c15, true); T.eq(card.pickNote.text, "29 of 30 categories picked.")
+    for i = 1, 30 do ns.App.SetPick("KeepThat", "c" .. i, false) end
+    ns.Card.Refresh()
+    T.eq(card.start.calls.SetEnabled[#card.start.calls.SetEnabled], false); T.eq(win.none.text, "Select at least one category.")
+    ns.App.db.ui.cleared = nil
+    ns.Card.Refresh()
+    card.start.scripts.OnClick(card.start)
+    T.eq(win:IsShown(), false, "Start run closes the picker")
+end)
+
+test("a bound key records the same result as the button, only with a step on the card", function()
+    local run, card = startCats(2)
+    ns.Card.Refresh()
+    T.eq(_G.BINDING_NAME_CHECKTHAT_FAIL, "Fail"); T.eq(type(_G.CheckThat_Key), "function")
+    CheckThat_Key("pass")
+    T.eq(run.steps.s1a.verdict, "pass"); T.eq(ns.Run.CurrentId(run), "s1b", "the card moves on, as for the button")
+    card:Hide()
+    CheckThat_Key("fail")
+    T.eq(run.steps.s1b.verdict, "pending", "a hidden card records nothing")
+    card:Show(); ns.Card.Refresh()
+    card.IsVisible = function() return false end -- the interface is hidden (Alt+Z): the card keeps its shown flag
+    CheckThat_Key("fail")
+    T.eq(run.steps.s1b.verdict, "pending", "hidden interface records nothing")
+    card.IsVisible = nil
+    CheckThat_Key("skip"); T.eq(run.steps.s1b.verdict, "skip")
+    run.endedAt = 1; ns.Card.Refresh()
+    CheckThat_Key("pass")
+    T.eq(run.steps.s2a.verdict, "pending", "an ended run takes no key")
+    run.endedAt = nil
+end)
+
 test("with more than eight categories all cleared, the card start screen turns Start run off", function()
     ns.addon.db.profile.card.collapsed = false
     assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(9)))))

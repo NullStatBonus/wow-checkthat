@@ -582,6 +582,39 @@ test("select adds a category and leaves the viewed step", function()
     T.eq(App.Select("mail"), false, "already picked")
     local ok, err = App.Select("zzz"); T.eq(ok, nil); T.ok(err:find("no category called zzz"), err)
 end)
+test("a verdict that opens its own attempt asks for an error stack once, as the card does", function()
+    local db, env, run = started()
+    local n, orig = 0, ns.Errors.StepStarted
+    ns.Errors.StepStarted = function() n = n + 1 end
+    App.Verdict("pass")                      -- a slash verdict: no App.Begin before it
+    T.eq(n, 1, "the attempt it opened asked for a stack")
+    App.Begin(); T.eq(n, 2); App.Begin(); T.eq(n, 2, "an open attempt asks once")
+    App.Verdict("pass"); T.eq(n, 2, "closing the open attempt asks for nothing")
+    ns.Errors.StepStarted = orig
+end)
+test("deselect removes a clean category and says why it cannot", function()
+    local db, env, run = started()
+    local ok, err = App.Deselect("zzz"); T.eq(ok, nil); T.ok(err:find("no category called zzz"), err)
+    App.Begin(); App.Verdict("pass")
+    ok, err = App.Deselect("bank"); T.eq(ok, nil); T.ok(err:find("has results", 1, true), err)
+    T.eq(App.Deselect("mail"), true); T.eq(run.steps["kt.3"].verdict, "deselected")
+    ok, err = App.Deselect("mail"); T.ok(err:find("not part of this run", 1, true), err)
+    ok, err = App.Deselect("bank"); T.ok(err:find("at least one category", 1, true), err)
+end)
+test("a slash verdict arms the stack before the errors are read", function()
+    local db, env, run = started()
+    local order, orig = {}, ns.Errors.Check
+    local origStart = ns.Errors.StepStarted
+    ns.Errors.StepStarted = function() order[#order + 1] = "armed" end
+    ns.Errors.Check = function() order[#order + 1] = "check" end
+    App.Verdict("pass")
+    ns.Errors.StepStarted, ns.Errors.Check = origStart, orig
+    T.eq(order[1], "armed"); T.eq(order[2], "check")
+end)
+test("deselect refuses the last category", function()
+    local db, env, run = started({ "bank" })
+    local ok, err = App.Deselect("bank"); T.eq(ok, nil); T.ok(err:find("at least one category", 1, true), err)
+end)
 test("rerun count says how many steps a rerun would reopen", function()
     local db, env, run = started()
     T.eq((App.RerunCount("bank")), 0)

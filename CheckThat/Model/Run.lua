@@ -174,6 +174,49 @@ function Run.Select(run, ctx, id)
     return true
 end
 
+-- Why a picked category cannot leave the run, or nil: "run ended", "unknown category", "not picked", "has results", "last category".
+function Run.DeselectBlock(run, id)
+    if run.endedAt then return "run ended" end
+    if not categoryOf(run, id) then return "unknown category" end
+    if not run.selected[id] then return "not picked" end
+    local others = 0 -- steps that stay in the run
+    for _, sid in ipairs(run.order) do if run.cat[sid] ~= id then others = others + 1 end end
+    if others == 0 then return "last category" end
+    for sid, cat in pairs(run.cat) do
+        local rec = run.steps[sid]
+        if cat == id and rec and not OUT[rec.verdict] then
+            if rec.verdict ~= "pending" then return "has results" end
+            for _, a in ipairs(rec.attempts) do if a.verdict then return "has results" end end
+        end
+    end
+end
+
+-- Remove a picked category that holds no result. Returns true, or nil and a reason (see DeselectBlock).
+function Run.Deselect(run, ctx, id)
+    local why = Run.DeselectBlock(run, id)
+    if why then return nil, why end
+    local mine = {}
+    for sid, cat in pairs(run.cat) do
+        local rec = run.steps[sid]
+        if cat == id and rec and not OUT[rec.verdict] then mine[#mine + 1] = rec end
+    end
+    local viewing = run.order[run.current]
+    local after
+    if viewing and run.cat[viewing] == id then
+        for i = run.current + 1, #run.order do
+            if run.cat[run.order[i]] ~= id then after = run.order[i]; break end
+        end
+    end
+    for _, rec in ipairs(mine) do rec.attempts, rec.verdict, rec.evidence = {}, "deselected", nil end
+    run.selected[id] = nil
+    reorder(run, ctx)
+    if viewing and run.cat[viewing] == id then
+        run.current = Run.NextPending(run, after and Run.IndexOf(run, after) - 1 or 0) or (#run.order + 1) -- never a finished step
+    end
+    Run.Touch(run, ctx.now)
+    return true
+end
+
 local function isOpenId(run, sid)
     local v = run.steps[sid] and run.steps[sid].verdict
     return v == "pending" or v == "unverified"

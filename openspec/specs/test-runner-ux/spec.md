@@ -338,7 +338,7 @@ With two to eight categories the card SHALL show one segment per category in pla
 - **THEN** the strip keeps the caption
 
 ### Requirement: The start flow offers categories
-The Home page and the card start screen SHALL list each category of the chosen plan with a checkbox in plan order, all checked, with its step count. Start run SHALL be off, with a line saying why, when none is checked. A plan with one category SHALL show no list. The card start screen SHALL list up to eight categories and the Home page up to twenty-four; a plan with more SHALL say where to choose.
+The Home page and the card start screen SHALL list each category of the chosen plan with a checkbox in plan order, all checked, with its step count. Start run SHALL be off, with a line saying why, when none is checked. A plan with one category SHALL show no list. The card start screen SHALL list up to eight categories inline. A plan with more SHALL show a Choose categories button that opens a window with the same checkboxes, fourteen rows at a time, scrolling with the mouse wheel and with page buttons. The Home page SHALL list twenty-four categories at a time with page buttons when the plan has more. Both lists SHALL change the same picked set.
 
 #### Scenario: Pick two
 - **WHEN** the tester clears two checkboxes and selects Start run
@@ -347,6 +347,14 @@ The Home page and the card start screen SHALL list each category of the chosen p
 #### Scenario: None picked
 - **WHEN** the tester clears every checkbox
 - **THEN** Start run is off and a line says "Select at least one category."
+
+#### Scenario: Thirty categories on the card
+- **WHEN** a plan has thirty categories and the tester selects Choose categories
+- **THEN** a window lists fourteen with page buttons, and a box cleared there is also cleared on Home
+
+#### Scenario: Thirty categories on Home
+- **WHEN** a plan has thirty categories
+- **THEN** Home lists twenty-four, and Next page shows the other six
 
 ### Requirement: A Categories window lists every category
 The card SHALL show a Categories control that opens a second movable window with one row per category: a colored square, the title, the state in words, and its passed, failed and open counts. The header SHALL show no overall count. It SHALL show up to 14 rows. A longer list SHALL scroll with the mouse wheel and with page buttons, and a line SHALL say which rows show. Each row SHALL show an arrow and the hint "Click for actions". Esc SHALL close the window.
@@ -391,3 +399,18 @@ A step that reads the Lua error list SHALL show an amber line on the card while 
 #### Scenario: Blind
 - **WHEN** a step with a no-error check is shown and nothing can see errors
 - **THEN** the card shows an amber line saying CheckThat cannot detect new Lua errors
+
+### Requirement: Verdicts have optional key bindings
+The game's key bindings window SHALL list CheckThat actions for Pass, Partial, Fail and Skip, with no key assigned by default. Each action SHALL record the same result as its card button, with the note from the card. An action SHALL do nothing and say why when no run is active or the card is hidden. No binding SHALL send a protected action.
+
+#### Scenario: Unbound by default
+- **WHEN** the addon loads for the first time
+- **THEN** no key triggers a verdict
+
+#### Scenario: A bound key
+- **WHEN** the tester presses a key bound to Pass on a step
+- **THEN** the step passes as if Pass was clicked and the card shows the next step
+
+#### Scenario: No run
+- **WHEN** the tester presses a bound key with no active run
+- **THEN** nothing is recorded and a line says there is no current step

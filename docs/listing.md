@@ -14,7 +14,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - See which steps CheckThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
 - An addon under test can report a fact with `CheckThat.Report`, and a plan or an automatic step checks it like a log line.
-- Group a plan's steps into categories. Pick the categories to run when you start, add one later, jump to one or run one again. A bar and a Categories window show each category in blue, yellow, red or green, and say the result in words.
+- Group a plan's steps into categories. Pick the categories to run when you start, add one later, jump to one, take one out while it has no result, or run one again. A bar and a Categories window show each category in blue, yellow, red or green, and say the result in words.
 - Check fact values (range, tolerance, type, list), how many times an event occurred, and that no Lua error appeared.
 - Keep your place through `/reload`.
 - Reopen, export or delete an older run from Past runs on the Home page. Choose how many runs to keep in Advanced.
@@ -31,6 +31,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `CheckThat` folder in `Interface/AddOns/`.
 - Run is not available in combat. CheckThat shows it again when combat ends.
 - CheckThat records Lua errors only while a run is open. It passes every error to the previous handler, names the addon in each line, and sets its handler again if another addon takes it. BugGrabber is optional: with it CheckThat reads its list instead.
-- A plan with more than 8 categories shows one bar on the card. Pick its categories on the Home page, which lists up to 24.
+- A plan with more than 8 categories shows one bar on the card. Pick its categories with the Choose categories button or on the Home page, 24 at a time.
+- Pass, Partial, Fail and Skip have optional key bindings. No key is set by default.
 - Blue on the tracker means untested. Yellow means partial or unverified.
 - Automatic steps record a result also while the card is hidden. They pause while the game interface is hidden. They read logs and never send input.

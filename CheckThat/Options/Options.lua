@@ -85,7 +85,7 @@ function Options.Home(order)
     note(g, "startHelp", grey(L["Import a plan first. Select a plan. Select the categories to test. Select Start run. Each plan keeps its own runs."]))
     add(g, "import", { type = "execute", name = L["Import a plan"], func = function() ns.Card.ImportPrompt() end })
     add(g, "pick", { type = "select", width = 1.5, name = L["Plan"], values = planValues,
-        get = function() return Options.state.pick end, set = function(_, v) Options.state.pick = v end })
+        get = function() return Options.state.pick end, set = function(_, v) Options.state.pick = v; Options.state.catPage = nil end })
     -- One checkbox per category of the picked plan, in plan order, all checked until one is cleared.
     local SLOTS = 24
     local function picks()
@@ -97,19 +97,35 @@ function Options.Home(order)
         for _, c in ipairs(list) do if c.picked and c.steps > 0 then return true end end
         return false
     end
+    local function pages() return math.max(1, math.ceil(#picks() / SLOTS)) end
+    local function page() return math.min(Options.state.catPage or 0, pages() - 1) end
+    local function at(i) return picks()[page() * SLOTS + i] end
     for i = 1, SLOTS do
         add(g, "cat" .. i, { type = "toggle", width = "full",
             name = function()
-                local c = picks()[i]
+                local c = at(i)
                 if not c then return "" end
                 return c.steps == 1 and L["%s: 1 step"]:format(c.title) or L["%s: %d steps"]:format(c.title, c.steps)
             end,
-            hidden = function() local list = picks(); return #list < 2 or not list[i] end,
-            get = function() local c = picks()[i]; return c and c.picked end,
-            set = function(_, v) local c = picks()[i]; if c then ns.App.SetPick(Options.state.pick, c.id, v) end end })
+            hidden = function() return #picks() < 2 or not at(i) end,
+            get = function() local c = at(i); return c and c.picked end,
+            set = function(_, v)
+                local c = at(i)
+                if c then ns.App.SetPick(Options.state.pick, c.id, v); if ns.Card and ns.Card.Refresh then ns.Card.Refresh() end end
+            end })
     end
     note(g, "pickNone", grey(L["Select at least one category."]), function() return anyPicked() end)
-    note(g, "pickMany", grey(L["This plan has more than 24 categories. Only the first 24 can be changed here."]), function() return #picks() <= SLOTS end)
+    add(g, "pickPage", { type = "description", fontSize = "small", width = "full",
+        name = function()
+            local n, first = #picks(), page() * SLOTS
+            return grey(L["Showing %d to %d of %d."]:format(first + 1, math.min(n, first + SLOTS), n))
+        end, hidden = function() return #picks() <= SLOTS end })
+    add(g, "pickPrev", { type = "execute", width = 0.6, name = L["Previous page"],
+        hidden = function() return #picks() <= SLOTS end, disabled = function() return page() == 0 end,
+        func = function() Options.state.catPage = page() - 1; Options.Notify() end })
+    add(g, "pickNext", { type = "execute", width = 0.6, name = L["Next page"],
+        hidden = function() return #picks() <= SLOTS end, disabled = function() return page() >= pages() - 1 end,
+        func = function() Options.state.catPage = page() + 1; Options.Notify() end })
     add(g, "start", { type = "execute", name = L["Start run"],
         disabled = function() return not Options.state.pick or not (ns.App.db and ns.App.db.plans[Options.state.pick]) or not anyPicked() end,
         func = function()

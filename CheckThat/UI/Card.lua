@@ -149,6 +149,34 @@ end
 
 
 
+-- A result from a button or a bound key. The result is recorded first; a drawing error afterwards is logged,
+-- never allowed to look like a stuck step.
+function Card.Verdict(v)
+    local note = card.note:GetText()
+    if note == "" then note = nil end
+    pcall(function() card.note:SetText(""); card.note:ClearFocus() end)
+    local _, _, step = App.Verdict(v, note)
+    local ok, err = pcall(function() Card.AfterVerdict(step); Card.Refresh() end)
+    if not ok and ns.Log then ns.Log.Failure("card", "after " .. v .. ": " .. tostring(err)) end
+end
+
+-- A bound key (Bindings.xml): the same as the button, only while the card shows a step with its verdict buttons.
+function Card.KeyVerdict(v)
+    local btn = card and card[v]
+    local function seen(f) return f and (f.IsVisible and f:IsVisible() or (not f.IsVisible and f:IsShown())) end -- hidden UI (Alt+Z) hides its children
+    if not (card and seen(card) and seen(btn)) then
+        ns.Slash.Print(L["Open the checklist and show a step to record a result with a key."])
+        return
+    end
+    Card.Verdict(v)
+end
+_G.BINDING_HEADER_CHECKTHAT = "CheckThat"
+_G.BINDING_NAME_CHECKTHAT_PASS = L["Pass"]
+_G.BINDING_NAME_CHECKTHAT_PARTIAL = L["Partial"]
+_G.BINDING_NAME_CHECKTHAT_FAIL = L["Fail"]
+_G.BINDING_NAME_CHECKTHAT_SKIP = L["Skip"]
+function CheckThat_Key(v) if ns.Card then ns.Card.KeyVerdict(v) end end
+
 local function build()
     card = CreateFrame("Frame", "CheckThatCard", UIParent, "BackdropTemplate")
     card:SetSize(380, 300)
@@ -261,15 +289,7 @@ local function build()
     card.fail:SetPoint("LEFT", card.partial, "RIGHT", 4, 0); card.skip:SetPoint("LEFT", card.fail, "RIGHT", 4, 0)
     card.undo:SetPoint("BOTTOMRIGHT", -12, 12)
     for k, v in pairs({ pass = "pass", partial = "partial", fail = "fail", skip = "skip" }) do
-        card[k]:SetScript("OnClick", function()
-            -- The result is recorded first; a drawing error afterwards is logged, never allowed to look like a stuck step.
-            local note = card.note:GetText()
-            if note == "" then note = nil end
-            pcall(function() card.note:SetText(""); card.note:ClearFocus() end)
-            local _, _, step = App.Verdict(v, note)
-            local ok, err = pcall(function() Card.AfterVerdict(step); Card.Refresh() end)
-            if not ok and ns.Log then ns.Log.Failure("card", "after " .. v .. ": " .. tostring(err)) end
-        end)
+        card[k]:SetScript("OnClick", function() Card.Verdict(v) end)
     end
     card.undo:SetScript("OnClick", function() App.Undo(); Card.Refresh() end)
 
@@ -289,12 +309,16 @@ local function build()
     card.start:SetScript("OnClick", function()
         local addon = App.db.ui.pendingStart or App.db.ui.lastImport
         local run, err = App.Start(addon, App.PickedIds(addon))
-        if not run then ns.Slash.Print(err) end
+        if not run then ns.Slash.Print(err) elseif ns.Picker then ns.Picker.Hide() end
         Card.Refresh()
     end)
     card.importAgain = makeButton(card, L["Import a plan"], 112); card.importAgain:SetHeight(24)
     card.importAgain:SetPoint("LEFT", card.start, "RIGHT", 6, 0)
     card.importAgain:SetScript("OnClick", Card.ImportPrompt)
+    card.chooseBtn = makeButton(card, L["Choose categories"], 140); card.chooseBtn:SetHeight(24)
+    card.chooseBtn:SetScript("OnClick", function()
+        if ns.Picker then ns.Picker.Show(App.db.ui.pendingStart or App.db.ui.lastImport) end
+    end)
     card.resume = makeButton(card, L["Resume run"], 100); card.resume:SetHeight(24)
     card.resume:SetPoint("LEFT", card.importAgain, "RIGHT", 6, 0)
     card.resume:SetScript("OnClick", function() App.db.ui.pendingStart = nil; Card.Refresh() end)
@@ -437,7 +461,7 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "chooseBtn", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide(); card.caption:Hide(); card.catBtn:Hide()
     for _, s in ipairs(card.segs) do s.back:Hide(); for _, t in ipairs(s.parts) do t:Hide() end; s.hit:Hide() end
@@ -537,6 +561,10 @@ function Card.CategoryItems(r)
     if r.counts.resolved > 0 then
         items[#items + 1] = { L["Rerun category: %s"]:format(r.title), function() Card.AskRerun(id) end }
     end
+    if App.CanDeselect(id) then
+        items[#items + 1] = { L["Remove from run: %s"]:format(r.title), function()
+            local ok, err = App.Deselect(id); if not ok then ns.Slash.Print(err) end; Card.Refresh() end }
+    end
     return items
 end
 
@@ -586,6 +614,10 @@ local refreshCard
 function Card.Refresh()
     refreshCard()
     if ns.Tracker then ns.Tracker.Refresh() end
+    if ns.Picker then
+        if not (card and card.chooseBtn:IsShown()) then ns.Picker.Hide() end -- only the start screen of a plan with many categories uses it
+        ns.Picker.Refresh()
+    end
 end
 function refreshCard()
     if not card then return end
@@ -649,12 +681,19 @@ function refreshCard()
                 card.start:SetEnabled(false)
             end
         elseif #list > Card.MAX_SEGMENTS then
-            local any = false
-            for _, ch in ipairs(list) do if ch.picked and ch.steps > 0 then any = true end end
+            -- Too many for the card: a count and a button that opens the picker window.
+            local any, n, runnable = false, 0, 0
+            for _, ch in ipairs(list) do
+                if ch.steps > 0 then runnable = runnable + 1 end
+                if ch.picked and ch.steps > 0 then any = true; n = n + 1 end
+            end
             place(card.pickNote, 12, y)
-            setText(card.pickNote, any and L["This plan has more than 8 categories. Select them in Settings, Home."] or L["Select at least one category."], any and GREY or AMBER)
-            y = y + card.pickNote:GetStringHeight() + 8
+            setText(card.pickNote, any and L["%d of %d categories picked."]:format(n, runnable) or L["Select at least one category."], any and GREY or AMBER)
+            y = y + card.pickNote:GetStringHeight() + 6
+            card.chooseBtn:ClearAllPoints(); card.chooseBtn:SetPoint("TOPLEFT", 12, -y); card.chooseBtn:Show()
+            y = y + 30
             card.start:SetEnabled(any)
+            if ns.Picker then ns.Picker.Follow(pendingAddon or App.db.ui.lastImport) end
         end
         card.start:ClearAllPoints(); card.start:SetPoint("BOTTOMLEFT", 12, 12)
         card.importAgain:ClearAllPoints() -- the first visible button sits at the left edge

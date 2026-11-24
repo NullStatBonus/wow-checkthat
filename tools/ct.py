@@ -791,7 +791,9 @@ def by_checkthat(rec):
 
 
 def evidence_state(rec):
-    """met, bad, missing or none: the required checks of the step's last finished attempt."""
+    """met, bad, missing or none: the required checks of the step's last finished attempt. A step reopened by Undo or a rerun has none."""
+    if rec.get("verdict") == "pending":
+        return "none"
     done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
     outs = [o for o in (done[-1].get("outcomes") or []) if not o.get("diagnostic")] if done else []
     if not outs:
@@ -848,7 +850,8 @@ def step_table(r, only=None):
             continue
         rec = (r.get("steps") or {}).get(sid, {})
         done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
-        note = " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
+        reopened = bool(done) and rec.get("verdict") == "pending"   # Undo or a rerun: the older attempt no longer speaks for the step
+        note = "awaiting retry" if reopened else " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
         if len(note) > 40:
             note = note[:37] + "..."
         rows.append((sid, str(rec.get("verdict", "?")), evidence_state(rec), str(len(rec.get("attempts") or [])), note))
@@ -1037,8 +1040,15 @@ def run_model(rid, r, stacks=None, lines=False):
                 checks.append({"attempt": at.get("n"), "verdict": at.get("verdict"), "outcomes": outs})
         if checks:
             s["checks"] = checks
-        if stacks and result in ("fail", "unverified"):
-            s["stacks"] = [t for at in rec.get("attempts") or [] for t in stacks.get((sid, at.get("n")), [])]
+        if stacks:
+            # Stacks belong to the attempt that was open; a step that failed and then passed keeps them too.
+            last = done[-1] if done else None
+            per = [{"attempt": at.get("n"), "stacks": stacks[(sid, at.get("n"))]} for at in rec.get("attempts") or []
+                   if (at.get("verdict") in ("fail", "unverified") or (at is last and result in ("fail", "unverified"))) and stacks.get((sid, at.get("n")))]
+            if per:
+                s["attemptStacks"] = per
+            if result in ("fail", "unverified"):
+                s["stacks"] = [t for p in per for t in p["stacks"]]
         steps.append(s)
     return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "revision": r.get("revision"), "formatRev": r.get("formatRev"),
             "writerVersion": r.get("writerVersion"), "client": r.get("client"),
@@ -1050,8 +1060,9 @@ def models(runs, dest=None, with_stacks=False, with_lines=False):
     out = []
     for rid, r in sorted(runs.items()):
         errs, stks = load_errors(dest, stored_id(rid, r)) if with_stacks and dest else ({}, {})
-        hits, _ = stack_hits(r, stks)
-        out.append(run_model(rid, r, {k: ["%s: %s" % (key, stks[key]) for key in v] for k, v in hits.items()} if with_stacks else None, with_lines))
+        hits, ambiguous = stack_hits(r, stks)
+        label = lambda key: "%s%s: %s" % (key, " (time also fits another attempt)" if key in ambiguous else "", stks[key])
+        out.append(run_model(rid, r, {k: [label(key) for key in v] for k, v in hits.items()} if with_stacks else None, with_lines))
     return out
 
 def bad_steps(ms):
@@ -1096,8 +1107,12 @@ def report_junit(runs, dest=None, with_stacks=False, with_lines=False):
                     f.text = clean("\n".join(body + (s.get("stacks") or [])) or s["reason"])
                 elif s["result"] == "skipped":
                     ET.SubElement(case, "skipped", message=clean(s["reason"]))
-                elif s["result"] == "partial":
-                    ET.SubElement(case, "system-out").text = clean("partial: " + s["reason"])
+                else:
+                    out = (["partial: " + s["reason"]] if s["result"] == "partial" else [])
+                    for p in s.get("attemptStacks") or []:   # a failure that a later attempt recovered
+                        out.extend("recovered failure, attempt %s, error %s" % (p["attempt"], t) for t in p["stacks"])
+                    if out:
+                        ET.SubElement(case, "system-out").text = clean("\n".join(out))
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
 
