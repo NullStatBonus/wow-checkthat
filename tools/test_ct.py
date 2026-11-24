@@ -1053,5 +1053,182 @@ class Cases(unittest.TestCase):
 
 
 
+class Results(unittest.TestCase):
+    def run_with(self, steps, **extra):
+        return {"R-1": {"planTitle": "t", "addon": "KeepThat", "revision": 2, "client": "classic-era", "build": "1", "character": "X",
+                        "order": [s for s in steps if steps[s].get("verdict") not in ("deselected", "inapplicable")], "steps": steps,
+                        "cat": {s: "c1" for s in steps}, "categories": [{"id": "c1", "title": "One"}], "selected": {"c1": True}, **extra}}
+
+    def steps(self):
+        return {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "fail", "note": "broke", "started": 100, "finished": 110},
+                                                       {"n": 2, "verdict": "pass", "started": 111, "finished": 120}]},
+                "b": {"verdict": "fail", "attempts": [{"n": 1, "verdict": "fail", "note": "nope", "started": 200, "finished": 210}]},
+                "c": {"verdict": "unverified", "attempts": [{"n": 1, "verdict": "unverified"}]},
+                "d": {"verdict": "partial", "attempts": [{"n": 1, "verdict": "partial", "note": "slow"}]},
+                "e": {"verdict": "pending", "attempts": []}, "f": {"verdict": "skip", "attempts": []},
+                "g": {"verdict": "deselected", "attempts": []}}
+
+    def cli(self, *argv):
+        import io, contextlib
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = ct.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def dest_with(self, runs):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        for rid, run in runs.items():
+            ct.write_revision(d, {**run, "runId": rid})
+        return d
+
+    def test_report_shows_the_earlier_failure_under_a_later_pass(self):
+        text = ct.report_text(self.run_with(self.steps()))
+        self.assertIn("- a: pass, after 1 earlier failed or unverified attempt", text)
+        self.assertIn("attempt 1: fail note=broke", text)
+        self.assertNotIn("attempt 2: pass", text)
+        self.assertIn("result: FAIL (1 fail, 1 unverified)", text)
+
+    def test_classify_holds_a_pass_to_its_required_evidence(self):
+        rec = lambda v, res: {"verdict": v, "attempts": [{"n": 1, "verdict": v, "outcomes": [{"result": res, "why": "w"}]}]}
+        self.assertEqual(ct.classify(rec("pass", "fail"))[0], "fail")
+        self.assertEqual(ct.classify(rec("pass", None))[0], "unverified")
+        self.assertEqual(ct.classify(rec("pass", "pass"))[0], "pass")
+        self.assertEqual(ct.classify(rec("partial", "pass"))[0], "partial")
+        self.assertEqual(ct.classify({"verdict": "deselected"}), ("skipped", "category not picked"))
+        self.assertEqual(ct.classify({"verdict": "pending"}), ("skipped", "not run"))
+
+    def test_junit_has_a_suite_per_category_and_failures_skips_and_partials(self):
+        from xml.etree import ElementTree as ET
+        root = ET.fromstring(ct.report_junit(self.run_with(self.steps())))
+        suite = root.find("testsuite")
+        self.assertEqual((suite.get("name"), suite.get("tests"), suite.get("failures"), suite.get("skipped")), ("R-1/c1", "7", "2", "3"))
+        cases = {c.get("name"): c for c in suite}
+        self.assertEqual(cases["b"].find("failure").get("type"), "fail")
+        self.assertEqual(cases["c"].find("failure").get("type"), "unverified")
+        self.assertEqual(cases["g"].find("skipped").get("message"), "category not picked")
+        self.assertIsNone(cases["d"].find("failure")); self.assertIn("slow", cases["d"].find("system-out").text)
+
+    def test_json_totals_and_ok(self):
+        d = json.loads(ct.report_json(self.run_with(self.steps())))
+        self.assertFalse(d["ok"]); self.assertEqual(d["totals"]["fail"], 1); self.assertEqual(d["runs"][0]["steps"][0]["id"], "a")
+        clean = self.run_with({"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}})
+        self.assertTrue(json.loads(ct.report_json(clean))["ok"])
+
+    def errors_dest(self, errs, stacks):
+        d = self.dest_with(self.run_with(self.steps()))
+        os.makedirs(os.path.join(d, "errors"))
+        with open(os.path.join(d, "errors", "x.json"), "w") as fh:
+            json.dump({"runs": ["R-1"], "errors": errs, "errorStacks": stacks}, fh)
+        return d
+
+    def test_report_prints_the_stack_under_the_attempt_that_was_open(self):
+        d = self.errors_dest(["205.001 [KeepThat] boom"], ["205.001 a.lua:1 / b.lua:2"])
+        text = ct.report_text(ct.latest_runs(d), d)
+        self.assertIn("error 205.001: [KeepThat] boom", text)
+        self.assertIn("stack: a.lua:1 / b.lua:2", text)
+        self.assertLess(text.index("attempt 1: fail note=nope"), text.index("error 205.001"))
+        self.assertNotIn("stack:", ct.report_text(ct.latest_runs(d), d, stacks=False))
+
+    def test_a_stack_whose_time_fits_two_attempts_is_labelled(self):
+        steps = self.steps(); steps["b"]["attempts"][0].update(started=105, finished=210)
+        d = self.dest_with(self.run_with(steps))
+        os.makedirs(os.path.join(d, "errors"))
+        with open(os.path.join(d, "errors", "x.json"), "w") as fh:
+            json.dump({"errors": ["108.002 [K] x"], "errorStacks": ["108.002 s"]}, fh)
+        self.assertIn("(time also fits another attempt)", ct.report_text(ct.latest_runs(d), d))
+
+    def test_json_and_junit_keep_stacks_out_unless_asked(self):
+        d = self.errors_dest(["205.001 [K] boom"], ["205.001 SECRET /Users/x"])
+        runs = ct.latest_runs(d)
+        self.assertNotIn("SECRET", ct.report_json(runs, d)); self.assertNotIn("SECRET", ct.report_junit(runs, d))
+        self.assertIn("SECRET", ct.report_json(runs, d, True)); self.assertIn("SECRET", ct.report_junit(runs, d, True))
+
+    def test_strict_report_exit_code(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        self.assertEqual(self.cli("report", "--dest", d, "--format", "junit")[0], 0)
+        code, out, err = self.cli("report", "--dest", d, "--format", "json", "--strict")
+        self.assertEqual(code, 1); self.assertIn("failed or are unverified", err); json.loads(out)   # stdout stays valid JSON
+        clean = self.dest_with(self.run_with({"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}}))
+        self.assertEqual(self.cli("report", "--dest", clean, "--format", "json", "--strict")[0], 0)
+        self.assertEqual(self.cli("report", "--dest", tempfile.mkdtemp(), "--format", "json", "--strict")[0], 1)
+
+    def test_status_says_what_is_wrong_with_the_folder(self):
+        code, out, _ = self.cli("status", "--dest", tempfile.mkdtemp())
+        self.assertEqual(code, 1); self.assertIn("no run revisions", out)
+        d = self.dest_with(self.run_with(self.steps()))
+        code, out, _ = self.cli("status", "--dest", d)
+        self.assertEqual(code, 0, out); self.assertIn("R-1", out); self.assertIn("no problems", out); self.assertIn("report --strict", out)
+        rp = os.path.join(d, "runs", "R-1")
+        with open(os.path.join(rp, "r3.json"), "w") as fh:
+            fh.write("{broken")
+        code, out, _ = self.cli("status", "--dest", d, "--json")
+        data = json.loads(out)
+        self.assertEqual(code, 1); self.assertFalse(data["ok"]); self.assertEqual(data["runs"][0]["revision"], 2)   # the healthy revision still shows
+        self.assertTrue(any("r3.json is unreadable" in p for p in data["problems"]))
+        self.assertIn("R-1", ct.latest_runs(d))
+
+    def test_status_reports_a_collect_conflict_and_a_size_near_the_limit(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        ct.note_problem(d, "run R-1 revision 2 already stored with different content")
+        self.assertTrue(any("already stored" in p for p in ct.status_data(d)[1]))
+        big = self.run_with({"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass", "note": "x" * int(ct.MAX_INFLATED * 0.9)}]}})
+        self.assertTrue(any("export limit" in p for p in ct.status_data(self.dest_with(big))[1]))
+
+    def test_an_open_attempt_snapshot_is_not_a_conflict(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        run = {"runId": "R-1", "revision": 1, "steps": {"a": {"attempts": [{"n": 1, "snapshots": {"debug": {"n": 3}}}]}}}
+        exported = json.loads(json.dumps(run)); exported["steps"]["a"]["attempts"][0].pop("snapshots")
+        self.assertEqual(ct.write_revision(d, run), "new")
+        self.assertEqual(ct.write_revision(d, exported), "same")   # /ct export strips snapshots
+        exported["steps"]["a"]["attempts"][0]["n"] = 2
+        self.assertEqual(ct.write_revision(d, exported), "conflict")
+
+    def test_junit_stays_valid_xml_with_control_characters_in_a_note(self):
+        from xml.etree import ElementTree as ET
+        steps = {"a": {"verdict": "fail", "attempts": [{"n": 1, "verdict": "fail", "note": "bad \x01 byte"}]}}
+        root = ET.fromstring(ct.report_junit(self.run_with(steps)))
+        self.assertIn("bad ? byte", root.find("testsuite/testcase/failure").get("message"))
+
+    def test_status_skips_files_that_are_not_run_records(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        rp = os.path.join(d, "runs", "R-1")
+        for name, body in (("r3.json", "{}"), ("r4.json", "[]"), ("r-1.json", "{}"), ("r-old.json", "x")):
+            with open(os.path.join(rp, name), "w") as fh:
+                fh.write(body)
+        self.assertEqual(ct.latest_runs(d)["R-1"]["revision"], 2)
+        problems = ct.status_data(d)[1]
+        self.assertTrue(any("r3.json is unreadable" in p for p in problems)); self.assertTrue(any("r4.json is unreadable" in p for p in problems))
+        with self.assertRaises(ValueError):
+            ct.write_revision(d, {"runId": "R-2", "revision": -1, "steps": {}})
+
+    def test_a_stack_from_another_sessions_saved_variables_is_not_matched(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        os.makedirs(os.path.join(d, "errors"))
+        with open(os.path.join(d, "errors", "x.json"), "w") as fh:
+            json.dump({"runs": ["Other-9"], "errors": ["205.001 [K] boom"], "errorStacks": ["205.001 theirs"]}, fh)
+        self.assertNotIn("theirs", ct.report_text(ct.latest_runs(d), d))
+
+    def test_a_pass_its_evidence_contradicts_keeps_its_attempt_detail(self):
+        steps = {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass", "outcomes": [{"result": "fail", "why": "line seen"}]}]}}
+        text = ct.report_text(self.run_with(steps))
+        self.assertIn("result: FAIL", text); self.assertIn("evidence=fail(line seen)", text)
+
+    def test_a_step_named_in_order_but_missing_is_not_a_pass(self):
+        run = self.run_with({"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}})
+        run["R-1"]["order"] = ["a", "a", "ghost"]
+        m = ct.models(run)[0]
+        self.assertEqual([s["id"] for s in m["steps"]], ["a", "ghost"]); self.assertEqual(m["counts"], {"pass": 1, "unverified": 1})
+        self.assertFalse(json.loads(ct.report_json({}))["ok"])
+
+    def test_collect_keeps_the_error_lines_and_stacks(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write('CheckThatDB = {["global"] = {["errors"] = {"7.001 [K] e"}, ["errorStacks"] = {"7.001 s1 / s2"}, ["runs"] = {}}}\n')
+        dest = os.path.join(d, "dest")
+        ct.cmd_collect(type("A", (), {"src": os.path.join(d, "src"), "dest": dest, "shots": None}))
+        self.assertEqual(ct.load_errors(dest), ({"7.001": "[K] e"}, {"7.001": "s1 / s2"}))
+
+
 if __name__ == "__main__":
     unittest.main()

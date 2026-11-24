@@ -440,8 +440,12 @@ end
 function App.Begin()
     local run, ctx, step = App.Current()
     if not step then return nil end
-    if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.StepStarted() end
-    return ns.Run.Begin(run, ctx, step.id), step
+    local rec = run.steps[step.id]
+    local before = rec and #rec.attempts
+    if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample() end
+    local a = ns.Run.Begin(run, ctx, step.id)
+    if ns.Errors and #run.steps[step.id].attempts ~= before then ns.Errors.StepStarted() end -- only a new attempt wants a stack
+    return a, step
 end
 
 local function logResult(step, a)

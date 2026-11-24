@@ -4,15 +4,20 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 
 `collect` and `report` need LuaJIT (`luajit` on your PATH) to decode saved variables.
 
-## Collect and report
+## Collect, check and report
 
 ```
-.venv/bin/python tools/ct.py collect     # copy saved variables, runs and screenshots into evidence/
+.venv/bin/python tools/ct.py collect     # copy saved variables, runs, error stacks and screenshots into evidence/
+.venv/bin/python tools/ct.py status      # is the evidence readable and complete?
 .venv/bin/python tools/ct.py report      # write evidence/REPORT.md
 ```
 
 - **Source.** `collect` reads `../shared-addon-resources/saved` by default. `--wow <game dir>` (or `CT_WOW`) collects `_classic_era_` and `_forever_` with their `WTF` and `Screenshots` folders. `--src <WTF dir>` (or `CT_WTF`) names one folder and wins.
-- **Report.** `REPORT.md` starts each run with a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass.
+- **Report.** `REPORT.md` gives each run a `result:` line (`ok`, `UNVERIFIED` or `FAIL` with counts) and a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass. A step that passed after a rerun lists its earlier failed or unverified attempts too. A failed or unverified attempt shows the Lua error that was raised while it was open, with its call stack. The match is by time (whole seconds), so a stack that also fits another attempt says so.
+- **Status.** `status` prints one row per run at its newest readable revision: steps done over steps that apply, fail, unverified and open counts, age, and the export size as a percent of the 2 MB limit (`size~`, an estimate from the saved run). It names every revision file it cannot read and every conflict or decode failure `collect` met (kept in `evidence/problems.log`; delete the file once you have looked). It judges the evidence, not the test result. `--json` prints the same as JSON.
+- **Exit codes.** `status` exits 0 when every revision is readable and nothing conflicts, 1 when there is no run, a revision is unreadable, a conflict was logged or a run is over 80% of the size limit. `report --strict` exits 1 when any step failed or is unverified (a pass or partial whose required evidence failed or has no result counts too), or when there are no runs. Without `--strict` `report` exits 0.
+- **Formats.** `report --format json` prints the steps, counts and categories as JSON. `report --format junit` prints JUnit XML for a CI job: a suite for each run and category, a case for each step. Fail and unverified are failures (the `type` says which). Pending, skip, deselected and not-for-this-client steps are skipped with the reason. Partial passes and keeps its note in `system-out`. For json and junit, `--out <file>` writes the file instead of printing. Call stacks can hold private paths, so json and junit leave them out unless you add `--stacks`.
+- **Log lines.** A run keeps about 60 000 bytes of log lines in failed attempts. When it holds more, the oldest attempts lose theirs first. They keep their attempt records.
 - **Results string.** Paste one from `/ct export` with `.venv/bin/python tools/ct.py import-results "<string>"`. A file path works too.
 - Keep `evidence/` out of Git.
 
@@ -36,6 +41,7 @@ It copies CheckThat and the three addons' saved variables (including Era per-cha
 
 ```
 .venv/bin/python tools/ct.py collect --src evidence-src
+.venv/bin/python tools/ct.py status
 .venv/bin/python tools/ct.py report
 ```
 

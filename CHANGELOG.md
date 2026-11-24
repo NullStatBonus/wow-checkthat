@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.1
+
+Fixed: **Large exports.** A run with many failed steps saved more log lines than an export holds. CheckThat now keeps the newest lines and drops the oldest.
+Fixed: **One error stack for each attempt.** A step that stayed open when the card refreshed kept a second error stack. It now keeps one.
+
 ## 0.13.0
 
 New: **Log lines kept with a failed step.** A failed or unverified step saves the first new lines of the logs it checks. The report shows them.

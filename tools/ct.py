@@ -3,7 +3,7 @@
 
 Needs PyYAML and jsonschema (see requirements.txt). Run via .venv/bin/python tools/ct.py.
 """
-import argparse, base64, copy, glob, hashlib, json, os, re, shutil, subprocess, sys, zlib
+import argparse, base64, copy, glob, hashlib, json, os, re, shutil, subprocess, sys, time, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "test-plan.schema.json")
@@ -287,6 +287,23 @@ def safe_name(s):
     return s or "_"
 
 
+def export_form(run):
+    """The run as /ct export sends it: open attempts carry snapshots in the saved variables, not in an export."""
+    run = copy.deepcopy(run)
+    for rec in (run.get("steps") or {}).values():
+        for a in rec.get("attempts") or []:
+            a.pop("snapshots", None)
+            a.pop("reloaded", None)   # set when the game reloads with the attempt open; it does not change the revision
+    return run
+
+def note_problem(dest, text):
+    """Keep what collect could not store, so a later status still shows it."""
+    p = os.path.join(dest, "problems.log")
+    old = open(p).read().splitlines() if os.path.exists(p) else []
+    if text not in old:
+        with open(p, "a") as fh:
+            fh.write(text + "\n")
+
 def write_revision(dest, run):
     """Store one run revision. Refuse a path outside dest and a different run that reuses an id and revision.
     Returns "new", "same" or "conflict"."""
@@ -295,11 +312,18 @@ def write_revision(dest, run):
     if os.path.dirname(rp) != base:
         raise ValueError("run id leaves the runs folder")
     os.makedirs(rp, exist_ok=True)
-    rj = os.path.join(rp, "r%d.json" % int(run.get("revision", 0)))
+    rev = int(run.get("revision", 0))
+    if rev < 0:
+        raise ValueError("revision is negative")
+    rj = os.path.join(rp, "r%d.json" % rev)
     text = json.dumps(run, indent=1, sort_keys=True)
     if os.path.exists(rj):
-        with open(rj) as fh:
-            return "same" if fh.read() == text else "conflict"
+        try:
+            with open(rj) as fh:
+                same = canonical(export_form(json.load(fh))) == canonical(export_form(run))
+        except ValueError:
+            same = False   # a damaged stored file is not the same run
+        return "same" if same else "conflict"
     with open(rj, "w") as fh:
         fh.write(text)
     return "new"
@@ -534,6 +558,35 @@ def default_src():
     return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
 
 
+def save_errors(dest, glob_db, h, rids=()):
+    """Keep the saved Lua error lines and their call stacks (they are not part of a run) next to the run copies."""
+    if not isinstance(glob_db, dict):
+        return
+    errs, stacks = glob_db.get("errors"), glob_db.get("errorStacks")
+    errs, stacks = errs if isinstance(errs, list) else [], stacks if isinstance(stacks, list) else []
+    if errs or stacks:
+        os.makedirs(os.path.join(dest, "errors"), exist_ok=True)
+        with open(os.path.join(dest, "errors", h + ".json"), "w") as fh:
+            json.dump({"runs": list(rids), "errors": errs, "errorStacks": stacks}, fh, indent=1)
+
+def load_errors(dest, rid=None):
+    """({key: error line}, {key: call stack}) from the collected saved-variables copies. The key is <time>.<counter> and is only
+    unique inside one game session, so with rid only the copies that hold that run count."""
+    errs, stacks = {}, {}
+    for p in sorted(glob.glob(os.path.join(dest or "", "errors", "*.json"))):
+        try:
+            with open(p) as fh:
+                d = json.load(fh)
+        except (ValueError, OSError):
+            continue
+        if rid is not None and d.get("runs") and rid not in d["runs"]:
+            continue
+        for lines, into in ((d.get("errors"), errs), (d.get("errorStacks"), stacks)):
+            for line in lines or []:
+                if isinstance(line, str) and " " in line:
+                    into.setdefault(line.split(" ", 1)[0], line.split(" ", 1)[1])
+    return errs, stacks
+
 def collect_src(src, base, dest):
     os.makedirs(os.path.join(dest, "sv"), exist_ok=True)
     os.makedirs(os.path.join(dest, "runs"), exist_ok=True)
@@ -550,8 +603,10 @@ def collect_src(src, base, dest):
             try:
                 db = sv_json(f).get("CheckThatDB") or {}   # an empty Lua table decodes to a list
             except Exception as e:
-                print("error: could not decode %s: %s" % (f, e), file=sys.stderr); failed += 1; continue
+                print("error: could not decode %s: %s" % (f, e), file=sys.stderr); failed += 1
+                note_problem(dest, "could not decode %s (%s): %s" % (os.path.relpath(f, base), h, e)); continue
             glob_db = db.get("global") if isinstance(db, dict) else None
+            save_errors(dest, glob_db, h, [str(k) for k in ((glob_db or {}).get("runs") or db.get("runs") or {})] if isinstance(glob_db, dict) else [])
             runs = (glob_db.get("runs") if isinstance(glob_db, dict) else None) or (db.get("runs") if isinstance(db, dict) else None) or {}
             if not isinstance(runs, dict):
                 runs = {}
@@ -560,11 +615,14 @@ def collect_src(src, base, dest):
                 try:
                     res = write_revision(dest, run)
                 except (ValueError, OSError, TypeError) as e:
-                    print("skip run %r: %s" % (rid, e), file=sys.stderr); continue
+                    print("skip run %r: %s" % (rid, e), file=sys.stderr)
+                    note_problem(dest, "run %s was not stored: %s" % (rid, " ".join(str(e).split()))); continue
                 if res == "new":
                     new_runs += 1
                 elif res == "conflict":
-                    print("warning: run %s revision %s already stored with different content; kept the first (two testers may share an id)" % (rid, run.get("revision")), file=sys.stderr)
+                    msg = "run %s revision %s already stored with different content; kept the first (two testers may share an id); new copy in sv/*.%s.lua" % (rid, run.get("revision"), h)
+                    print("warning: " + msg, file=sys.stderr)
+                    note_problem(dest, msg)
     return new_sv, new_runs, failed
 
 
@@ -609,11 +667,28 @@ def run_shots(dest, rid):
 def latest_runs(dest):
     runs = {}
     for rp in glob.glob(os.path.join(dest, "runs", "*")):
-        revs = sorted(glob.glob(os.path.join(rp, "r*.json")), key=lambda p: int(re.search(r"r(\d+)\.json", p).group(1)))
-        if revs:
-            with open(revs[-1]) as fh:
-                runs[os.path.basename(rp)] = json.load(fh)
+        for p in reversed(rev_files(rp)):   # newest readable revision; status names a damaged one
+            try:
+                runs[os.path.basename(rp)] = read_run(p)
+                break
+            except (ValueError, OSError):
+                continue
     return runs
+
+def rev_files(rp):
+    """Revision files of one run, oldest first. A file that is not r<number>.json is not a revision."""
+    found = [(int(m.group(1)), p) for p in glob.glob(os.path.join(rp, "r*.json")) for m in [re.fullmatch(r"r(\d+)\.json", os.path.basename(p))] if m]
+    return [p for _, p in sorted(found)]
+
+def read_run(path):
+    """One stored revision. Raises ValueError (or OSError) when it is not a run record."""
+    with open(path) as fh:
+        run = json.load(fh)
+    if isinstance(run, dict) and run.get("steps") == []:
+        run["steps"] = {}   # an empty Lua table decodes to a list
+    if not isinstance(run, dict) or not isinstance(run.get("steps"), dict) or not isinstance(run.get("order", []), list):
+        raise ValueError("not a run record")
+    return run
 
 
 def by_checkthat(rec):
@@ -668,7 +743,7 @@ def category_states(r):
 
 def step_ids(r):
     """Steps in plan order, then any other recorded step (one the client does not use) in name order."""
-    order = list(r.get("order") or [])
+    order = list(dict.fromkeys(r.get("order") or []))
     return order + sorted(s for s in (r.get("steps") or {}) if s not in order)
 
 
@@ -686,9 +761,41 @@ def step_table(r):
     return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
 
 
-def report_text(runs, dest=None):
+def attempt_lines(at, stack_keys, errs, stacks, ambiguous):
+    note = at.get("note")
+    outs = [o for o in (at.get("outcomes") or []) if o.get("result") != "pass"]
+    out = ["  attempt %s: %s%s%s" % (at.get("n"), at.get("verdict"),
+           " note=" + note if note else "",
+           " evidence=" + ",".join("%s(%s)" % (o.get("result"), o.get("why", "")) for o in outs) if outs else "")]
+    for src, lines in sorted((at.get("excerpt") or {}).items()):
+        out.append("    log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
+        out.extend("      " + str(line) for line in lines)
+    for key in stack_keys:
+        out.append("    error %s%s: %s" % (key, " (time also fits another attempt)" if key in ambiguous else "", errs.get(key, "(error line no longer saved)")))
+        out.append("      stack: " + stacks[key])
+    return out
+
+def stack_hits(r, stacks):
+    """{(step, attempt n): [stack keys]} for stacks raised inside the attempt's open time, and the keys that fit more than one attempt.
+    The key is <time>.<counter>; time has whole-second precision, so a match is a candidate, not proof."""
+    hits, count = {}, {}
+    for key in stacks:
+        try:
+            sec = int(key.split(".")[0])
+        except ValueError:
+            continue
+        for sid, rec in (r.get("steps") or {}).items():
+            for at in rec.get("attempts") or []:
+                s, f = at.get("started"), at.get("finished")
+                if isinstance(s, (int, float)) and isinstance(f, (int, float)) and s <= sec <= f:
+                    hits.setdefault((sid, at.get("n")), []).append(key)
+                    count[key] = count.get(key, 0) + 1
+    return hits, {k for k, n in count.items() if n > 1}
+
+def report_text(runs, dest=None, stacks=True):
     out = ["# CT report", ""]
     for rid, r in sorted(runs.items()):
+        errs, stks = load_errors(dest, rid) if stacks and dest else ({}, {})
         counts = {}
         for sid, rec in (r.get("steps") or {}).items():
             counts[rec.get("verdict", "?")] = counts.get(rec.get("verdict", "?"), 0) + 1
@@ -700,6 +807,9 @@ def report_text(runs, dest=None):
         if cats:
             out.append("categories: " + ", ".join("%s %s %d/%d" % (cid, state, res, tot) if state != "off" else "%s not picked" % cid
                                                    for cid, _, state, res, tot in cats))
+        hits, ambiguous = stack_hits(r, stks)
+        bad = [m for m in (classify(rec)[0] for rec in (r.get("steps") or {}).values()) if m in ("fail", "unverified")]
+        out.append("result: " + ("FAIL" if "fail" in bad else "UNVERIFIED" if bad else "ok") + (" (%d fail, %d unverified)" % (bad.count("fail"), bad.count("unverified")) if bad else ""))
         out.append("")
         out.extend(step_table(r))
         out.append("")
@@ -707,23 +817,174 @@ def report_text(runs, dest=None):
             rec = (r.get("steps") or {}).get(sid, {})
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
             mark = ", recorded by CheckThat" if by_checkthat(rec) else ""
-            if (shots or mark) and rec.get("verdict") in ("pass", "skip", "inapplicable"):
-                out.append("- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else ""))
-            if rec.get("verdict") in ("pass", "skip", "inapplicable"):
+            settled = rec.get("verdict") in ("pass", "skip", "inapplicable") and classify(rec)[0] not in ("fail", "unverified")   # a pass its evidence contradicts keeps its detail
+            earlier = [at for at in rec.get("attempts", []) if at.get("verdict") in ("fail", "unverified")] if settled else []
+            head = "- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else "")
+            if (shots or mark or earlier) and settled:
+                out.append(head + (", after %d earlier failed or unverified attempt%s" % (len(earlier), "" if len(earlier) == 1 else "s") if earlier else ""))
+            if settled and not earlier:
                 continue
-            out.append("- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else ""))
-            for at in rec.get("attempts", []):
-                note = at.get("note")
-                outs = [o for o in (at.get("outcomes") or []) if o.get("result") != "pass"]
-                out.append("  attempt %s: %s%s%s" % (at.get("n"), at.get("verdict"),
-                           " note=" + note if note else "",
-                           " evidence=" + ",".join("%s(%s)" % (o.get("result"), o.get("why", "")) for o in outs) if outs else ""))
-                for src, lines in sorted((at.get("excerpt") or {}).items()):
-                    out.append("    log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
-                    out.extend("      " + str(line) for line in lines)
+            if not settled:
+                out.append(head)
+            for at in (earlier if settled else rec.get("attempts", [])):
+                out.extend(attempt_lines(at, hits.get((sid, at.get("n")), []) if at.get("verdict") in ("fail", "unverified") else [], errs, stks, ambiguous))
         out.append("")
     return "\n".join(out)
 
+
+
+# ---------------------------------------------------------------- results for machines
+
+SKIP_WHY = {"pending": "not run", "skip": "skipped by the tester", "deselected": "category not picked", "inapplicable": "not for this client"}
+
+def classify(rec):
+    """(result, why): pass, partial, fail, unverified or skipped. One rule for every report format and --strict.
+    A pass or partial claim is held to its required evidence: a contradicted check is a fail, a check with no result is unverified."""
+    v = rec.get("verdict")
+    done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
+    last = done[-1] if done else {}
+    bits = [last.get("note") or ""] + ["%s(%s)" % (o.get("result"), o.get("why", "")) for o in (last.get("outcomes") or []) if o.get("result") != "pass" and not o.get("diagnostic")]
+    why = " ".join(" ".join(b for b in bits if b).split())
+    if v in ("pass", "partial"):
+        ev = evidence_state(rec)
+        if ev == "bad":
+            return "fail", why or "a required check was contradicted"
+        if ev == "missing":
+            return "unverified", why or "a required check has no result"
+        return v, why
+    if v == "fail":
+        return "fail", why or "failed"
+    if v == "unverified":
+        return "unverified", why or "no evidence"
+    return "skipped", SKIP_WHY.get(v, "no result")
+
+def run_model(rid, r, stacks=None):
+    """The run as plain data. stacks is {(step, attempt n): [text]} and is left out unless asked for."""
+    steps, counts = [], {}
+    for sid in step_ids(r):
+        rec = (r.get("steps") or {}).get(sid)
+        result, why = classify(rec) if rec is not None else ("unverified", "the run has no record of this step")
+        rec = rec or {}
+        counts[result] = counts.get(result, 0) + 1
+        s = {"id": sid, "category": (r.get("cat") or {}).get(sid), "result": result, "verdict": rec.get("verdict"), "reason": why,
+             "attempts": len(rec.get("attempts") or []), "recordedByCheckThat": by_checkthat(rec)}
+        if stacks and result in ("fail", "unverified"):
+            s["stacks"] = [t for at in rec.get("attempts") or [] for t in stacks.get((sid, at.get("n")), [])]
+        steps.append(s)
+    return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "revision": r.get("revision"), "client": r.get("client"),
+            "build": r.get("build"), "character": r.get("character"), "counts": counts,
+            "categories": [{"id": c, "title": t, "state": st, "resolved": a, "total": b} for c, t, st, a, b in category_states(r)],
+            "steps": steps}
+
+def models(runs, dest=None, with_stacks=False):
+    out = []
+    for rid, r in sorted(runs.items()):
+        errs, stks = load_errors(dest, rid) if with_stacks and dest else ({}, {})
+        hits, _ = stack_hits(r, stks)
+        out.append(run_model(rid, r, {k: ["%s: %s" % (key, stks[key]) for key in v] for k, v in hits.items()} if with_stacks else None))
+    return out
+
+def bad_steps(ms):
+    return sum(m["counts"].get("fail", 0) + m["counts"].get("unverified", 0) for m in ms)
+
+def report_json(runs, dest=None, with_stacks=False):
+    ms = models(runs, dest, with_stacks)
+    totals = {}
+    for m in ms:
+        for k, n in m["counts"].items():
+            totals[k] = totals.get(k, 0) + n
+    return json.dumps({"runs": ms, "totals": totals, "ok": bool(ms) and bad_steps(ms) == 0}, indent=1, sort_keys=True)
+
+def report_junit(runs, dest=None, with_stacks=False):
+    """JUnit XML: a suite for each run category, a case for each step. Fail and unverified are failures (type tells them apart);
+    partial passes with its note in system-out; pending, skip, deselected and inapplicable are skipped."""
+    from xml.etree import ElementTree as ET
+    ok = lambda c: c in "\t\n\r" or 0x20 <= ord(c) <= 0xD7FF or 0xE000 <= ord(c) <= 0xFFFD or ord(c) >= 0x10000
+    clean = lambda s: "".join(c if ok(c) else "?" for c in str(s))   # XML 1.0 has no place for most control characters
+    root = ET.Element("testsuites")
+    for m in models(runs, dest, with_stacks):
+        groups = {}
+        for s in m["steps"]:
+            groups.setdefault(s["category"] or "uncategorized", []).append(s)
+        for cat, steps in groups.items():
+            c = lambda *rs: sum(1 for s in steps if s["result"] in rs)
+            suite = ET.SubElement(root, "testsuite", name=clean("%s/%s" % (m["runId"], cat)), tests=str(len(steps)),
+                                  failures=str(c("fail", "unverified")), errors="0", skipped=str(c("skipped")))
+            for s in steps:
+                case = ET.SubElement(suite, "testcase", classname=clean(m["runId"]), name=clean(s["id"]))
+                if s["result"] in ("fail", "unverified"):
+                    f = ET.SubElement(case, "failure", type=s["result"], message=clean(s["reason"]))
+                    f.text = clean("\n".join(s.get("stacks") or []) or s["reason"])
+                elif s["result"] == "skipped":
+                    ET.SubElement(case, "skipped", message=clean(s["reason"]))
+                elif s["result"] == "partial":
+                    ET.SubElement(case, "system-out").text = clean("partial: " + s["reason"])
+    ET.indent(root)
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
+
+# ---------------------------------------------------------------- status of the evidence folder
+
+def age(sec):
+    if sec is None:
+        return "?"
+    sec = max(0, int(sec))
+    for n, u in ((86400, "d"), (3600, "h"), (60, "m")):
+        if sec >= n:
+            return "%d%s" % (sec // n, u)
+    return "%ds" % sec
+
+def status_data(dest, now=None):
+    """What the evidence folder holds, one row per run at its newest readable revision, and what is wrong with it.
+    Sizes are estimates: the saved run, written compact, against the 2 MB limit of an export."""
+    now = time.time() if now is None else now
+    rows, problems = [], []
+    runs_dir = os.path.join(dest, "runs")
+    if not os.path.isdir(runs_dir) or not glob.glob(os.path.join(runs_dir, "*", "r*.json")):
+        problems.append("no run revisions under %s: run 'ct.py collect' or 'import-results' first" % runs_dir)
+    for rp in sorted(glob.glob(os.path.join(runs_dir, "*"))):
+        rid, good, bad = os.path.basename(rp), None, []
+        files = rev_files(rp)
+        for p in files:
+            try:
+                good = (p, read_run(p))
+            except (ValueError, OSError):
+                bad.append(os.path.basename(p))
+        for b in bad:
+            problems.append("run %s: %s is unreadable%s" % (rid, b, "; showing the newest readable revision" if good else ""))
+        if not good:
+            continue
+        r = good[1]
+        ms = run_model(rid, r)
+        c = ms["counts"]
+        eligible = [s for s in ms["steps"] if s["verdict"] not in ("deselected", "inapplicable")]
+        resolved = sum(1 for s in eligible if s["verdict"] in ("pass", "partial", "fail", "skip"))
+        size = len(json.dumps(export_form(r), separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+        rows.append({"runId": rid, "revision": r.get("revision"), "revisions": len(files), "plan": r.get("planTitle"), "character": r.get("character"),
+                     "resolved": resolved, "eligible": len(eligible), "pass": c.get("pass", 0) + c.get("partial", 0), "fail": c.get("fail", 0),
+                     "unverified": c.get("unverified", 0), "open": sum(1 for s in eligible if s["verdict"] in ("pending", "unverified")),
+                     "ageSeconds": (now - (r.get("updated") or r.get("started"))) if isinstance(r.get("updated") or r.get("started"), (int, float)) else None,
+                     "sizeEstimate": size, "sizeLimit": MAX_INFLATED, "finished": bool(r.get("endedAt")), "unreadableRevisions": bad})
+        if size > MAX_INFLATED * 0.8:
+            problems.append("run %s: about %d of %d bytes: close to the export limit" % (rid, size, MAX_INFLATED))
+    log = os.path.join(dest, "problems.log")
+    if os.path.exists(log):
+        with open(log) as fh:
+            problems += ["collect: " + ln for ln in fh.read().splitlines() if ln]
+    extra = {"savedVariables": len(glob.glob(os.path.join(dest, "sv", "*.lua"))), "errorFiles": len(glob.glob(os.path.join(dest, "errors", "*.json")))}
+    return rows, problems, extra
+
+def status_text(rows, problems, extra, dest):
+    out = ["evidence: %s (%d saved-variable copies, %d error files)" % (dest, extra["savedVariables"], extra["errorFiles"]), ""]
+    if rows:
+        head = ("run", "rev", "done", "fail", "unver", "open", "age", "size~")
+        body = [(r["runId"], str(r["revision"]), "%d/%d" % (r["resolved"], r["eligible"]), str(r["fail"]), str(r["unverified"]), str(r["open"]),
+                 age(r["ageSeconds"]), "%d%%" % (100 * r["sizeEstimate"] // r["sizeLimit"])) for r in rows]
+        w = [max(len(x[i]) for x in [head] + body) for i in range(len(head))]
+        out += ["  ".join(c.ljust(w[i]) for i, c in enumerate(row)).rstrip() for row in [head] + body]
+    out.append("")
+    out += ["problem: " + p for p in problems] or ["no problems: every revision is readable and none conflicts"]
+    out.append("test results are not judged here: 'ct.py report --strict' fails on a failed or unverified step")
+    return "\n".join(out)
 
 # ---------------------------------------------------------------- CLI
 
@@ -758,6 +1019,11 @@ def main(argv=None):
     p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; collects _classic_era_ and _forever_ (WTF and Screenshots)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
+    p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, or there are no runs")
+    p.add_argument("--stacks", action="store_true", help="put saved error call stacks in json and junit (md always shows them); they can hold private paths")
+    p.add_argument("--out", help="write the json or junit report to this file")
+    p = sub.add_parser("status", help="check what the evidence folder holds: readable revisions, conflicts, sizes"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--json", action="store_true")
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     a = ap.parse_args(argv)
 
@@ -827,9 +1093,27 @@ def main(argv=None):
         print("imported" if res == "new" else "already imported", run["runId"], "rev", run.get("revision")); return 0
     if a.cmd == "report":
         runs = latest_runs(a.dest)
-        txt = report_text(runs, a.dest)
-        open(os.path.join(a.dest, "REPORT.md"), "w").write(txt)
-        print(txt); return 0
+        if a.format == "md":
+            txt = report_text(runs, a.dest)
+            os.makedirs(a.dest, exist_ok=True)
+            open(os.path.join(a.dest, "REPORT.md"), "w").write(txt)
+        else:
+            txt = (report_json if a.format == "json" else report_junit)(runs, a.dest, a.stacks)
+        if a.out and a.format != "md":
+            open(a.out, "w").write(txt)
+        else:
+            print(txt)
+        if a.strict and (not runs or bad_steps(models(runs))):
+            print("strict: %s" % ("no runs" if not runs else "%d step(s) failed or are unverified" % bad_steps(models(runs))), file=sys.stderr)
+            return 1
+        return 0
+    if a.cmd == "status":
+        rows, problems, extra = status_data(a.dest)
+        if a.json:
+            print(json.dumps({"runs": rows, "problems": problems, **extra, "ok": not problems}, indent=1, sort_keys=True))
+        else:
+            print(status_text(rows, problems, extra, a.dest))
+        return 1 if problems else 0
 
 
 if __name__ == "__main__":

@@ -261,6 +261,32 @@ function Run.Begin(run, ctx, id)
     return a
 end
 
+Run.EXCERPT_BUDGET = 60000 -- bytes of kept log lines in one run; the export has a 2 MB limit
+
+local function excerptBytes(ex)
+    local n = 0
+    for _, lines in pairs(ex or {}) do for _, l in ipairs(lines) do n = n + #l end end
+    return n
+end
+
+-- Keeps the newest excerpts of a run inside the budget: the oldest attempts lose theirs first.
+function Run.TrimExcerpts(run)
+    local all, total = {}, 0
+    for _, rec in pairs(run.steps) do
+        for _, at in ipairs(rec.attempts or {}) do
+            if at.excerpt then
+                local b = excerptBytes(at.excerpt)
+                all[#all + 1], total = { at = at, b = b }, total + b
+            end
+        end
+    end
+    table.sort(all, function(x, y) return (x.at.finished or 0) < (y.at.finished or 0) end)
+    for _, e in ipairs(all) do
+        if total <= Run.EXCERPT_BUDGET then break end
+        e.at.excerpt, total = nil, total - e.b
+    end
+end
+
 -- A step is open until it has a result; one stuck on missing evidence (unverified) is still open.
 local function isOpen(run, n)
     local v = run.steps[run.order[n]].verdict
@@ -366,6 +392,7 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     if effective == "fail" or effective == "unverified" then
         local ok, ex = pcall(ns.Evidence.Excerpt, step, a.snapshots, ctx.plan, ctx.env)
         a.excerpt = ok and ex or nil
+        Run.TrimExcerpts(run)
     end
     a.snapshots = nil
     verdict = effective

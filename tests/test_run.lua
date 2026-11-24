@@ -71,6 +71,22 @@ test("a log that rolled keeps no excerpt and an unreadable one never stops the r
     env.DB = nil
     local a = R.Verdict(run, ctx, "a", "pass"); T.eq(a.verdict, "unverified"); T.eq(a.excerpt, nil)
 end)
+test("a run keeps the newest excerpts inside the byte budget and drops the oldest first", function()
+    local run, ctx, env = mk()
+    ctx.plan.sections[1].steps[1].assertions[1].absent = true
+    local old = R.EXCERPT_BUDGET; R.EXCERPT_BUDGET = 350
+    for i = 1, 4 do
+        ctx.now = 100 + i
+        R.Begin(run, ctx, "a")
+        env.DB.log[#env.DB.log + 1] = ("ok line %d "):format(i) .. ("x"):rep(150)
+        R.Verdict(run, ctx, "a", "pass")
+        run.steps.a.verdict = "pending"
+    end
+    R.EXCERPT_BUDGET = old
+    local at = run.steps.a.attempts
+    T.eq(at[1].excerpt, nil, "the oldest lost its lines"); T.eq(at[2].excerpt, nil)
+    T.ok(at[3].excerpt and at[4].excerpt, "the newest kept them")
+end)
 test("diagnostic assertions never gate", function()
     local run, ctx = mk()
     ctx.plan.sections[1].steps[1].assertions[1].diagnostic = true

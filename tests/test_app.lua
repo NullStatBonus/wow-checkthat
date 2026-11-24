@@ -32,6 +32,16 @@ test("app import stores plan, rejects bad ones without state change", function()
     local r, e2 = App.ImportPlan(assert(ns.Codec.Encode({ kind = "results", ct = 1 })))
     T.ok(r == nil and e2:find("results"))
 end)
+test("a step that is already open keeps one error stack, a new attempt wants another", function()
+    local db = boot()
+    App.ImportPlan(assert(ns.Codec.Encode(plan())))
+    App.Start("KeepThat")
+    local n, real = 0, ns.Errors.StepStarted
+    ns.Errors.StepStarted = function() n = n + 1 end
+    App.Begin(); T.eq(n, 1, "a new attempt")
+    App.Begin(); T.eq(n, 1, "the same open attempt: no second stack")
+    ns.Errors.StepStarted = real
+end)
 test("character key falls back when the realm name is empty", function()
     local db, env = boot()
     env.GetRealmName = function() return "" end
