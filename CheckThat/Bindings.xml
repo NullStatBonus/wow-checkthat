@@ -1,0 +1,6 @@
+<Bindings>
+    <Binding name="CHECKTHAT_PASS" header="CHECKTHAT" category="ADDONS">CheckThat_Key("pass")</Binding>
+    <Binding name="CHECKTHAT_PARTIAL" category="ADDONS">CheckThat_Key("partial")</Binding>
+    <Binding name="CHECKTHAT_FAIL" category="ADDONS">CheckThat_Key("fail")</Binding>
+    <Binding name="CHECKTHAT_SKIP" category="ADDONS">CheckThat_Key("skip")</Binding>
+</Bindings>

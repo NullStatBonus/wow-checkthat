@@ -27,7 +27,7 @@ local function member(frames, k)
     if k == "SetAttribute" then return function(self, a, v) self.attrs[a] = v end end
     if k == "Show" then return function(self) setShown(self, true) end end
     if k == "Hide" then return function(self) setShown(self, false) end end
-    if k == "IsShown" then return function(self) return self.shown end end
+    if k == "IsShown" or k == "IsVisible" then return function(self) return self.shown end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
     if k == "GetStringHeight" then return function() return 40 end end
     if k == "GetStringWidth" then return function() return 80 end end

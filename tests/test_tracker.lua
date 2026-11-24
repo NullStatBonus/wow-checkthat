@@ -125,6 +125,20 @@ test("a click on a row offers add, go to the first open step, and rerun for that
     _G.MenuUtil = nil
 end)
 
+test("a clean category offers Remove from run and a category with a result does not", function()
+    local run = start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    verdict(run, "s1a", "pass")
+    local got = {}
+    _G.MenuUtil = { CreateContextMenu = function(owner, gen) gen(owner, { CreateButton = function(_, label, fn) got[#got + 1] = { label, fn } end }) end }
+    win().rows[2].scripts.OnClick(win().rows[2])
+    local labels = {}; for _, it in ipairs(got) do labels[#labels + 1] = it[1] end
+    T.eq(table.concat(labels, "|"), "Go to first open step: Cat 2|Remove from run: Cat 2")
+    got[2][2]()
+    T.eq(run.selected.c2, nil); T.eq(win().rows[2].detail.text, "not picked", "the window follows the change")
+    _G.MenuUtil = nil
+end)
+
 test("a failed step adds a row that reruns every failed and unverified step", function()
     local run = start(3, { "c1", "c2" })
     ns.Tracker.Show()

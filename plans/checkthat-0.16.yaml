@@ -1,0 +1,251 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.16 Remove from run and result keys
+preamble: |-
+  This plan runs in forever-camelot. It tests CheckThat on its own run, so do not press End run before the last step. Type |cff99ccff/ct debug on|r in the first step. Do not press a result on the step |cffffd100Remove Spare while you stand on it|r: that step leaves the run. The picker for plans with many categories and the report tools are tested elsewhere.
+handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then clear the three keys you set in Key Bindings if the last steps did not.
+categories:
+- id: remove
+  title: Remove from run
+- id: spare
+  title: Spare category
+- id: keys
+  title: Result keys
+logs:
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s1
+  title: Remove a category from the run
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct16.debug
+    category: remove
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.". The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+  - id: ct16.window
+    category: remove
+    title: Open the Categories window
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct tracker|r.
+      commands:
+      - /ct tracker
+    expect: A window lists three categories. They are Remove from run, Spare category and Result keys. Spare category reads "untested".
+    verify:
+    - player
+  - id: ct16.remove
+    category: remove
+    title: Remove the Spare category
+    action:
+      kind: manual
+      text: 'In the Categories window click the row |cffffd100Spare category|r. Choose |cffffd100Remove from run: Spare category|r.'
+    expect: The row reads "not picked" and the card counts one category less. This step stays shown.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] deselect spare'
+      scope: attempt
+      label: Spare category left the run
+  - id: ct16.blocked
+    category: remove
+    title: A category with results cannot be removed
+    action:
+      kind: manual
+      text: In the Categories window click the row |cffffd100Remove from run|r.
+    expect: The menu offers Go to first open step and Rerun category. It does not offer Remove from run.
+    verify:
+    - player
+  - id: ct16.add
+    category: remove
+    title: Add the Spare category back
+    action:
+      kind: manual
+      text: 'In the Categories window click the row |cffffd100Spare category|r. Choose |cffffd100Add to run: Spare category|r.'
+    expect: The row reads "untested" again. This step stays shown.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] select spare'
+      scope: attempt
+      label: Spare category came back into the run
+- id: s2
+  title: Remove the category you stand on
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct16.spare
+    category: spare
+    title: Remove Spare while you stand on it
+    action:
+      kind: manual
+      text: 'Do not press a result. In the Categories window click the row |cffffd100Spare category|r and choose |cffffd100Remove from run: Spare category|r.'
+    expect: The card moves on at once to the step |cffffd100Land here|r. It does not show a step you already finished.
+    verify:
+    - player
+    notes: This step ends deselected, not passed, because its category leaves the run. The step Land here proves the result.
+- id: s3
+  title: Keys for results
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct16.landed
+    category: keys
+    title: Land here
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: You are on this step straight after you removed the Spare category. Pass records and the card moves on.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      contains: '[ct] deselect spare'
+      count:
+        min: 2
+      scope: session
+      label: Spare category was removed a second time
+  - id: ct16.bind
+    category: keys
+    title: Set keys for results
+    action:
+      kind: manual
+      text: Press Esc, then |cffffd100Options|r, |cffffd100Key Bindings|r, |cffffd100AddOns|r and |cffffd100CheckThat|r. Set a key for Pass, a different key for Partial and a different key for Skip. Close the window.
+    setup: Pick three keys that nothing else uses.
+    expect: The list shows Pass, Partial, Fail and Skip. Fail has no key. The three keys you set show beside their actions.
+    verify:
+    - player
+  - id: ct16.key.pass
+    category: keys
+    title: Pass with the key
+    action:
+      kind: manual
+      text: Press your Pass key. Do not click the card.
+    expect: The step records Pass and the card moves to the next step.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] key pass'
+      scope: attempt
+      label: The Pass key was pressed
+  - id: ct16.key.partial
+    category: keys
+    title: Partial with the key
+    action:
+      kind: manual
+      text: Press your Partial key. Do not click the card.
+    expect: The step records Partial and the card moves to the next step.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] key partial'
+      scope: attempt
+      label: The Partial key was pressed
+  - id: ct16.key.skip
+    category: keys
+    title: Skip with the key
+    action:
+      kind: manual
+      text: Press your Skip key. Do not click the card.
+    expect: The step records Skip and the card moves to the next step.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] key skip'
+      scope: attempt
+      label: The Skip key was pressed
+  - id: ct16.key.hidden
+    category: keys
+    title: A key does nothing while the interface is hidden
+    action:
+      kind: manual
+      text: Press |cffffd100Alt+Z|r to hide the interface. Press your Pass key. Press |cffffd100Alt+Z|r again. Then click |cffffd100Pass|r on the card.
+    expect: Nothing happens while the interface is hidden. That is the pass. After the second Alt+Z the card still shows this step, because the key recorded no result. Your click on Pass records this step.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] key pass ignored: card not visible'
+      scope: attempt
+      label: The key was ignored while the interface was hidden
+  - id: ct16.unbind
+    category: keys
+    title: Clear the keys
+    action:
+      kind: manual
+      text: Open |cffffd100Key Bindings|r, |cffffd100AddOns|r, |cffffd100CheckThat|r again. Clear the three keys you set and close the window.
+    expect: Pass, Partial, Fail and Skip show no key.
+    verify:
+    - player
+  - id: ct16.slash
+    category: keys
+    title: A result by slash command still works
+    action:
+      kind: copy-slash
+      text: /ct pass
+    expect: The step records Pass and the card moves to the next step.
+    verify:
+    - player
+  - id: ct16.done
+    category: keys
+    title: Finish the run
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card shows the results screen after this result.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] step ct16.slash pass'
+      scope: session
+      label: The slash command recorded the step before

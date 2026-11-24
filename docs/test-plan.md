@@ -152,6 +152,16 @@ Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categor
     Check: the step records Fail (red) and the game stays responsive.
     Log: the failed attempt of `self.exact` in `CheckThatDB.global.runs` holds `excerpt` with the new fact lines (at most 20, each at most 200 characters), and `tools/ct.py report` prints them under the attempt. The outcome that failed also holds `rule`, `source`, `window`, `matched` and `hits` (each hit has `n` and `line`), and the report prints a `check` line and the lines that decided it, marked `>` in the excerpt. The run also holds `formatRev = 1` and `writerVersion` equal to the TOC version, and the finished attempt holds `formatRev`.
 
+12. **Take a category out.** Start the self-test with every category. In the Categories window (`/ct tracker`), click a row that has no result and choose Remove from run. Then click a row of a category you passed a step in.
+    Check: the first row turns grey and reads "not picked", and its steps no longer count. The second row has no Remove from run item.
+    Log: `[ct] deselect <category>`.
+13. **Many categories.** Run `build/checkthat-0.16-picker.ct` with `build/checkthat-picker-fixture.ct` (see the plan's preamble). Or import any plan with more than eight categories. On the card start screen, press Choose categories, clear one box on page 2, then close the window and press Start run.
+    Check: the card says one category fewer is picked, the window shows 14 rows with the < and > buttons, and the run leaves out the cleared category.
+    Log: `CheckThatDB` run `selected` has no entry for the cleared category.
+14. **A key records a result.** Open Key Bindings, AddOns, CheckThat and set a key for Pass. Close the window, open a step on the card and press the key. Press it again after you hide the card with `/ct`.
+    Check: the step passes and the card moves on. With the card hidden, a chat line says to open the checklist and no result is recorded.
+    Log: `[ct] step <id> pass`.
+
 ## 6. Plan skills (no game needed)
 
 These checks run in a coding agent, not in the game. Run `make install-skill` first. `make test` covers what code decides (bundle, `collect`, example plans, fixture data). These checks cover the conversation.

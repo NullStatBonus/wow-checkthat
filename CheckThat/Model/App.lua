@@ -471,14 +471,20 @@ function App.AtStart(run)
     return true
 end
 
+-- Run.Begin or Run.Verdict, then ask for an error stack when the call opened a new attempt: an open one has its own.
+local function opening(run, step, fn)
+    local rec = run.steps[step.id]
+    local before = rec and #rec.attempts
+    local a, err = fn()
+    if ns.Errors and rec and #rec.attempts ~= before then ns.Errors.StepStarted() end
+    return a, err
+end
+
 function App.Begin()
     local run, ctx, step = App.Current()
     if not step then return nil end
-    local rec = run.steps[step.id]
-    local before = rec and #rec.attempts
     if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample() end
-    local a = ns.Run.Begin(run, ctx, step.id)
-    if ns.Errors and #run.steps[step.id].attempts ~= before then ns.Errors.StepStarted() end -- only a new attempt wants a stack
+    local a = opening(run, step, function() return ns.Run.Begin(run, ctx, step.id) end)
     return a, step
 end
 
@@ -493,7 +499,12 @@ function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
     if run and run.endedAt then return nil, L["This run has ended. Start the plan again for a new run."] end
     if not step then return nil, L["There is no current step."] end
-    if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.Check() end
+    if ns.Errors then
+        local rec = run.steps[step.id]
+        local last = rec and rec.attempts[#rec.attempts]
+        if not last or last.verdict then ns.Errors.StepStarted() end -- this verdict opens its own attempt: arm before the errors are read
+        ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.Check()
+    end
     local a, err = ns.Run.Verdict(run, ctx, step.id, verdict, note)
     if a then logResult(step, a) end
     return a, err, step
@@ -673,6 +684,31 @@ function App.Select(what)
     if ok == nil then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or "")) end
     if ok then App.Log("select " .. key) end
     return ok
+end
+
+-- Can the category leave the run now? The card menu shows Remove from run only then.
+-- The menu passes the exact id; a typed name is lower case, so ids that differ only in case stay apart.
+local function categoryKey(run, what)
+    what = tostring(what or "")
+    return ns.Run.CategoryOf(run, what) and what or what:lower()
+end
+
+function App.CanDeselect(what)
+    local run = App.Current()
+    return run ~= nil and ns.Run.DeselectBlock(run, categoryKey(run, what)) == nil
+end
+
+-- Take a category out of the run. Returns true, or nil and text.
+function App.Deselect(what)
+    local run, ctx, err = activeRun()
+    if not run then return nil, err end
+    local key = categoryKey(run, what)
+    local ok, why = ns.Run.Deselect(run, ctx, key)
+    if ok then App.Log("deselect " .. key); return true end
+    if why == "unknown category" then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or "")) end
+    if why == "not picked" then return nil, L["%s is not part of this run. Use /ct run %s to add it."]:format(name(run, key), ns.Slash.Esc(key)) end
+    if why == "has results" then return nil, L["%s has results, so it stays in the run."]:format(name(run, key)) end
+    return nil, L["A run needs at least one category."]
 end
 
 -- How many steps a rerun would reopen: the picked steps of the category that have a result.

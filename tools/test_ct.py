@@ -789,6 +789,11 @@ class ReportTable(unittest.TestCase):
         self.assertEqual(rows["i"][:4], ["i", "inapplicable", "none", "0"])
         self.assertEqual(rows["w"][:4], ["w", "pending", "none", "0"])
 
+    def test_a_reopened_step_shows_no_old_note_or_evidence(self):
+        steps = {"r": {"verdict": "pending", "attempts": [self.att("fail", ["fail"], "broke")]}}
+        row = self.rows(steps)["r"]
+        self.assertEqual(row[:4], ["r", "pending", "none", "1"]); self.assertEqual(row[4:], ["awaiting", "retry"])
+
     def test_a_step_the_client_does_not_use_still_has_a_row(self):
         steps = {"a": {"verdict": "pass", "attempts": [self.att("pass", ["pass"])]}, "z": {"verdict": "inapplicable", "attempts": []}}
         run = {"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "order": ["a"], "steps": steps}}
@@ -1139,6 +1144,32 @@ class Results(unittest.TestCase):
         with open(os.path.join(d, "errors", "x.json"), "w") as fh:
             json.dump({"errors": ["108.002 [K] x"], "errorStacks": ["108.002 s"]}, fh)
         self.assertIn("(time also fits another attempt)", ct.report_text(ct.latest_runs(d), d))
+
+    def test_a_failure_that_a_later_attempt_recovered_keeps_its_stack_in_json_and_junit(self):
+        steps = {"a": {"verdict": "pass", "attempts": [
+            {"n": 1, "verdict": "fail", "started": 100, "finished": 110, "outcomes": [{"result": "fail"}]},
+            {"n": 2, "verdict": "pass", "started": 108, "finished": 120}]}}
+        d = self.dest_with(self.run_with(steps))
+        os.makedirs(os.path.join(d, "errors"))
+        with open(os.path.join(d, "errors", "x.json"), "w") as fh:
+            json.dump({"errors": ["109.001 [K] x"], "errorStacks": ["109.001 STACKTEXT"]}, fh)
+        runs = ct.latest_runs(d)
+        step = json.loads(ct.report_json(runs, d, True))["runs"][0]["steps"][0]
+        self.assertEqual([p["attempt"] for p in step["attemptStacks"]], [1])
+        self.assertIn("time also fits another attempt", step["attemptStacks"][0]["stacks"][0])
+        self.assertNotIn("stacks", step, "the step passed in the end")
+        from xml.etree import ElementTree as ET
+        self.assertIn("STACKTEXT", ET.fromstring(ct.report_junit(runs, d, True)).find(".//system-out").text)
+        self.assertNotIn("STACKTEXT", ct.report_json(runs, d))
+
+    def test_a_pass_contradicted_by_evidence_keeps_its_stack(self):
+        steps = {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass", "started": 100, "finished": 110, "outcomes": [{"result": "fail"}]}]}}
+        d = self.dest_with(self.run_with(steps))
+        os.makedirs(os.path.join(d, "errors"))
+        with open(os.path.join(d, "errors", "x.json"), "w") as fh:
+            json.dump({"errors": ["105.001 [K] x"], "errorStacks": ["105.001 KEEPME"]}, fh)
+        step = json.loads(ct.report_json(ct.latest_runs(d), d, True))["runs"][0]["steps"][0]
+        self.assertEqual(step["result"], "fail"); self.assertIn("KEEPME", step["stacks"][0])
 
     def test_json_and_junit_keep_stacks_out_unless_asked(self):
         d = self.errors_dest(["205.001 [K] boom"], ["205.001 SECRET /Users/x"])
