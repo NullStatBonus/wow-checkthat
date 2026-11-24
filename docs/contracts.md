@@ -20,6 +20,9 @@ What an addon that reports facts can rely on. It only grows: a released name, ar
 | `CheckThat.API_VERSION` | Number, 1. Rises only when something is added. | 0.9.0 |
 | `CheckThat.Report(addon, key, value)` | Returns true when it records `[addon] key=value`, false otherwise. Never raises. Records only while a run is open. Limits: addon 32, key 48, string value 120 characters, 30 facts per addon per second, 300 lines kept. | 0.9.0 |
 | `CheckThatDB.global.facts` | Array of the recorded lines, readable as a `strings` log. | 0.9.0 |
+| `CheckThatDB.global.errors` | Array of Lua error lines recorded while a run is open, each `<time>.<counter> <message>` with the message cut to 200 characters, 100 kept, 30 a second. Readable as a quiet `strings` log. | 0.10.0 |
+| Fact values | A fact value reads as `true` or `false` (boolean), a number when the text is a plain decimal or exponent number, else text. `0x10`, `nan` and `inf` stay text. | 0.10.0 |
+| `CheckThatDB.global.runs[id]` | Adds `categories` (list of id and title), `cat` (step id to category id) and `selected` (set of picked ids). A run without them reads as every section picked. Step verdict `deselected` is new. `ct` stays 1. | 0.10.0 |
 
 ## Measured in game
 
@@ -37,10 +40,27 @@ What an addon that reports facts can rely on. It only grows: a released name, ar
 | Both clients | Protected frames cannot be shown, hidden or re-anchored in combat. The secure button is a separate top-level frame. | Blizzard UI documentation |
 | Test harness | `tests/harness.lua` models these rules for a frame made from a `Secure*Template`: `SetAttribute`, `Show`, `Hide`, `SetShown`, `SetPoint`, `ClearAllPoints`, `SetSize`, `SetWidth`, `SetHeight`, `SetParent` and `SetScale` raise in combat. `SetPoint` to anything but the screen raises. A `visibility` state driver (`[combat] hide; show`) shows and hides the frame, also in combat, and again on each `st.tick()`. `Show` and `Hide` run OnShow and OnHide on each real change. The client may block these calls without raising a Lua error; the harness raises so a test cannot miss one. | `tests/test_combat.lua`, `tests/test_smoke.lua` |
 
+## Measured in game for categories (2026-11-24)
+
+| Area | Fact | Source |
+| --- | --- | --- |
+| WoW Forever 1.60.1.71037, with !BugGrabber and BugSack installed | The debug log read `[errors] handler blocked`: CheckThat's `seterrorhandler` call had no effect, as the BugGrabber source predicts. CheckThat then recorded the self-test error from BugGrabber's counters (`[errors] recorded an error`), and the steps "No Lua error" and "Record a Lua error" passed with matched evidence. | `CheckThatDB.global.log` and `global.errors` of run `CheckThat-1795491197-4ec0` |
+| WoW Forever 1.60.1.71037 | An automatic step with an absence check and a 10 second timeout ("No Lua error") passed by itself at the timeout (evidence matched) once the plan declared `cap: 100` on the error list. A step that needs exactly two reports recorded fail by itself the moment a third and fourth fact arrived (two Run clicks): `step self.exact fail auto evidence contradicts: 4 matched, at most 2 allowed`. "Export results" settled itself on the line `[ct] run exported <id>`. | run `CheckThat-1795493572-4ec0` |
+
+Not measured yet: the handler path with BugGrabber disabled (`handler current`), and the Categories window, colors and rerun on screen.
+
+## Source-reviewed for categories (2026-11-24)
+
+| Area | Fact | Source |
+| --- | --- | --- |
+| Error handler | `geterrorhandler()` returns the current handler, a function that receives the error message as one argument. `seterrorhandler(fn)` sets it. | https://warcraft.wiki.gg/wiki/API_geterrorhandler, https://warcraft.wiki.gg/wiki/API_seterrorhandler |
+| BugGrabber | At load it saves the real `seterrorhandler`, calls `real_seterrorhandler(grabError)`, then replaces the global with `function seterrorhandler() end`. A later `seterrorhandler` call from another addon does nothing and raises no error. `grabError` does not call a previous handler. | `BugGrabber.lua` lines 28, 573 and 574, trunk at https://repos.wowace.com/wow/bug-grabber/trunk/BugGrabber.lua. This trunk uses retail APIs (`issecretvalue`, `EventRegistry`), so the Classic package may differ. |
+| BugGrabber | An error already in `BugGrabberDB.errors` (same message) is not added again: its `counter` goes up. Only a new message adds an entry. After 10 seconds an old entry moves to the end of the list. The standalone addon is named `!BugGrabber`. | `BugGrabber.lua` lines 20, 346 to 377, same file |
+| Era UI | `UICheckButtonTemplate` is a `CheckButton` that inherits `UICheckButtonArtTemplate`. `MenuUtil.CreateContextMenu` is used by Blizzard_RaidUI and Blizzard_GroupFinder (Classic) on Era, and `UIDropDownMenu_Initialize` and `UIDropDownMenu_CreateInfo` are defined in `Blizzard_SharedXML/Classic/UIDropDownMenu.lua`. `StatusBar` with `SetStatusBarColor` is used by Blizzard_UnitFrame (`CompactUnitFrame.lua`). | https://github.com/Gethe/wow-ui-source, branch `classic_era`: `Interface/AddOns/Blizzard_SharedXML/Shared/Button/CheckButtonTemplates.xml:50`, `Interface/AddOns/Blizzard_RaidUI/Blizzard_RaidUI.lua`, `Interface/AddOns/Blizzard_GroupFinder/Classic/LFGList.lua`, `Interface/AddOns/Blizzard_UnitFrame/Shared/CompactUnitFrame.lua` |
+
+What follows for CheckThat: when BugGrabber is loaded, CheckThat cannot set its own handler and cannot see its errors through one. CheckThat reads BugGrabber's counters instead and records an error for each rise (`Errors.Sample`). The debug report shows `handler: blocked`. Without BugGrabber, CheckThat sets its handler and chains to the one before it.
+
 ## Pending in-game
 
-- Whether a protected `Show`, `Hide` or `SetAttribute` call from insecure code in combat raises a Lua error or is blocked silently, on Era and on Forever. The harness assumes it raises.
-- Whether the `visibility` state driver runs OnShow and OnHide on the button when combat starts and ends, on Era (Forever shows it about five times a second, measured above).
-- Whether `PLAYER_REGEN_ENABLED` arrives after the state driver has shown the button, or before.
-- Macro slot limits per client.
-- Card layout at UI scales 100 and 150.
+- **Error capture on a real client.** That the handler is set on Era and Forever without BugGrabber (`handler: current`), that an error raised by another addon is recorded in both cases, and what `geterrorhandler()` returns before any addon sets one. With BugGrabber, `handler: blocked` and a recorded self-test error are measured on Forever (above). Check with section 5 of `docs/test-plan.md`, check 3.
+- **Tracker on a real client.** The card draws the tracker with plain textures and the start screen with `CheckButton` and `UICheckButtonTemplate`. How they look at the card's scale and opacity, and whether the Categories list opens through `MenuUtil` on Era. Check with section 5, checks 1, 4 and 5.

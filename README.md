@@ -25,6 +25,9 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Facts from other addons.** An addon can publish a named fact with `CheckThat.Report`, and a plan checks it like a log line. [Details](docs/features.md#facts-from-other-addons)
 - **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)
 - **Past runs.** Home lists stored runs. Open, export or delete one. [Details](docs/features.md#past-runs)
+- **Categories.** A plan groups its steps into categories. Pick them when you start a run, add one later, jump to one, or run one again. [Details](docs/features.md#categories-and-the-tracker)
+- **Progress tracker.** One bar segment for each category in blue, yellow, red or green (grey when skipped), and a caption that says the result in words. The Categories window (`/ct tracker`) lists every category, also with a dozen or more. [Details](docs/features.md#categories-and-the-tracker)
+- **Unit-test checks.** A step can check a fact's value (range, tolerance, type, list, pattern), count how many times something happened, and check that no Lua error appeared. [Details](docs/features.md#unit-test-checks)
 - **Reload safe.** The run and its place survive `/reload`.
 - **Screenshots.** A step can ask for Print Screen. CheckThat never captures. [Details](docs/harvesting.md#screenshots)
 
@@ -49,6 +52,11 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct back`, `/ct next` | Move to the previous or next step. The card has < and > buttons too. |
 | `/ct export` | Show the results string. |
 | `/ct macro` | Create a macro for the current step. |
+| `/ct categories` | List each category of the run with its state (failed, partial or unverified, passed, untested, in progress, all skipped, not picked) and its passed, failed and open counts. |
+| `/ct tracker` | Open or close the Categories window: one row for each category with its color, state in words and passed, failed and open counts. Click a row to add it, go to its first open step or rerun it. |
+| `/ct run <category or step id>` | Show the first open step of a category, adding the category to the run if it was not picked. Or show one step. |
+| `/ct rerun <category>` | Reopen the steps of a category. Earlier attempts stay in the export. |
+| `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
 | `/ct fact` | Report a test fact during a run. The self-test uses it. |
 | `/ct reload` | Reload the interface so saved variables are written. |
 
@@ -58,7 +66,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 
 | Page | What it holds |
 | --- | --- |
-| Home | Current run (open the checklist, export results), Start a run (import a plan, pick a plan, Start run) and Past runs. |
+| Home | Current run (the categories with their state, open the checklist, export results), Start a run (import a plan, pick a plan, pick the categories, Start run) and Past runs. |
 | Plans | Remove a plan. |
 | Appearance | Size and opacity, position, Lock position and Reset position. |
 | Advanced | Profile (separate settings for this character), **Runs to keep** and Debug (record debug information, show the debug report). |
@@ -69,6 +77,9 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 ## Good to know
 
 - Results are saved when the game reloads or logs out.
+- A plan with more than 8 categories shows one overall bar on the card, and the card start screen lists no checkboxes for it. Use `/ct tracker` to see each category and the Home page to pick them. Home lists up to 24.
+- Blue on the tracker means untested, also while some steps of the category have results. Yellow means partial or unverified. Red means fail, green means pass, and grey means all skipped. [Details](docs/features.md#categories-and-the-tracker)
+- CheckThat records Lua errors only while a run is open. With BugGrabber loaded, CheckThat reads BugGrabber's error counts instead of setting its own handler. An addon that takes the handler later can hide errors until the next run start or category trigger.
 - Run is not available in combat. It comes back when combat ends.
 - A step with more commands than the card has copy boxes (four) gets no Run button, so no command runs unseen. `/script` and `/dump` are not allowed.
 - A long plan or step title ends with "..." and shows in full when you point at it.

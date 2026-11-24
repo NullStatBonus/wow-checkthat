@@ -344,4 +344,51 @@ test("a saved run without endedAt is not ended", function()
     T.eq(run.endedAt, nil); T.eq(R.CurrentId(run), "a")
     T.ok(R.Verdict(run, ctx, "b", "pass"))
 end)
+-- Automatic steps with a check that something did not happen: judged when the timeout ends
+local function timedPlan(assertion)
+    local plan = { kind = "plan", ct = 1, addon = "KeepThat", title = "t", logs = { debug = { global = "DB", path = "log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = { { id = "t", title = "T", action = { kind = "manual", text = "t" }, expect = "e",
+            verify = { "assertions" }, auto = true, timeout = 10, assertions = { assertion } } } } } }
+    local env = { DB = { log = { "old" } } }
+    local ctx = { plan = plan, client = "classic-era", build = "1", character = "X", now = 100, env = env, planDigest = "d" }
+    return R.New(ctx), ctx, env
+end
+test("an automatic step with an absence check waits for its timeout and then passes", function()
+    local run, ctx, env = timedPlan({ kind = "log", source = "debug", contains = "boom", absent = true })
+    R.Begin(run, ctx, "t")
+    env.DB.log[#env.DB.log + 1] = "fine"
+    ctx.now = 105; T.eq(R.AutoSettle(run, ctx, "t"), nil, "silence so far: not yet")
+    ctx.now = 110
+    local a = R.AutoSettle(run, ctx, "t")
+    T.eq(a.verdict, "pass"); T.eq(a.by, "auto"); T.eq(a.evidence, "matched")
+end)
+test("an automatic step with an absence check fails at once when the line appears", function()
+    local run, ctx, env = timedPlan({ kind = "log", source = "debug", contains = "boom", absent = true })
+    R.Begin(run, ctx, "t")
+    env.DB.log[#env.DB.log + 1] = "boom"
+    ctx.now = 103
+    local a = R.AutoSettle(run, ctx, "t")
+    T.eq(a.verdict, "fail"); T.eq(a.by, "auto"); T.eq(a.evidence, "contradicts")
+end)
+test("a count of exactly two waits, then passes; a third line fails it at once", function()
+    local run, ctx, env = timedPlan({ kind = "log", source = "debug", contains = "hit", count = { exactly = 2 } })
+    R.Begin(run, ctx, "t")
+    env.DB.log[#env.DB.log + 1] = "hit"; env.DB.log[#env.DB.log + 1] = "fine"; env.DB.log[#env.DB.log + 1] = "hit"
+    ctx.now = 104; T.eq(R.AutoSettle(run, ctx, "t"), nil, "two so far: more could come")
+    env.DB.log[#env.DB.log + 1] = "x"; env.DB.log[#env.DB.log + 1] = "hit"
+    ctx.now = 105
+    T.eq(R.AutoSettle(run, ctx, "t").verdict, "fail", "a third")
+    local run2, ctx2, env2 = timedPlan({ kind = "log", source = "debug", contains = "hit", count = { exactly = 2 } })
+    R.Begin(run2, ctx2, "t")
+    env2.DB.log[#env2.DB.log + 1] = "hit"; env2.DB.log[#env2.DB.log + 1] = "y"; env2.DB.log[#env2.DB.log + 1] = "hit"
+    ctx2.now = 110
+    T.eq(R.AutoSettle(run2, ctx2, "t").verdict, "pass", "two at the timeout")
+end)
+test("the timeout with the evidence missing records unverified, not a pass", function()
+    local run, ctx = timedPlan({ kind = "log", source = "debug", contains = "hit", count = { exactly = 1 } })
+    R.Begin(run, ctx, "t")
+    ctx.now = 110
+    T.eq(R.AutoSettle(run, ctx, "t").verdict, "unverified", "one was needed and none came")
+end)
+
 finish()

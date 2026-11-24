@@ -59,6 +59,14 @@
         "$ref": "#/$defs/macro"
       }
     },
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/category"
+      },
+      "description": "Groups of steps the tester can pick when a run starts. Without it each section is a category."
+    },
     "sections": {
       "type": "array",
       "minItems": 1,
@@ -88,6 +96,16 @@
             "strings",
             "entries"
           ]
+        },
+        "cap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "How many lines the log keeps before it drops the oldest. With it, a log that holds fewer lines is known never to have rolled, so where a step began is certain."
+        },
+        "quiet": {
+          "type": "boolean",
+          "description": "No new lines is a valid result, so an absence or a count of zero can pass. Use it for an error list."
         }
       }
     },
@@ -119,12 +137,25 @@
             "eq",
             "ne",
             "gt",
+            "ge",
             "lt",
+            "le",
             "contains",
-            "exists"
+            "exists",
+            "missing",
+            "between",
+            "approx",
+            "matches",
+            "type",
+            "in"
           ]
         },
-        "value": {}
+        "value": {},
+        "tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Allowed distance from value for op approx."
+        }
       }
     },
     "macro": {
@@ -171,6 +202,10 @@
         },
         "intro": {
           "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "description": "Default category of the steps in this section."
         },
         "clients": {
           "$ref": "#/$defs/clients"
@@ -248,8 +283,48 @@
         }
       }
     },
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "intro": { "type": "string" }
+      }
+    },
+    "count": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "exactly": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "min": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "max": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      },
+      "description": "How many matching new lines the step needs. exactly cannot combine with min or max."
+    },
     "assertion": {
       "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source", "addon", "key", "op"],
+          "properties": {
+            "kind": { "const": "fact" },
+            "source": { "type": "string" },
+            "addon": { "type": "string" },
+            "key": { "type": "string" },
+            "op": { "enum": ["eq","ne","gt","ge","lt","le","contains","exists","missing","between","approx","matches","type","in"] },
+            "value": {},
+            "tolerance": { "type": "number", "minimum": 0 },
+            "which": { "enum": ["last", "any", "all"] },
+            "scope": { "enum": ["attempt", "session"] },
+            "count": { "$ref": "#/$defs/count" },
+            "diagnostic": { "type": "boolean" },
+            "label": { "type": "string", "description": "Player-readable name of this check, shown on the card while CheckThat watches for it." }
+          }
+        },
         {
           "type": "object",
           "additionalProperties": false,
@@ -282,6 +357,9 @@
             },
             "absent": {
               "type": "boolean"
+            },
+            "count": {
+              "$ref": "#/$defs/count"
             },
             "diagnostic": {
               "type": "boolean"
@@ -359,12 +437,21 @@
                 "eq",
                 "ne",
                 "gt",
+                "ge",
                 "lt",
+                "le",
                 "contains",
-                "exists"
+                "exists",
+                "missing",
+                "between",
+                "approx",
+                "matches",
+                "type",
+                "in"
               ]
             },
             "value": {},
+            "tolerance": { "type": "number", "minimum": 0 },
             "diagnostic": {
               "type": "boolean"
             },
@@ -434,12 +521,31 @@
           "type": "string",
           "description": "Reviewer-only instruction kept verbatim in exports."
         },
+        "category": {
+          "type": "string",
+          "description": "Category of this step. Overrides the section's category."
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "vars"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+              "vars": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            }
+          },
+          "description": "Expands this step into one per case when the plan compiles. {{name}} in the step's text is replaced by the case's var. The step id becomes id.case-id."
+        },
         "screenshot": {
           "type": "boolean"
         },
         "auto": {
           "type": "boolean",
-          "description": "CheckThat records the result itself when every required assertion is met. Needs assertions in verify, no player, and at least one required assertion that is not an absence check."
+          "description": "CheckThat records the result itself when every required assertion is met. Needs assertions in verify, no player, and at least one required assertion. A check that something did not happen (an absence, a missing fact, a count with exactly or max) is judged when the timeout ends, so such a step needs a timeout."
         },
         "timeout": {
           "type": "integer",
@@ -476,11 +582,7 @@
             "properties": {
               "verify": { "contains": { "const": "assertions" }, "not": { "contains": { "const": "player" } } },
               "assertions": {
-                "contains": { "not": { "required": ["diagnostic"], "properties": { "diagnostic": { "const": true } } } },
-                "items": {
-                  "if": { "required": ["absent"], "properties": { "absent": { "const": true } } },
-                  "then": { "required": ["diagnostic"], "properties": { "diagnostic": { "const": true } } }
-                }
+                "contains": { "not": { "required": ["diagnostic"], "properties": { "diagnostic": { "const": true } } } }
               }
             }
           },

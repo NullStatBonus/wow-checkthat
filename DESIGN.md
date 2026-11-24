@@ -37,7 +37,7 @@ The same pages are registered in the game's Settings window.
 
 | Order | Page | Purpose |
 | --- | --- | --- |
-| 1 | Home | Current run, start a run, import a plan, export results |
+| 1 | Home | Current run with its categories, start a run with the categories to test, import a plan, export results |
 | 2 | Plans | Imported plans and removal |
 | 3 | Appearance | Card scale, background opacity, text opacity, lock, reset position |
 | 4 | Advanced | Settings scope and debug recording and report |
@@ -58,13 +58,14 @@ Settings use the shared Default profile. A checkbox in Advanced switches to a ch
 - Collapsed, the card is a 280 wide strip with the step title and number. When the run is complete it shows passed, partial, failed and skipped counts, the plan handoff, Export results and Main window (the card start screen with Start run and Import a plan; there is no Reload here).
 - Default position right of center, 380 wide; draggable; the position is saved; Lock position stops dragging; Reset position restores it.
 - Fill is pure black at the chosen opacity; nothing is drawn at 0. Text opacity is separate.
+- **Tracker.** With two to eight categories the 3 unit bar becomes one segment per category in plan order. A caption under it names the overall result in words ("1 failed · 3 of 8 passed") and a **Categories** control opens a second movable window with one row per category (color, title, state in words, passed, failed and open counts; no overall count in its header; 14 rows, then the mouse wheel or page buttons). A click on a row offers add, go to first open step and rerun with a question. Segments show a tooltip and take no click. More than eight categories show one bar on the card. The window follows the card's opacity. Colors: blue for untested (the card's progress blue), yellow for partial or unverified (missing evidence, as elsewhere), red for failed, green for passed, grey for all skipped or not picked. The tracker follows the text opacity and draws nothing at zero.
 - One step at a time: Setup, Do (with copy boxes, one command per box), Expect, Next. Pass, Fail, Skip and Undo stay in fixed places. A note box sits beside them.
 - The secure Run button is its own top-level frame, created, changed and shown only out of combat. A state driver hides it for the whole of combat.
 - Evidence capture arms when the step appears, before the player acts.
 
 ## 4. Commands and diagnostics
 
-The common vocabulary: `settings [page]`, `help [topic]`, `status [topic]`, `get`, `set`, `debug on|off`, `log`, `log clear`. CheckThat adds the runner commands (`import`, `start`, `pass`, `partial`, `fail`, `skip`, `undo`, `back`, `next`, `export`, `macro`, `reload`).
+The common vocabulary: `settings [page]`, `help [topic]`, `status [topic]`, `get`, `set`, `debug on|off`, `log`, `log clear`. CheckThat adds the runner commands (`import`, `start`, `pass`, `partial`, `fail`, `skip`, `undo`, `back`, `next`, `export`, `macro`, `reload`, `categories`, `run`, `rerun`, `selftest`).
 
 UI and commands share validators in `Core/Settings.lua`. Unknown keys, bad values and surplus input are rejected without writes. CheckThat's public keys are `card.scale`, `card.background-opacity`, `card.text-opacity` and `card.locked`. The report lists every saved setting, the run status, failures and the recorded lines.
 

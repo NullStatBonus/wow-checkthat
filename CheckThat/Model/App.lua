@@ -17,12 +17,16 @@ function App.Init(db, env, opts)
     db.ui = db.ui or {}
     db.ui.shareReload = nil -- a reload request lasts until the next load
     db.facts = db.facts or {}
+    db.errors = db.errors or {}
     App.db = db
-    if ns.Facts then
-        ns.Facts.Bind(db.facts, function() return now(App) end, function()
-            local run = App.Current()
-            return run ~= nil and not run.endedAt
-        end)
+    -- Facts and errors belong to the character's open run, also while the card shows another run.
+    local function runOpen()
+        local run = App.db.runs[App.db.currentByChar[App.Character()] or ""]
+        return run ~= nil and not run.endedAt
+    end
+    if ns.Facts then ns.Facts.Bind(db.facts, function() return now(App) end, runOpen) end
+    if ns.Errors then
+        ns.Errors.Bind(db.errors, function() return now(App) end, runOpen, App.env)
     end
     if ns.Log then
         ns.Log.Bind(db.log, (opts and opts.debug) or function() return db.log.enabled end, function() return now(App) end)
@@ -290,16 +294,66 @@ end
 function App.Ctx(run)
     local plan = run.planDigest and App.db.planStore[run.planDigest]
     if not plan then return nil end
+    ns.Run.Normalize(run, plan, run.client)
     return { plan = plan, planDigest = run.planDigest, client = run.client, build = App.Build(),
         character = run.character, now = now(App), env = App.env }
 end
 
-function App.Start(addon)
+-- The categories of a plan with how many steps each has for this client: { { id, title, steps } }.
+function App.CategoryChoices(plan)
+    local out, byId = {}, {}
+    for _, c in ipairs((ns.Plan.Categories(plan))) do
+        byId[c.id] = { id = c.id, title = c.title, steps = 0 }
+        out[#out + 1] = byId[c.id]
+    end
+    for _, e in ipairs((ns.Plan.Steps(plan, App.Client()))) do
+        local c = byId[e.category]
+        if c then c.steps = c.steps + 1 end
+    end
+    return out
+end
+
+-- The categories the tester can pick for the next run of a plan, in plan order: { id, title, steps, picked }.
+-- Every category starts picked; only the ones the tester cleared are remembered.
+function App.Picks(addon)
+    local rec = App.db.plans[addon or ""]
+    if not rec then return {} end
+    local off = App.db.ui.cleared and App.db.ui.cleared[addon] or {}
+    local out = App.CategoryChoices(rec.plan)
+    for _, c in ipairs(out) do c.picked = not off[c.id] end
+    return out
+end
+
+function App.SetPick(addon, id, on)
+    App.db.ui.cleared = App.db.ui.cleared or {}
+    local off = App.db.ui.cleared[addon] or {}
+    off[id] = (not on) or nil
+    App.db.ui.cleared[addon] = next(off) and off or nil
+end
+
+-- The ids to start a run with, or nil when the plan has one category (no choice to make).
+function App.PickedIds(addon)
+    local list = App.Picks(addon)
+    if #list < 2 then return nil end
+    local ids = {}
+    for _, c in ipairs(list) do if c.picked and c.steps > 0 then ids[#ids + 1] = c.id end end
+    return ids
+end
+
+-- picks is a list of category ids, or nil to run every category.
+function App.Start(addon, picks)
     local rec = App.db.plans[addon]
     if not rec then return nil, L["No plan is imported for %s."]:format(tostring(addon)) end
+    local known = {}
+    for _, c in ipairs((ns.Plan.Categories(rec.plan))) do known[c.id] = true end
+    for _, id in ipairs(picks or {}) do
+        if not known[id] then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(id)) end
+    end
     local ctx = { plan = rec.plan, planDigest = rec.digest, client = App.Client(), build = App.Build(),
-        character = App.Character(), now = now(App), env = App.env }
+        character = App.Character(), now = now(App), env = App.env, selected = picks }
     local run = ns.Run.New(ctx)
+    if not run then return nil, picks and L["Pick at least one category that has steps for this client."] or L["The plan has no steps for this client."] end
+    if ns.Errors then ns.Errors.Hook(); ns.Errors.Rebase() end
     while App.db.runs[run.runId] do run.runId = run.runId .. "x" end
     App.db.runs[run.runId] = run
     App.db.currentByChar[App.Character()] = run.runId
@@ -385,6 +439,7 @@ end
 function App.Begin()
     local run, ctx, step = App.Current()
     if not step then return nil end
+    if ns.Errors then ns.Errors.Sample() end
     return ns.Run.Begin(run, ctx, step.id), step
 end
 
@@ -399,6 +454,7 @@ function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
     if run and run.endedAt then return nil, L["This run has ended. Start the plan again for a new run."] end
     if not step then return nil, L["There is no current step."] end
+    if ns.Errors then ns.Errors.Sample(); ns.Errors.Check() end
     local a, err = ns.Run.Verdict(run, ctx, step.id, verdict, note)
     if a then logResult(step, a) end
     return a, err, step
@@ -417,6 +473,7 @@ function App.AutoSettle(note)
     local run, ctx, step = App.Current()
     if not (step and step.auto) then return nil end
     ctx.now = now(App)
+    if ns.Errors then ns.Errors.Sample() end
     local a = ns.Run.AutoSettle(run, ctx, step.id, note)
     if a then logResult(step, a) end
     return a, step
@@ -489,11 +546,130 @@ function App.Export(runId)
     return s, err
 end
 
+-- The words for category states: color is never the only signal.
+function App.StateWord(state, counts)
+    if state == "red" then return L["failed"] elseif state == "yellow" then return L["partial or unverified"]
+    elseif state == "green" then return L["passed"] elseif state == "off" then return L["not picked"] end
+    local resolved = counts and counts.resolved or 0
+    if state == "blue" then return resolved > 0 and L["in progress"] or L["untested"] end
+    return resolved > 0 and L["all skipped"] or L["no steps"]
+end
+
+-- Rows for the tracker, the Home list and /ct categories of the run on the card:
+-- { id, title, state, counts, picked }, and the overall state with its counts.
+function App.Categories()
+    local run = App.db.runs[shownId() or ""]
+    if not (run and run.categories) then return nil end
+    local rows = {}
+    for _, c in ipairs(run.categories) do
+        local state, counts = ns.Run.CategoryState(run, c.id)
+        rows[#rows + 1] = { id = c.id, title = c.title, state = state, counts = counts, picked = run.selected[c.id] == true }
+    end
+    local overall, total = ns.Run.OverallState(run)
+    return rows, overall, total, run
+end
+
+-- One line for /ct categories and the Home list. The id is what /ct run and /ct rerun take.
+-- The result in words for the caption: it names the count behind red and yellow.
+function App.StatePhrase(state, c)
+    if state == "red" then return L["%d failed"]:format(c.fail or 0) end
+    if state == "yellow" then
+        local p, u = c.partial or 0, c.unverified or 0
+        if p > 0 and u > 0 then return L["%d partial, %d unverified"]:format(p, u) end
+        if p > 0 then return L["%d partial"]:format(p) end
+        return L["%d unverified"]:format(u)
+    end
+    return App.StateWord(state, c)
+end
+
+function App.CategoryLine(row)
+    if not row.picked then return L["%s (%s): not picked"]:format(row.title, row.id) end
+    local c = row.counts
+    return L["%s (%s): %s, %d passed, %d failed, %d open"]:format(row.title, row.id, App.StateWord(row.state, c), c.pass, c.fail, c.open)
+end
+
+-- The state word and what happened to the steps, for a row of the Categories window.
+function App.RowDetail(row)
+    if not row.picked then return App.StateWord(row.state, row.counts) end
+    local c = row.counts
+    return L["%s · %d passed, %d failed, %d open"]:format(App.StateWord(row.state, c), c.pass, c.fail, c.open)
+end
+
+-- The run the player can change: the one on the card, when it has not ended.
+local function activeRun()
+    local run, ctx = App.Current()
+    if not run then return nil, nil, L["There is no run."] end
+    if run.endedAt then return nil, nil, L["This run has ended."] end
+    return run, ctx
+end
+
+local function name(run, id)
+    local c = ns.Run.CategoryOf(run, id)
+    return ns.Slash.Esc(c and c.title or id)
+end
+
+-- Show a category (its first open step, picking the category first) or a step. Returns kind, step id, or nil and text.
+function App.Trigger(what)
+    local run, ctx, err = activeRun()
+    if not run then return nil, err end
+    if ns.Errors then ns.Errors.Hook() end
+    local kind, id = ns.Run.Trigger(run, ctx, what)
+    if not kind then
+        local key = tostring(what or ""):lower()
+        if id == "done" then return nil, L["Every step in %s has a result. Use /ct rerun %s to run them again."]:format(name(run, key), ns.Slash.Esc(key)) end
+        if id == "ambiguous" then return nil, L["The name %s is both a category and a step, so nothing changed. Use the other name."]:format(ns.Slash.Esc(what or "")) end
+        if id == "not for this client" then return nil, L["That step is not for this client."] end
+        return nil, L["There is no category or step called %s."]:format(ns.Slash.Esc(what or ""))
+    end
+    App.Log(("trigger %s %s: step %s"):format(kind, tostring(what):lower(), id))
+    return kind, id
+end
+
+-- Pick a category and leave the viewed step as it is. Returns true, false when it was already picked, or nil and text.
+function App.Select(what)
+    local run, ctx, err = activeRun()
+    if not run then return nil, err end
+    local key = tostring(what or ""):lower()
+    local ok, why = ns.Run.Select(run, ctx, key)
+    if ok == nil then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or "")) end
+    if ok then App.Log("select " .. key) end
+    return ok
+end
+
+-- How many steps a rerun would reopen: the picked steps of the category that have a result.
+function App.RerunCount(what)
+    local run, _, err = activeRun()
+    if not run then return nil, err end
+    local key = tostring(what or ""):lower()
+    if not ns.Run.CategoryOf(run, key) then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or "")) end
+    if not run.selected[key] then return nil, L["%s is not part of this run. Use /ct run %s to add it."]:format(name(run, key), ns.Slash.Esc(key)) end
+    local n = 0
+    for _, sid in ipairs(run.order) do
+        if run.cat[sid] == key and run.steps[sid].verdict ~= "pending" then n = n + 1 end
+    end
+    return n, name(run, key)
+end
+
+-- Reopen the picked steps of a category. Returns how many steps reopened, or nil and text.
+function App.Rerun(what)
+    local run, ctx, err = activeRun()
+    if not run then return nil, err end
+    local key = tostring(what or ""):lower()
+    local n, why = ns.Run.Rerun(run, ctx, what)
+    if not n then
+        if why == "not picked" then return nil, L["%s is not part of this run. Use /ct run %s to add it."]:format(name(run, key), ns.Slash.Esc(key)) end
+        return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or ""))
+    end
+    App.Log(("rerun %s: %d steps reopened"):format(key, n))
+    return n, name(run, key)
+end
+
 function App.Status()
     local run = App.db.runs[shownId() or ""]
     if not run then return L["No run."] end
     local c = ns.Run.Counts(run)
     local line = L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client (revision %d, saved on reload)"]:format(
         run.runId, c.pass, c.partial, c.fail, c.unverified, c.skip, c.pending, c.inapplicable, run.revision)
+    if c.deselected > 0 then line = L["%s, %d not picked"]:format(line, c.deselected) end
     return run.endedAt and L["%s (run ended)"]:format(line) or line
 end

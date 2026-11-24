@@ -219,4 +219,233 @@ test("there is no Reload button: a reload request names /reload and the Run butt
     ns.App.db.ui.shareReload = nil
 end)
 
+test("checks text names a fact check when the plan gives no label", function()
+    local text = ns.Card.ChecksText({ { assertion = { kind = "fact" }, state = "waiting" } })
+    T.ok(text:find("A fact from the addon matches", 1, true), text)
+end)
+
+-- The category tracker
+local function stp(id) return { id = id, title = id, action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } } end
+local function catPlan(n)
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "Cats", sections = {} }
+    for i = 1, n do
+        p.sections[i] = { id = "c" .. i, title = "Cat " .. i, steps = { stp("s" .. i .. "a"), stp("s" .. i .. "b") } }
+    end
+    return p
+end
+local function startCats(n, picks)
+    ns.addon.db.profile.card.collapsed = false
+    ns.addon.db.profile.card.textOpacity = 100
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(n)))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    local run = assert(ns.App.Start("KeepThat", picks))
+    ns.Card.Show()
+    return run, _G.CheckThatCard
+end
+local function color(tex) local c = tex.calls.SetColorTexture; return { c[1], c[2], c[3] } end
+local function shownParts(seg) local n = 0; for _, t in ipairs(seg.parts) do if t.shown then n = n + 1 end end; return n end
+local function verdict(run, id, v)
+    local _, ctx = ns.App.Current()
+    ns.Run.Begin(run, ctx, id); ns.Run.Verdict(run, ctx, id, v); ns.Card.Refresh()
+end
+
+test("the tracker layout: none for one category, segments for two to eight, one bar beyond", function()
+    local function rows(n, picked)
+        local out = {}
+        for i = 1, n do out[i] = { id = "c" .. i, title = "C" .. i, state = "grey", picked = picked ~= false and true,
+            counts = { resolved = 0, total = 2, open = 2, pass = 0, fail = 0 } } end
+        return out
+    end
+    T.eq(ns.Card.Tracker(rows(1), "grey", { total = 2, resolved = 0 }, 356), nil)
+    local two = ns.Card.Tracker(rows(2), "grey", { total = 4, resolved = 0 }, 356)
+    T.eq(two.mode, "segments"); T.eq(#two.segs, 2); T.eq(two.segs[1].w, 177); T.eq(two.segs[2].x, 179)
+    local eight = ns.Card.Tracker(rows(8), "grey", { total = 16, resolved = 0 }, 356)
+    T.eq(#eight.segs, 8)
+    local last = eight.segs[8]
+    T.ok(last.x + last.w <= 356, "the last segment stays inside the card")
+    local nine = ns.Card.Tracker(rows(9), "red", { total = 18, resolved = 9 }, 356)
+    T.eq(nine.mode, "bar"); T.eq(nine.state, "red")
+    local nr = rows(9); for _, x in ipairs(nr) do x.counts.pass = 1; x.counts.fail = 1 end
+    local split = ns.Card.Tracker(nr, "red", { total = 18, pass = 9, fail = 9, resolved = 18, open = 0 }, 356)
+    T.eq(#split.parts, 2); T.eq(split.parts[1].state, "green"); T.eq(split.parts[1].w, 178); T.eq(split.parts[2].state, "red"); T.eq(split.parts[2].x, 178)
+    local r = rows(3); r[2].picked = false; r[2].state = "off"; r[2].counts = { resolved = 0, total = 0, open = 0, pass = 0, fail = 0 }
+    local segs = ns.Card.Tracker(r, "grey", { total = 4, resolved = 0 }, 356).segs
+    T.eq(#segs, 3, "an unpicked category keeps its place"); T.eq(#segs[2].parts, 0)
+end)
+
+test("the caption names the overall result in words", function()
+    T.eq(ns.Card.Caption("red", { fail = 1, pass = 3, resolved = 4, total = 8 }), "1 failed · 3 of 8 passed")
+    T.eq(ns.Card.Caption("red", { fail = 3, pass = 1, resolved = 4, total = 8 }), "3 failed · 1 of 8 passed")
+    T.eq(ns.Card.Caption("blue", { pass = 1, resolved = 1, total = 8 }), "in progress · 1 of 8 passed")
+    T.eq(ns.Card.Caption("yellow", { partial = 1, pass = 1, resolved = 2, total = 8 }), "1 partial · 1 of 8 passed")
+    T.eq(ns.Card.Caption("yellow", { unverified = 2, pass = 0, resolved = 0, total = 8 }), "2 unverified · 0 of 8 passed")
+    T.eq(ns.Card.Caption("yellow", { partial = 1, unverified = 2, pass = 4, resolved = 5, total = 8 }), "1 partial, 2 unverified · 4 of 8 passed")
+    T.eq(ns.Card.Caption("green", { pass = 8, resolved = 8, total = 8 }), "passed · 8 of 8 passed")
+    T.eq(ns.Card.Caption("blue", { pass = 0, resolved = 0, total = 8 }), "untested · 0 of 8 passed")
+    T.eq(ns.Card.Caption("grey", { pass = 0, resolved = 3, total = 3 }), "all skipped · 0 of 3 passed")
+end)
+
+test("the card shows one segment per category, colored by state, with the caption", function()
+    local run, card = startCats(3)
+    local shown = 0
+    for _, s in ipairs(card.segs) do if s.back.shown then shown = shown + 1 end end
+    T.eq(shown, 3); T.ok(card.segs[1].back.shown and card.segs[3].back.shown)
+    T.eq(card.barBack.shown, false, "the plain bar gives way to the segments")
+    T.eq(card.caption.text, "untested · 0 of 6 passed"); T.ok(card.catBtn.shown)
+    T.eq(shownParts(card.segs[1]), 0, "nothing colored at zero progress")
+    verdict(run, "s1a", "pass")
+    T.eq(shownParts(card.segs[1]), 1); T.eq(color(card.segs[1].parts[1])[2], 0.8, "the passed half is green")
+    T.eq(card.segs[1].parts[1].calls.SetSize[1], 59, "half of the 117 unit segment")
+    verdict(run, "s1b", "pass")
+    T.eq(card.segs[1].parts[1].calls.SetSize[1], 117, "all passed: the whole segment")
+    verdict(run, "s2a", "fail"); verdict(run, "s2b", "pass")
+    T.eq(shownParts(card.segs[2]), 2, "one failed and one passed: two colors in one segment")
+    T.eq(color(card.segs[2].parts[1])[2], 0.8, "green first"); T.eq(color(card.segs[2].parts[2])[1], 0.9, "red last")
+    T.eq(card.caption.text, "1 failed · 3 of 6 passed")
+    T.eq(card.segs[2].hit.tip, "Cat 2 (c2): failed, 1 passed, 1 failed, 0 open", "the tooltip says it in words")
+end)
+
+test("yellow shows a partial step, and blue stays for steps not yet tested", function()
+    local run, card = startCats(3)
+    verdict(run, "s1a", "partial")
+    T.eq(color(card.segs[1].parts[1])[1], 1); T.eq(color(card.segs[1].parts[1])[2], 0.82, "yellow: a partial result")
+    T.eq(card.caption.text, "1 partial · 0 of 6 passed")
+    verdict(run, "s2a", "pass")
+    T.eq(color(card.segs[2].parts[1])[2], 0.8, "green for the passed step"); T.eq(card.segs[2].back.calls.SetColorTexture[3], 0.3, "the track behind stays dim blue: a step is untested")
+    verdict(run, "s3a", "skip"); verdict(run, "s3b", "skip")
+    T.eq(shownParts(card.segs[3]), 0, "only skips: nothing colored")
+end)
+
+test("the content moves down by the caption row only when the tracker shows", function()
+    local run, card = startCats(3)
+    local with = card.title.calls.SetPoint
+    local run2, card2 = startCats(1)
+    local without = card2.title.calls.SetPoint
+    T.eq(with[5] - without[5], -12, "the title sits 12 lower (SetPoint takes the negative y)")
+end)
+
+test("one category keeps the plain bar and no caption", function()
+    local run, card = startCats(1)
+    T.eq(card.barBack.shown, true); T.eq(card.caption.shown, false); T.eq(card.catBtn.shown, false)
+    for _, s in ipairs(card.segs) do T.eq(s.back.shown, false) end
+end)
+
+test("more than eight categories show one bar colored by the overall state", function()
+    local run, card = startCats(9)
+    T.eq(card.barBack.shown, true)
+    for _, s in ipairs(card.segs) do T.eq(s.back.shown, false) end
+    verdict(run, "s1a", "fail"); verdict(run, "s2a", "pass")
+    T.eq(color(card.barParts[1])[2], 0.8, "green for the passed step"); T.eq(color(card.barParts[2])[1], 0.9, "red for the failed one")
+    T.ok(card.caption.text:find("1 failed", 1, true))
+end)
+
+test("nothing of the tracker is drawn at zero text opacity", function()
+    local run, card = startCats(3)
+    ns.addon.db.profile.card.textOpacity = 0
+    ns.Card.Refresh()
+    T.eq(card.segs[1].back.shown, false); T.eq(shownParts(card.segs[1]), 0)
+    ns.addon.db.profile.card.textOpacity = 100
+end)
+
+test("the collapsed card keeps the caption and the title moves down with it", function()
+    local run, card = startCats(3)
+    collapse(true)
+    T.eq(card.caption.shown, true); T.eq(card.catBtn.shown, false, "the Categories list is in the full card")
+    collapse(false)
+end)
+
+local function captureMenu()
+    local got = {}
+    _G.MenuUtil = { CreateContextMenu = function(owner, gen)
+        local root = { CreateButton = function(_, label, fn) got[#got + 1] = { label, fn } end }
+        gen(owner, root)
+    end }
+    return got
+end
+test("the Categories control opens the Categories window and closes it again", function()
+    local run, card = startCats(3)
+    card.catBtn.scripts.OnClick(card.catBtn)
+    T.eq(_G.CheckThatCategories:IsShown(), true)
+    card.catBtn.scripts.OnClick(card.catBtn)
+    T.eq(_G.CheckThatCategories:IsShown(), false)
+end)
+
+test("rerun asks first and reopens only when the player accepts", function()
+    local run, card = startCats(2)
+    verdict(run, "s1a", "pass")
+    local dialog
+    _G.StaticPopup_Show = function() end
+    ns.Card.ConfirmRerun("c1", 1, "Cat 1")
+    dialog = _G.StaticPopupDialogs.WOWCHECKTHAT_CONFIRM
+    T.ok(dialog.text:find("Rerun Cat 1? This reopens 1 completed steps", 1, true), dialog.text)
+    T.eq(run.steps.s1a.verdict, "pass", "asking changes nothing")
+    dialog.OnAccept()
+    T.eq(run.steps.s1a.verdict, "pending")
+end)
+
+test("the start screen lists categories as checkboxes, all checked, and starts with the checked ones", function()
+    ns.addon.db.profile.card.collapsed = false
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(3)))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.cleared = nil
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.ok(card.picks[1].check.shown and card.picks[3].check.shown); T.eq(card.picks[1].label.text, "Cat 1: 2 steps")
+    -- clearing the second checkbox
+    card.picks[2].check.GetChecked = function() return false end
+    card.picks[2].check.scripts.OnClick(card.picks[2].check)
+    T.eq(ns.App.db.ui.cleared.KeepThat.c2, true)
+    card.start.scripts.OnClick(card.start)
+    local run = ns.App.Current()
+    T.eq(run.selected.c1, true); T.eq(run.selected.c2, nil); T.eq(run.steps.s2a.verdict, "deselected")
+end)
+
+test("with every category cleared, Start run is off and the card says why", function()
+    ns.addon.db.profile.card.collapsed = false
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(2)))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    ns.App.db.ui.cleared = { KeepThat = { c1 = true, c2 = true } }
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.eq(card.start.calls.SetEnabled[1], false); T.eq(card.pickNote.text, "Select at least one category.")
+    ns.App.db.ui.cleared = nil
+end)
+
+test("a rerun question belongs to the run it was asked in", function()
+    local run, card = startCats(2)
+    verdict(run, "s1a", "pass")
+    _G.StaticPopup_Show = function() end
+    ns.Card.ConfirmRerun("c1", 1, "Cat 1")
+    local dialog = _G.StaticPopupDialogs.WOWCHECKTHAT_CONFIRM
+    local other = startCats(2)                      -- another run takes the card
+    dialog.OnAccept()
+    T.eq(run.steps.s1a.verdict, "pass", "nothing was reopened in the first run")
+    T.eq(other.steps.s1a.verdict, "pending", "or in the second")
+end)
+
+test("the opacity setting reaches the overall bar and hides the tracker at zero at once", function()
+    local run, card = startCats(9)
+    T.eq(card.barBack.shown, true)
+    ns.addon.db.profile.card.textOpacity = 0
+    ns.Card.ApplyAppearance()
+    T.eq(card.barBack.shown, false, "no redraw call from the test: the setting path alone hides it")
+    ns.addon.db.profile.card.textOpacity = 50
+    ns.Card.ApplyAppearance()
+    T.eq(card.barBack.shown, true); T.eq(card.barBack.calls.SetAlpha[1], 0.5)
+    ns.addon.db.profile.card.textOpacity = 100
+    ns.Card.ApplyAppearance()
+end)
+
+test("with more than eight categories all cleared, the card start screen turns Start run off", function()
+    ns.addon.db.profile.card.collapsed = false
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(9)))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    local off = {}
+    for i = 1, 9 do off["c" .. i] = true end
+    ns.App.db.ui.cleared = { KeepThat = off }
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.eq(card.start.calls.SetEnabled[1], false); T.eq(card.pickNote.text, "Select at least one category.")
+    ns.App.db.ui.cleared = nil
+end)
+
 finish()

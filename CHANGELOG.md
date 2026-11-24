@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0
+
+New: **Test categories.** A plan groups its steps. Pick the categories to run when you start. Add one later.
+New: **Progress tracker.** The card shows each category in blue, yellow, red or green. A caption says the result in words.
+New: **Categories window.** Type /ct tracker to see every category. Click a row to add it, go to its first open step, or run it again.
+New: **Unit-test checks.** A step can check a fact's value, how often something happened, and that no Lua error appeared.
+New: The commands /ct categories, /ct run, /ct rerun and /ct tracker. A rerun asks first.
+Changed: **Automatic steps** can now check that something did not happen. The step waits for its timeout and then records the result.
+Changed: The self-test plan has 15 steps in five categories. It checks every kind of check.
+
 ## 0.9.1
 
 New: **/ct fact** reports a test fact while a run is open. The self-test now uses it with the Run button.

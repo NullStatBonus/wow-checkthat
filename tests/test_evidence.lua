@@ -192,4 +192,184 @@ test("frame probe survives a throwing frame", function()
     T.eq((E.CheckState(a, en)), "unverified")
 end)
 
+-- Typed facts, counts and quiet sources
+local fplan = { logs = {
+    f = { global = "DB", path = "facts", format = "strings" },
+    q = { global = "DB", path = "errors", format = "strings", quiet = true } } }
+local function fenv(facts, errors) return { DB = { facts = facts, errors = errors or {} } } end
+local function fact(extra)
+    local a = { kind = "fact", source = "f", addon = "KT", key = "level", op = "eq", value = 3 }
+    for k, v in pairs(extra or {}) do a[k] = v end
+    return a
+end
+local function snapOf(a, en) return E.Snapshot(fplan, en, { assertions = { a } }) end
+local function judge(a, before, after, errsBefore, errsAfter)
+    local snaps = snapOf(a, fenv(before, errsBefore))
+    return E.CheckFact(a, snaps, fplan, fenv(after, errsAfter)) 
+end
+test("ParseValue reads booleans, numbers and text", function()
+    T.eq(E.ParseValue("true"), true); T.eq(E.ParseValue("false"), false)
+    T.eq(E.ParseValue("3"), 3); T.eq(E.ParseValue("-0.5"), -0.5); T.eq(E.ParseValue("1e+20"), 1e20); T.eq(E.ParseValue(".5"), 0.5)
+    T.eq(E.ParseValue("abc"), "abc"); T.eq(E.ParseValue("0x10"), "0x10"); T.eq(E.ParseValue("nan"), "nan"); T.eq(E.ParseValue(""), "")
+    local a, k, v = E.ParseFact("[KT] level=5")
+    T.eq(a, "KT"); T.eq(k, "level"); T.eq(v, 5)
+    T.ok(E.ParseFact("not a fact") == nil)
+end)
+test("fact comparisons pass and fail on the parsed value", function()
+    T.eq((judge(fact(), {}, { "[KT] level=3" })), "pass")
+    T.eq((judge(fact(), {}, { "[KT] level=4" })), "fail")
+    T.eq((judge(fact({ op = "between", value = { 1, 5 } }), {}, { "[KT] level=9" })), "fail", "out of range contradicts")
+    T.eq((judge(fact({ op = "between", value = { 1, 5 } }), {}, { "[KT] level=5" })), "pass", "ends are inside")
+    T.eq((judge(fact({ op = "ge", value = 3 }), {}, { "[KT] level=3" })), "pass")
+    T.eq((judge(fact({ op = "le", value = 2 }), {}, { "[KT] level=3" })), "fail")
+    T.eq((judge(fact({ op = "approx", value = 0.5, tolerance = 0.01 }), {}, { "[KT] level=0.504" })), "pass")
+    T.eq((judge(fact({ op = "approx", value = 0.5, tolerance = 0.01 }), {}, { "[KT] level=0.52" })), "fail")
+    T.eq((judge(fact({ op = "type", value = "number" }), {}, { "[KT] level=abc" })), "fail")
+    T.eq((judge(fact({ op = "type", value = "boolean" }), {}, { "[KT] level=false" })), "pass")
+    T.eq((judge(fact({ op = "in", value = { "a", "b" } }), {}, { "[KT] level=b" })), "pass")
+    T.eq((judge(fact({ op = "in", value = { "a", "b" } }), {}, { "[KT] level=c" })), "fail")
+    T.eq((judge(fact({ op = "matches", value = "^ab" }), {}, { "[KT] level=abc" })), "pass")
+    T.eq((judge(fact({ op = "matches", value = "(" }), {}, { "[KT] level=abc" })), "fail", "a bad pattern never raises")
+    T.eq((judge(fact({ op = "contains", value = "bc" }), {}, { "[KT] level=abc" })), "pass")
+    T.eq((judge(fact({ op = "exists", value = nil }), {}, { "[KT] level=1" })), "pass")
+end)
+test("a fact that never arrives is unverified, and other facts do not count", function()
+    T.eq((judge(fact(), {}, {})), "unverified")
+    T.eq((judge(fact(), {}, { "[KT] other=3", "[DDT] level=3" })), "unverified", "same key from another addon, other key")
+    T.eq((judge(fact(), { "[KT] level=3" }, { "[KT] level=3" })), "unverified", "a fact from before the step opened is old")
+end)
+test("which picks the last, any or all facts", function()
+    local after = { "[KT] level=1", "[KT] level=3", "[KT] level=9" }
+    T.eq((judge(fact(), {}, after)), "fail", "last is 9")
+    T.eq((judge(fact({ which = "any" }), {}, after)), "pass")
+    T.eq((judge(fact({ which = "all", op = "ge", value = 1 }), {}, after)), "pass")
+    T.eq((judge(fact({ which = "all", op = "le", value = 5 }), {}, after)), "fail")
+    T.eq((judge(fact({ which = "any", value = 7 }), {}, after)), "fail", "facts arrived and none match")
+end)
+test("missing passes when no fact arrived and fails when one did", function()
+    T.eq((judge(fact({ op = "missing", value = nil }), { "[KT] x=1" }, { "[KT] x=1", "[KT] y=1" })), "pass")
+    T.eq((judge(fact({ op = "missing", value = nil }), { "[KT] x=1" }, { "[KT] x=1", "[KT] level=1" })), "fail")
+    T.eq((judge(fact({ op = "missing", value = nil }), {}, {})), "unverified", "a log with no new lines may be off")
+end)
+test("count judges how many matched", function()
+    local two = fact({ op = "exists", value = nil, count = { exactly = 2 } })
+    T.eq((judge(two, {}, { "[KT] level=1", "[KT] level=2" })), "pass")
+    T.eq((judge(two, {}, { "[KT] level=1", "[KT] level=2", "[KT] level=3" })), "fail", "too many contradicts")
+    T.eq((judge(two, {}, { "[KT] level=1" })), "unverified", "one may still arrive")
+    local atLeast = fact({ op = "exists", value = nil, count = { min = 2 } })
+    T.eq((judge(atLeast, {}, { "[KT] level=1" })), "unverified")
+    T.eq((judge(atLeast, {}, { "[KT] level=1", "[KT] level=1", "[KT] level=1" })), "pass")
+    local ranged = fact({ op = "gt", value = 2, count = { min = 1, max = 2 } })
+    T.eq((judge(ranged, {}, { "[KT] level=1", "[KT] level=5" })), "pass", "only values that pass the operator count")
+    local logCount = { kind = "log", source = "f", contains = "hit", count = { exactly = 2 } }
+    local snaps = snapOf(logCount, fenv({}))
+    T.eq((E.CheckLog(logCount, snaps, fplan, fenv({ "hit", "hit" }))), "pass")
+    T.eq((E.CheckLog(logCount, snaps, fplan, fenv({ "hit", "hit", "hit" }))), "fail")
+    T.eq((E.CheckLog(logCount, snaps, fplan, fenv({ "hit" }))), "unverified")
+end)
+test("a count of zero needs a log that can show it", function()
+    local none = { kind = "log", source = "f", contains = "boom", count = { exactly = 0 } }
+    T.eq((E.CheckLog(none, snapOf(none, fenv({ "old" })), fplan, fenv({ "old", "fine" }))), "pass", "new lines, no match")
+    T.eq((E.CheckLog(none, snapOf(none, fenv({ "old" })), fplan, fenv({ "old" }))), "unverified", "no new lines: debug may be off")
+    T.eq((E.CheckLog(none, snapOf(none, fenv({ "old" })), fplan, fenv({ "old", "boom" }))), "fail")
+    T.eq((E.CheckLog(none, {}, fplan, {})), "unverified", "unreadable")
+end)
+test("silence on a quiet source passes an absence or a zero count", function()
+    local absent = { kind = "log", source = "q", pattern = ".", absent = true }
+    local en0 = fenv({}, {})
+    T.eq((E.CheckLog(absent, snapOf(absent, en0), fplan, fenv({}, {}))), "pass", "no new error lines")
+    T.eq((E.CheckLog(absent, snapOf(absent, en0), fplan, fenv({}, { "boom" }))), "fail")
+    local zero = { kind = "log", source = "q", pattern = ".", count = { exactly = 0 } }
+    T.eq((E.CheckLog(zero, snapOf(zero, en0), fplan, fenv({}, {}))), "pass")
+    T.eq((E.CheckLog(zero, snapOf(zero, en0), fplan, fenv({}, { "boom" }))), "fail")
+    local expected = { kind = "log", source = "q", contains = "boom" }
+    T.eq((E.CheckLog(expected, snapOf(expected, en0), fplan, fenv({}, { "x: boom" }))), "pass", "an expected error")
+    T.eq((E.CheckLog(absent, snapOf(absent, en0), fplan, {})), "unverified", "an unreadable source stays unverified")
+end)
+test("state probes take the new operators and missing needs a readable table", function()
+    local en = { DB = { n = 4, s = "abc", t = { x = 1 } } }
+    local function st(extra) local a = { kind = "state", probe = "global-value", name = "DB", path = "n", op = "eq", value = 4 }; for k, v in pairs(extra) do a[k] = v end; return a end
+    T.eq((E.CheckState(st({ op = "between", value = { 1, 5 } }), en)), "pass")
+    T.eq((E.CheckState(st({ op = "between", value = { 5, 9 } }), en)), "fail")
+    T.eq((E.CheckState(st({ op = "approx", value = 4.1, tolerance = 0.2 }), en)), "pass")
+    T.eq((E.CheckState(st({ path = "s", op = "type", value = "string" }), en)), "pass")
+    T.eq((E.CheckState(st({ path = "s", op = "matches", value = "^a" }), en)), "pass")
+    T.eq((E.CheckState(st({ op = "in", value = { 3, 4 } }), en)), "pass")
+    T.eq((E.CheckState(st({ op = "ge", value = 4 }), en)), "pass")
+    T.eq((E.CheckState(st({ path = "nope", op = "missing", value = nil }), en)), "pass")
+    T.eq((E.CheckState(st({ op = "missing", value = nil }), en)), "fail")
+    T.eq((E.CheckState(st({ name = "Gone", path = "n", op = "missing", value = nil }), en)), "unverified", "no such global is not a missing field")
+end)
+test("the evidence operators are the plan's operators", function()
+    for op in pairs(ns.Plan.OPS) do T.ok(E.Ops[op], "no evidence operator for " .. op) end
+    for op in pairs(E.Ops) do T.ok(ns.Plan.OPS[op], "plan does not allow " .. op) end
+end)
+test("a bounded log below its cap has never rolled, so its boundary is exact even when the lines are alike", function()
+    local same = {}
+    for i = 1, 5 do same[i] = "boom" end
+    local snap = { n = 5, tail = same }
+    local cur = {}; for i = 1, 5 do cur[i] = "boom" end
+    cur[6] = "new"
+    local _, exact = E.NewLines(snap, cur)
+    T.eq(exact, false, "no cap: a tail of the same line proves nothing")
+    local lines, exact2 = E.NewLines(snap, cur, 100)
+    T.eq(exact2, true, "under the cap"); T.eq(#lines, 1)
+    local full = {}; for i = 1, 100 do full[i] = "boom" end
+    local _, exact3 = E.NewLines({ n = 100, tail = full }, full, 100)
+    T.eq(exact3, false, "a full log may have dropped lines")
+end)
+test("an absence check on a capped quiet source passes over old lines that are all alike", function()
+    local p = { logs = { q = { global = "DB", path = "errors", format = "strings", quiet = true, cap = 100 } } }
+    local a = { kind = "log", source = "q", pattern = ".", absent = true }
+    local env = { DB = { errors = { "same", "same", "same" } } }
+    local snaps = E.Snapshot(p, env, { assertions = { a } })
+    T.eq((E.CheckLog(a, snaps, p, env)), "pass", "nothing new since the step opened")
+    env.DB.errors[4] = "different"
+    T.eq((E.CheckLog(a, snaps, p, env)), "fail")
+    p.logs.q.cap = nil
+    env.DB.errors[4] = nil
+    T.eq((E.CheckLog(a, snaps, p, env)), "unverified", "without the cap it stays unverified")
+end)
+test("an upper-bound count stays pending on the card until the verdict", function()
+    local a = fact({ op = "exists", value = nil, count = { exactly = 1 } })
+    local items = E.Preview({ assertions = { a } }, nil, fplan, fenv({ "[KT] level=1" }))
+    T.eq(items[1].state, "later")
+    a.count = { min = 1 }
+    items = E.Preview({ assertions = { a } }, snapOf(a, fenv({})), fplan, fenv({ "[KT] level=1" }))
+    T.eq(items[1].state, "met")
+end)
+test("a check that is judged at the verdict shows bad as soon as it can no longer pass", function()
+    local a = fact({ op = "exists", value = nil, count = { exactly = 1 } })
+    local snaps = snapOf(a, fenv({}))
+    T.eq(E.Preview({ assertions = { a } }, snaps, fplan, fenv({ "[KT] level=1" }))[1].state, "later", "one so far: it may be right")
+    T.eq(E.Preview({ assertions = { a } }, snaps, fplan, fenv({ "[KT] level=1", "[KT] level=2" }))[1].state, "bad", "two: too many, for good")
+    local none = { kind = "log", source = "f", contains = "boom", absent = true }
+    local s2 = snapOf(none, fenv({ "old" }))
+    T.eq(E.Preview({ assertions = { none } }, s2, fplan, fenv({ "old", "fine" }))[1].state, "later")
+    T.eq(E.Preview({ assertions = { none } }, s2, fplan, fenv({ "old", "boom" }))[1].state, "bad")
+end)
+
+test("an exact count is not shown on a log whose boundary is uncertain, but too many still fails", function()
+    local flood = {}
+    for i = 1, 300 do flood[i] = "tick" end
+    local a = { kind = "log", source = "f", contains = "hit", count = { exactly = 1 } }
+    local snaps = E.Snapshot(fplan, fenv(flood), { assertions = { a } })
+    local after = {}; for i, l in ipairs(flood) do after[i] = l end
+    after[#after + 1] = "hit"
+    T.eq((E.CheckLog(a, snaps, fplan, fenv(after))), "unverified", "a rolled log may have hidden a second hit")
+    after[#after + 1] = "hit"
+    T.eq((E.CheckLog(a, snaps, fplan, fenv(after))), "fail", "two visible hits are too many whatever was lost")
+    local b = { kind = "fact", source = "f", addon = "KT", key = "level", op = "ge", value = 1, which = "all" }
+    local fl = {}; for i = 1, 300 do fl[i] = "tick" end
+    local bs = E.Snapshot(fplan, fenv(fl), { assertions = { b } })
+    local fa = {}; for i, l in ipairs(fl) do fa[i] = l end
+    fa[#fa + 1] = "[KT] level=2"
+    T.eq((E.CheckFact(b, bs, fplan, fenv(fa))), "unverified", "which all cannot be shown when facts may be lost")
+end)
+test("a required fact missing check waits until the verdict on the card", function()
+    local a = fact({ op = "missing", value = nil })
+    local items = E.Preview({ assertions = { a } }, snapOf(a, fenv({})), fplan, fenv({}))
+    T.eq(items[1].state, "later")
+end)
+
 finish()

@@ -71,6 +71,14 @@ function Log.Report()
         local stored = ("Stored: %d runs (limit %d), %d plan copies"):format(runs, ns.App.RunLimit(), plans)
         out[#out + 1] = stored
         if ns.Facts then out[#out + 1] = ("Facts: %d, last: %s"):format(ns.Facts.Count(), ns.Facts.Last() or "none") end
+        local rows, overall = ns.App.Categories()
+        if rows then
+            out[#out + 1] = "Categories: overall " .. overall
+            for _, r in ipairs(rows) do
+                out[#out + 1] = ("  %s: %s%s, %d of %d done"):format(r.id, r.state, r.picked and "" or " (not picked)", r.counts.resolved, r.counts.total)
+            end
+        end
+        if ns.Errors then out[#out + 1] = ("Errors: %d recorded, handler: %s"):format(ns.Errors.Count(), ns.Errors.HookState()) end
         ns.App.Log("report requested: " .. stored)
     end
     out[#out + 1] = ""

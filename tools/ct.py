@@ -45,6 +45,92 @@ def macro_allowed(text, addon):
     return True
 
 
+ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+TYPES = ("number", "boolean", "string")
+
+
+def is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def check_op(a, sid, errs):
+    """Value shapes for an operator (mirror of checkOp in CheckThat/Model/Plan.lua)."""
+    op, v = a.get("op"), a.get("value")
+    if op == "between":
+        if not (isinstance(v, list) and len(v) == 2 and all(is_num(x) for x in v) and v[0] <= v[1]):
+            errs.append("%s: between needs a value of two numbers, low then high" % sid)
+    elif op == "in":
+        if not (isinstance(v, list) and v):
+            errs.append("%s: in needs a value that is a list" % sid)
+    elif op == "approx":
+        if not is_num(v):
+            errs.append("%s: approx needs a number value" % sid)
+        if not (is_num(a.get("tolerance")) and a["tolerance"] >= 0):
+            errs.append("%s: approx needs a tolerance of zero or more" % sid)
+    elif op == "type":
+        if v not in TYPES:
+            errs.append("%s: type needs number, boolean or string" % sid)
+    elif op == "matches":
+        if not (isinstance(v, str) and 0 < len(v) <= 200):
+            errs.append("%s: matches needs a pattern of up to 200 characters" % sid)
+    elif op in ("ge", "le"):
+        if not is_num(v):
+            errs.append("%s: %s needs a number value" % (sid, op))
+    if "tolerance" in a and op != "approx":
+        errs.append("%s: tolerance belongs to approx" % sid)
+
+
+def check_count(a, sid, errs):
+    c = a.get("count")
+    if c is None:
+        return
+    if "exactly" in c and ("min" in c or "max" in c):
+        errs.append("%s: count exactly cannot combine with min or max" % sid)
+    if "min" in c and "max" in c and c["min"] > c["max"]:
+        errs.append("%s: count min is above max" % sid)
+    if a.get("absent"):
+        errs.append("%s: count cannot combine with absent" % sid)
+    return
+
+
+def expand_cases(plan):
+    """Return a copy with each step that has cases replaced by one step per case ({{name}} filled in)."""
+    out = copy.deepcopy(plan)
+    for sec in out.get("sections", []):
+        steps = []
+        for st in sec.get("steps", []):
+            cases = st.pop("cases", None)
+            if cases is None:
+                steps.append(st)
+                continue
+            seen = set()
+            for case in cases:
+                if case["id"] in seen:
+                    raise ValueError("step %s: duplicate case id %s" % (st["id"], case["id"]))
+                seen.add(case["id"])
+
+                def fill(v):
+                    if isinstance(v, str):
+                        whole = re.fullmatch(r"\{\{([A-Za-z0-9_-]+)\}\}", v)
+                        if whole and whole.group(1) in case["vars"]:
+                            return case["vars"][whole.group(1)]  # a value that is only a placeholder keeps its type
+                        def sub(m):
+                            if m.group(1) not in case["vars"]:
+                                raise ValueError("step %s case %s: no var for {{%s}}" % (st["id"], case["id"], m.group(1)))
+                            return str(case["vars"][m.group(1)])
+                        return re.sub(r"\{\{([A-Za-z0-9_-]+)\}\}", sub, v)
+                    if isinstance(v, list):
+                        return [fill(x) for x in v]
+                    if isinstance(v, dict):
+                        return {k: fill(x) for k, x in v.items()}
+                    return v
+                new = fill(copy.deepcopy(st))
+                new["id"] = "%s.%s" % (st["id"], case["id"])
+                steps.append(new)
+        sec["steps"] = steps
+    return out
+
+
 def validate(plan):
     """Return a list of error strings; empty means valid."""
     import jsonschema
@@ -56,7 +142,16 @@ def validate(plan):
         errs.append("%s: %s" % ("/".join(map(str, e.path)) or "<root>", e.message[:200]))
     if errs:
         return errs
+    try:
+        plan = expand_cases(plan)
+    except ValueError as e:
+        return [str(e)]
     addon = plan["addon"]
+    cats = {}
+    for c in plan.get("categories", []):
+        if c["id"] in cats:
+            errs.append("duplicate category id %s" % c["id"])
+        cats[c["id"]] = c
     for box, key, _ in display_fields(plan):
         if isinstance(box[key], str) and MARKDOWN.search(box[key]):
             errs.append("markdown in %s: use native color codes (|cffffd100text|r), not backticks or **" % key)
@@ -67,15 +162,25 @@ def validate(plan):
             errs.append("macro %s: text not allowed" % m["id"])
     reqs = plan.get("requirements", {})
     logs = plan.get("logs", {})
+    sec_ids = set()
     for sec in plan["sections"]:
+        if sec["id"] in sec_ids:
+            errs.append("duplicate section id %s" % sec["id"])
+        sec_ids.add(sec["id"])
         for r in sec.get("requires", []):
             if r not in reqs:
                 errs.append("section %s: unresolved requirement %s" % (sec["id"], r))
+        if "category" in sec and sec["category"] not in cats:
+            errs.append("section %s: unknown category %s" % (sec["id"], sec["category"]))
         for st in sec["steps"]:
             sid = st["id"]
             if sid in seen:
                 errs.append("duplicate step id %s" % sid)
             seen.add(sid)
+            if "category" in st and st["category"] not in cats:
+                errs.append("%s: unknown category %s" % (sid, st["category"]))
+            elif cats and "category" not in st and "category" not in sec:
+                errs.append("%s: no category (the plan declares categories)" % sid)
             for r in st.get("requires", []):
                 if r not in reqs:
                     errs.append("%s: unresolved requirement %s" % (sid, r))
@@ -87,6 +192,13 @@ def validate(plan):
             for c in act.get("commands", []):
                 if not macro_allowed(c, addon):
                     errs.append("%s: command not allowed: %s" % (sid, c))
+            if st.get("auto") and "timeout" not in st:
+                for a in st.get("assertions", []):
+                    c = a.get("count") or {}
+                    if not a.get("diagnostic") and (a.get("absent") or (a["kind"] == "fact" and a.get("op") == "missing")
+                                                    or "exactly" in c or "max" in c):
+                        errs.append("%s: auto step needs a timeout for a check that is judged at the end (absence, missing, exactly or max)" % sid)
+                        break
             has_a = "assertions" in st["verify"]
             if has_a and not st.get("assertions"):
                 errs.append("%s: verify assertions but none given" % sid)
@@ -95,8 +207,13 @@ def validate(plan):
             if "reviewer" in st["verify"] and not st.get("reviewer"):
                 errs.append("%s: verify reviewer but no reviewer text" % sid)
             for a in st.get("assertions", []):
-                if a["kind"] in ("log", "log-sequence") and a["source"] not in logs:
+                if a["kind"] in ("log", "log-sequence", "fact") and a["source"] not in logs:
                     errs.append("%s: unknown log source %s" % (sid, a["source"]))
+                if a["kind"] in ("fact", "state"):
+                    check_op(a, sid, errs)
+                if a["kind"] in ("fact", "log"):
+                    check_count(a, sid, errs)
+                    c = a.get("count") or {}
                 if a["kind"] == "log" and sum(k in a for k in ("equals", "contains", "pattern")) != 1:
                     errs.append("%s: log assertion needs exactly one of equals, contains, pattern" % sid)
     return errs
@@ -124,10 +241,11 @@ def print_warnings(plan):
 
 def merge_sections(plan):
     """Compile section requirements, setup and clients into each step."""
-    out = copy.deepcopy(plan)
+    out = expand_cases(plan)
     out["kind"], out["ct"] = "plan", 1
     for sec in out["sections"]:
         sreq, ssetup, scl = sec.pop("requires", []), sec.pop("setup", None), sec.get("clients")
+        scat = sec.pop("category", None)
         sshare = sec.pop("share", None)
         if sshare and sshare != "none" and "share" not in sec["steps"][-1]:
             sec["steps"][-1]["share"] = sshare
@@ -135,6 +253,8 @@ def merge_sections(plan):
             st["requires"] = list(dict.fromkeys(sreq + st.get("requires", [])))
             if not st["requires"]:
                 del st["requires"]
+            if scat and "category" not in st:
+                st["category"] = scat
             if ssetup:
                 st["setup"] = (ssetup + " " + st["setup"]).strip() if st.get("setup") else ssetup
             if scl and "clients" not in st:
@@ -510,6 +630,38 @@ def evidence_state(rec):
     return "met" if results == {"pass"} else "missing"   # an outcome without a result is not evidence
 
 
+def category_rule(c):
+    """red, yellow, green, blue or grey from step counts (the rule in CheckThat/Model/Run.lua, checked by one shared fixture)."""
+    g = lambda k: c.get(k, 0)
+    resolved = g("pass") + g("partial") + g("fail") + g("skip")
+    open_ = g("pending") + g("unverified")
+    if g("fail") > 0:
+        return "red"
+    if g("partial") > 0 or g("unverified") > 0:
+        return "yellow"
+    if open_ == 0 and g("pass") > 0:
+        return "green"
+    if open_ > 0:
+        return "blue"
+    return "grey"
+
+
+def category_states(r):
+    """[(id, title, state, resolved, total)] for a run that holds categories; state is off when the tester did not pick it."""
+    out = []
+    for cat in r.get("categories") or []:
+        c = {}
+        for sid, cid in (r.get("cat") or {}).items():
+            v = (r.get("steps") or {}).get(sid, {}).get("verdict")
+            if cid == cat["id"] and v not in ("deselected", "inapplicable", None):
+                c[v] = c.get(v, 0) + 1
+        total = sum(c.values())
+        resolved = sum(c.get(k, 0) for k in ("pass", "partial", "fail", "skip"))
+        picked = (r.get("selected") or {}).get(cat["id"])
+        out.append((cat["id"], cat.get("title", cat["id"]), category_rule(c) if picked else "off", resolved, total))
+    return out
+
+
 def step_ids(r):
     """Steps in plan order, then any other recorded step (one the client does not use) in name order."""
     order = list(r.get("order") or [])
@@ -540,6 +692,10 @@ def report_text(runs, dest=None):
         out.append("client %s build %s character %s" % (r.get("client"), r.get("build"), r.get("character")))
         auto = sum(1 for rec in (r.get("steps") or {}).values() if by_checkthat(rec))
         out.append("counts: " + ", ".join("%s=%d" % kv for kv in sorted(counts.items())) + (", auto=%d" % auto if auto else ""))
+        cats = category_states(r)
+        if cats:
+            out.append("categories: " + ", ".join("%s %s %d/%d" % (cid, state, res, tot) if state != "off" else "%s not picked" % cid
+                                                   for cid, _, state, res, tot in cats))
         out.append("")
         out.extend(step_table(r))
         out.append("")

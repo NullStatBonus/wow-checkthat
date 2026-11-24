@@ -1,0 +1,95 @@
+[
+ {
+  "counts": {},
+  "state": "grey"
+ },
+ {
+  "counts": {
+   "pending": 3,
+   "total": 3
+  },
+  "state": "blue"
+ },
+ {
+  "counts": {
+   "pass": 1,
+   "pending": 2
+  },
+  "state": "blue"
+ },
+ {
+  "counts": {
+   "pass": 3
+  },
+  "state": "green"
+ },
+ {
+  "counts": {
+   "pass": 2,
+   "skip": 1
+  },
+  "state": "green"
+ },
+ {
+  "counts": {
+   "skip": 2
+  },
+  "state": "grey"
+ },
+ {
+  "counts": {
+   "skip": 1,
+   "pending": 1
+  },
+  "state": "blue"
+ },
+ {
+  "counts": {
+   "fail": 1,
+   "pass": 4
+  },
+  "state": "red"
+ },
+ {
+  "counts": {
+   "fail": 1,
+   "pending": 2
+  },
+  "state": "red"
+ },
+ {
+  "counts": {
+   "partial": 1
+  },
+  "state": "yellow"
+ },
+ {
+  "counts": {
+   "partial": 1,
+   "pass": 2
+  },
+  "state": "yellow"
+ },
+ {
+  "counts": {
+   "unverified": 1
+  },
+  "state": "yellow"
+ },
+ {
+  "counts": {
+   "unverified": 1,
+   "pass": 2
+  },
+  "state": "yellow"
+ },
+ {
+  "counts": {
+   "pass": 1,
+   "partial": 0,
+   "unverified": 0,
+   "pending": 0
+  },
+  "state": "green"
+ }
+]

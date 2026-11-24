@@ -89,4 +89,20 @@ test("combat: closing the card in combat leaves no Run button after combat", fun
     slash("")  -- opens the card again
     T.ok(card:IsShown() and st.click(card.secure) == macroOf(), "opening the card brings the button back")
 end)
+test("combat: category commands in combat raise nothing and the Run button follows the step shown", function()
+    importKeepThat()
+    st.setCombat(false)
+    slash("start KeepThat")
+    local run = ns.App.Current()
+    st.setCombat(true)
+    local ok = true
+    for _, cmd in ipairs({ "categories", "run " .. run.categories[2].id, "rerun " .. run.categories[1].id }) do
+        ok = pcall(slash, cmd) and ok
+    end
+    T.ok(ok, "the commands raise no error in combat")
+    combatEnds()
+    local card = _G.CheckThatCard
+    T.eq(card.secure.attrs.macrotext or "", macroOf() or "", "the Run button holds the macro of the step now shown")
+end)
+
 finish()

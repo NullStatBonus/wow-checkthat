@@ -5,7 +5,18 @@ title: CheckThat self-test
 preamble: Open the card with /ct. This plan checks the card, the copy boxes, the secure Run button, evidence
   from the debug log, a reported fact, and reload resume.
 handoff: Reload or log out so the game saves the run, then run the harvest script. The report should show
-  five steps and no unverified evidence.
+  fifteen steps and no unverified evidence.
+categories:
+- id: card
+  title: Card and Run button
+- id: evidence
+  title: Log evidence
+- id: facts
+  title: Facts
+- id: units
+  title: Unit checks
+- id: errors
+  title: Lua errors
 logs:
   debug:
     global: CheckThatDB
@@ -15,6 +26,13 @@ logs:
     global: CheckThatDB
     path: global.facts
     format: strings
+    cap: 300
+  errors:
+    global: CheckThatDB
+    path: global.errors
+    format: strings
+    quiet: true
+    cap: 100
 requirements:
   loaded:
     text: CheckThat is loaded
@@ -25,6 +43,10 @@ macros:
   text: /ct status
 - id: fact
   text: /ct fact
+- id: typed
+  text: /ct selftest facts
+- id: raise
+  text: /ct selftest error
 sections:
 - id: s1
   title: Card and evidence
@@ -32,20 +54,23 @@ sections:
   - loaded
   steps:
   - id: self.debug
+    category: evidence
     title: Turn debug recording on
     action:
       kind: copy-slash
       text: /ct debug on
-    expect: Chat says "Debug recording is on.".
+    expect: Chat says "Debug recording is on.". The card records the result by itself.
     verify:
-    - player
     - assertions
+    auto: true
+    timeout: 60
     assertions:
     - kind: log
       source: debug
       equals: '[ct] debug on'
       label: Debug recording turned on
   - id: self.secure
+    category: card
     title: Run button
     action:
       kind: secure-macro
@@ -61,6 +86,7 @@ sections:
       equals: '[ct] status requested'
       label: Status requested through Run
   - id: self.reload
+    category: card
     title: Reload and resume
     action:
       kind: reload
@@ -77,6 +103,7 @@ sections:
       pattern: '^%[ct%] resumed run '
       label: Run resumed after the reload
   - id: self.facts
+    category: facts
     title: Report a fact
     action:
       kind: secure-macro
@@ -92,12 +119,372 @@ sections:
       source: facts
       equals: '[CheckThat] selftest=1'
       label: Fact reported through CheckThat.Report
+  - id: self.typed
+    category: facts
+    title: Report typed facts
+    action:
+      kind: secure-macro
+      macro: typed
+      text: Click Run on the card.
+    expect: Chat says the test facts were reported. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: between
+      value:
+      - 1
+      - 5
+      label: Level is a number from 1 to 5
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: type
+      value: number
+      label: Level is a number
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: ratio
+      op: approx
+      value: 0.5
+      tolerance: 0.01
+      label: Ratio is 0.5, give or take 0.01
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: exists
+      count:
+        min: 2
+      label: Hit was reported at least twice
+  - id: self.compare
+    category: units
+    title: Compare numbers
+    action:
+      kind: secure-macro
+      macro: typed
+      text: Click Run on the card.
+    expect: Chat says the test facts were reported. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: eq
+      value: 3
+      label: Level equals 3
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: ne
+      value: 4
+      label: Level is not 4
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: gt
+      value: 2
+      label: Level is above 2
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: ge
+      value: 3
+      label: Level is at least 3
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: lt
+      value: 4
+      label: Level is below 4
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: le
+      value: 3
+      label: Level is at most 3
+  - id: self.text
+    category: units
+    title: Check text and a list
+    action:
+      kind: secure-macro
+      macro: typed
+      text: Click Run on the card.
+    expect: Chat says the test facts were reported. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: mode
+      op: eq
+      value: fast
+      label: Mode equals fast
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: mode
+      op: contains
+      value: as
+      label: Mode contains as
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: mode
+      op: matches
+      value: ^fa
+      label: Mode matches a pattern
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: mode
+      op: in
+      value:
+      - fast
+      - slow
+      label: Mode is fast or slow
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: mode
+      op: type
+      value: string
+      label: Mode is text
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: flag
+      op: type
+      value: boolean
+      label: Flag is a boolean
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: flag
+      op: eq
+      value: true
+      label: Flag is true
+  - id: self.which
+    category: units
+    title: Check every report of a fact
+    action:
+      kind: secure-macro
+      macro: typed
+      text: Click Run on the card.
+    expect: Chat says the test facts were reported. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: eq
+      value: 1
+      which: all
+      label: Every hit is 1
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: eq
+      value: 1
+      which: any
+      label: Some hit is 1
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: ge
+      value: 1
+      which: last
+      label: The last hit is at least 1
+  - id: self.exact
+    category: units
+    title: Count exactly
+    action:
+      kind: secure-macro
+      macro: typed
+      text: Click Run once. Each click reports the facts again, so a second click breaks the count of exactly two. CheckThat waits 20 seconds in case more arrive, then records the result.
+    expect: Chat says the test facts were reported. The card records the result by itself when the time is up.
+    verify:
+    - assertions
+    auto: true
+    timeout: 20
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: exists
+      count:
+        exactly: 2
+      label: Hit was reported exactly twice
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: exists
+      count:
+        max: 3
+      label: Hit was reported at most three times
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: level
+      op: exists
+      count:
+        min: 1
+        max: 1
+      label: Level was reported once
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: nothing
+      op: missing
+      label: The fact named nothing was never reported
+  - id: self.state
+    category: units
+    title: Check the game state
+    action:
+      kind: manual
+      text: Wait. CheckThat reads its own public API by itself.
+    expect: The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    assertions:
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: API_VERSION
+      op: between
+      value:
+      - 1
+      - 99
+      label: API version is from 1 to 99
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: API_VERSION
+      op: approx
+      value: 1
+      tolerance: 0.5
+      label: API version is 1, give or take 0.5
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: API_VERSION
+      op: in
+      value:
+      - 1
+      - 2
+      label: API version is 1 or 2
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: API_VERSION
+      op: type
+      value: number
+      label: API version is a number
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: nothing
+      op: missing
+      label: CheckThat has no field named nothing
+  - id: self.api
+    category: units
+    title: The public API has {{path}}
+    action:
+      kind: manual
+      text: Wait. CheckThat reads its own public API by itself.
+    expect: The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    assertions:
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: '{{path}}'
+      op: exists
+      label: CheckThat.{{path}} exists
+    cases:
+    - id: version
+      vars:
+        path: API_VERSION
+    - id: report
+      vars:
+        path: Report
+  - id: self.noerror
+    category: errors
+    title: No Lua error
+    action:
+      kind: manual
+      text: Wait. CheckThat records the result by itself when the time is up, if no Lua error appeared.
+    expect: No Lua error window appears. The card records the result by itself after 10 seconds.
+    verify:
+    - assertions
+    auto: true
+    timeout: 10
+    assertions:
+    - kind: log
+      source: errors
+      pattern: .
+      absent: true
+      label: No Lua error since this step opened
+  - id: self.error
+    category: errors
+    title: Record a Lua error
+    action:
+      kind: secure-macro
+      macro: raise
+      text: Click Run on the card. The game may show its error window. That is expected.
+    expect: Chat says a test error was raised. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: log
+      source: errors
+      contains: CheckThat self-test error
+      label: CheckThat recorded the test error
   - id: self.export
+    category: card
     title: Export results
     action:
       kind: copy-slash
       text: /ct export
-    expect: A box shows a string starting with !CT1!.
+    expect: A box shows a string starting with !CT1!. The card records the result by itself.
     verify:
-    - player
-    screenshot: true
+    - assertions
+    auto: true
+    timeout: 90
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run exported '
+      label: The results string was shown

@@ -9,6 +9,7 @@ function addon:OnInitialize()
     ns.LibDeflate = LibStub("LibDeflate")
     ns.App.Init(self.db.global, ns.Adapter.Env(), { debug = function() return self.db.profile.debug end })
     ns.Adapter.Export("CheckThat", ns.Facts.API())
+    ns.Errors.Hook()
     ns.Slash.Register(self)
     -- Feature modules register a starter in ns.starters (UI/Card.lua, Options/Options.lua).
     for _, start in ipairs(ns.starters or {}) do
@@ -26,6 +27,7 @@ function addon:OnEnable()
     -- A run from before a reload resumes: the open attempt asks for verification, not another reload.
     local run = ns.App.Current()
     if run then
+        ns.Errors.Rebase()
         ns.App.MarkReloaded()
         ns.App.Log("resumed run " .. run.runId .. " after load")
         if ns.Card then ns.Card.Show() end
@@ -33,7 +35,7 @@ function addon:OnEnable()
         ns.Slash.Print(ns.App.Status())
     end
     ns.Listen(self, "PLAYER_REGEN_ENABLED", function() if ns.Card then ns.Card.Refresh() end end)
-    ns.Listen(self, "PLAYER_LOGOUT", function() ns.App.Log("logout") end)
+    ns.Listen(self, "PLAYER_LOGOUT", function() ns.App.Log("logout"); if ns.Tracker then ns.Tracker.Leaving() end end)
 end
 
 -- Feature files call ns.Start(fn) at load; fn(addon) runs once saved settings are ready.

@@ -64,19 +64,56 @@ function Options.Home(order)
     introduction(g, L["Run a test plan"], L["Import a plan, start a run, and work through the checklist. CheckThat never plays for you."])
     add(g, "h_run", { type = "header", name = L["Current run"] })
     text(g, "runStatus", function() return ns.App.db and ns.App.Status() or L["No run."] end)
+    local TINT = { red = "|cffff6666", yellow = "|cffffd100", green = "|cff66ff66", blue = "|cff80bfff", grey = "|cffaaaaaa", off = "|cff888888" }
+    text(g, "categories", function()
+        if not ns.App.db then return "" end
+        local rows, overall, sum = ns.App.Categories()
+        if not rows or #rows < 2 then return "" end
+        local lines = {}
+        for _, r in ipairs(rows) do lines[#lines + 1] = TINT[r.state] .. ns.App.CategoryLine(r) .. "|r" end
+        lines[#lines + 1] = L["Overall: %s, %d passed, %d failed, %d open"]:format(ns.App.StateWord(overall, sum), sum.pass, sum.fail, sum.open)
+        return table.concat(lines, "\n")
+    end, function()
+        local rows = ns.App.db and ns.App.Categories()
+        return not rows or #rows < 2
+    end)
     add(g, "openCard", { type = "execute", name = L["Open checklist"], func = function() ns.Card.Show() end })
     add(g, "export", { type = "execute", name = L["Export results"], func = function() ns.Card.ExportNow() end,
         disabled = function() return not (ns.App.db and ns.App.Current()) end })
     gap(g, "g1")
     add(g, "h_start", { type = "header", name = L["Start a run"] })
-    note(g, "startHelp", grey(L["Import a plan first. Pick a plan, then select Start run. Each plan keeps its own runs."]))
+    note(g, "startHelp", grey(L["Import a plan first. Select a plan. Select the categories to test. Select Start run. Each plan keeps its own runs."]))
     add(g, "import", { type = "execute", name = L["Import a plan"], func = function() ns.Card.ImportPrompt() end })
     add(g, "pick", { type = "select", width = 1.5, name = L["Plan"], values = planValues,
         get = function() return Options.state.pick end, set = function(_, v) Options.state.pick = v end })
+    -- One checkbox per category of the picked plan, in plan order, all checked until one is cleared.
+    local SLOTS = 24
+    local function picks()
+        return ns.App.db and Options.state.pick and ns.App.Picks(Options.state.pick) or {}
+    end
+    local function anyPicked()
+        local list = picks()
+        if #list < 2 then return true end
+        for _, c in ipairs(list) do if c.picked and c.steps > 0 then return true end end
+        return false
+    end
+    for i = 1, SLOTS do
+        add(g, "cat" .. i, { type = "toggle", width = "full",
+            name = function()
+                local c = picks()[i]
+                if not c then return "" end
+                return c.steps == 1 and L["%s: 1 step"]:format(c.title) or L["%s: %d steps"]:format(c.title, c.steps)
+            end,
+            hidden = function() local list = picks(); return #list < 2 or not list[i] end,
+            get = function() local c = picks()[i]; return c and c.picked end,
+            set = function(_, v) local c = picks()[i]; if c then ns.App.SetPick(Options.state.pick, c.id, v) end end })
+    end
+    note(g, "pickNone", grey(L["Select at least one category."]), function() return anyPicked() end)
+    note(g, "pickMany", grey(L["This plan has more than 24 categories. Only the first 24 can be changed here."]), function() return #picks() <= SLOTS end)
     add(g, "start", { type = "execute", name = L["Start run"],
-        disabled = function() return not Options.state.pick or not (ns.App.db and ns.App.db.plans[Options.state.pick]) end,
+        disabled = function() return not Options.state.pick or not (ns.App.db and ns.App.db.plans[Options.state.pick]) or not anyPicked() end,
         func = function()
-            local run, err = ns.App.Start(Options.state.pick)
+            local run, err = ns.App.Start(Options.state.pick, ns.App.PickedIds(Options.state.pick))
             if run then ns.Card.Show() else ns.Slash.Print(err) end
             Options.Notify()
         end })
