@@ -47,7 +47,7 @@ A run stores `planDigest`, not the plan. The digest is the 8-hex field of the co
 
 ## 4. Read each step
 
-`$PY $CT/tools/ct.py report --dest <evidence>` prints a `result:` line for each run, keeps the failed or unverified attempts of a step that later passed, and shows the Lua error stack raised during a failed or unverified attempt (matched by time, so it may say it also fits another attempt). `--format json` gives step results as data (add `--stacks` for error stacks; it has no earlier attempts), and `--strict` exits 1 on any failed or unverified step.
+`$PY $CT/tools/ct.py report --dest <evidence>` prints a `result:` line for each run, keeps the failed or unverified attempts of a step that later passed, and shows the Lua error stack raised during a failed or unverified attempt (matched by time, so it may say it also fits another attempt). `report --failed-only` keeps only the failing steps, and `show <run> <step>` prints one step with every attempt. `--format json` gives step results as data (add `--stacks` for error stacks; it has no earlier attempts), and `--strict` exits 1 on any failed or unverified step.
 
 A step record holds the effective `verdict` and attempts. Run revisions need not be contiguous (`r2.json` can be the first). Each attempt holds `claimed` (what the player or CheckThat recorded), `by` (`player` or `auto`), `evidence` (`matched`, `contradicts`, `unverified` or `diagnostic-only`) and `outcomes`, one per assertion in plan order, each `result` (`pass`, `fail`, `unverified`), `why`, and `diagnostic`. A failed or unverified attempt may also hold `excerpt`: the first new lines of each log the step checks, keyed by log source. Quote them when you explain a failure. Use the last finished attempt.
 

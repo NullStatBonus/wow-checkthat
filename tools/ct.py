@@ -747,10 +747,12 @@ def step_ids(r):
     return order + sorted(s for s in (r.get("steps") or {}) if s not in order)
 
 
-def step_table(r):
-    """One row per step in plan order: step, verdict, evidence, attempts, note."""
+def step_table(r, only=None):
+    """One row per step in plan order: step, verdict, evidence, attempts, note. only limits it to some step ids."""
     rows = [("step", "verdict", "evidence", "attempts", "note")]
     for sid in step_ids(r):
+        if only is not None and sid not in only:
+            continue
         rec = (r.get("steps") or {}).get(sid, {})
         done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
         note = " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
@@ -792,9 +794,13 @@ def stack_hits(r, stacks):
                     count[key] = count.get(key, 0) + 1
     return hits, {k for k, n in count.items() if n > 1}
 
-def report_text(runs, dest=None, stacks=True):
+def report_text(runs, dest=None, stacks=True, failed_only=False, step=None):
+    """The Markdown report. failed_only keeps the runs and steps that failed or are unverified. step (one id) shows every attempt of that step."""
     out = ["# CT report", ""]
     for rid, r in sorted(runs.items()):
+        only = {step} if step else {sid for sid in step_ids(r) if classify((r.get("steps") or {}).get(sid, {}))[0] in ("fail", "unverified")} if failed_only else None
+        if failed_only and not only:
+            continue
         errs, stks = load_errors(dest, rid) if stacks and dest else ({}, {})
         counts = {}
         for sid, rec in (r.get("steps") or {}).items():
@@ -811,13 +817,15 @@ def report_text(runs, dest=None, stacks=True):
         bad = [m for m in (classify(rec)[0] for rec in (r.get("steps") or {}).values()) if m in ("fail", "unverified")]
         out.append("result: " + ("FAIL" if "fail" in bad else "UNVERIFIED" if bad else "ok") + (" (%d fail, %d unverified)" % (bad.count("fail"), bad.count("unverified")) if bad else ""))
         out.append("")
-        out.extend(step_table(r))
+        out.extend(step_table(r, only))
         out.append("")
         for sid in step_ids(r):
+            if only is not None and sid not in only:
+                continue
             rec = (r.get("steps") or {}).get(sid, {})
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
             mark = ", recorded by CheckThat" if by_checkthat(rec) else ""
-            settled = rec.get("verdict") in ("pass", "skip", "inapplicable") and classify(rec)[0] not in ("fail", "unverified")   # a pass its evidence contradicts keeps its detail
+            settled = rec.get("verdict") in ("pass", "skip", "inapplicable") and classify(rec)[0] not in ("fail", "unverified") and not step   # a pass its evidence contradicts keeps its detail
             earlier = [at for at in rec.get("attempts", []) if at.get("verdict") in ("fail", "unverified")] if settled else []
             head = "- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else "")
             if (shots or mark or earlier) and settled:
@@ -827,8 +835,10 @@ def report_text(runs, dest=None, stacks=True):
             if not settled:
                 out.append(head)
             for at in (earlier if settled else rec.get("attempts", [])):
-                out.extend(attempt_lines(at, hits.get((sid, at.get("n")), []) if at.get("verdict") in ("fail", "unverified") else [], errs, stks, ambiguous))
+                out.extend(attempt_lines(at, hits.get((sid, at.get("n")), []) if step or at.get("verdict") in ("fail", "unverified") else [], errs, stks, ambiguous))
         out.append("")
+    if failed_only and len(out) == 2:
+        out.append("no failed or unverified steps")
     return "\n".join(out)
 
 
@@ -973,6 +983,40 @@ def status_data(dest, now=None):
     extra = {"savedVariables": len(glob.glob(os.path.join(dest, "sv", "*.lua"))), "errorFiles": len(glob.glob(os.path.join(dest, "errors", "*.json")))}
     return rows, problems, extra
 
+def find_run(runs, name):
+    """The run id that name is, or the only run id that contains it. Raises ValueError with the choices otherwise."""
+    if name in runs:
+        return name
+    near = sorted(r for r in runs if name in r)
+    if len(near) == 1:
+        return near[0]
+    if not runs:
+        raise ValueError("no runs collected yet")
+    if near:
+        raise ValueError("%r matches %d runs: %s" % (name, len(near), ", ".join(near)))
+    raise ValueError("no run %r; runs: %s" % (name, ", ".join(sorted(runs))))
+
+def show_text(runs, dest, name, step=None):
+    rid = find_run(runs, name)
+    if step and step not in step_ids(runs[rid]):
+        raise ValueError("run %s has no step %r; steps: %s" % (rid, step, ", ".join(step_ids(runs[rid]))))
+    return report_text({rid: runs[rid]}, dest, True, step=step)
+
+def status_watch(dest, interval, sleep=time.sleep, rounds=None, out=print, tty=False):
+    """Print status again every interval seconds until Ctrl-C (or rounds). Returns the last exit code."""
+    code, n = 0, 0
+    try:
+        while rounds is None or n < rounds:
+            rows, problems, extra = status_data(dest)
+            code = 1 if problems else 0
+            out(("\033[2J\033[H" if tty else "--- %s\n" % time.strftime("%H:%M:%S")) + status_text(rows, problems, extra, dest))
+            n += 1
+            if rounds is None or n < rounds:
+                sleep(interval)
+    except KeyboardInterrupt:
+        pass
+    return code
+
 def status_text(rows, problems, extra, dest):
     out = ["evidence: %s (%d saved-variable copies, %d error files)" % (dest, extra["savedVariables"], extra["errorFiles"]), ""]
     if rows:
@@ -1023,7 +1067,10 @@ def main(argv=None):
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, or there are no runs")
     p.add_argument("--stacks", action="store_true", help="put saved error call stacks in json and junit (md always shows them); they can hold private paths")
     p.add_argument("--out", help="write the json or junit report to this file")
+    p.add_argument("--failed-only", action="store_true", help="md only: runs and steps that failed or are unverified")
+    p = sub.add_parser("show", help="print one run, or one step of it with every attempt, log excerpt and error stack"); p.add_argument("run", help="run id, or part of it that names one run"); p.add_argument("step", nargs="?"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p = sub.add_parser("status", help="check what the evidence folder holds: readable revisions, conflicts, sizes"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--json", action="store_true")
+    p.add_argument("--watch", action="store_true", help="print status again every --interval seconds until Ctrl-C"); p.add_argument("--interval", type=float, default=5)
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     a = ap.parse_args(argv)
 
@@ -1094,7 +1141,7 @@ def main(argv=None):
     if a.cmd == "report":
         runs = latest_runs(a.dest)
         if a.format == "md":
-            txt = report_text(runs, a.dest)
+            txt = report_text(runs, a.dest, failed_only=a.failed_only)
             os.makedirs(a.dest, exist_ok=True)
             open(os.path.join(a.dest, "REPORT.md"), "w").write(txt)
         else:
@@ -1107,7 +1154,17 @@ def main(argv=None):
             print("strict: %s" % ("no runs" if not runs else "%d step(s) failed or are unverified" % bad_steps(models(runs))), file=sys.stderr)
             return 1
         return 0
+    if a.cmd == "show":
+        try:
+            print(show_text(latest_runs(a.dest), a.dest, a.run, a.step))
+        except ValueError as e:
+            print("error:", e, file=sys.stderr); return 2
+        return 0
     if a.cmd == "status":
+        if a.watch:
+            if a.json:
+                print("error: --watch and --json do not go together", file=sys.stderr); return 2
+            return status_watch(a.dest, a.interval, tty=sys.stdout.isatty())
         rows, problems, extra = status_data(a.dest)
         if a.json:
             print(json.dumps({"runs": rows, "problems": problems, **extra, "ok": not problems}, indent=1, sort_keys=True))

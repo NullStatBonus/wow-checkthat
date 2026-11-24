@@ -88,7 +88,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 ## Plans, evidence and skills
 
 - [Write a plan](docs/authoring-plans.md): the plan format, compile, and the sample and full plans.
-- [Collect evidence](docs/harvesting.md): `collect`, `status`, `report` (Markdown, JSON or JUnit), per-character data on Classic Era, and Windows.
+- [Collect evidence](docs/harvesting.md): `collect`, `status`, `show`, `report` (Markdown, JSON or JUnit), per-character data on Classic Era, and Windows.
 - [Plan skills](docs/skills.md): `ct-test-plan` and `ct-verify` for Claude Code, Codex and other agents, and the Claude Code plugin.
 - [Debug logging](docs/debug-logging.md): what a good addon debug log looks like.
 - [Which tool to use](docs/tools-guide.md): what CheckThat does not do, and the optional addons that make it better.

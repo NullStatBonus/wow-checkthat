@@ -1220,6 +1220,31 @@ class Results(unittest.TestCase):
         self.assertEqual([s["id"] for s in m["steps"]], ["a", "ghost"]); self.assertEqual(m["counts"], {"pass": 1, "unverified": 1})
         self.assertFalse(json.loads(ct.report_json({}))["ok"])
 
+    def test_failed_only_keeps_the_failing_steps_and_says_when_there_are_none(self):
+        text = ct.report_text(self.run_with(self.steps()), failed_only=True)
+        self.assertIn("\nb ", text); self.assertIn("\nc ", text); self.assertNotIn("\nd ", text); self.assertNotIn("\na ", text)
+        clean = self.run_with({"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}})
+        self.assertIn("no failed or unverified steps", ct.report_text(clean, failed_only=True))
+
+    def test_show_prints_every_attempt_of_one_step_and_names_choices_on_a_mistake(self):
+        d = self.errors_dest(["205.001 [K] boom"], ["205.001 a.lua:1"])
+        code, out, _ = self.cli("show", "R-1", "a", "--dest", d)
+        self.assertEqual(code, 0); self.assertIn("attempt 1: fail note=broke", out); self.assertIn("attempt 2: pass", out); self.assertNotIn("\nb ", out); self.assertNotIn("- b:", out)
+        self.assertIn("stack:", self.cli("show", "-1", "b", "--dest", d)[1])   # a part of the id names the run
+        code, _, err = self.cli("show", "R-1", "zzz", "--dest", d)
+        self.assertEqual(code, 2); self.assertIn("steps: a, b", err)
+        code, _, err = self.cli("show", "nope", "--dest", d)
+        self.assertEqual(code, 2); self.assertIn("runs: R-1", err)
+        self.assertIn("no runs collected yet", self.cli("show", "x", "--dest", tempfile.mkdtemp())[2])
+
+    def test_status_watch_prints_each_round_and_returns_the_last_exit_code(self):
+        d = self.dest_with(self.run_with(self.steps()))
+        seen, naps = [], []
+        self.assertEqual(ct.status_watch(d, 3, sleep=naps.append, rounds=2, out=seen.append), 0)
+        self.assertEqual((len(seen), naps), (2, [3]))
+        self.assertEqual(ct.status_watch(tempfile.mkdtemp(), 1, sleep=naps.append, rounds=1, out=seen.append), 1)
+        self.assertEqual(self.cli("status", "--watch", "--json", "--dest", d)[0], 2)
+
     def test_collect_keeps_the_error_lines_and_stacks(self):
         d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
         sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
