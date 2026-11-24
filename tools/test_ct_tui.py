@@ -148,9 +148,26 @@ class Logic(unittest.TestCase):
         r = run("R-x", {"a": rec}, 8000)
         rec["attempts"][0]["verdict"] = "fail"; rec["verdict"] = "pass"
         shown = ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("R-x", r, "a", self.d)))
-        for want in ("FAIL", "the evidence overrules this pass", "attempts", "[bold]odd[/] note", "✗", "diagnostic", "line [/x] seen", "log debug - 2 new lines", "  1 one [red]", "error 105.001", "→ a.lua:1", "→ [C]: in function 'pcall'"):
+        for want in ("FAIL", "the evidence overrules this pass", "attempts", "[bold]odd[/] note", "✗", "diagnostic", "line [/x] seen", "log debug - 2 new lines", "  1   one [red]", "error 105.001", "→ a.lua:1", "→ [C]: in function 'pcall'"):
             self.assertIn(want, shown)
         self.assertEqual(ct_tui.render_plain(ct_tui.detail_render(None)).strip(), "The run has no record of this step.")
+
+    def test_the_detail_shows_the_deciding_lines_under_each_failed_check_and_marks_them_in_the_excerpt(self):
+        out = {"result": "fail", "why": "a forbidden line appeared", "rule": 'absent: contains "FAILED"', "kind": "log", "scope": "attempt", "source": "debug",
+               "matched": 2, "window": 4, "hits": [{"n": 2, "line": "[kt] FAILED [x] one"}, {"n": 4, "line": "FAILED two"}]}
+        seq = {"result": "unverified", "why": "sequence stopped at item 2", "rule": "sequence of 3 lines", "kind": "log-sequence", "source": "debug", "matched": 1, "window": 4,
+               "stoppedAt": 2, "hits": [{"item": 1, "n": 1, "line": "a1"}]}
+        st = {"result": "fail", "rule": "global-value G eq 3", "kind": "state", "observed": "2"}
+        rec = {"verdict": "fail", "attempts": [at(1, "fail", outcomes=[out, seq, st, {"result": "pass"}, dict(out, hits=None, trimmed=True)],
+                                                  excerpt={"debug": ["one", "[kt] FAILED [x] one", "three", "FAILED two"]})]}
+        r = run("R-h", {"a": rec}, 8000)
+        shown = ct_tui.render_plain(ct_tui.detail_render(ct_tui.detail_data("R-h", r, "a")))
+        for want in ('check 1 - fail', 'absent: contains "FAILED"', "debug  ·  2 of 4 lines matched", "▶ line 2  [kt] FAILED [x] one", "▶ line 4  FAILED two",
+                     "check 2 - unverified", "stopped at item 2", "▶ item 1 at line 1  a1", "check 3 - fail", "saw  2", "hit text dropped"):
+            self.assertIn(want, shown)
+        self.assertIn("  2 ▶ [kt] FAILED [x] one", shown); self.assertIn("  4 ▶ FAILED two", shown); self.assertIn("  1 ▶ one", shown); self.assertIn("  3   three", shown)   # a line carries the marker only when it decided a check
+        plain = ct_tui.detail_text("R-h", r, "a")
+        self.assertIn('check 1 (required, fail): absent: contains "FAILED"', plain); self.assertIn("line 2: [kt] FAILED [x] one", plain)
 
     def test_browse_is_the_same_viewer_and_refuses_without_a_terminal(self):
         import io, contextlib

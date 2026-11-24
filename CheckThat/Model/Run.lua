@@ -263,27 +263,35 @@ end
 
 Run.EXCERPT_BUDGET = 60000 -- bytes of kept log lines in one run; the export has a 2 MB limit
 
-local function excerptBytes(ex)
+-- Bytes of the evidence text an attempt keeps: its excerpt lines, and the line and value text of its check hits.
+local function excerptBytes(at)
     local n = 0
-    for _, lines in pairs(ex or {}) do for _, l in ipairs(lines) do n = n + #l end end
+    for _, lines in pairs(at.excerpt or {}) do for _, l in ipairs(lines) do n = n + #l end end
+    for _, o in ipairs(at.outcomes or {}) do
+        n = n + #(o.observed or "")
+        for _, h in ipairs(o.hits or {}) do n = n + #(h.line or "") + #(h.value or "") end
+    end
     return n
 end
 
--- Keeps the newest excerpts of a run inside the budget: the oldest attempts lose theirs first.
+-- Keeps the newest evidence text of a run inside the budget: the oldest attempts lose their excerpt and check hits first
+-- (a check keeps its rule, counts and reason, and is marked trimmed).
 function Run.TrimExcerpts(run)
     local all, total = {}, 0
     for _, rec in pairs(run.steps) do
         for _, at in ipairs(rec.attempts or {}) do
-            if at.excerpt then
-                local b = excerptBytes(at.excerpt)
-                all[#all + 1], total = { at = at, b = b }, total + b
-            end
+            local b = excerptBytes(at)
+            if b > 0 then all[#all + 1], total = { at = at, b = b }, total + b end
         end
     end
     table.sort(all, function(x, y) return (x.at.finished or 0) < (y.at.finished or 0) end)
     for _, e in ipairs(all) do
         if total <= Run.EXCERPT_BUDGET then break end
         e.at.excerpt, total = nil, total - e.b
+        for _, o in ipairs(e.at.outcomes or {}) do
+            if o.hits or o.observed then o.trimmed = true end -- a reader can tell dropped text from none
+            o.hits, o.observed = nil, nil
+        end
     end
 end
 
@@ -366,8 +374,11 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     local anyFail, anyUnverified, required = false, false, 0
     if verdict ~= "skip" then
         for i, as in ipairs(step.assertions or {}) do
-            local r, why = ns.Evidence.Check(as, a.snapshots, ctx.plan, ctx.env)
-            a.outcomes[i] = { result = r, why = why, diagnostic = as.diagnostic or nil }
+            local r, why, detail = ns.Evidence.Check(as, a.snapshots, ctx.plan, ctx.env, true)
+            local o = { result = r, why = why, diagnostic = as.diagnostic or nil }
+            -- A check that did not pass keeps what it looked at (also in a passing attempt: a diagnostic never gates it).
+            if r ~= "pass" and detail then for k, v in pairs(detail) do o[k] = v end end
+            a.outcomes[i] = o
             if not as.diagnostic then
                 required = required + 1
                 if r == "fail" then anyFail = true elseif r == "unverified" then anyUnverified = true end
@@ -392,8 +403,8 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     if effective == "fail" or effective == "unverified" then
         local ok, ex = pcall(ns.Evidence.Excerpt, step, a.snapshots, ctx.plan, ctx.env)
         a.excerpt = ok and ex or nil
-        Run.TrimExcerpts(run)
     end
+    Run.TrimExcerpts(run) -- also for a passing attempt: a failing diagnostic keeps check hits
     a.snapshots = nil
     verdict = effective
     rec.verdict = verdict

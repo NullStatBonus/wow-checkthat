@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: CheckThat
 ## Notes: Walks you through the in-game test plans for KeepThat, DontDoThat and ClosestVendor and records evidence for review.
-## Version: 0.13.1
+## Version: 0.14.0
 ## Author: NullStatBonus
 ## SavedVariables: CheckThatDB
 ## OptionalDeps: KeepThat, DontDoThat, ClosestVendor

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0
+
+New: **Failed checks name their log lines.** A check that does not pass saves its rule, how many lines matched and the lines that decided it. Reports and viewers show them.
+Changed: **Clearer reasons.** A forbidden line or a fact that does not match now says so. Before, the reason was empty.
+
 ## 0.13.1
 
 Fixed: **Large exports.** A run with many failed steps saved more log lines than an export holds. CheckThat now keeps the newest lines and drops the oldest.

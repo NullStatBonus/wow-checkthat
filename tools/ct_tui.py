@@ -101,6 +101,7 @@ def detail_text(rid, r, sid, dest=None, n=None):
         out.append("note: " + " ".join(str(at["note"]).split()))
     for o in at.get("outcomes") or []:
         out.append("  %s %s %s" % ("diagnostic" if o.get("diagnostic") else "required  ", o.get("result"), o.get("why", "")))
+    out.extend(line[2:] for line in ct.check_lines(at))   # what each failed check looked at, and the lines that decided it
     for src, lines in sorted((at.get("excerpt") or {}).items()):
         out.append("log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
         out.extend("  " + str(line) for line in lines)
@@ -175,11 +176,40 @@ def detail_render(d):
         body.append(t)
         if len(outs) > MAX_CHECK_ROWS:
             body.append(Text("... %d more checks" % (len(outs) - MAX_CHECK_ROWS), style="dim"))
+    marked = {}   # source -> positions of the lines that decided a check (attempt scope: the excerpt starts at the same line 1)
+    for i, o in enumerate(outs, 1):
+        if o.get("result") == "pass" or not o.get("rule"):
+            continue
+        rc = COLORS.get(o.get("result"), "white")
+        t = Text(o["rule"], style="bold")
+        bits = [o.get("source") and "%s%s" % (o["source"], ", whole log" if o.get("scope") == "session" else "")]
+        if o.get("matched") is not None and o.get("window") is not None:
+            bits.append("%d of %d line%s matched" % (o["matched"], o["window"], "" if o["window"] == 1 else "s"))
+        if o.get("stoppedAt") is not None:
+            bits.append("stopped at item %d" % o["stoppedAt"])
+        if o.get("trimmed"):
+            bits.append("hit text dropped to keep the export small")
+        if any(bits):
+            t.append("\n" + "  ·  ".join(b for b in bits if b), style="dim")
+        if o.get("observed") is not None:
+            t.append("\nsaw  ", style="dim")
+            t.append(str(o["observed"]))
+        for h in o.get("hits") or []:
+            t.append("\n▶ ", style="bold " + rc)
+            t.append("%s%d  " % ("item %d at line " % h["item"] if h.get("item") else "line ", h["n"]), style="dim")
+            t.append(str(h.get("line", "")), style="bold " + rc)
+            if h.get("value") is not None:
+                t.append("   value %s" % h["value"], style="dim")
+        body.append(Panel(t, title=Text("check %d - %s%s" % (i, o.get("result"), " (diagnostic)" if o.get("diagnostic") else "")), title_align="left", border_style=rc))
+        if o.get("scope") != "session":
+            marked.setdefault(o.get("source"), set()).update(h["n"] for h in o.get("hits") or [])
     for src, lines in sorted((at.get("excerpt") or {}).items()):
         txt = Text()
         for i, line in enumerate(lines, 1):
+            hit = i in marked.get(src, ())
             txt.append("%3d " % i, style="dim")
-            txt.append(str(line) + ("\n" if i < len(lines) else ""))
+            txt.append("▶ " if hit else "  ", style="bold red")
+            txt.append(str(line) + ("\n" if i < len(lines) else ""), style="bold red" if hit else "")
         body.append(Panel(txt, title=Text("log %s - %d new line%s" % (src, len(lines), "" if len(lines) == 1 else "s")), title_align="left", border_style="blue"))
     for e in d["errors"]:
         txt = Text(e["text"], style="bold red")

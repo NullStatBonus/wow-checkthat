@@ -680,6 +680,29 @@ def rev_files(rp):
     found = [(int(m.group(1)), p) for p in glob.glob(os.path.join(rp, "r*.json")) for m in [re.fullmatch(r"r(\d+)\.json", os.path.basename(p))] if m]
     return [p for _, p in sorted(found)]
 
+def _pos(v):
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 1
+
+CHECK_STRINGS = ("why", "kind", "scope", "source", "label", "rule", "shape", "observed")
+
+def outcome_ok(o):
+    """An outcome and, when it has them, its check detail, as schema/run-results.schema.json says: counts are whole numbers,
+    text is text, and there are at most three hits, each {n >= 1, ...}."""
+    if not isinstance(o, dict):
+        return False
+    hits = o.get("hits", [])
+    if not isinstance(hits, list) or len(hits) > 3:
+        return False
+    for h in hits:
+        if not (isinstance(h, dict) and _pos(h.get("n")) and (h.get("item") is None or _pos(h.get("item")))
+                and all(h.get(k) is None or isinstance(h[k], str) for k in ("line", "value"))):
+            return False
+    if o.get("scope") not in (None, "attempt", "session") or o.get("trimmed") not in (None, True):
+        return False
+    return all(o.get(k) is None or isinstance(o[k], str) for k in CHECK_STRINGS) \
+        and all(o.get(k) is None or (isinstance(o[k], int) and not isinstance(o[k], bool) and o[k] >= 0) for k in ("matched", "window")) \
+        and (o.get("stoppedAt") is None or _pos(o.get("stoppedAt")))
+
 def read_run(path):
     """One stored revision. Raises ValueError (or OSError) when it is not a run record."""
     with open(path) as fh:
@@ -690,7 +713,7 @@ def read_run(path):
         raise ValueError("not a run record")
     for rec in run["steps"].values():   # the readers below call .get on each of these
         ats = rec.get("attempts", []) if isinstance(rec, dict) else None
-        if not isinstance(ats, list) or not all(isinstance(a, dict) and isinstance(a.get("outcomes", []), list) and all(isinstance(o, dict) for o in a.get("outcomes", []))
+        if not isinstance(ats, list) or not all(isinstance(a, dict) and isinstance(a.get("outcomes", []), list) and all(outcome_ok(o) for o in a.get("outcomes", []))
                                                 and isinstance(a.get("excerpt", {}), dict) for a in ats):
             raise ValueError("a step record is malformed")
     return run
@@ -768,15 +791,63 @@ def step_table(r, only=None):
     return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
 
 
+CHECK_KEYS = ("kind", "scope", "source", "label", "matched", "window", "stoppedAt", "trimmed")
+
+def outcome_view(index, o, lines=False):
+    """One check outcome as plain data for other tools. Line text, values and observed state are left out unless lines is set,
+    because log lines can hold private data. Positions (n) and counts are always there."""
+    v = {"index": index, "result": o.get("result"), "why": o.get("why"), "diagnostic": bool(o.get("diagnostic"))}
+    v.update({k: o[k] for k in CHECK_KEYS if o.get(k) is not None})
+    rule = o.get("rule") if lines else o.get("shape")   # the full rule holds the plan's literals, which can be a log line: it needs --lines
+    if rule is not None:
+        v["rule"] = rule
+    hits = []
+    for h in o.get("hits") or []:
+        hv = {k: h[k] for k in ("n", "item") if h.get(k) is not None}
+        if lines:
+            hv.update({k: h[k] for k in ("line", "value") if h.get(k) is not None})
+        hits.append(hv)
+    if hits:
+        v["hits"] = hits
+    if lines and o.get("observed") is not None:
+        v["observed"] = o["observed"]
+    return v
+
+def check_lines(at):
+    """The checks of an attempt that did not pass, with what they looked at: rule, counts and the lines that decided them."""
+    out = []
+    for i, o in enumerate(at.get("outcomes") or [], 1):
+        if o.get("result") == "pass" or not o.get("rule"):
+            continue
+        bits = [o.get("source") and "%s%s" % (o["source"], ", whole log" if o.get("scope") == "session" else "")]
+        if o.get("matched") is not None and o.get("window") is not None:
+            bits.append("%d of %d line%s matched" % (o["matched"], o["window"], "" if o["window"] == 1 else "s"))
+        if o.get("stoppedAt") is not None:
+            bits.append("stopped at item %d" % o["stoppedAt"])
+        if o.get("trimmed"):
+            bits.append("lines dropped to keep the export small")
+        out.append("    check %d (%s, %s): %s%s" % (i, "diagnostic" if o.get("diagnostic") else "required", o.get("result"), o["rule"],
+                                                  "  [" + "; ".join(b for b in bits if b) + "]" if any(bits) else ""))
+        if o.get("observed") is not None:
+            out.append("      saw: %s" % o["observed"])
+        for h in o.get("hits") or []:
+            out.append("      %s%s: %s%s" % ("item %d at line " % h["item"] if h.get("item") else "line ", h["n"], h.get("line", ""), "   (value %s)" % h["value"] if h.get("value") is not None else ""))
+    return out
+
 def attempt_lines(at, stack_keys, errs, stacks, ambiguous):
     note = at.get("note")
     outs = [o for o in (at.get("outcomes") or []) if o.get("result") != "pass"]
     out = ["  attempt %s: %s%s%s" % (at.get("n"), at.get("verdict"),
            " note=" + note if note else "",
            " evidence=" + ",".join("%s(%s)" % (o.get("result"), o.get("why", "")) for o in outs) if outs else "")]
+    out.extend(check_lines(at))
+    marked = {}   # source -> positions of the lines that decided a check, within the new lines the excerpt starts from
+    for o in at.get("outcomes") or []:
+        if o.get("result") != "pass" and o.get("scope") != "session":
+            marked.setdefault(o.get("source"), set()).update(h["n"] for h in o.get("hits") or [])
     for src, lines in sorted((at.get("excerpt") or {}).items()):
         out.append("    log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
-        out.extend("      " + str(line) for line in lines)
+        out.extend(("    > " if i in marked.get(src, ()) else "      ") + str(line) for i, line in enumerate(lines, 1))
     for key in stack_keys:
         out.append("    error %s%s: %s" % (key, " (time also fits another attempt)" if key in ambiguous else "", errs.get(key, "(error line no longer saved)")))
         out.append("      stack: " + stacks[key])
@@ -835,10 +906,15 @@ def report_text(runs, dest=None, stacks=True, failed_only=False, step=None):
             shots = (run_shots(dest, rid) if dest else {}).get(sid, [])
             mark = ", recorded by CheckThat" if by_checkthat(rec) else ""
             settled = rec.get("verdict") in ("pass", "skip", "inapplicable") and classify(rec)[0] not in ("fail", "unverified") and not step   # a pass its evidence contradicts keeps its detail
-            earlier = [at for at in rec.get("attempts", []) if at.get("verdict") in ("fail", "unverified")] if settled else []
+            def bad_check(at):
+                return any(o.get("result") != "pass" for o in at.get("outcomes") or [])
+            earlier = [at for at in rec.get("attempts", []) if at.get("verdict") in ("fail", "unverified") or bad_check(at)] if settled else []   # a pass with a failed diagnostic shows it
             head = "- %s: %s%s%s" % (sid, rec.get("verdict"), mark, (", screenshots: " + ", ".join(shots)) if shots else "")
             if (shots or mark or earlier) and settled:
-                out.append(head + (", after %d earlier failed or unverified attempt%s" % (len(earlier), "" if len(earlier) == 1 else "s") if earlier else ""))
+                bad = [at for at in earlier if at.get("verdict") in ("fail", "unverified")]
+                odd = len(earlier) - len(bad)
+                out.append(head + (", after %d earlier failed or unverified attempt%s" % (len(bad), "" if len(bad) == 1 else "s") if bad else "")
+                             + (", with %d failed or unverified check%s kept" % (odd, "" if odd == 1 else "s") if odd else ""))
             if settled and not earlier:
                 continue
             if not settled:
@@ -877,16 +953,25 @@ def classify(rec):
         return "unverified", why or "no evidence"
     return "skipped", SKIP_WHY.get(v, "no result")
 
-def run_model(rid, r, stacks=None):
-    """The run as plain data. stacks is {(step, attempt n): [text]} and is left out unless asked for."""
+def run_model(rid, r, stacks=None, lines=False):
+    """The run as plain data. stacks is {(step, attempt n): [text]} and is left out unless asked for. Each step lists, for every attempt
+    that has a check that did not pass, those checks with what they looked at (positions and counts; line text only with lines)."""
     steps, counts = [], {}
     for sid in step_ids(r):
         rec = (r.get("steps") or {}).get(sid)
         result, why = classify(rec) if rec is not None else ("unverified", "the run has no record of this step")
         rec = rec or {}
         counts[result] = counts.get(result, 0) + 1
-        s = {"id": sid, "category": (r.get("cat") or {}).get(sid), "result": result, "verdict": rec.get("verdict"), "reason": why,
+        done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
+        s = {"id": sid, "category": (r.get("cat") or {}).get(sid), "attempt": done[-1].get("n") if done else None, "result": result, "verdict": rec.get("verdict"), "reason": why,
              "attempts": len(rec.get("attempts") or []), "recordedByCheckThat": by_checkthat(rec)}
+        checks = []
+        for at in rec.get("attempts") or []:
+            outs = [outcome_view(i, o, lines) for i, o in enumerate(at.get("outcomes") or [], 1) if o.get("result") != "pass"]
+            if outs:
+                checks.append({"attempt": at.get("n"), "verdict": at.get("verdict"), "outcomes": outs})
+        if checks:
+            s["checks"] = checks
         if stacks and result in ("fail", "unverified"):
             s["stacks"] = [t for at in rec.get("attempts") or [] for t in stacks.get((sid, at.get("n")), [])]
         steps.append(s)
@@ -895,33 +980,33 @@ def run_model(rid, r, stacks=None):
             "categories": [{"id": c, "title": t, "state": st, "resolved": a, "total": b} for c, t, st, a, b in category_states(r)],
             "steps": steps}
 
-def models(runs, dest=None, with_stacks=False):
+def models(runs, dest=None, with_stacks=False, with_lines=False):
     out = []
     for rid, r in sorted(runs.items()):
         errs, stks = load_errors(dest, stored_id(rid, r)) if with_stacks and dest else ({}, {})
         hits, _ = stack_hits(r, stks)
-        out.append(run_model(rid, r, {k: ["%s: %s" % (key, stks[key]) for key in v] for k, v in hits.items()} if with_stacks else None))
+        out.append(run_model(rid, r, {k: ["%s: %s" % (key, stks[key]) for key in v] for k, v in hits.items()} if with_stacks else None, with_lines))
     return out
 
 def bad_steps(ms):
     return sum(m["counts"].get("fail", 0) + m["counts"].get("unverified", 0) for m in ms)
 
-def report_json(runs, dest=None, with_stacks=False):
-    ms = models(runs, dest, with_stacks)
+def report_json(runs, dest=None, with_stacks=False, with_lines=False):
+    ms = models(runs, dest, with_stacks, with_lines)
     totals = {}
     for m in ms:
         for k, n in m["counts"].items():
             totals[k] = totals.get(k, 0) + n
     return json.dumps({"runs": ms, "totals": totals, "ok": bool(ms) and bad_steps(ms) == 0}, indent=1, sort_keys=True)
 
-def report_junit(runs, dest=None, with_stacks=False):
+def report_junit(runs, dest=None, with_stacks=False, with_lines=False):
     """JUnit XML: a suite for each run category, a case for each step. Fail and unverified are failures (type tells them apart);
     partial passes with its note in system-out; pending, skip, deselected and inapplicable are skipped."""
     from xml.etree import ElementTree as ET
     ok = lambda c: c in "\t\n\r" or 0x20 <= ord(c) <= 0xD7FF or 0xE000 <= ord(c) <= 0xFFFD or ord(c) >= 0x10000
     clean = lambda s: "".join(c if ok(c) else "?" for c in str(s))   # XML 1.0 has no place for most control characters
     root = ET.Element("testsuites")
-    for m in models(runs, dest, with_stacks):
+    for m in models(runs, dest, with_stacks, with_lines):
         groups = {}
         for s in m["steps"]:
             groups.setdefault(s["category"] or "uncategorized", []).append(s)
@@ -933,7 +1018,16 @@ def report_junit(runs, dest=None, with_stacks=False):
                 case = ET.SubElement(suite, "testcase", classname=clean(m["runId"]), name=clean(s["id"]))
                 if s["result"] in ("fail", "unverified"):
                     f = ET.SubElement(case, "failure", type=s["result"], message=clean(s["reason"]))
-                    f.text = clean("\n".join(s.get("stacks") or []) or s["reason"])
+                    body = []
+                    last = next((c["outcomes"] for c in s.get("checks") or [] if c["attempt"] == s.get("attempt")), [])   # the attempt the result comes from
+                    for o in last:
+                        if o["result"] != "pass" and not o["diagnostic"] and o.get("rule"):
+                            counts = " [%d of %d lines matched]" % (o["matched"], o["window"]) if o.get("matched") is not None and o.get("window") is not None else ""
+                            body.append("check %d (%s): %s%s%s" % (o["index"], o["result"], o["rule"], counts, " - " + o["why"] if o.get("why") else ""))
+                            if o.get("observed") is not None:
+                                body.append("  saw: %s" % o["observed"])
+                            body.extend("  line %d%s%s" % (h["n"], ": " + h["line"] if h.get("line") is not None else "", " (value %s)" % h["value"] if h.get("value") is not None else "") for h in o.get("hits", []))
+                    f.text = clean("\n".join(body + (s.get("stacks") or [])) or s["reason"])
                 elif s["result"] == "skipped":
                     ET.SubElement(case, "skipped", message=clean(s["reason"]))
                 elif s["result"] == "partial":
@@ -1074,6 +1168,7 @@ def main(argv=None):
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, or there are no runs")
+    p.add_argument("--lines", action="store_true", help="put the log lines that decided each check (and values the checks saw) in json and junit; they can hold private data")
     p.add_argument("--stacks", action="store_true", help="put saved error call stacks in json and junit (md always shows them); they can hold private paths")
     p.add_argument("--out", help="write the json or junit report to this file")
     p.add_argument("--failed-only", action="store_true", help="md only: runs and steps that failed or are unverified")
@@ -1155,7 +1250,7 @@ def main(argv=None):
             os.makedirs(a.dest, exist_ok=True)
             open(os.path.join(a.dest, "REPORT.md"), "w").write(txt)
         else:
-            txt = (report_json if a.format == "json" else report_junit)(runs, a.dest, a.stacks)
+            txt = (report_json if a.format == "json" else report_junit)(runs, a.dest, a.stacks, a.lines)
         if a.out and a.format != "md":
             open(a.out, "w").write(txt)
         else:

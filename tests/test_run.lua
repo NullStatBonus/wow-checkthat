@@ -74,7 +74,7 @@ end)
 test("a run keeps the newest excerpts inside the byte budget and drops the oldest first", function()
     local run, ctx, env = mk()
     ctx.plan.sections[1].steps[1].assertions[1].absent = true
-    local old = R.EXCERPT_BUDGET; R.EXCERPT_BUDGET = 350
+    local old = R.EXCERPT_BUDGET; R.EXCERPT_BUDGET = 700
     for i = 1, 4 do
         ctx.now = 100 + i
         R.Begin(run, ctx, "a")

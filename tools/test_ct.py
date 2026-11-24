@@ -1248,6 +1248,101 @@ class Results(unittest.TestCase):
         self.assertEqual(ct.status_watch(tempfile.mkdtemp(), 1, sleep=naps.append, rounds=1, out=seen.append), 1)
         self.assertEqual(self.cli("status", "--watch", "--json", "--dest", d)[0], 2)
 
+    def checked_steps(self):
+        out = {"result": "fail", "why": "a forbidden line appeared", "rule": 'absent: contains "FAILED"', "shape": 'absent: contains "…"', "kind": "log", "scope": "attempt", "source": "debug",
+               "matched": 2, "window": 4, "hits": [{"n": 2, "line": "[kt] FAILED: SECRET-LINE"}, {"n": 4, "line": "[kt] FAILED: y"}]}
+        return {"a": {"verdict": "fail", "attempts": [{"n": 1, "verdict": "fail", "outcomes": [out, {"result": "pass"}],
+                                                       "excerpt": {"debug": ["one", "[kt] FAILED: SECRET-LINE", "three", "[kt] FAILED: y"]}},
+                                                      ]},
+                "b": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "fail", "outcomes": [dict(out, hits=[{"n": 1, "line": "RETRY-LINE"}])]},
+                                                      {"n": 2, "verdict": "pass", "outcomes": [{"result": "pass"}]}]}}
+
+    def test_report_names_the_check_and_marks_the_lines_that_decided_it(self):
+        text = ct.report_text(self.run_with(self.checked_steps()))
+        self.assertIn('check 1 (required, fail): absent: contains "FAILED"  [debug; 2 of 4 lines matched]', text)
+        self.assertIn("line 2: [kt] FAILED: SECRET-LINE", text)
+        self.assertIn("    > [kt] FAILED: SECRET-LINE", text); self.assertIn("      one", text)   # only the lines that decided a check are marked
+        self.assertIn("RETRY-LINE", text)   # a pass after a retry still shows what the earlier attempt tripped on
+
+    def test_json_has_the_check_detail_but_line_text_only_when_asked(self):
+        runs = self.run_with(self.checked_steps())
+        plain = json.loads(ct.report_json(runs))
+        step = {s["id"]: s for s in plain["runs"][0]["steps"]}
+        o = step["a"]["checks"][0]["outcomes"][0]
+        self.assertEqual((o["index"], o["rule"], o["source"], o["matched"], o["window"], [h["n"] for h in o["hits"]]), (1, 'absent: contains "…"', "debug", 2, 4, [2, 4]))   # the shape: the plan's literal is not given away
+        self.assertNotIn('"FAILED"', ct.report_json(runs))
+        self.assertEqual(json.loads(ct.report_json(runs, with_lines=True))["runs"][0]["steps"][0]["checks"][0]["outcomes"][0]["rule"], 'absent: contains "FAILED"')
+        self.assertNotIn("SECRET-LINE", ct.report_json(runs)); self.assertNotIn("line", o["hits"][0])
+        self.assertEqual(step["b"]["checks"][0]["attempt"], 1)   # the retry that passed keeps the attempt it tripped in
+        full = json.loads(ct.report_json(runs, with_lines=True))
+        self.assertEqual({s["id"]: s for s in full["runs"][0]["steps"]}["a"]["checks"][0]["outcomes"][0]["hits"][0]["line"], "[kt] FAILED: SECRET-LINE")
+
+    def test_junit_failure_names_the_check_and_leaves_line_text_out_unless_asked(self):
+        from xml.etree import ElementTree as ET
+        runs = self.run_with(self.checked_steps())
+        body = ET.fromstring(ct.report_junit(runs)).find("testsuite/testcase[@name='a']/failure").text
+        self.assertIn('check 1 (fail): absent: contains "…" [2 of 4 lines matched] - a forbidden line appeared', body); self.assertIn("line 2", body)
+        self.assertNotIn("SECRET-LINE", body); self.assertNotIn('"FAILED"', body)
+        full = ET.fromstring(ct.report_junit(runs, with_lines=True)).find("testsuite/testcase[@name='a']/failure").text
+        self.assertIn("SECRET-LINE", full); self.assertIn('absent: contains "FAILED"', full)
+
+    def test_junit_takes_the_checks_from_the_attempt_the_result_comes_from(self):
+        from xml.etree import ElementTree as ET
+        steps = {"a": {"verdict": "fail", "attempts": [
+            {"n": 1, "verdict": "unverified", "outcomes": [{"result": "unverified", "rule": "R1", "shape": "OLD-ATTEMPT", "why": "w"}]},
+            {"n": 2, "verdict": "fail", "note": "by hand", "outcomes": [{"result": "pass"}]}]}}
+        body = ET.fromstring(ct.report_junit(self.run_with(steps))).find("testsuite/testcase/failure").text
+        self.assertNotIn("OLD-ATTEMPT", body)   # a manual failure on attempt 2 is not explained by attempt 1's check
+
+    def test_the_report_keeps_a_failed_diagnostic_of_a_passing_attempt(self):
+        steps = {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass", "outcomes": [
+            {"result": "pass"}, {"result": "unverified", "diagnostic": True, "rule": 'present: contains "x"', "why": "no matching log line", "matched": 0, "window": 3}]}]}}
+        text = ct.report_text(self.run_with(steps))
+        self.assertIn("with 1 failed or unverified check kept", text); self.assertIn('check 2 (diagnostic, unverified): present: contains "x"', text)
+
+    def test_a_malformed_check_detail_is_an_unreadable_revision(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        for i, bad in enumerate(({"hits": [{"n": 0}]}, {"hits": ["x"]}, {"matched": "2"}, {"window": -1}, {"hits": {"n": 1}}, {"stoppedAt": 0},
+                                  {"hits": [{"n": 1}] * 4}, {"hits": [{"n": 1, "line": 5}]}, {"rule": 3}, {"scope": "x"}, {"trimmed": False})):
+            p = os.path.join(d, "r%d.json" % i)
+            with open(p, "w") as fh:
+                json.dump({"steps": {"a": {"attempts": [{"n": 1, "outcomes": [dict({"result": "fail"}, **bad)]}]}}}, fh)
+            with self.assertRaises(ValueError, msg=str(bad)):
+                ct.read_run(p)
+        with open(os.path.join(d, "ok.json"), "w") as fh:
+            json.dump({"steps": {"a": {"attempts": [{"n": 1, "outcomes": [{"result": "fail", "hits": [{"n": 1, "line": "x"}], "matched": 1, "window": 1}, {"result": "pass"}]}]}}}, fh)
+        ct.read_run(os.path.join(d, "ok.json"))   # older runs, with none of it, read as before
+
+    def test_the_results_schema_accepts_old_and_new_runs_and_names_bad_detail(self):
+        import jsonschema
+        with open(os.path.join(ROOT, "schema", "run-results.schema.json")) as fh:
+            schema = json.load(fh)
+        check = lambda run: jsonschema.Draft202012Validator(schema).iter_errors(run)
+        new = self.run_with(self.checked_steps())["R-1"]
+        new["steps"]["a"]["attempts"][0]["outcomes"][0].update(stoppedAt=2, observed="3", trimmed=True)
+        self.assertEqual(list(check(new)), [])
+        self.assertEqual(list(check({"steps": {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}}})), [], "an older run has none of the new keys")
+        for bad in ({"hits": [{"n": 0}]}, {"result": "bogus"}, {"matched": -1}, {"scope": "everywhere"}, {"hits": [{"n": 1}] * 4}, {"trimmed": False}):
+            run = {"steps": {"a": {"attempts": [{"n": 1, "outcomes": [dict({"result": "fail"}, **bad)]}]}}}
+            self.assertTrue(list(check(run)), bad)
+
+    def test_a_run_the_addon_wrote_passes_the_schema_and_both_tools_read_it(self):
+        import jsonschema
+        path = os.path.join(ROOT, "build", "hits-run.json")   # written by tests/test_hits.lua, which make test runs first
+        if not os.path.exists(path):
+            self.skipTest("run tests/test_hits.lua first")
+        with open(os.path.join(ROOT, "schema", "run-results.schema.json")) as fh:
+            schema = json.load(fh)
+        with open(path) as fh:
+            run = json.load(fh)
+        self.assertEqual(list(jsonschema.Draft202012Validator(schema).iter_errors(run)), [])
+        ct.read_run(path)
+        outs = run["steps"]["a"]["attempts"][0]["outcomes"]
+        self.assertEqual((outs[0]["rule"], outs[0]["hits"][0]["line"]), ('absent: contains "boom"', "boom here"))
+        self.assertEqual((outs[1]["stoppedAt"], outs[1]["matched"]), (2, 1)); self.assertEqual(outs[2]["observed"], "2")
+        text = ct.report_text({"R": run})
+        self.assertIn('check 1 (required, fail): absent: contains "boom"', text); self.assertIn("stopped at item 2", text)
+
     def test_collect_keeps_the_error_lines_and_stacks(self):
         d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
         sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
