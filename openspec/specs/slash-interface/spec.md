@@ -71,3 +71,10 @@ The addon SHALL register `/ct` and `/checkthat` with the same vocabulary and SHA
 #### Scenario: Self-test commands
 - **WHEN** the tester types `/ct selftest facts` or `/ct selftest error` during a run
 - **THEN** the test facts are reported, or a test error is passed to the error handler
+
+### Requirement: Rerun takes failed
+`/ct rerun failed` SHALL ask, then reopen the failed and unverified steps of the run. Its usage line SHALL read `/ct rerun <category> or /ct rerun failed`.
+
+#### Scenario: Usage
+- **WHEN** the tester types `/ct rerun` with no name
+- **THEN** the usage line names both a category and failed

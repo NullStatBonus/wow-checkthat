@@ -22,6 +22,7 @@ logs:
     global: CheckThatDB
     path: global.log.entries
     format: entries
+    cap: 300
   facts:
     global: CheckThatDB
     path: global.facts

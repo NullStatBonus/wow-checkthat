@@ -78,7 +78,11 @@ function Log.Report()
                 out[#out + 1] = ("  %s: %s%s, %d of %d done"):format(r.id, r.state, r.picked and "" or " (not picked)", r.counts.resolved, r.counts.total)
             end
         end
-        if ns.Errors then out[#out + 1] = ("Errors: %d recorded, handler: %s"):format(ns.Errors.Count(), ns.Errors.HookState()) end
+        if ns.Errors then
+            out[#out + 1] = ("Errors: %d recorded, handler: %s"):format(ns.Errors.Count(), ns.Errors.HookState())
+            local stack = ns.Errors.LastStack()
+            if stack then out[#out + 1] = "Last error stack: " .. stack end
+        end
         ns.App.Log("report requested: " .. stored)
     end
     out[#out + 1] = ""

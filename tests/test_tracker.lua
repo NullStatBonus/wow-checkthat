@@ -125,6 +125,20 @@ test("a click on a row offers add, go to the first open step, and rerun for that
     _G.MenuUtil = nil
 end)
 
+test("a failed step adds a row that reruns every failed and unverified step", function()
+    local run = start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    verdict(run, "s1a", "pass"); verdict(run, "s2a", "fail")
+    local got = {}
+    _G.MenuUtil = { CreateContextMenu = function(owner, gen) gen(owner, { CreateButton = function(_, label, fn) got[#got + 1] = { label, fn } end }) end }
+    win().rows[1].scripts.OnClick(win().rows[1])
+    T.eq(got[#got][1], "Rerun failed and unverified steps in all categories")
+    got = {}
+    win().rows[3].scripts.OnClick(win().rows[3]) -- not picked: its own item and the failed row
+    T.eq(#got, 2); T.eq(got[2][1], "Rerun failed and unverified steps in all categories")
+    _G.MenuUtil = nil
+end)
+
 test("without a menu a click runs the main item", function()
     local run = start(3, { "c1", "c2" })
     ns.Tracker.Show()

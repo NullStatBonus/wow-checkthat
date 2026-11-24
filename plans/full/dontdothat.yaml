@@ -24,6 +24,7 @@ logs:
     global: DontDoThatDB
     path: global.log.entries
     format: entries
+    cap: 500
 requirements:
   addon-loaded:
     text: DontDoThat is loaded

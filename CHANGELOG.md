@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.0
+
+New: **Log lines kept with a failed step.** A failed or unverified step saves the first new lines of the logs it checks. The report shows them.
+
+## 0.12.0
+
+New: **Errors name their addon.** Each recorded Lua error shows the addon from its file path, such as [KeepThat]. A plan can check one addon.
+New: **Error stacks.** The first error of a step keeps a short call stack. /ct log shows the newest.
+New: **Handler watch.** CheckThat sets its error handler again when another addon takes it during a run.
+New: **Card error warning.** An amber line on the card says when CheckThat cannot detect new Lua errors.
+Fixed: An addon that took the error handler mid-run hid errors until the next category start. CheckThat now notices within a second.
+
+## 0.11.0
+
+New: **Rerun failed steps.** Type /ct rerun failed. It reopens every failed or unverified step in every category. A row menu item does the same.
+Changed: **Reserved category name.** A plan cannot use "failed" as a category id.
+Fixed: The rerun question and the reopen message said "1 steps". They now say "1 step".
+
 ## 0.10.0
 
 New: **Test categories.** A plan groups its steps. Pick the categories to run when you start. Add one later.

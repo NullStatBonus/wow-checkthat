@@ -191,6 +191,7 @@ function Plan.Validate(plan)
     if plan.categories ~= nil and not declared then errs[#errs + 1] = "categories must be a non-empty list" end
     for _, c in ipairs(declared and plan.categories or {}) do
         if type(c) ~= "table" or not (isStr(c.id) and c.id:match(Plan.ID)) then errs[#errs + 1] = "category id is not valid"
+        elseif c.id:lower() == "failed" then errs[#errs + 1] = "category id failed is reserved for /ct rerun failed"
         elseif cats[c.id] then errs[#errs + 1] = "duplicate category id " .. c.id
         else
             cats[c.id] = true
@@ -219,6 +220,7 @@ function Plan.Validate(plan)
     for _, sec in ipairs(plan.sections) do
         if type(sec) ~= "table" or type(sec.steps) ~= "table" then errs[#errs + 1] = "section without a steps list"; return errs end
         if not isStr(sec.id) then errs[#errs + 1] = "section without an id"
+        elseif isStr(sec.id) and sec.id:lower() == "failed" and not declared then errs[#errs + 1] = "section id failed is reserved for /ct rerun failed (each section is a category)"
         elseif secIds[sec.id] then errs[#errs + 1] = "duplicate section id " .. sec.id
         else secIds[sec.id] = true end
         if sec.category ~= nil and not cats[sec.category] then errs[#errs + 1] = "section " .. tostring(sec.id) .. ": unknown category " .. tostring(sec.category) end

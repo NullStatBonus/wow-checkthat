@@ -10,6 +10,7 @@ logs:
     global: CheckThatDB
     path: global.log.entries
     format: entries
+    cap: 300
 requirements:
   loaded:
     text: CheckThat is loaded

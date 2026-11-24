@@ -9,6 +9,7 @@ logs:
     global: ClosestVendorCharDB
     path: log.entries
     format: entries
+    cap: 300
 requirements:
   addon-loaded:
     text: ClosestVendor is loaded

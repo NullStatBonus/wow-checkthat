@@ -2,7 +2,8 @@ local ns, test, T, finish, H = dofile("tests/harness.lua")()
 local st = H.stubClient({})
 H.plain(ns)
 
-local function body(line) return (tostring(line):gsub("^%d+%.%d+ ", "")) end -- the line without its time and counter
+local function body(line) return (tostring(line):gsub("^%d+%.%d+ %[[^%]]*%] ", "")) end -- the line without its time, counter and addon tag
+local function tagOf(line) return tostring(line):match("^%d+%.%d+ %[([^%]]*)%] ") end
 local function bind(open, now)
     local list, t = {}, { now = now or 100, open = open ~= false }
     ns.Errors.Bind(list, function() return t.now end, function() return t.open end)
@@ -19,6 +20,18 @@ end)
 test("nothing is recorded when no run is open", function()
     local list = bind(false)
     T.eq(ns.Errors.Record("boom"), false); T.eq(#list, 0)
+end)
+
+test("each line names the addon whose file path the message carries", function()
+    local list = bind()
+    ns.Errors.Record("Interface\\AddOns\\KeepThat\\Core.lua:12: boom")
+    ns.Errors.Record("Interface/AddOns/DontDoThat/Log.lua:3: boom")
+    ns.Errors.Record("[string \"x\"]:1: no path")
+    ns.Errors.Record("Interface\\AddOns\\KeepThat\\Libs\\Ace\\a.lua:9: from a library")
+    T.eq(tagOf(list[1]), "KeepThat"); T.eq(tagOf(list[2]), "DontDoThat"); T.eq(tagOf(list[3]), "?")
+    T.eq(tagOf(list[4]), "KeepThat", "a library inside an addon is the addon's")
+    ns.Errors.Record(("x"):rep(500) .. "Interface\\AddOns\\Late\\a.lua")
+    T.eq(tagOf(list[5]), "Late", "the tag is read before the cut"); T.eq(#body(list[5]), ns.Errors.LEN)
 end)
 
 test("a message is cut, flattened and made text", function()
@@ -195,6 +208,7 @@ test("with nothing recording, judging a result records a line, so silence cannot
     ns.Errors.Bind(list, function() return t.now end, function() return true end, {})
     T.eq(ns.Errors.Covered(), false)
     T.eq(ns.Errors.Check(), true); T.ok(list[1]:find("cannot see Lua errors", 1, true), list[1])
+    T.eq(tagOf(list[1]), "CheckThat", "the line is ours, whatever its text")
     _G.seterrorhandler = real
     ns.Errors.Hook()
     T.eq(ns.Errors.Covered(), true); T.eq(ns.Errors.Check(), false, "covered: nothing added")
@@ -225,7 +239,7 @@ test("every line is different, so a list of the same error can still show where 
     for _ = 1, 4 do ns.Errors.Record("CheckThat self-test error") end
     local seen = {}
     for _, l in ipairs(list) do T.ok(not seen[l], "a repeated line: " .. l); seen[l] = true end
-    T.ok(list[1]:find("^%d+%.%d+ CheckThat self%-test error$"), list[1])
+    T.ok(list[1]:find("^%d+%.%d+ %[%?%] CheckThat self%-test error$"), list[1])
     -- the absence check that was unverified in a real run (four identical lines) now has a boundary
     local plan = { logs = { q = { global = "DB", path = "errors", format = "strings", quiet = true } } }
     local a = { kind = "log", source = "q", pattern = ".", absent = true }
@@ -234,6 +248,99 @@ test("every line is different, so a list of the same error can still show where 
     T.eq((ns.Evidence.CheckLog(a, snaps, plan, env)), "pass", "no new error since the step opened")
     ns.Errors.Record("later")
     T.eq((ns.Evidence.CheckLog(a, snaps, plan, env)), "fail", "an error after it opened")
+end)
+
+test("a plan can ask for one addon's errors with the documented pattern", function()
+    local list = bind()
+    local plan = { logs = { q = { global = "DB", path = "errors", format = "strings", quiet = true } } }
+    local a = { kind = "log", source = "q", pattern = "%[KeepThat%]", absent = true }
+    local env = { DB = { errors = list } }
+    local snaps = ns.Evidence.Snapshot(plan, env, { assertions = { a } })
+    ns.Errors.Record("Interface\\AddOns\\Other\\a.lua:1: boom")
+    T.eq((ns.Evidence.CheckLog(a, snaps, plan, env)), "pass", "an error of another addon does not fail it")
+    ns.Errors.Record("Interface\\AddOns\\KeepThat\\a.lua:1: boom")
+    T.eq((ns.Evidence.CheckLog(a, snaps, plan, env)), "fail", "an error of the addon does")
+end)
+
+test("the first error of a step keeps a short call stack, with the key of its line", function()
+    local list, t = bind(); local stacks = {}
+    ns.Errors.Bind(list, function() return t.now end, function() return true end, nil, stacks)
+    local real = _G.debugstack
+    _G.debugstack = function() return "A.lua:1\nB.lua:2" end
+    local h = ns.Errors.Handler(function() end)
+    h("e1"); h("e2")
+    T.eq(#list, 2); T.eq(#stacks, 1, "one stack for the step")
+    T.eq(stacks[1]:match("^(%S+) "), list[1]:match("^(%S+) "), "same time and counter as the error line")
+    T.ok(stacks[1]:find("A.lua:1 / B.lua:2", 1, true), stacks[1])
+    ns.Errors.StepStarted(); h("e3"); T.eq(#stacks, 2, "the next step keeps one again")
+    _G.debugstack = function() return ("s"):rep(2000) end
+    ns.Errors.StepStarted(); h("e4")
+    T.eq(#stacks[3]:gsub("^%S+ ", ""), ns.Errors.STACK, "cut")
+    for _ = 1, 30 do ns.Errors.StepStarted(); h("more") end
+    T.eq(#stacks, ns.Errors.STACKS, "the newest are kept")
+    _G.debugstack = real
+end)
+
+test("a stack that cannot be read keeps nothing and never stops the error from being recorded", function()
+    local list, t = bind(); local stacks = {}
+    ns.Errors.Bind(list, function() return t.now end, function() return true end, nil, stacks)
+    local real = _G.debugstack
+    _G.debugstack = function() error("no stack") end
+    T.eq(ns.Errors.Record("boom", ns.Adapter.Stack), true); T.eq(#stacks, 0)
+    _G.debugstack = nil
+    T.eq(ns.Adapter.Stack(), nil); T.eq(ns.Errors.Record("boom", ns.Adapter.Stack), true); T.eq(#stacks, 0)
+    _G.debugstack = function() return "later" end
+    ns.Errors.Record("boom", ns.Adapter.Stack); T.eq(#stacks, 1, "a failed read did not use up the step's stack")
+    _G.debugstack = real
+end)
+
+test("with the handler blocked, the stack comes from BugGrabber's entry", function()
+    local list, t = bind(); local stacks = {}
+    local db = { BugGrabberDB = { errors = { { message = "old", counter = 1, stack = "OLD" } } } }
+    ns.Errors.Bind(list, function() return t.now end, function() return true end, db, stacks)
+    local grab, real = takeSlotLikeBugGrabber()
+    ns.Errors.Hook(); ns.Errors.Sample()
+    db.BugGrabberDB.errors[2] = { message = "new", counter = 1, stack = "Foo.lua:1\nBar.lua:2" }
+    T.eq(ns.Errors.Sample(), 1); T.eq(#stacks, 1)
+    T.ok(stacks[1]:find("Foo.lua:1 / Bar.lua:2", 1, true), stacks[1])
+    _G.seterrorhandler = real
+end)
+
+test("another addon taking the handler is noticed: set again at most once a second, logged a few times", function()
+    local list, t = bind()
+    local entries = {}
+    ns.Log.Bind({ entries = entries, enabled = true }, function() return true end, function() return t.now end)
+    local sets, realSet = 0, _G.seterrorhandler
+    _G.seterrorhandler = function(fn) sets = sets + 1; realSet(fn) end
+    ns.Errors.Hook(); T.eq(sets, 1)
+    T.eq(ns.Errors.Watch(), false, "ours is still the handler"); T.eq(sets, 1)
+    realSet(function() end)                      -- another addon takes the slot
+    T.eq(ns.Errors.Watch(), true); T.eq(sets, 2); T.eq(ns.Errors.HookState(), "current")
+    realSet(function() end)
+    T.eq(ns.Errors.Watch(), false, "not again in the same second"); T.eq(sets, 2)
+    t.now = t.now + 1
+    T.eq(ns.Errors.Watch(), true); T.eq(sets, 3)
+    for _ = 1, 10 do t.now = t.now + 1; realSet(function() end); ns.Errors.Watch() end
+    local said = 0
+    for _, e in ipairs(entries) do if tostring(e.msg):find("took the error handler", 1, true) then said = said + 1 end end
+    T.eq(said, 5, "a fight between two addons cannot flood the debug log")
+    for _ = 1, 40 do t.now = t.now + 1; realSet(function() end); ns.Errors.Watch() end
+    T.ok(sets <= 2 + ns.Errors.REHOOKS, "the number of wrappers is bounded: " .. sets)
+    t.open = false; realSet(function() end); t.now = t.now + 1
+    T.eq(ns.Errors.Watch(), false, "nothing is watched with no run open")
+    _G.seterrorhandler = realSet
+end)
+
+test("blind says so only while a run is open and nothing records errors", function()
+    local list, t = bind()
+    local real = _G.seterrorhandler
+    _G.seterrorhandler = function() end
+    ns.Errors.Hook()                                  -- blocked, and no BugGrabber
+    T.eq(ns.Errors.Blind(), true)
+    t.open = false; T.eq(ns.Errors.Blind(), false)
+    t.open = true; ns.Errors.Bind(list, function() return t.now end, function() return true end, { BugGrabberDB = { errors = {} } })
+    T.eq(ns.Errors.Blind(), false, "BugGrabber's list can be read")
+    _G.seterrorhandler = real
 end)
 
 finish()
