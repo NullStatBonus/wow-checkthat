@@ -16,6 +16,7 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 - **Report.** `REPORT.md` gives each run a `result:` line (`ok`, `UNVERIFIED` or `FAIL` with counts) and a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass. A step that passed after a rerun lists its earlier failed or unverified attempts too. A failed or unverified attempt shows the Lua error that was raised while it was open, with its call stack. The match is by time (whole seconds), so a stack that also fits another attempt says so.
 - **Status.** `status` prints one row per run at its newest readable revision: steps done over steps that apply, fail, unverified and open counts, age, and the export size as a percent of the 2 MB limit (`size~`, an estimate from the saved run). It names every revision file it cannot read and every conflict or decode failure `collect` met (kept in `evidence/problems.log`; delete the file once you have looked). It judges the evidence, not the test result. `--json` prints the same as JSON.
 - **Exit codes.** `status` exits 0 when every revision is readable and nothing conflicts, 1 when there is no run, a revision is unreadable, a conflict was logged or a run is over 80% of the size limit. `report --strict` exits 1 when any step failed or is unverified (a pass or partial whose required evidence failed or has no result counts too), or when there are no runs. Without `--strict` `report` exits 0.
+- **Browse.** `browse` (or `tools/ct_tui.py`) opens a read-only viewer in the terminal: runs (failures first), the steps of a run, and one step with its attempts. It needs a terminal and Textual, which is not installed with the plan tools: `.venv/bin/python -m pip install -r requirements-tui.txt`. Without a terminal it prints the `status`, `report --failed-only` and `show` commands that give the same facts. See [Browse the evidence](#browse-the-evidence).
 - **Show.** `show <run>` prints one run, as the report does. `show <run> <step>` prints one step with every attempt, its log lines and its error stacks. `<run>` can be part of the run id when only one run matches. A wrong run or step name exits 2 and lists the choices.
 - **Failed only.** `report --failed-only` keeps the runs and steps that failed or are unverified, the same steps `--strict` counts.
 - **Watch.** `status --watch` prints the status again every `--interval` seconds (default 5) until Ctrl-C. It exits with the last status code. Use it while you collect and fix. It does not go with `--json`.
@@ -23,6 +24,23 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 - **Log lines.** A run keeps about 60 000 bytes of log lines in failed attempts. When it holds more, the oldest attempts lose theirs first. They keep their attempt records.
 - **Results string.** Paste one from `/ct export` with `.venv/bin/python tools/ct.py import-results "<string>"`. A file path works too.
 - Keep `evidence/` out of Git.
+
+## Browse the evidence
+
+```
+.venv/bin/python -m pip install -r requirements-tui.txt   # once
+.venv/bin/python tools/ct.py browse
+```
+
+The viewer only reads. Collect in a shell, as before. The screen reloads when the evidence folder changes, and `r` reloads at once.
+
+| Screen | Shows | Keys |
+| --- | --- | --- |
+| Runs | run, plan, revision, fail and unverified counts, age. Failures first, then unverified, newest first. A line above says how many problems `status` finds. | Enter opens a run |
+| Steps | step, category, result, reason, in plan order. The line above shows the filter and how many of the steps show. | `f` cycles all, fail, unverified. `/` cycles the categories. Enter opens a step. Esc goes back. |
+| Step | The result and the player's verdict first (it says when the evidence overrules a pass). Then one attempt: note, each required and diagnostic check, the log lines kept, and the errors raised while it was open with their stacks. | `[` and `]` move between attempts. Esc goes back. |
+
+Everywhere: `e` shows what an export will write (scope, format, file, stacks) and writes it on Enter. `c` shows the collect command. `?` shows the keys. `q` quits. Evidence shows as plain text. Stacks stay out of a JSON or JUnit export until you press `s`, because they can hold private paths.
 
 ## Local paths
 

@@ -688,6 +688,11 @@ def read_run(path):
         run["steps"] = {}   # an empty Lua table decodes to a list
     if not isinstance(run, dict) or not isinstance(run.get("steps"), dict) or not isinstance(run.get("order", []), list):
         raise ValueError("not a run record")
+    for rec in run["steps"].values():   # the readers below call .get on each of these
+        ats = rec.get("attempts", []) if isinstance(rec, dict) else None
+        if not isinstance(ats, list) or not all(isinstance(a, dict) and isinstance(a.get("outcomes", []), list) and all(isinstance(o, dict) for o in a.get("outcomes", []))
+                                                and isinstance(a.get("excerpt", {}), dict) for a in ats):
+            raise ValueError("a step record is malformed")
     return run
 
 
@@ -777,6 +782,10 @@ def attempt_lines(at, stack_keys, errs, stacks, ambiguous):
         out.append("      stack: " + stacks[key])
     return out
 
+def stored_id(rid, r):
+    """The run id as the game wrote it. The folder name is a safe version of it (a non-ASCII id differs)."""
+    return r.get("runId") if isinstance(r.get("runId"), str) else rid
+
 def stack_hits(r, stacks):
     """{(step, attempt n): [stack keys]} for stacks raised inside the attempt's open time, and the keys that fit more than one attempt.
     The key is <time>.<counter>; time has whole-second precision, so a match is a candidate, not proof."""
@@ -801,7 +810,7 @@ def report_text(runs, dest=None, stacks=True, failed_only=False, step=None):
         only = {step} if step else {sid for sid in step_ids(r) if classify((r.get("steps") or {}).get(sid, {}))[0] in ("fail", "unverified")} if failed_only else None
         if failed_only and not only:
             continue
-        errs, stks = load_errors(dest, rid) if stacks and dest else ({}, {})
+        errs, stks = load_errors(dest, stored_id(rid, r)) if stacks and dest else ({}, {})
         counts = {}
         for sid, rec in (r.get("steps") or {}).items():
             counts[rec.get("verdict", "?")] = counts.get(rec.get("verdict", "?"), 0) + 1
@@ -889,7 +898,7 @@ def run_model(rid, r, stacks=None):
 def models(runs, dest=None, with_stacks=False):
     out = []
     for rid, r in sorted(runs.items()):
-        errs, stks = load_errors(dest, rid) if with_stacks and dest else ({}, {})
+        errs, stks = load_errors(dest, stored_id(rid, r)) if with_stacks and dest else ({}, {})
         hits, _ = stack_hits(r, stks)
         out.append(run_model(rid, r, {k: ["%s: %s" % (key, stks[key]) for key in v] for k, v in hits.items()} if with_stacks else None))
     return out
@@ -1069,6 +1078,7 @@ def main(argv=None):
     p.add_argument("--out", help="write the json or junit report to this file")
     p.add_argument("--failed-only", action="store_true", help="md only: runs and steps that failed or are unverified")
     p = sub.add_parser("show", help="print one run, or one step of it with every attempt, log excerpt and error stack"); p.add_argument("run", help="run id, or part of it that names one run"); p.add_argument("step", nargs="?"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p = sub.add_parser("browse", help="open the read-only evidence viewer (needs a terminal and Textual: requirements-tui.txt)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p = sub.add_parser("status", help="check what the evidence folder holds: readable revisions, conflicts, sizes"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--json", action="store_true")
     p.add_argument("--watch", action="store_true", help="print status again every --interval seconds until Ctrl-C"); p.add_argument("--interval", type=float, default=5)
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
@@ -1154,6 +1164,9 @@ def main(argv=None):
             print("strict: %s" % ("no runs" if not runs else "%d step(s) failed or are unverified" % bad_steps(models(runs))), file=sys.stderr)
             return 1
         return 0
+    if a.cmd == "browse":
+        import ct_tui   # only here: the viewer and Textual stay optional
+        return ct_tui.main(["--dest", a.dest])
     if a.cmd == "show":
         try:
             print(show_text(latest_runs(a.dest), a.dest, a.run, a.step))

@@ -372,7 +372,7 @@ class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "tools/sv2json.lua",
-              "requirements.txt")
+              "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
 
     def make(self, dest, **env):
@@ -449,6 +449,9 @@ class InstallSkill(unittest.TestCase):
                                 os.path.join(dest, "example.yaml")], capture_output=True, text=True, cwd=d)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("ok", r.stdout)
+            v = subprocess.run([sys.executable, os.path.join(dest, "ct", "tools", "ct_tui.py")], capture_output=True, text=True, cwd=d)   # no terminal, no Textual needed
+            self.assertEqual(v.returncode, 2, v.stdout + v.stderr)
+            self.assertIn("needs a terminal", v.stderr)
 
     def test_failed_dependency_install_keeps_the_earlier_copy(self):
         with tempfile.TemporaryDirectory() as d:
