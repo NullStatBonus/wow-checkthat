@@ -303,6 +303,20 @@ class PlanSkill(unittest.TestCase):
                      "one plan for each character role", "<name>.<role>.yaml", "A rejected new step stays out", "ct-verify"):
             self.assertIn(rule, text)
 
+    def test_skill_and_guide_offer_facts_and_the_source_validates(self):
+        def read(*parts):
+            with open(os.path.join(*parts), encoding="utf-8") as f:
+                return f.read()
+        skill, guide = read(self.SKILL, "SKILL.md"), read(ROOT, "docs", "debug-logging.md")
+        self.assertIn("CheckThat.Report", skill)
+        self.assertIn("## Publish a fact", guide)
+        self.assertIn("CheckThat.Report", guide)
+        plan = ct.load_yaml(os.path.join(self.SKILL, "example.yaml"))
+        plan["logs"]["facts"] = {"global": "CheckThatDB", "path": "global.facts", "format": "strings"}
+        step = plan["sections"][0]["steps"][0]
+        step["assertions"] = [{"kind": "log", "source": "facts", "equals": "[KeepThat] freeSlots=3"}]
+        self.assertEqual(ct.validate(plan), [])
+
     def test_skill_points_at_files_that_exist(self):
         def read(name):
             with open(os.path.join(self.SKILL, name), encoding="utf-8") as f:

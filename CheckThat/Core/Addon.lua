@@ -8,6 +8,7 @@ function addon:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("CheckThatDB", ns.defaults, true)
     ns.LibDeflate = LibStub("LibDeflate")
     ns.App.Init(self.db.global, ns.Adapter.Env(), { debug = function() return self.db.profile.debug end })
+    ns.Adapter.Export("CheckThat", ns.Facts.API())
     ns.Slash.Register(self)
     -- Feature modules register a starter in ns.starters (UI/Card.lua, Options/Options.lua).
     for _, start in ipairs(ns.starters or {}) do

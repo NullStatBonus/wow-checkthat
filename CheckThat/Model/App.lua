@@ -16,7 +16,14 @@ function App.Init(db, env, opts)
     db.log = db.log or { entries = {} }
     db.ui = db.ui or {}
     db.ui.shareReload = nil -- a reload request lasts until the next load
+    db.facts = db.facts or {}
     App.db = db
+    if ns.Facts then
+        ns.Facts.Bind(db.facts, function() return now(App) end, function()
+            local run = App.Current()
+            return run ~= nil and not run.endedAt
+        end)
+    end
     if ns.Log then
         ns.Log.Bind(db.log, (opts and opts.debug) or function() return db.log.enabled end, function() return now(App) end)
     end

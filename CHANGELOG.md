@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0
+
+New: **Facts from other addons.** An addon under test can report a fact while you run a plan.
+New: A plan step can check a reported fact. An automatic step passes when the fact arrives.
+
 ## 0.8.3
 
 Changed: The **debug report and results window** now look like the report window in KeepThat, DontDoThat and ClosestVendor.

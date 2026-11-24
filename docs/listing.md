@@ -13,6 +13,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
 - See which steps CheckThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
+- An addon under test can report a fact with `CheckThat.Report`, and a plan or an automatic step checks it like a log line.
 - Keep your place through `/reload`.
 - Reopen, export or delete an older run from Past runs on the Home page. Choose how many runs to keep in Advanced.
 - End a run you will not finish from the Run menu in the card header or with `/ct end`. The results stay for export. The same menu imports another plan or clears the current plan.

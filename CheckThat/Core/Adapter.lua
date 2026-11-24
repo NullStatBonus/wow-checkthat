@@ -28,6 +28,9 @@ function Adapter.Env()
     return setmetatable(env, { __index = _G })
 end
 
+-- Publishes a table as a game global, for the one public API other addons call.
+function Adapter.Export(name, value) return (pcall(rawset, _G, name, value)) end
+
 function Adapter.Now() return call("time") end
 
 -- The addon's own version from the TOC ("unknown" when the client cannot say).

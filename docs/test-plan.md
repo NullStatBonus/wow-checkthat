@@ -107,6 +107,13 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: the results screen shows no Run button, before and after the fight.
    Log: none when the button stayed hidden; one `[ct] run button hidden: nothing to run on this screen` line for the screen if the game showed it and CheckThat hid it again.
 
+10. **A fact is recorded during a run.** Setup: start any run and type `/ct debug on`. Type `/run CheckThat.Report("Demo", "ping", 1)`.
+   Check: nothing visible happens and no Lua error shows.
+   Log: `[facts] recorded Demo ping`, and `Facts: 1, last: [Demo] ping=1` in the `/ct log` report.
+11. **No fact without a run.** Type `/ct end`, confirm, then type `/run CheckThat.Report("Demo", "late", 1)`.
+   Check: nothing visible happens and no Lua error shows.
+   Log: no `recorded Demo late` line, and the `Facts:` line in the report still shows `ping=1`.
+
 ## 5. Plan skills (no game needed)
 
 These checks run in a coding agent, not in the game. Run `make install-skill` first. `make test` covers what code decides (bundle, `collect`, example plans, fixture data). These checks cover the conversation.

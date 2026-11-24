@@ -37,3 +37,22 @@ Next, try `build/dontdothat.ct`.
 ## Good logs make good plans
 
 A step can only be checked from a log if the addon writes the line. See [Debug logging](debug-logging.md).
+
+## Facts from the addon under test
+
+An addon that has no debug log line for a result can publish a fact instead. It calls `CheckThat.Report("KeepThat", "bagFull", true)` (see [Feature reference](features.md#facts-from-other-addons)). Add the facts list as a log source, then assert on the line like any other:
+
+```yaml
+logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+# in a step:
+    assertions:
+    - kind: log
+      source: facts
+      equals: '[KeepThat] bagFull=true'
+```
+
+The plan format does not change. With `auto: true` the step passes when the addon reports the fact. A fact reported before the step opened does not count.
