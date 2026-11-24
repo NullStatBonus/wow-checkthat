@@ -12,7 +12,7 @@
 
 **Non-Goals:**
 - Reading DontDoThat's bound from its saved variable. The addon has no caller of `Log.SetMax`, so the bound is 500 unless the saved file is edited. A plan reads no bound from a saved variable today.
-- The WoWUnit bridge (issue #61).
+- A bridge to in-game unit test results (issue #61).
 
 ## Decisions
 
