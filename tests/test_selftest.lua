@@ -73,10 +73,13 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     local ne = App.AutoSettle()
     T.eq(ne.verdict, "pass"); T.eq(ne.evidence, "matched"); T.eq(ne.by, "auto")
     -- a recorded error: the command passes a message to the error handler, CheckThat records it
+    local realStack = _G.debugstack; _G.debugstack = function() return "stack line" end
     App.Begin(); T.eq(App.AutoSettle(), nil, "waits for the error")
     T.ok(ns.Slash.Run("selftest error", {})[1]:find("Raised a test error", 1, true))
     local er = App.AutoSettle()
+    T.eq(#db.errorStacks, 1, "the error kept one call stack")
     T.eq(er.verdict, "pass"); T.eq(er.by, "auto"); T.ok(db.errors[#db.errors]:find("CheckThat self-test error", 1, true), db.errors[#db.errors])
+    _G.debugstack = realStack
     App.Begin(); T.eq(App.AutoSettle(), nil, "waits for /ct export")
     T.ok(App.Export(), "the results string is built"); App.Log("run exported " .. run.runId)
     local x = App.AutoSettle(); T.eq(x.verdict, "pass"); T.eq(x.by, "auto")

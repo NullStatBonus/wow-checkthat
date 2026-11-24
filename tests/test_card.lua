@@ -370,6 +370,36 @@ test("the Categories control opens the Categories window and closes it again", f
     T.eq(_G.CheckThatCategories:IsShown(), false)
 end)
 
+test("the checks list carries an amber warning only when asked", function()
+    local items = { { assertion = { kind = "log" }, state = "waiting" } }
+    T.ok(not ns.Card.ChecksText(items, false, nil, false):find("cannot see Lua errors", 1, true))
+    T.ok(ns.Card.ChecksText(items, false, nil, true):find("|cffffaa00CheckThat cannot detect new Lua errors.", 1, true))
+end)
+
+test("a step that reads the Lua error list shows the warning while nothing records errors", function()
+    local p = catPlan(1)
+    p.logs = { errors = { global = "CheckThatDB", path = "global.errors", format = "strings", quiet = true, cap = 100 } }
+    p.sections[1].steps[1] = { id = "s1a", title = "No Lua error", action = { kind = "manual", text = "t" }, expect = "e",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "errors", pattern = ".", absent = true } } }
+    ns.addon.db.profile.card.collapsed = false
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    assert(ns.App.Start("KeepThat")); ns.Card.Show()
+    local covered = ns.Errors.Covered
+    ns.Errors.Covered = function() return false end -- no handler of ours and no BugGrabber
+    ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.eq(ns.Errors.Blind(), true)
+    T.ok(card.checks.text:find("cannot detect new Lua errors", 1, true), tostring(card.checks.text))
+    ns.Errors.Covered = function() return true end
+    ns.Card.Refresh(); ns.Card.UpdateChecks()
+    T.ok(not card.checks.text:find("cannot detect new Lua errors", 1, true), "covered again: the warning goes")
+    ns.Errors.Covered = function() return false end
+    ns.Card.UpdateChecks()
+    T.ok(card.checks.text:find("cannot detect new Lua errors", 1, true), "the live update lays the card out again and shows the warning")
+    ns.Errors.Covered = covered
+end)
+
 test("rerun asks first and reopens only when the player accepts", function()
     local run, card = startCats(2)
     verdict(run, "s1a", "pass")
@@ -377,10 +407,30 @@ test("rerun asks first and reopens only when the player accepts", function()
     _G.StaticPopup_Show = function() end
     ns.Card.ConfirmRerun("c1", 1, "Cat 1")
     dialog = _G.StaticPopupDialogs.WOWCHECKTHAT_CONFIRM
-    T.ok(dialog.text:find("Rerun Cat 1? This reopens 1 completed steps", 1, true), dialog.text)
+    T.ok(dialog.text:find("Rerun Cat 1? This reopens 1 completed step. Earlier", 1, true), dialog.text)
     T.eq(run.steps.s1a.verdict, "pass", "asking changes nothing")
+    local said = {}
+    local print0 = ns.Slash.Print; ns.Slash.Print = function(m) said[#said + 1] = m end
     dialog.OnAccept()
-    T.eq(run.steps.s1a.verdict, "pending")
+    T.eq(run.steps.s1a.verdict, "pending"); T.eq(said[1], "Reopened 1 step in Cat 1.")
+    verdict(run, "s1a", "pass"); verdict(run, "s1b", "pass")
+    ns.Card.ConfirmRerun("c1", 2, "Cat 1")
+    T.ok(_G.StaticPopupDialogs.WOWCHECKTHAT_CONFIRM.text:find("reopens 2 completed steps", 1, true))
+    _G.StaticPopupDialogs.WOWCHECKTHAT_CONFIRM.OnAccept()
+    T.eq(said[2], "Reopened 2 steps in Cat 1."); ns.Slash.Print = print0
+end)
+test("rerun failed asks about the failed steps and says nothing when none failed", function()
+    local run = startCats(2)
+    local said = {}
+    local print0 = ns.Slash.Print; ns.Slash.Print = function(m) said[#said + 1] = m end
+    _G.StaticPopup_Show = function() end
+    ns.Card.AskRerun("failed"); T.eq(said[1], "No step has failed or is unverified.")
+    verdict(run, "s1a", "fail")
+    ns.Card.AskRerun("failed")
+    local dialog = _G.StaticPopupDialogs.WOWCHECKTHAT_CONFIRM
+    T.ok(dialog.text:find("Rerun the 1 failed or unverified step? Earlier", 1, true), dialog.text)
+    dialog.OnAccept(); T.eq(run.steps.s1a.verdict, "pending"); T.eq(said[2], "Reopened 1 failed or unverified step.")
+    ns.Slash.Print = print0
 end)
 
 test("the start screen lists categories as checkboxes, all checked, and starts with the checked ones", function()

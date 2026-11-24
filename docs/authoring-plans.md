@@ -55,7 +55,7 @@ sections:
     category: mail      # a step can name its own
 ```
 
-Without `categories`, each section is a category. With them, every step must resolve to one. A category id is lower case letters, digits, `.`, `_` or `-`. Do not give a category the id of a step: `/ct run` refuses a name that matches both.
+Without `categories`, each section is a category. With them, every step must resolve to one. A category id is lower case letters, digits, `.`, `_` or `-`. Do not give a category the id of a step: `/ct run` refuses a name that matches both. The id `failed` is reserved for `/ct rerun failed`; validation rejects it (also as a section id when the plan declares no categories).
 
 ## Unit-test checks
 
@@ -91,6 +91,8 @@ logs:
       pattern: .
       absent: true
 ```
+
+Each line of the error list carries the addon its file path names: `<time>.<n> [KeepThat] <message>`. To show that your addon raised no error and ignore the rest, use `pattern: "%[KeepThat%]"` with `absent: true` (a Lua pattern: escape the brackets). A line with no path reads `[?]`. Code a library loads for you carries the library's own path, so a library that ships as its own addon shows its own name.
 
 A step can expand into many with `cases`. `{{name}}` in the step's text is replaced for each case, and the ids become `id.case`:
 

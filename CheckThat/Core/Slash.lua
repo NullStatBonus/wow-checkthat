@@ -50,7 +50,7 @@ function Slash.Run(args, deps)
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
         elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run)."] }
         elseif topic == "runs" then return {
-            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>."] }
+            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>, /ct rerun failed (retries the failed and unverified steps of all categories)."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
         return { L["Help: /ct help appearance, /ct help diagnostics, /ct help runs. Open /ct settings [page] or read /ct status [topic]."] }
     elseif cmd == "status" then
@@ -114,7 +114,7 @@ function Slash.Run(args, deps)
         return {}
     elseif cmd == "run" or cmd == "rerun" then
         if rest == "" or rest:find("%s") then
-            return { cmd == "run" and L["Usage: /ct run <category or step id>."] or L["Usage: /ct rerun <category>."] }
+            return { cmd == "run" and L["Usage: /ct run <category or step id>."] or L["Usage: /ct rerun <category> or /ct rerun failed."] }
         end
         if cmd == "run" then
             local kind, id = App.Trigger(rest)
@@ -124,7 +124,7 @@ function Slash.Run(args, deps)
         end
         local n, title = App.RerunCount(rest)
         if not n then return { title } end
-        if n == 0 then return { L["Nothing to reopen in %s: no step has a result."]:format(title) } end
+        if n == 0 then return { App.NothingToReopen(rest, title) } end
         deps.confirmRerun(rest, n, title)
         return {}
     elseif cmd == "export" then deps.export(); return {}

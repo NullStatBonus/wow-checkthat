@@ -38,6 +38,39 @@ test("contradicting evidence fails", function()
     env.DB.log[#env.DB.log + 1] = "ok line"
     T.eq(R.Verdict(run, ctx, "a", "pass").verdict, "fail")
 end)
+test("a failed attempt keeps the first new log lines of the source its step checks, cut", function()
+    local run, ctx, env = mk()
+    ctx.plan.sections[1].steps[1].assertions[1].absent = true
+    R.Begin(run, ctx, "a")
+    env.DB.log[#env.DB.log + 1] = "ok line " .. ("x"):rep(300)
+    for i = 1, 30 do env.DB.log[#env.DB.log + 1] = "more " .. i end
+    local a = R.Verdict(run, ctx, "a", "pass")
+    T.eq(a.verdict, "fail")
+    local ex = a.excerpt.debug
+    T.eq(#ex, ns.Evidence.EXCERPT, "at most 20 lines"); T.eq(#ex[1], ns.Evidence.EXCERPT_LEN, "each line cut"); T.eq(ex[2], "more 1")
+    T.eq(a.snapshots, nil, "the bulky positions still go")
+    T.eq(R.Export(run).steps.a.attempts[1].excerpt.debug[2], "more 1", "the export carries it")
+end)
+test("an unverified attempt keeps the lines too, and a pass or a step with no log check keeps none", function()
+    local run, ctx, env = mk()
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "unrelated"
+    local a = R.Verdict(run, ctx, "a", "pass")
+    T.eq(a.verdict, "unverified"); T.eq(a.excerpt.debug[1], "unrelated")
+    R.Begin(run, ctx, "a"); env.DB.log[#env.DB.log + 1] = "ok line"
+    local b = R.Verdict(run, ctx, "a", "pass"); T.eq(b.verdict, "pass"); T.eq(b.excerpt, nil)
+    R.Begin(run, ctx, "b"); local c = R.Verdict(run, ctx, "b", "fail", "broken"); T.eq(c.excerpt, nil, "nothing to read")
+end)
+test("an attempt with no saved position keeps no excerpt, so old lines are not shown as new", function()
+    local run, ctx = mk()
+    R.Begin(run, ctx, "a"); run.steps.a.attempts[1].snapshots = {}
+    local a = R.Verdict(run, ctx, "a", "pass"); T.eq(a.verdict, "unverified"); T.eq(a.excerpt, nil)
+end)
+test("a log that rolled keeps no excerpt and an unreadable one never stops the result", function()
+    local run, ctx, env = mk()
+    R.Begin(run, ctx, "a")
+    env.DB = nil
+    local a = R.Verdict(run, ctx, "a", "pass"); T.eq(a.verdict, "unverified"); T.eq(a.excerpt, nil)
+end)
 test("diagnostic assertions never gate", function()
     local run, ctx = mk()
     ctx.plan.sections[1].steps[1].assertions[1].diagnostic = true

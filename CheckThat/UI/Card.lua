@@ -81,6 +81,7 @@ end
 local INNER = 356
 local GREY, BODY = { 0.67, 0.67, 0.67 }, { 0.87, 0.87, 0.87 }
 local AMBER, GREEN, RED = { 1, 0.67, 0 }, { 0.6, 1, 0.6 }, { 1, 0.4, 0.4 }
+local blindNow -- set below: does the step read the Lua error list while CheckThat cannot see errors?
 
 local function fs(font, color, width, justify)
     local f = card:CreateFontString(nil, "OVERLAY", font)
@@ -542,7 +543,7 @@ end
 function Card.AskRerun(id)
     local n, title = App.RerunCount(id)
     if not n then ns.Slash.Print(title); return end
-    if n == 0 then ns.Slash.Print(L["Nothing to reopen in %s: no step has a result."]:format(title)); return end
+    if n == 0 then ns.Slash.Print(App.NothingToReopen(id, title)); return end
     Card.ConfirmRerun(id, n, title)
 end
 
@@ -551,11 +552,21 @@ function Card.ConfirmRerun(id, n, title)
     local safe = tostring(title):gsub("%%", "%%%%") -- the dialog formats its text
     local asked = App.Current()
     local runId = asked and asked.runId
-    local shown = A.Confirm(L["Rerun %s? This reopens %d completed steps. Earlier attempts stay in the export."]:format(safe, n), function()
+    local ask
+    if id == ns.Run.FAILED then
+        ask = n == 1 and L["Rerun the 1 failed or unverified step? Earlier attempts stay in the export."]
+            or L["Rerun the %d failed or unverified steps? Earlier attempts stay in the export."]:format(n)
+    elseif n == 1 then ask = L["Rerun %s? This reopens 1 completed step. Earlier attempts stay in the export."]:format(safe)
+    else ask = L["Rerun %s? This reopens %d completed steps. Earlier attempts stay in the export."]:format(safe, n) end
+    local shown = A.Confirm(ask, function()
         local now = App.Current()
         if not (now and now.runId == runId) then ns.Slash.Print(L["The run on the card changed. Nothing was reopened."]); return end
         local reopened, why = App.Rerun(id)
-        if reopened then ns.Slash.Print(L["Reopened %d steps in %s."]:format(reopened, ns.Slash.Esc(title))) else ns.Slash.Print(why) end
+        if not reopened then ns.Slash.Print(why)
+        elseif id == ns.Run.FAILED then
+            ns.Slash.Print(reopened == 1 and L["Reopened 1 failed or unverified step."] or L["Reopened %d failed or unverified steps."]:format(reopened))
+        elseif reopened == 1 then ns.Slash.Print(L["Reopened 1 step in %s."]:format(ns.Slash.Esc(title)))
+        else ns.Slash.Print(L["Reopened %d steps in %s."]:format(reopened, ns.Slash.Esc(title))) end
         Card.Refresh()
     end)
     if not shown then ns.Slash.Print(L["The confirmation window is not available. The run stays as it is."]) end
@@ -759,9 +770,11 @@ function refreshCard()
         card.checkStep = step.id
         place(card.checks, 12, y); card.checks:Show()
         local items, left = ns.Run.Preview(run, ctx, step.id), App.TimeLeft()
-        card.checks:SetText(Card.ChecksText(items, true, left or 0)) -- measure the longest state so a green list never grows into the buttons
+        local blind = blindNow(ctx, items) and true or false
+        card.blindShown = blind
+        card.checks:SetText(Card.ChecksText(items, true, left or 0, blind)) -- measure the longest state so a green list never grows into the buttons
         y = y + card.checks:GetStringHeight() + 14
-        card.checks:SetText(Card.ChecksText(items, false, left))
+        card.checks:SetText(Card.ChecksText(items, false, left, blind))
     end
     if viewing then
         -- A finished step: show what was recorded, offer Redo. Nothing here changes the result.
@@ -824,7 +837,7 @@ local TINT = { met = "|cff66ff66", waiting = "|cffdddddd", bad = "|cffff6666", l
 
 -- reserve = true adds the final "all detected" line, so the card can be sized for the longest state.
 -- left = seconds until an auto step settles itself, shown as the last line.
-function Card.ChecksText(items, reserve, left)
+function Card.ChecksText(items, reserve, left, blind)
     local lines, allMet = {}, #items > 0
     for _, it in ipairs(items) do
         local a = it.assertion
@@ -840,17 +853,33 @@ function Card.ChecksText(items, reserve, left)
         lines[#lines + 1] = ICON[it.state] .. " " .. TINT[it.state] .. label .. tail .. "|r"
     end
     if allMet or reserve then lines[#lines + 1] = L["|cff66ff66All checks detected. Press Pass.|r"] end
+    if blind then lines[#lines + 1] = L["|cffffaa00CheckThat cannot detect new Lua errors.|r"] end
     if left then lines[#lines + 1] = L["CheckThat records the result in %d s."]:format(left) end
     return table.concat(lines, "\n")
 end
 
+-- Does a check of these read the Lua error list? Only then the card warns that CheckThat cannot see errors.
+local function readsErrors(ctx, items)
+    for _, it in ipairs(items) do
+        local src = it.assertion and it.assertion.source
+        local def = src and ctx.plan.logs and ctx.plan.logs[src]
+        if def and def.global == "CheckThatDB" and def.path == "global.errors" then return true end
+    end
+    return false
+end
+blindNow = function(ctx, items) return ns.Errors ~= nil and readsErrors(ctx, items) and ns.Errors.Blind() end
+
 -- Re-reads the live checks of the current step; the loop in Show calls it twice a second.
 function Card.UpdateChecks()
+    if ns.Errors and card and card:IsShown() then ns.Errors.Watch() end -- another addon may have taken the handler
     if not (card and card:IsShown() and card.checkStep) then return end
     local run, ctx, step = App.Current()
     if run and step and step.id == card.checkStep then
         if ns.Errors then ns.Errors.Sample() end
-        card.checks:SetText(Card.ChecksText(ns.Run.Preview(run, ctx, step.id), false, App.TimeLeft()))
+        local items = ns.Run.Preview(run, ctx, step.id)
+        local blind = blindNow(ctx, items) and true or false
+        if blind ~= card.blindShown then Card.Refresh(); return end -- the warning changes the height: lay the card out again
+        card.checks:SetText(Card.ChecksText(items, false, App.TimeLeft(), blind))
     end
 end
 

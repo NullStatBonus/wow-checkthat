@@ -20,7 +20,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 
 - **Card.** One step at a time: what to do (with copy boxes), what to expect and what comes next. Back, next, undo and a note for each result.
 - **Run button.** Runs the step's allowed commands in order. It is hidden during combat. [Details](docs/features.md#run-button)
-- **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. [Details](docs/features.md#saved-log-positions)
+- **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. A failed or unverified step keeps the first new log lines for the report. [Details](docs/features.md#saved-log-positions)
 - **Automatic steps.** A step marked `auto` records its own result when the checks are met. Your click still wins. [Details](docs/features.md#automatic-steps)
 - **Facts from other addons.** An addon can publish a named fact with `CheckThat.Report`, and a plan checks it like a log line. [Details](docs/features.md#facts-from-other-addons)
 - **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)
@@ -55,7 +55,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct categories` | List each category of the run with its state (failed, partial or unverified, passed, untested, in progress, all skipped, not picked) and its passed, failed and open counts. |
 | `/ct tracker` | Open or close the Categories window: one row for each category with its color, state in words and passed, failed and open counts. Click a row to add it, go to its first open step or rerun it. |
 | `/ct run <category or step id>` | Show the first open step of a category, adding the category to the run if it was not picked. Or show one step. |
-| `/ct rerun <category>` | Reopen the steps of a category. Earlier attempts stay in the export. |
+| `/ct rerun <category or failed>` | Reopen the steps of a category, or every failed or unverified step with `failed`. Earlier attempts stay in the export. |
 | `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
 | `/ct fact` | Report a test fact during a run. The self-test uses it. |
 | `/ct reload` | Reload the interface so saved variables are written. |
@@ -79,7 +79,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - Results are saved when the game reloads or logs out.
 - A plan with more than 8 categories shows one overall bar on the card, and the card start screen lists no checkboxes for it. Use `/ct tracker` to see each category and the Home page to pick them. Home lists up to 24.
 - Blue on the tracker means untested, also while some steps of the category have results. Yellow means partial or unverified. Red means fail, green means pass, and grey means all skipped. [Details](docs/features.md#categories-and-the-tracker)
-- CheckThat records Lua errors only while a run is open. With BugGrabber loaded, CheckThat reads BugGrabber's error counts instead of setting its own handler. An addon that takes the handler later can hide errors until the next run start or category trigger.
+- CheckThat records Lua errors only while a run is open. With BugGrabber loaded, CheckThat reads BugGrabber's error counts instead of setting its own handler. When an addon takes the handler later, CheckThat sets its own again within a second while the card is shown, or when a result is judged. Each error line names the addon from its file path (`[KeepThat]`), and the first error of a step keeps a short call stack for `/ct log`. BugGrabber and BugSack are optional: CheckThat works without them and reads BugGrabber's list when it holds the handler.
 - Run is not available in combat. It comes back when combat ends.
 - A step with more commands than the card has copy boxes (four) gets no Run button, so no command runs unseen. `/script` and `/dump` are not allowed.
 - A long plan or step title ends with "..." and shows in full when you point at it.
@@ -91,6 +91,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - [Collect evidence](docs/harvesting.md): `collect`, `report`, per-character data on Classic Era, and Windows.
 - [Plan skills](docs/skills.md): `ct-test-plan` and `ct-verify` for Claude Code, Codex and other agents, and the Claude Code plugin.
 - [Debug logging](docs/debug-logging.md): what a good addon debug log looks like.
+- [Which tool to use](docs/tools-guide.md): what CheckThat does not do, and the optional addons that make it better.
 - [Feature reference](docs/features.md): how each feature behaves, including the debug log lines.
 - [Manual test plan](docs/test-plan.md).
 

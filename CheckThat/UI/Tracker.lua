@@ -110,6 +110,9 @@ end
 -- The items of one category row. Where the game has no menu, the main item runs at once.
 function Tracker.RowMenu(row)
     local items = Card.CategoryItems(row.cat)
+    if (App.RerunCount(ns.Run.FAILED) or 0) > 0 then
+        items[#items + 1] = { L["Rerun failed and unverified steps in all categories"], function() Card.AskRerun(ns.Run.FAILED) end }
+    end
     if #items == 0 then ns.Slash.Print(L["Nothing to do in %s: it has no open step and no result to rerun."]:format(ns.Slash.Esc(row.cat.title))); return end
     if not A.ContextMenu(row, items) then items[1][2]() end
 end

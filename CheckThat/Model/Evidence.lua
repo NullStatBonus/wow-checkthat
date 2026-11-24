@@ -313,6 +313,29 @@ function Evidence.Preview(step, snapshots, plan, env)
     return items
 end
 
+Evidence.EXCERPT, Evidence.EXCERPT_LEN = 20, 200 -- lines kept for each source of a failed attempt, and their length
+
+-- The first new lines of each log the step checks, for the saved record of a failed or unverified attempt:
+-- { [source] = { line, ... } }, or nil when there are none. Lines are cut. A log that cannot be read or whose
+-- boundary is lost adds nothing. Reads only.
+function Evidence.Excerpt(step, snapshots, plan, env)
+    local out, any = {}, false
+    for _, a in ipairs(step and step.assertions or {}) do
+        local name = a.source
+        local src = name and plan.logs and plan.logs[name]
+        if src and not out[name] and snapshots and snapshots[name] and (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and a.scope ~= "session" then
+            local current = Evidence.ReadLog(src, env)
+            local lines = current and Evidence.NewLines(snapshots and snapshots[name], current, src.cap)
+            if lines and #lines > 0 then
+                local kept = {}
+                for i = 1, math.min(#lines, Evidence.EXCERPT) do kept[i] = lines[i]:sub(1, Evidence.EXCERPT_LEN) end
+                out[name], any = kept, true
+            end
+        end
+    end
+    return any and out or nil
+end
+
 -- Where the logs a step checks stand when its attempt opens: { [source] = { n, tail } }. Only logs that an
 -- attempt-scoped assertion of the step names are recorded. An unreadable log is not an empty one: marking it
 -- keeps old lines from counting as new later.

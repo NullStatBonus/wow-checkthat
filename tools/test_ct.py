@@ -227,6 +227,35 @@ class SamplePlans(unittest.TestCase):
             self.assertEqual(ct.warnings(plan), [], path)
 
 
+class LogCaps(unittest.TestCase):
+    """Every plan for an addon declares the cap of the addon's own debug log (docs/contracts.md names the source line)."""
+    def test_plans_declare_the_cap_the_tool_knows(self):
+        import glob
+        for addon, logs in ct.LOGS.items():
+            self.assertIsInstance(logs["debug"].get("cap"), int, addon)
+        paths = glob.glob(os.path.join(ROOT, "plans", "*.yaml")) + glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml"))
+        checked = 0
+        for path in paths:
+            plan = ct.load_yaml(path)
+            known = ct.LOGS.get(plan.get("addon"), {}).get("debug")
+            declared = (plan.get("logs") or {}).get("debug")
+            if known and declared and declared.get("global") == known["global"]:
+                self.assertEqual(declared.get("cap"), known["cap"], path)
+                checked += 1
+        self.assertGreaterEqual(checked, 7)
+
+
+class NamedTools(unittest.TestCase):
+    """Player docs name only addons CheckThat works with (docs/contracts.md may record what a test machine had)."""
+    def test_docs_name_no_unrelated_tool(self):
+        import glob
+        files = [os.path.join(ROOT, "README.md")] + [p for p in glob.glob(os.path.join(ROOT, "docs", "*.md")) if not p.endswith("contracts.md")]
+        for path in files:
+            with open(path, encoding="utf-8") as f:
+                hit = re.search(r"wowunit|wowless|wowbench|alluneve", f.read(), re.I)
+            self.assertIsNone(hit, f"{path} names {hit and hit.group(0)}")
+
+
 class PlanSkill(unittest.TestCase):
     SKILL = os.path.join(ROOT, "skills", "ct-test-plan")
 
@@ -693,6 +722,12 @@ class ReportAuto(unittest.TestCase):
         self.assertIn("a: pass, recorded by CheckThat", text)
         self.assertIn("auto=1", text)
 
+    def test_report_lists_the_log_lines_kept_with_a_failed_attempt(self):
+        text = ct.report_text(self.run_fixture(verdict="fail", excerpt={"debug": ["one", "two"]}))
+        self.assertIn("log debug, 2 new lines:", text)
+        self.assertIn("      one\n      two", text)
+        self.assertNotIn("new line", ct.report_text(self.run_fixture(verdict="fail")))
+
     def test_report_marks_an_automatic_failure_attempt(self):
         text = ct.report_text(self.run_fixture(by="auto", verdict="fail"))
         self.assertIn("recorded by CheckThat", text)
@@ -841,6 +876,12 @@ class Categories(unittest.TestCase):
         self.assertEqual([s["category"] for s in steps], ["one", "two"])
         self.assertNotIn("category", m["sections"][0])
         self.assertEqual(len(m["categories"]), 2)
+
+    def test_failed_is_reserved_for_rerun(self):
+        p = cats(); p["categories"][0]["id"] = "failed"
+        self.assertTrue(any("category id failed is reserved" in e for e in ct.validate(p)))
+        p = good(); p["sections"][0]["id"] = "failed"
+        self.assertTrue(any("section id failed is reserved" in e for e in ct.validate(p)))
 
     def test_unknown_and_missing_category(self):
         p = cats(); p["sections"][0]["steps"][0]["category"] = "nope"

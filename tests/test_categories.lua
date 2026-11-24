@@ -202,6 +202,27 @@ test("rerun reopens the steps of a category and keeps their attempts", function(
     T.eq(#run.steps.b1.attempts, 2); T.eq((R.CategoryState(run, "bank")), "blue")
 end)
 
+test("rerun failed reopens every failed or unverified step in every picked category and keeps the passes", function()
+    local run, ctx = newRun({ "bank", "mail" })
+    pass(run, ctx, "b1")
+    R.Begin(run, ctx, "b2"); R.Verdict(run, ctx, "b2", "fail")
+    R.Begin(run, ctx, "m1"); R.Verdict(run, ctx, "m1", "pass"); run.steps.m1.verdict = "unverified" -- as an assertion with no evidence leaves it
+    local n = R.Rerun(run, ctx, "FAILED")
+    T.eq(n, 2); T.eq(run.steps.b1.verdict, "pass", "a pass stays")
+    T.eq(run.steps.b2.verdict, "pending"); T.eq(run.steps.m1.verdict, "pending")
+    T.eq(run.steps.a1.verdict, "deselected", "an unpicked category stays out")
+    T.eq(#run.steps.b2.attempts, 1, "the failed attempt stays"); T.eq(R.CurrentId(run), "b2")
+    for _, id in ipairs(run.history) do T.ok(id ~= "b2" and id ~= "m1", "undo no longer reaches reopened steps") end
+    T.eq(R.Rerun(run, ctx, "failed"), 0, "nothing left to reopen")
+end)
+
+test("a run saved with a category called failed keeps it: its rerun is that category's", function()
+    local run, ctx = newRun()
+    run.categories[#run.categories + 1] = { id = "failed", title = "Old" }; run.cat.a1 = "failed"; run.selected.failed = true
+    pass(run, ctx, "a1"); R.Begin(run, ctx, "b1"); R.Verdict(run, ctx, "b1", "fail")
+    T.eq(R.Rerun(run, ctx, "failed"), 1); T.eq(run.steps.a1.verdict, "pending"); T.eq(run.steps.b1.verdict, "fail", "no global retry")
+end)
+
 test("rerun refuses an unknown or unpicked category and an ended run", function()
     local run, ctx = newRun({ "ah" })
     local n, why = R.Rerun(run, ctx, "bank"); T.eq(n, nil); T.eq(why, "not picked")

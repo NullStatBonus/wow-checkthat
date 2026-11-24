@@ -116,4 +116,18 @@ test("Model, Options and Core use no game globals outside the adapter", function
     p:close()
     T.ok(#bad == 0, "game globals outside the adapter: " .. table.concat(bad, ", "))
 end)
+test("no other addon is required: the TOC files declare optional dependencies only", function()
+    for _, path in ipairs({ "CheckThat/CheckThat_Vanilla.toc", "CheckThat/CheckThat_Camelot.toc" }) do
+        local f = io.open(path); local toc = f:read("*a"); f:close()
+        for key in toc:gmatch("\n## (%a+):") do
+            T.ok(key ~= "Dependencies" and key ~= "RequiredDeps" and key ~= "Dep", path .. " declares " .. key)
+        end
+        T.ok(toc:find("## OptionalDeps:", 1, true), path)
+    end
+end)
+test("the error code reads BugGrabber's saved list only through a guarded read", function()
+    local f = io.open("CheckThat/Model/Errors.lua"); local src = f:read("*a"); f:close()
+    T.ok(src:find('genv and genv.BugGrabberDB', 1, true), "BugGrabberDB is read from the adapter's environment, never as a bare global")
+    T.ok(not src:find("[^%w_.]BugGrabberDB"), "no bare BugGrabberDB global")
+end)
 finish()

@@ -84,6 +84,14 @@ function Adapter.ErrorHookState()
     if oursHandler ~= nil then return current == oursHandler and "current" or "replaced" end
     return blocked and "blocked" or "off"
 end
+-- The call stack as one string (debugstack), without the frames of the handler. Locals are never read. nil when the
+-- client has no debugstack or it raises.
+function Adapter.Stack()
+    local f = _G.debugstack
+    if type(f) ~= "function" then return nil end
+    local ok, s = pcall(f, 4, 20, 0)
+    return ok and type(s) == "string" and s or nil
+end
 -- Esc closes a named frame listed in UISpecialFrames. Registered once.
 function Adapter.SpecialFrame(name)
     local list = _G.UISpecialFrames

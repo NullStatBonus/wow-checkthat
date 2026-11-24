@@ -16,6 +16,7 @@ logs:
     global: KeepThatDB
     path: global.log
     format: strings
+    cap: 300
 requirements:
   addon-loaded:
     text: KeepThat is loaded

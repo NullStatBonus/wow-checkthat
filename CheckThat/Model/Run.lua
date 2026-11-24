@@ -184,17 +184,25 @@ function Run.Trigger(run, ctx, name)
     return "step", name
 end
 
--- Reopen the picked steps of a category as pending. Attempts stay. Returns how many steps reopened, or nil and a reason.
+-- "failed" is no category id (Plan rejects it): it names every picked step whose result is fail or unverified.
+Run.FAILED = "failed"
+
+-- Reopen the picked steps of a category, or every failed or unverified step, as pending. Attempts stay.
+-- Returns how many steps reopened, or nil and a reason.
 function Run.Rerun(run, ctx, id)
     if run.endedAt then return nil, "run ended" end
     id = tostring(id or ""):lower()
-    if not categoryOf(run, id) then return nil, "unknown" end
-    if not run.selected[id] then return nil, "not picked" end
-    local n, first = 0, nil
+    local failed = id == Run.FAILED and not categoryOf(run, id) -- a run saved before the name was reserved may hold a category called failed
+    if not failed then
+        if not categoryOf(run, id) then return nil, "unknown" end
+        if not run.selected[id] then return nil, "not picked" end
+    end
+    local n, first, gone = 0, nil, {}
     for _, sid in ipairs(run.order) do
-        if run.cat[sid] == id then
+        local rec = run.steps[sid]
+        if failed and (rec.verdict == "fail" or rec.verdict == "unverified") or not failed and run.cat[sid] == id then
+            gone[sid] = true
             first = first or sid
-            local rec = run.steps[sid]
             if rec.verdict ~= "pending" then
                 rec.verdict, rec.evidence = "pending", nil
                 n = n + 1
@@ -205,7 +213,7 @@ function Run.Rerun(run, ctx, id)
         end
     end
     local keep = {}
-    for _, sid in ipairs(run.history or {}) do if run.cat[sid] ~= id then keep[#keep + 1] = sid end end
+    for _, sid in ipairs(run.history or {}) do if not gone[sid] then keep[#keep + 1] = sid end end
     run.history = keep
     if first then run.current = Run.IndexOf(run, first) end
     Run.Touch(run, ctx.now)
@@ -353,6 +361,12 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     end
     a.claimed, a.by = verdict, by
     a.verdict, a.note, a.finished = effective, note, ctx.now
+    -- A failed or unverified attempt keeps the log lines that arrived while it was open, so a reviewer need not find
+    -- them in a log that may have rolled since.
+    if effective == "fail" or effective == "unverified" then
+        local ok, ex = pcall(ns.Evidence.Excerpt, step, a.snapshots, ctx.plan, ctx.env)
+        a.excerpt = ok and ex or nil
+    end
     a.snapshots = nil
     verdict = effective
     rec.verdict = verdict

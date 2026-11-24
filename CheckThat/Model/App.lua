@@ -18,6 +18,7 @@ function App.Init(db, env, opts)
     db.ui.shareReload = nil -- a reload request lasts until the next load
     db.facts = db.facts or {}
     db.errors = db.errors or {}
+    db.errorStacks = db.errorStacks or {}
     App.db = db
     -- Facts and errors belong to the character's open run, also while the card shows another run.
     local function runOpen()
@@ -26,7 +27,7 @@ function App.Init(db, env, opts)
     end
     if ns.Facts then ns.Facts.Bind(db.facts, function() return now(App) end, runOpen) end
     if ns.Errors then
-        ns.Errors.Bind(db.errors, function() return now(App) end, runOpen, App.env)
+        ns.Errors.Bind(db.errors, function() return now(App) end, runOpen, App.env, db.errorStacks)
     end
     if ns.Log then
         ns.Log.Bind(db.log, (opts and opts.debug) or function() return db.log.enabled end, function() return now(App) end)
@@ -439,7 +440,7 @@ end
 function App.Begin()
     local run, ctx, step = App.Current()
     if not step then return nil end
-    if ns.Errors then ns.Errors.Sample() end
+    if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.StepStarted() end
     return ns.Run.Begin(run, ctx, step.id), step
 end
 
@@ -454,7 +455,7 @@ function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
     if run and run.endedAt then return nil, L["This run has ended. Start the plan again for a new run."] end
     if not step then return nil, L["There is no current step."] end
-    if ns.Errors then ns.Errors.Sample(); ns.Errors.Check() end
+    if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.Check() end
     local a, err = ns.Run.Verdict(run, ctx, step.id, verdict, note)
     if a then logResult(step, a) end
     return a, err, step
@@ -473,7 +474,7 @@ function App.AutoSettle(note)
     local run, ctx, step = App.Current()
     if not (step and step.auto) then return nil end
     ctx.now = now(App)
-    if ns.Errors then ns.Errors.Sample() end
+    if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.Check() end
     local a = ns.Run.AutoSettle(run, ctx, step.id, note)
     if a then logResult(step, a) end
     return a, step
@@ -641,6 +642,14 @@ function App.RerunCount(what)
     local run, _, err = activeRun()
     if not run then return nil, err end
     local key = tostring(what or ""):lower()
+    if key == ns.Run.FAILED and not ns.Run.CategoryOf(run, key) then
+        local n = 0
+        for _, sid in ipairs(run.order) do
+            local v = run.steps[sid].verdict
+            if v == "fail" or v == "unverified" then n = n + 1 end
+        end
+        return n, L["failed and unverified steps"]
+    end
     if not ns.Run.CategoryOf(run, key) then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or "")) end
     if not run.selected[key] then return nil, L["%s is not part of this run. Use /ct run %s to add it."]:format(name(run, key), ns.Slash.Esc(key)) end
     local n = 0
@@ -648,6 +657,12 @@ function App.RerunCount(what)
         if run.cat[sid] == key and run.steps[sid].verdict ~= "pending" then n = n + 1 end
     end
     return n, name(run, key)
+end
+
+-- What to say when a rerun has nothing to reopen.
+function App.NothingToReopen(what, title)
+    if tostring(what or ""):lower() == ns.Run.FAILED and title == L["failed and unverified steps"] then return L["No step has failed or is unverified."] end
+    return L["Nothing to reopen in %s: no step has a result."]:format(title)
 end
 
 -- Reopen the picked steps of a category. Returns how many steps reopened, or nil and text.
@@ -661,7 +676,7 @@ function App.Rerun(what)
         return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or ""))
     end
     App.Log(("rerun %s: %d steps reopened"):format(key, n))
-    return n, name(run, key)
+    return n, (key == ns.Run.FAILED and not ns.Run.CategoryOf(run, key)) and L["failed and unverified steps"] or name(run, key)
 end
 
 function App.Status()

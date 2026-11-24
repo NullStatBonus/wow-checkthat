@@ -70,3 +70,10 @@ CheckThat SHALL release the Run button from the game's combat state driver out o
 #### Scenario: A step without commands
 - **WHEN** the card shows a step that has no commands and the player is out of combat
 - **THEN** the Run button is hidden and released from the state driver, and the log holds at most one `run button hidden` line for the step
+
+### Requirement: The report shows the newest error stack
+The `/ct log` report SHALL show the newest kept error stack on a `Last error stack:` line, and no such line when none is kept.
+
+#### Scenario: A stack is kept
+- **WHEN** an error kept a stack
+- **THEN** the report holds a `Last error stack:` line with it

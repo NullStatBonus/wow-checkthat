@@ -16,10 +16,10 @@ SLASH = {
 }
 BUILTIN = ["/reload", "/reloadui"]
 LOGS = {
-    "CheckThat": {"debug": {"global": "CheckThatDB", "path": "global.log.entries", "format": "entries"}},
-    "KeepThat": {"debug": {"global": "KeepThatDB", "path": "global.log", "format": "strings"}},
-    "DontDoThat": {"debug": {"global": "DontDoThatDB", "path": "global.log.entries", "format": "entries"}},
-    "ClosestVendor": {"debug": {"global": "ClosestVendorCharDB", "path": "log.entries", "format": "entries"}},
+    "CheckThat": {"debug": {"global": "CheckThatDB", "path": "global.log.entries", "format": "entries", "cap": 300}},
+    "KeepThat": {"debug": {"global": "KeepThatDB", "path": "global.log", "format": "strings", "cap": 300}},
+    "DontDoThat": {"debug": {"global": "DontDoThatDB", "path": "global.log.entries", "format": "entries", "cap": 500}},
+    "ClosestVendor": {"debug": {"global": "ClosestVendorCharDB", "path": "log.entries", "format": "entries", "cap": 300}},
 }
 ADDON_GLOBAL = {"KeepThat": "KeepThat", "DontDoThat": "DontDoThat", "ClosestVendor": "ClosestVendor"}
 
@@ -149,6 +149,8 @@ def validate(plan):
     addon = plan["addon"]
     cats = {}
     for c in plan.get("categories", []):
+        if str(c["id"]).lower() == "failed":
+            errs.append("category id failed is reserved for /ct rerun failed")
         if c["id"] in cats:
             errs.append("duplicate category id %s" % c["id"])
         cats[c["id"]] = c
@@ -164,6 +166,8 @@ def validate(plan):
     logs = plan.get("logs", {})
     sec_ids = set()
     for sec in plan["sections"]:
+        if str(sec["id"]).lower() == "failed" and not cats:
+            errs.append("section id failed is reserved for /ct rerun failed (each section is a category)")
         if sec["id"] in sec_ids:
             errs.append("duplicate section id %s" % sec["id"])
         sec_ids.add(sec["id"])
@@ -714,6 +718,9 @@ def report_text(runs, dest=None):
                 out.append("  attempt %s: %s%s%s" % (at.get("n"), at.get("verdict"),
                            " note=" + note if note else "",
                            " evidence=" + ",".join("%s(%s)" % (o.get("result"), o.get("why", "")) for o in outs) if outs else ""))
+                for src, lines in sorted((at.get("excerpt") or {}).items()):
+                    out.append("    log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
+                    out.extend("      " + str(line) for line in lines)
         out.append("")
     return "\n".join(out)
 

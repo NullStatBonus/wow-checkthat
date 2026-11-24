@@ -136,6 +136,21 @@ Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categor
 6. **Rerun asks first.** Click the Categories control on the card. In the window, click the row of the red category and choose Rerun category. Press the No button, then choose it again and accept.
    Check: nothing changes after No. After accepting the steps with a result are open again and the segment turns blue.
    Log: `[ct] rerun card: <n> steps reopened`.
+7. **Rerun failed steps.** Press Fail on a step in one category and on a step in another. Click a row in the Categories window and choose Rerun failed and unverified steps in all categories. Accept.
+   Check: the question says "Rerun the 2 failed or unverified steps?". Both failed steps are open again, and every step that passed keeps its result.
+   Log: `[ct] rerun failed: 2 steps reopened`.
+8. **Another addon takes the error handler.** Disable BugGrabber and reload. Start the self-test with the Lua errors category and type `/ct run self.error` to open "Record a Lua error". Type `/run seterrorhandler(function() end)`. Wait two seconds, then type `/ct selftest error`.
+   Check: the game shows its error window for the test error, and the card records "Record a Lua error" by itself. The card shows no amber warning.
+   Log: `[errors] another addon took the error handler: set ours again`, `[errors] handler current`, and `CheckThatDB.global.errors` ends with `[?] CheckThat self-test error`.
+9. **A stack for the first error of a step.** With BugGrabber disabled, open "Record a Lua error" and click Run. Play on for a minute.
+   Check: the game does not slow down and shows no second error window.
+   Log: `CheckThatDB.global.errorStacks` holds one line for the step, cut to 600 characters, and `/ct log` shows `Last error stack:`. The first line of the stack names the code that raised the error, not `Errors.lua`. Forever: no slowdown; the trim of our own frames is not yet confirmed in the game.
+10. **Amber warning.** Disable BugGrabber and reload. Open "No Lua error" (`/ct run self.noerror`), then type `/run seterrorhandler(function() end); seterrorhandler = function() end` and wait two seconds. Reload afterwards.
+    Check: the card shows the amber line "CheckThat cannot detect new Lua errors." above the countdown.
+    Log: `[errors] another addon took the error handler: set ours again` and no `recorded an error` line.
+11. **A failed step keeps its log lines.** Type `/ct run self.exact`. Click Run twice in a row.
+    Check: the step records Fail (red) and the game stays responsive.
+    Log: the failed attempt of `self.exact` in `CheckThatDB.global.runs` holds `excerpt` with the new fact lines (at most 20, each at most 200 characters), and `tools/ct.py report` prints them under the attempt.
 
 ## 6. Plan skills (no game needed)
 

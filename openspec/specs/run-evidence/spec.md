@@ -346,3 +346,29 @@ While a run is open, CheckThat SHALL record each Lua error as one line in a boun
 #### Scenario: Earlier handler raises
 - **WHEN** the handler set before CheckThat's raises an error
 - **THEN** CheckThat records the error, says so in the debug log, and raises nothing in the game's handler
+
+### Requirement: Recorded errors name their addon and keep a stack
+Each recorded Lua error line SHALL read `<time>.<counter> [<addon>] <message>`, where the addon is the name in `AddOns\<Name>\` in the message, `?` when there is none, and `CheckThat` for lines CheckThat adds. The first error of each step SHALL keep its call stack on one line in a second saved list, cut to 600 characters, never with locals. When another addon takes the error handler during a run, CheckThat SHALL set its own again, at most once a second.
+
+#### Scenario: Two addons
+- **WHEN** errors from two addons are recorded
+- **THEN** each line carries its own addon name and a check can match one of them
+
+#### Scenario: One stack for a step
+- **WHEN** a step records two errors
+- **THEN** one stack is kept, and the next step keeps one again
+
+#### Scenario: A taken handler
+- **WHEN** another addon replaces the handler during a run
+- **THEN** CheckThat sets its own again within a second, and a flood of replacements logs only a few lines
+
+### Requirement: A failed attempt keeps the log lines that arrived
+When an attempt records fail or unverified, it SHALL keep, for each log its step checks (not `session` scope), the first 20 new lines, each cut to 200 characters, as `excerpt`. A pass SHALL keep none. A log that cannot be read, or whose start is lost, SHALL add none. The results string SHALL stay version 1. The report SHALL print the lines under the attempt.
+
+#### Scenario: A failure
+- **WHEN** a step fails after 30 new log lines
+- **THEN** its attempt holds the first 20, each at most 200 characters, and the report prints them
+
+#### Scenario: A pass
+- **WHEN** a step passes
+- **THEN** its attempt holds no excerpt

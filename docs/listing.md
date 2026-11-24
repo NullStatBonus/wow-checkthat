@@ -20,7 +20,8 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Reopen, export or delete an older run from Past runs on the Home page. Choose how many runs to keep in Advanced.
 - End a run you will not finish from the Run menu in the card header or with `/ct end`. The results stay for export. The same menu imports another plan or clears the current plan.
 - Set card size, opacity and position. Use shared or per-character settings.
-- Commands: `/ct`, `/ct settings`, `/ct import`, `/ct start <addon>`, `/ct categories`, `/ct run <category or step id>`, `/ct rerun <category>`, `/ct end`, `/ct export`, `/ct log`. `/checkthat` works the same as `/ct`.
+- Better with (all optional): BugGrabber and BugSack for error capture, and the addon you test. See the README, "Which tool to use".
+- Commands: `/ct`, `/ct settings`, `/ct import`, `/ct start <addon>`, `/ct categories`, `/ct run <category or step id>`, `/ct rerun <category or failed>`, `/ct end`, `/ct export`, `/ct log`. `/checkthat` works the same as `/ct`.
 
 ### Good to know
 
@@ -29,7 +30,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - CheckThat keeps the newest 20 runs by default and deletes the oldest ones first. The run on your card always stays. Change the number in Advanced.
 - Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `CheckThat` folder in `Interface/AddOns/`.
 - Run is not available in combat. CheckThat shows it again when combat ends.
-- CheckThat records Lua errors only while a run is open. It passes every error to the previous handler.
+- CheckThat records Lua errors only while a run is open. It passes every error to the previous handler, names the addon in each line, and sets its handler again if another addon takes it. BugGrabber is optional: with it CheckThat reads its list instead.
 - A plan with more than 8 categories shows one bar on the card. Pick its categories on the Home page, which lists up to 24.
 - Blue on the tracker means untested. Yellow means partial or unverified.
 - Automatic steps record a result also while the card is hidden. They pause while the game interface is hidden. They read logs and never send input.

@@ -288,7 +288,7 @@
       "additionalProperties": false,
       "required": ["id", "title"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "description": "The id failed is reserved for /ct rerun failed; the validator rejects it." },
         "title": { "type": "string", "minLength": 1 },
         "intro": { "type": "string" }
       }

@@ -2,7 +2,7 @@
 
 A CheckThat plan can pass a step on its own when the addon writes one line that proves the step. Without that line, the player has to judge the result and the reviewer has nothing to check. This guide says what a good debug log looks like and how plans use it.
 
-The pattern and formats come from KeepThat, DontDoThat, ClosestVendor and CheckThat. See `docs/contracts.md` for the measured formats. The advice on line wording is guidance, not a rule of the game or of CheckThat.
+For where this fits beside unit-test and error tools, see [Which tool to use](tools-guide.md). The pattern and formats come from KeepThat, DontDoThat, ClosestVendor and CheckThat. See `docs/contracts.md` for the measured formats. The advice on line wording is guidance, not a rule of the game or of CheckThat.
 
 ## The pattern
 
