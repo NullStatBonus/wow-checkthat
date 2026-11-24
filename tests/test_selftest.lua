@@ -11,7 +11,7 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     App.Init(db, env)
     assert(App.ImportPlan(s))
     local run = assert(App.Start("CheckThat"))
-    T.eq(#run.order, 4)
+    T.eq(#run.order, 5)
     -- step 1 without debug on: required evidence missing => unverified
     App.Begin()
     T.eq(App.Verdict("pass").verdict, "unverified")
@@ -26,6 +26,11 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     App.Begin(); App.MarkReloaded(); App.Log("resumed run " .. run.runId .. " after load")
     local a = App.AutoSettle()
     T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched"); T.eq(a.by, "auto")
+    -- facts step: waits until the player types the /run line, then passes by itself
+    App.Begin(); T.eq(App.AutoSettle(), nil, "waits for the fact")
+    ns.Facts.Report("CheckThat", "selftest", 1)  -- the player types /run CheckThat.Report("CheckThat", "selftest", 1)
+    local f = App.AutoSettle()
+    T.eq(f.verdict, "pass"); T.eq(f.evidence, "matched"); T.eq(f.by, "auto")
     App.Begin(); T.eq(App.Verdict("pass").verdict, "pass")
     local _, _, step = App.Current()
     T.ok(step == nil, "run complete")

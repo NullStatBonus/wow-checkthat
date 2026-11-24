@@ -90,7 +90,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Log: none; on screen only.
 4. **Export.** Finish the run, type `/ct export`, then `/reload`.
    Check: a box shows a string starting with `!CT1!`. After the reload `WTF/Account/<account>/SavedVariables/CheckThat.lua` holds the run.
-   Log: `CheckThatDB.global.runs` holds the run with four steps.
+   Log: `CheckThatDB.global.runs` holds the run with five steps.
 5. **Harvest.** Double-click `tools/Copy-CheckThatEvidence.bat` on the PC, then run `tools/ct.py collect --src evidence-src` and `report` on the Mac.
    Check: `evidence/REPORT.md` lists the run and no unverified evidence.
    Log: none; read the report.
@@ -107,12 +107,12 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: the results screen shows no Run button, before and after the fight.
    Log: none when the button stayed hidden; one `[ct] run button hidden: nothing to run on this screen` line for the screen if the game showed it and CheckThat hid it again.
 
-10. **A fact is recorded during a run.** Setup: start any run and type `/ct debug on`. Type `/run CheckThat.Report("Demo", "ping", 1)`.
-   Check: nothing visible happens and no Lua error shows.
-   Log: `[facts] recorded Demo ping`, and `Facts: 1, last: [Demo] ping=1` in the `/ct log` report.
-11. **No fact without a run.** Type `/ct end`, confirm, then type `/run CheckThat.Report("Demo", "late", 1)`.
-   Check: nothing visible happens and no Lua error shows.
-   Log: no `recorded Demo late` line, and the `Facts:` line in the report still shows `ping=1`.
+10. **A fact is recorded during a run.** Setup, in this order: type `/ct debug on`. Type `/ct import`, paste the contents of `build/selftest.ct`, press Import, then select Start run. Do the first three steps as the card says. On the "Report a fact" step, click the chat box, type `/run CheckThat.Report("CheckThat", "selftest", 1)` and press Enter.
+   Check: chat shows no new line, no error window appears, and the card records the step as passed by itself and moves to "Export results".
+   Log: `[facts] recorded CheckThat selftest`, and `[ct] step self.facts pass auto evidence matched`. A `/ct log` report holds `Facts: 1, last: [CheckThat] selftest=1`.
+11. **No fact once the run has ended.** Setup: after check 10, click Run in the card header, choose End run and answer Yes. Then click the chat box, type `/run CheckThat.Report("Demo", "late", 1)` and press Enter.
+   Check: chat shows no new line and no error window appears.
+   Log: no `recorded Demo late` line. A new `/ct log` report still holds `Facts: 1, last: [CheckThat] selftest=1`.
 
 ## 5. Plan skills (no game needed)
 
