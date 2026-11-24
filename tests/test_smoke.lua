@@ -170,17 +170,15 @@ test("smoke: the Run button is built out of combat only and hidden by a state dr
     ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
     ns.App.Start("KeepThat")
     local card = _G.CheckThatCard
-    local driven
-    rawset(_G, "RegisterStateDriver", function(f, state, cond) driven = { f, state, cond } end)
     card.secure = false
-    rawset(_G, "InCombatLockdown", function() return true end)
+    st.setCombat(true)
     T.ok(pcall(ns.Card.Refresh), "refresh in combat does not raise")
     T.ok(card.secure == false, "no protected frame is built in combat")
-    rawset(_G, "InCombatLockdown", function() return false end)
+    st.setCombat(false)
     ns.Card.Refresh()
     T.ok(card.secure, "built after combat")
-    T.ok(driven and driven[2] == "visibility" and driven[3]:find("[combat] hide", 1, true), "hidden for the whole of combat")
-    rawset(_G, "RegisterStateDriver", nil)
+    local cond = card.secure.drivers.visibility
+    T.ok(cond and cond:find("[combat] hide", 1, true), "hidden for the whole of combat")
 end)
 
 test("smoke: an auto step passes by itself, shows its countdown and waits while the card is hidden", function()
@@ -249,10 +247,10 @@ test("smoke: an auto step records nothing in combat, behind a Start screen or wi
     local calls = 0
     local real = card.secure.SetAttribute
     card.secure.SetAttribute = function(self, ...) calls = calls + 1; return real(self, ...) end
-    rawset(_G, "InCombatLockdown", function() return true end); log("line 1")
+    st.setCombat(true); log("line 1")
     T.ok(ns.Card.AutoSettle(), "recorded in combat")
     T.eq(calls, 0, "no protected SetAttribute in combat")
-    rawset(_G, "InCombatLockdown", function() return false end)
+    st.setCombat(false)
     -- a typed note is kept
     card.note:SetText("slow but fine"); log("line 2")
     ns.Card.AutoSettle()
@@ -313,8 +311,9 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end
     _G.KeepThatDB = { global = { log = { "[blizzard] boot" } } }
     local drivers = {}
-    rawset(_G, "RegisterStateDriver", function(f, state) drivers[#drivers + 1] = "register " .. state end)
-    rawset(_G, "UnregisterStateDriver", function(f, state) drivers[#drivers + 1] = "release " .. state end)
+    local realRegister, realRelease = _G.RegisterStateDriver, _G.UnregisterStateDriver
+    rawset(_G, "RegisterStateDriver", function(f, state, cond) drivers[#drivers + 1] = "register " .. state; return realRegister(f, state, cond) end)
+    rawset(_G, "UnregisterStateDriver", function(f, state) drivers[#drivers + 1] = "release " .. state; return realRelease(f, state) end)
     local function cmdStep(id) return { id = id, title = "With " .. id, action = { kind = "copy-slash", text = "/kt log", commands = { "/kt log" } }, expect = "e", verify = { "player" } } end
     local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "R", logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
         sections = { { id = "s", title = "S", steps = { cmdStep("r.1"),
@@ -327,7 +326,7 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     local s = card.secure
     local function hiddenLines() local n = 0; for _, e in ipairs(ns.App.db.log.entries) do if tostring(type(e) == "table" and e.msg or e):find("run button hidden", 1, true) then n = n + 1 end end; return n end
     local function logged() return hiddenLines() > 0 end
-    local function gameShows() s:Show(); s.scripts.OnShow(s) end             -- what the combat state driver does
+    local function gameShows() s:Show() end                                  -- what the combat state driver does
     T.ok(s.shown, "visible with a step that has commands")
     gameShows(); T.ok(s.shown, "the guard leaves it alone there"); T.ok(not logged(), "and logs nothing")
     ns.App.Verdict("pass"); ns.Card.Refresh()                                -- r.2 has no commands
@@ -356,11 +355,12 @@ test("smoke: the Run button shows only with a step that has commands, and is hid
     local realHide = s.Hide
     s.Hide = function(self, ...) hides = hides + 1; return realHide(self, ...) end
     s.shown = true
-    rawset(_G, "InCombatLockdown", function() return true end)
-    s.scripts.OnShow(s)
-    rawset(_G, "InCombatLockdown", function() return false end)
-    s.Hide = nil
+    st.setCombat(true)
+    for _, fn in ipairs(s.hooks.OnShow) do fn(s) end
     T.eq(hides, 0, "nothing called on the button in combat")
+    st.setCombat(false)
+    s.Hide = nil
+    rawset(_G, "RegisterStateDriver", realRegister); rawset(_G, "UnregisterStateDriver", realRelease)
 end)
 test("smoke: End run from the Run menu asks first, then closes the run and shows its results", function()
     ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil

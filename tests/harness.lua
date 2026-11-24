@@ -4,28 +4,62 @@
 local H = {}
 local rawprint = print
 
-local function stubFrame(frames)
-    local f = { shown = true, scripts = {}, attrs = {} }
+-- A frame made from a Secure*Template is protected. Insecure code may not change it in combat, and the game
+-- refuses to anchor it to anything but the screen (measured on Forever, docs/contracts.md).
+local BLOCKED_IN_COMBAT = { SetAttribute = true, Show = true, Hide = true, SetShown = true, SetPoint = true,
+    ClearAllPoints = true, SetSize = true, SetWidth = true, SetHeight = true, SetParent = true, SetScale = true }
+local function inCombat() return _G.InCombatLockdown and _G.InCombatLockdown() end
+
+-- Show and Hide run the OnShow and OnHide scripts and hooks, once for each real change.
+local function setShown(f, v)
+    v = v and true or false
+    if f.shown == v then return end
+    f.shown = v
+    local ev = v and "OnShow" or "OnHide"
+    if f.scripts[ev] then f.scripts[ev](f) end
+    for _, fn in ipairs(f.hooks[ev] or {}) do fn(f) end
+end
+
+local stubFrame
+local function member(frames, k)
+    if k == "SetScript" then return function(self, ev, fn) self.scripts[ev] = fn end end
+    if k == "HookScript" then return function(self, ev, fn) self.hooks[ev] = self.hooks[ev] or {}; table.insert(self.hooks[ev], fn) end end
+    if k == "SetAttribute" then return function(self, a, v) self.attrs[a] = v end end
+    if k == "Show" then return function(self) setShown(self, true) end end
+    if k == "Hide" then return function(self) setShown(self, false) end end
+    if k == "IsShown" then return function(self) return self.shown end end
+    if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
+    if k == "GetStringHeight" then return function() return 40 end end
+    if k == "GetStringWidth" then return function() return 80 end end
+    if k == "GetText" then return function(self) return self.text or "" end end
+    if k == "SetText" then return function(self, v) self.text = v end end
+    if k == "SetShown" then return function(self, v) setShown(self, v) end end
+    if k == "GetWidth" or k == "GetHeight" then return function() return 100 end end
+    if k == "CreateFontString" or k == "CreateTexture" or k == "CreateAnimationGroup" then return function() return stubFrame(frames) end end
+    -- chainable: GetNormalTexture():SetTexCoord() works. The last arguments of each call are kept in .calls.
+    return function(self, ...)
+        rawset(self, "calls", rawget(self, "calls") or {})
+        self.calls[k] = { n = select("#", ...), ... }
+        return stubFrame(frames)
+    end
+end
+
+function stubFrame(frames, template, name)
+    local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name }
+    f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
     return setmetatable(f, { __index = function(t, k)
-        if k == "SetScript" or k == "HookScript" then return function(self, ev, fn) self.scripts[ev] = fn end end
-        if k == "SetAttribute" then return function(self, a, v) self.attrs[a] = v end end
-        if k == "Show" then return function(self) self.shown = true end end
-        if k == "Hide" then return function(self) self.shown = false end end
-        if k == "IsShown" then return function(self) return self.shown end end
-        if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
-        if k == "GetStringHeight" then return function() return 40 end end
-        if k == "GetStringWidth" then return function() return 80 end end
-        if k == "GetText" then return function(self) return self.text or "" end end
-        if k == "SetText" then return function(self, v) self.text = v end end
-        if k == "SetShown" then return function(self, v) self.shown = v end end
-        if k == "GetWidth" or k == "GetHeight" then return function() return 100 end end
-        if k == "CreateFontString" or k == "CreateTexture" or k == "CreateAnimationGroup" then return function() return stubFrame(frames) end end
-        -- chainable: GetNormalTexture():SetTexCoord() works. The last arguments of each call are kept in .calls.
+        local fn = member(frames, k)
+        if not (f.protected and BLOCKED_IN_COMBAT[k]) then return fn end
         return function(self, ...)
-            rawset(self, "calls", rawget(self, "calls") or {})
-            self.calls[k] = { n = select("#", ...), ... }
-            return stubFrame(frames)
+            if inCombat() then
+                error(("Interface action failed because of an AddOn: %s on protected frame %s in combat"):format(k, tostring(self.name)), 2)
+            end
+            if k == "SetPoint" then
+                local rel = select(2, ...)
+                if rel ~= nil and rel ~= _G.UIParent then error("Cannot anchor protected frames to regions", 2) end
+            end
+            return fn(self, ...)
         end
     end })
 end
@@ -34,7 +68,7 @@ end
 function H.stubClient(opts)
     opts = opts or {}
     local st = { frames = {}, said = {}, combat = false, macros = {} }
-    _G.CreateFrame = function(_, name) local f = stubFrame(st.frames); if name then _G[name] = f end; return f end
+    _G.CreateFrame = function(_, name, _, template) local f = stubFrame(st.frames, template, name); if name then _G[name] = f end; return f end
     _G.UIParent = stubFrame(st.frames)
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) st.said[#st.said + 1] = m end }
     _G.InCombatLockdown = function() return st.combat end
@@ -53,7 +87,24 @@ function H.stubClient(opts)
     _G.GetTime = function() return 1 end
     st.timers = {}
     _G.C_Timer = { After = function(_, fn) st.timers[#st.timers + 1] = fn end } -- queued; a test runs them
-    _G.issecurevariable = function() return false end
+    -- The secure state driver: [combat] hide; show. The game applies it with its own privileges, also in combat,
+-- and applies it again about five times a second. st.tick() is one such pass.
+local function applyDriver(f)
+    local cond = f.drivers.visibility
+    if not cond then return end
+    local fn = cond:find("[combat] hide", 1, true) and (st.combat and "hide" or "show") or "show"
+    setShown(f, fn == "show")
+end
+_G.RegisterStateDriver = function(f, state, cond) f.drivers[state] = cond; applyDriver(f) end
+_G.UnregisterStateDriver = function(f, state) f.drivers[state] = nil end
+function st.tick() for _, f in ipairs(st.frames) do applyDriver(f) end end
+function st.setCombat(v) st.combat = v and true or false; st.tick() end
+-- What a click on a secure macro button runs: its macro text, or nil when the player cannot click it.
+function st.click(f)
+    if not f.shown or f.attrs.type ~= "macro" then return nil end
+    return f.attrs.macrotext
+end
+_G.issecurevariable = function() return false end
     _G.securecallfunction = function(f, ...) return f(...) end
     _G.print = function(...) st.said[#st.said + 1] = table.concat({ ... }, " ") end
     _G.strsplit = _G.strsplit or function(d, s, n) local out = {}; for part in (s .. d):gmatch("(.-)" .. d:gsub("%p", "%%%0")) do out[#out + 1] = part end; return unpack(out) end

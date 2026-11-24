@@ -35,8 +35,12 @@ What an addon that reports facts can rely on. It only grows: a released name, ar
 | Era 11509 | `SecureActionButtonTemplate` with `type=macro` and `macrotext`; `useOnKeyDown` false makes a key-up click work. | Blizzard UI source 1.15.9 (`SecureTemplates.lua`) |
 | Both clients | LibDeflate 1.0.2 `DecompressDeflate` has no output limit and builds the whole result. CheckThat patches it: `DecompressDeflate(str, max_out)` returns `nil, -20` once flushed output passes `max_out`, checked every 32768 bytes. | LibDeflate source review and `tests/test_codec.lua` |
 | Both clients | Protected frames cannot be shown, hidden or re-anchored in combat. The secure button is a separate top-level frame. | Blizzard UI documentation |
+| Test harness | `tests/harness.lua` models these rules for a frame made from a `Secure*Template`: `SetAttribute`, `Show`, `Hide`, `SetShown`, `SetPoint`, `ClearAllPoints`, `SetSize`, `SetWidth`, `SetHeight`, `SetParent` and `SetScale` raise in combat. `SetPoint` to anything but the screen raises. A `visibility` state driver (`[combat] hide; show`) shows and hides the frame, also in combat, and again on each `st.tick()`. `Show` and `Hide` run OnShow and OnHide on each real change. The client may block these calls without raising a Lua error; the harness raises so a test cannot miss one. | `tests/test_combat.lua`, `tests/test_smoke.lua` |
 
 ## Pending in-game
 
+- Whether a protected `Show`, `Hide` or `SetAttribute` call from insecure code in combat raises a Lua error or is blocked silently, on Era and on Forever. The harness assumes it raises.
+- Whether the `visibility` state driver runs OnShow and OnHide on the button when combat starts and ends, on Era (Forever shows it about five times a second, measured above).
+- Whether `PLAYER_REGEN_ENABLED` arrives after the state driver has shown the button, or before.
 - Macro slot limits per client.
 - Card layout at UI scales 100 and 150.
