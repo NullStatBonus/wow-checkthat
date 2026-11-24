@@ -78,14 +78,16 @@ When a step opens, CheckThat saves where each log that the step checks stands: i
 - A step that checks a log without a saved position stays unverified. It never counts the whole log as new.
 - A full log drops its oldest line with every new line. This is normal and CheckThat still finds where the step opened.
 - Only when the last lines it saved are all the same line (a flood) can it not show that a line is absent. A "must not appear" check then stays unverified unless the line is there (then it fails).
+- A plan can say how many lines a log keeps (`cap` on the log source). A log that holds fewer lines has never dropped one, so where the step opened is certain, also when the last lines are alike. CheckThat's own lists have caps: errors 100, facts 300.
 - Runs saved by an earlier version keep working.
 
 ## Automatic steps
 
-A plan step can set `auto: true`. It must verify by assertions only (no `player`), have at least one required check, and have no required absence check.
+A plan step can set `auto: true`. It must verify by assertions only (no `player`) and have at least one required check. A check that something did not happen (an absence, a missing fact, a count of exactly or at most n) needs a `timeout`.
 
 - While the card is shown, CheckThat re-reads the checks twice a second and records the pass itself when every required check is met.
 - A step can also set `timeout` (5 to 300 seconds, counted from when the step opens, also across `/reload`). When the time runs out, a contradicted check records fail and missing evidence records unverified. A check that is wrong for a moment and then right passes.
+- A check that something did not happen cannot be shown the moment it holds, as more could arrive. The step waits for its timeout and records pass if the check still holds. It records fail at once when the check can no longer hold, such as a third report when it needs exactly two. The card shows the seconds left.
 - CheckThat only reads the logs and state the card already shows. It never sends input or runs a command.
 - Pass, Fail, Skip and Undo still work and win if you press them first.
 - The card says "recorded by CheckThat" on a step recorded this way.
@@ -112,6 +114,34 @@ if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "bagFull", t
 - A step counts only the facts reported after it opened. A fact is data and CheckThat never runs it.
 
 Debug log: `facts recorded <addon> <key>` and `facts dropped ...` with the reason. The report adds `Facts: <count>, last: <line>`.
+
+## Categories and the tracker
+
+A plan groups its steps into categories. A plan that declares none uses each section as a category, so every plan has them.
+
+- **Choose.** The Home page and the card start screen list the plan's categories with a checkbox each, all checked. Clear the ones you do not want. A plan with one category shows no list. The card start screen lists up to 8 categories. Home lists up to 24.
+- **Not picked.** A step in a category you did not pick is deselected. It is not offered, it does not count as open and it cannot fail the run. The report lists it apart from skipped steps.
+- **Categories window.** The Categories control on the card, or `/ct tracker`, opens a second window. It has one row for each category with a colored square, the title, the state in words, and how many steps passed, failed and are still open. It has no overall count of its own: each row has its own, and the card's caption has the total. It lists up to 14 rows. A longer list scrolls with the mouse wheel or the < and > page buttons, and a line says which rows show. A row has an arrow and a hint: click it for actions. Esc closes the window. Move it by dragging. It remembers its place and comes back after a reload if it was open. It uses the card's background and text opacity, and draws nothing at zero.
+- **Add or go.** Click a row in the window. Add to run adds a category you did not pick and keeps your place. Go to first open step moves you to it. `/ct run <category>` does both. `/ct run <step id>` shows one step.
+- **Rerun.** Rerun category (a row menu item, and `/ct rerun <category>`) asks first, then reopens the steps that have a result. Earlier attempts stay in the export. Undo no longer reaches those steps.
+- **Tracker.** With two to eight categories the card shows one bar segment each in plan order, and a caption such as "1 failed · 3 of 8 passed" (or "2 partial", "1 unverified", "untested", "in progress", "passed", "all skipped" in front). With more than eight it shows one bar for the whole run. Use the Categories window to see each category. Point at a segment to read its category in words. The segments only show a tooltip. They never take a click. A segment shows what happened to its steps: green for passed, yellow for partial or unverified and red for failed, side by side, so one failure among six passes is mostly green with a red end. What is left shows the track: dim blue while steps are untested, grey otherwise, and dark grey for a category you did not pick.
+- **Colors.** Red: a step failed. Yellow: a step is partial or unverified. Green: every step has a result and one passed. Blue: some steps are still untested, whether or not others have results (the words say "untested" or "in progress"). Grey: every step skipped. A category you did not pick is shown dim. The same words and counts show on the Home page and in `/ct categories`.
+- **Text opacity.** The tracker follows the card's text opacity. At zero it draws nothing.
+
+Debug log: `trigger <category|step> <name>: step <id>`, `select <category>`, `rerun <category>: <n> steps reopened`. The report adds `Categories: overall <state>` and one line for each category.
+
+## Unit-test checks
+
+A step can check more than a log line. Every check is data. Nothing in a plan runs.
+
+- **Fact values.** `kind: fact` reads the facts an addon reports with `CheckThat.Report`. A value is a boolean for `true` and `false`, a number when it reads as one, else text. Operators: `eq`, `ne`, `gt`, `ge`, `lt`, `le`, `between` (two numbers, ends included), `approx` (with `tolerance`), `in` (a list), `matches` (a pattern), `contains`, `type` (number, boolean or string), `exists` and `missing`. If no matching fact arrived, the check is unverified. Facts that break the operator fail. `which` is `last` (default), `any` or `all`.
+- **Counts.** `count: { exactly: 2 }`, `min` or `max` on a `log` or `fact` check. Too many fails. Too few is unverified, as the line can still arrive. A count that allows none follows the rules of an absence check. A check that is judged at the verdict (an upper-bound count, an absence, a missing fact) shows as failed on the card as soon as it can no longer pass, such as a third report when the step needs exactly two. A count of exactly n, an absence and a check that a fact is missing need a log whose last twelve lines are mostly different, so the start of the step can be found. A plan that checks them should report something that changes on each call. The self-test adds a `seq` fact for this. An automatic step cannot use `exactly` or `max`, as more can arrive later.
+- **Quiet sources.** A log source with `quiet: true` treats no new lines as a result, so an absence check or a count of zero can pass.
+- **State operators.** `state` checks accept the same new operators.
+- **Lua errors.** While a run is open CheckThat records each Lua error as one line in `CheckThatDB.global.errors` (the time, a counter, then the message cut to 200 characters; 100 kept, 30 a second). The time and counter make every line different, so a check that no error appeared can find where the step began. It chains to the handler that was set before, so other addons still see the error. BugGrabber makes `seterrorhandler` do nothing once it has the slot. Then CheckThat reads BugGrabber's list and records one line for each rise of an error counter, so a repeated error counts too. When nothing records errors (no handler of ours and no BugGrabber), judging a result adds a line that says so, and a no-error check fails. A plan reads the list as a quiet `strings` source: an absence check is "no Lua error", a `contains` check is "this error happened".
+- **Self-test commands.** `/ct selftest facts` reports a level, a ratio and two hits. `/ct selftest error` passes a test message to the error handler. The game may show its error window.
+
+Debug log: `errors recorded an error` and `errors dropped errors: over 30 a second`. The report adds `Errors: <count> recorded, handler: current|replaced|blocked|off`.
 
 ## Long titles
 

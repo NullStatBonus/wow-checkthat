@@ -94,9 +94,14 @@ class Validate(unittest.TestCase):
         p, st = self.auto(); st["assertions"][0]["diagnostic"] = True
         self.assertTrue(ct.validate(p))
 
-    def test_auto_step_rejects_required_absence(self):
-        p, st = self.auto(); st["assertions"][0]["absent"] = True
-        self.assertTrue(ct.validate(p))
+    def test_auto_step_with_a_check_that_something_did_not_happen_needs_a_timeout(self):
+        for mut in (lambda a: a.update(absent=True), lambda a: a.update(count={"exactly": 2}), lambda a: a.update(count={"max": 2})):
+            p, st = self.auto(); mut(st["assertions"][0])
+            self.assertTrue(any("needs a timeout for a check that is judged at the end" in e for e in ct.validate(p)))
+            st["timeout"] = 30
+            self.assertEqual(ct.validate(p), [])
+        p, st = self.auto(); st["assertions"][0]["count"] = {"min": 2}
+        self.assertEqual(ct.validate(p), [], "a lower bound needs no timeout")
 
     def test_timeout_range_and_auto_only(self):
         for n in (3, 4, 301, 600, 7.5, -1, "30"):
@@ -118,7 +123,7 @@ class Validate(unittest.TestCase):
         self.assertTrue(errs(lambda st: st.update(verify=["reviewer"], reviewer="r")), "auto without assertions")
         self.assertTrue(errs(lambda st: st.update(auto=False, action={"kind": "wait-event"})), "wait-event without auto")
         self.assertTrue(errs(lambda st: st["assertions"][0].update(diagnostic=True)), "only diagnostic assertions")
-        self.assertTrue(errs(lambda st: st["assertions"][0].update(absent=True)), "required absence check")
+        self.assertEqual(errs(lambda st: st["assertions"][0].update(absent=True)), [], "the schema leaves the timeout rule to the tool")
         def with_diagnostic_absence(st):
             st["assertions"].append({"kind": "log", "source": "debug", "contains": "y", "absent": True, "diagnostic": True})
         self.assertEqual(errs(with_diagnostic_absence), [], "a diagnostic absence check beside a required one is fine")
@@ -209,10 +214,13 @@ class NativeText(unittest.TestCase):
 class SamplePlans(unittest.TestCase):
     def test_sample_plans_stay_short_and_full_plans_stay_valid(self):
         import glob
-        for n in ("keepthat", "dontdothat", "closestvendor", "selftest"):
+        for n in ("keepthat", "dontdothat", "closestvendor"):
             plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
             steps = sum(len(s["steps"]) for s in plan["sections"])
             self.assertLessEqual(steps, 8, n)
+        # The self-test is the runner's own plan, not an addon sample: it exercises every kind of check.
+        plan = ct.load_yaml(os.path.join(ROOT, "plans", "selftest.yaml"))
+        self.assertLessEqual(sum(len(s["steps"]) for s in plan["sections"]), 16)
         for path in glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml")):
             plan = ct.load_yaml(path)
             self.assertEqual(ct.validate(plan), [], path)
@@ -807,6 +815,201 @@ class Names(unittest.TestCase):
             except (UnicodeDecodeError, FileNotFoundError):
                 continue
         self.assertEqual(found, [])
+
+
+
+def cats():
+    p = good()
+    p["categories"] = [{"id": "one", "title": "One"}, {"id": "two", "title": "Two"}]
+    p["sections"][0]["category"] = "one"
+    p["sections"][0]["steps"][1]["category"] = "two"
+    return p
+
+
+def fact(**kw):
+    a = {"kind": "fact", "source": "debug", "addon": "KeepThat", "key": "level", "op": "eq", "value": 3}
+    a.update(kw)
+    return a
+
+
+class Categories(unittest.TestCase):
+    def test_declared_categories_validate_and_merge(self):
+        p = cats()
+        self.assertEqual(ct.validate(p), [])
+        m = ct.merge_sections(p)
+        steps = m["sections"][0]["steps"]
+        self.assertEqual([s["category"] for s in steps], ["one", "two"])
+        self.assertNotIn("category", m["sections"][0])
+        self.assertEqual(len(m["categories"]), 2)
+
+    def test_unknown_and_missing_category(self):
+        p = cats(); p["sections"][0]["steps"][0]["category"] = "nope"
+        self.assertTrue(any("a.1: unknown category nope" in e for e in ct.validate(p)))
+        p = cats(); del p["sections"][0]["category"]; p["sections"][0]["steps"][1].pop("category")
+        self.assertTrue(any("no category" in e for e in ct.validate(p)))
+        p = good(); p["sections"][0]["category"] = "one"
+        self.assertTrue(any("unknown category one" in e for e in ct.validate(p)))
+
+    def test_duplicate_category_id(self):
+        p = cats(); p["categories"][1]["id"] = "one"
+        self.assertTrue(any("duplicate category id one" in e for e in ct.validate(p)))
+
+    def test_plan_without_categories_still_validates(self):
+        self.assertEqual(ct.validate(good()), [])
+
+
+class UnitAssertions(unittest.TestCase):
+    def check(self, a):
+        p = good(); p["sections"][0]["steps"][0]["assertions"] = [a]
+        return ct.validate(p)
+
+    def test_valid_shapes(self):
+        for a in (fact(), fact(op="between", value=[1, 5]), fact(op="approx", value=0.5, tolerance=0.01),
+                  fact(op="in", value=["a", "b"]), fact(op="type", value="number"), fact(op="matches", value="^a"),
+                  fact(op="missing", value=None), fact(which="any", count={"min": 1}),
+                  {"kind": "log", "source": "debug", "contains": "x", "count": {"exactly": 2}},
+                  {"kind": "state", "probe": "global-value", "name": "G", "op": "between", "value": [1, 5]}):
+            a = {k: v for k, v in a.items() if v is not None}
+            self.assertEqual(self.check(a), [], a)
+
+    def test_wrong_shapes(self):
+        for a, needle in ((fact(op="between", value=[1]), "between needs"), (fact(op="between", value=[5, 1]), "between needs"),
+                          (fact(op="in", value=3), "in needs"), (fact(op="approx", value=1), "tolerance"),
+                          (fact(op="type", value="table"), "type needs"), (fact(op="ge", value="3"), "ge needs"),
+                          (fact(tolerance=1), "tolerance belongs"), (fact(count={"exactly": 1, "min": 0}), "exactly cannot"),
+                          (fact(count={"min": 3, "max": 1}), "min is above max"),
+                          ({"kind": "log", "source": "debug", "contains": "x", "absent": True, "count": {"exactly": 0}}, "count cannot combine"),
+                          (fact(source="nope"), "unknown log source")):
+            self.assertTrue(any(needle in e for e in self.check(a)), (a, self.check(a)))
+
+    def test_auto_step_cannot_use_an_upper_bound_count(self):
+        p = good(); st = p["sections"][0]["steps"][0]
+        st["verify"], st["auto"] = ["assertions"], True
+        st["assertions"] = [{"kind": "log", "source": "debug", "contains": "x", "count": {"exactly": 2}}]
+        self.assertTrue(any("needs a timeout for a check that is judged at the end" in e for e in ct.validate(p)))
+        st["timeout"] = 30
+        self.assertEqual(ct.validate(p), [])
+
+    def test_unknown_operator_and_which_fail_the_schema(self):
+        self.assertTrue(self.check(fact(op="near")))
+        self.assertTrue(self.check(fact(which="most")))
+
+    def test_log_source_cap(self):
+        p = good(); p["logs"]["debug"]["cap"] = 100
+        self.assertEqual(ct.validate(p), [])
+        for bad in (0, 1.5, 100001, "100"):
+            p["logs"]["debug"]["cap"] = bad
+            self.assertTrue(ct.validate(p), bad)
+
+    def test_quiet_log_source(self):
+        p = good(); p["logs"]["debug"]["quiet"] = True
+        self.assertEqual(ct.validate(p), [])
+        p["logs"]["debug"]["quiet"] = "yes"
+        self.assertTrue(ct.validate(p))
+
+    def test_operator_lists_agree_across_lua_schema_and_tool(self):
+        with open(os.path.join(ROOT, "CheckThat", "Model", "Plan.lua"), encoding="utf-8") as f:
+            lua = f.read()
+        body = re.search(r"Plan\.OPS = \{(.*?)\n?\}\nPlan\.TYPES", lua, re.S).group(1)
+        ops = set(re.findall(r'\b([a-z]+) = true', body)) | set(re.findall(r'\["([a-z]+)"\] = true', body))
+        with open(ct.SCHEMA, encoding="utf-8") as f:
+            schema = json.load(f)
+        state = [o for o in schema["$defs"]["assertion"]["oneOf"] if o["properties"]["kind"]["const"] == "state"][0]
+        fact_ = [o for o in schema["$defs"]["assertion"]["oneOf"] if o["properties"]["kind"]["const"] == "fact"][0]
+        self.assertEqual(ops, set(state["properties"]["op"]["enum"]))
+        self.assertEqual(ops, set(fact_["properties"]["op"]["enum"]))
+
+
+class CategoryReport(unittest.TestCase):
+    def test_state_rule_matches_the_lua_fixture(self):
+        with open(os.path.join(ROOT, "tests", "fixtures", "category-rule.json"), encoding="utf-8") as f:
+            cases = json.load(f)
+        self.assertGreater(len(cases), 10)
+        for case in cases:
+            self.assertEqual(ct.category_rule(case["counts"]), case["state"], case)
+
+    def run_record(self):
+        return {"runId": "r", "addon": "KeepThat", "planTitle": "t", "revision": 1, "client": "classic-era", "build": "1", "character": "X",
+                "order": ["a", "b", "c"], "categories": [{"id": "bank", "title": "Bank"}, {"id": "mail", "title": "Mail"}, {"id": "ah", "title": "AH"}],
+                "cat": {"a": "bank", "b": "bank", "c": "mail", "d": "ah", "e": "mail"}, "selected": {"bank": True, "mail": True},
+                "steps": {"a": {"verdict": "pass", "attempts": []}, "b": {"verdict": "fail", "attempts": []}, "c": {"verdict": "pending", "attempts": []},
+                          "d": {"verdict": "deselected", "attempts": []}, "e": {"verdict": "inapplicable", "attempts": []}}}
+
+    def test_report_rolls_steps_up_by_category(self):
+        states = ct.category_states(self.run_record())
+        self.assertEqual([(s[0], s[2], s[3], s[4]) for s in states], [("bank", "red", 2, 2), ("mail", "blue", 0, 1), ("ah", "off", 0, 0)])
+        txt = ct.report_text({"r": self.run_record()})
+        self.assertIn("categories: bank red 2/2, mail blue 0/1, ah not picked", txt)
+        self.assertIn("deselected=1", txt)
+
+    def test_a_run_without_categories_reports_as_before(self):
+        r = self.run_record()
+        for k in ("categories", "cat", "selected"):
+            del r[k]
+        self.assertEqual(ct.category_states(r), [])
+        self.assertNotIn("categories:", ct.report_text({"r": r}))
+
+
+class Cases(unittest.TestCase):
+    def plan(self):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        st["title"] = "Bind {{slot}}"
+        st["expect"] = "Chat says {{slot}} is bound."
+        st["cases"] = [{"id": "cloth", "vars": {"slot": "cloth"}}, {"id": "mail", "vars": {"slot": "mail"}}]
+        return p
+
+    def test_cases_expand_to_one_step_each(self):
+        p = self.plan()
+        self.assertEqual(ct.validate(p), [])
+        m = ct.merge_sections(p)
+        ids = [s["id"] for s in m["sections"][0]["steps"]]
+        self.assertEqual(ids, ["a.1", "a.2.cloth", "a.2.mail"])
+        self.assertEqual(m["sections"][0]["steps"][2]["title"], "Bind mail")
+        self.assertNotIn("cases", json.dumps(m))
+
+    def test_a_value_that_is_only_a_placeholder_keeps_its_type(self):
+        p = good()
+        st = p["sections"][0]["steps"][0]
+        st["logs"] = None
+        del st["logs"]
+        p["logs"]["facts"] = {"global": "G", "path": "f", "format": "strings"}
+        st["assertions"] = [{"kind": "fact", "source": "facts", "addon": "A", "key": "k", "op": "eq", "value": "{{n}}"}]
+        st["cases"] = [{"id": "three", "vars": {"n": 3}}]
+        m = ct.merge_sections(p)
+        self.assertEqual(m["sections"][0]["steps"][0]["assertions"][0]["value"], 3)
+
+    def test_duplicate_section_id_fails(self):
+        p = good(); p["sections"].append(dict(p["sections"][0], steps=[dict(p["sections"][0]["steps"][1], id="z.9")]))
+        self.assertTrue(any("duplicate section id" in e for e in ct.validate(p)))
+
+    def test_state_and_requirement_approx_take_a_tolerance(self):
+        p = good()
+        a = {"kind": "state", "probe": "global-value", "name": "G", "op": "approx", "value": 3, "tolerance": 1}
+        p["sections"][0]["steps"][0]["assertions"] = [a]
+        self.assertEqual(ct.validate(p), [])
+
+    def test_auto_step_cannot_use_a_missing_fact_check(self):
+        p = good(); p["logs"]["facts"] = {"global": "G", "path": "f", "format": "strings", "quiet": True}
+        st = p["sections"][0]["steps"][0]; st["verify"], st["auto"] = ["assertions"], True
+        st["assertions"] = [{"kind": "fact", "source": "facts", "addon": "A", "key": "k", "op": "missing"}]
+        self.assertTrue(any("needs a timeout for a check that is judged at the end" in e for e in ct.validate(p)))
+
+    def test_unknown_placeholder_and_duplicate_suffix_fail(self):
+        p = self.plan(); p["sections"][0]["steps"][1]["expect"] = "{{other}}"
+        self.assertTrue(any("no var for {{other}}" in e for e in ct.validate(p)))
+        p = self.plan(); p["sections"][0]["steps"][1]["cases"][1]["id"] = "cloth"
+        self.assertTrue(any("duplicate case id cloth" in e for e in ct.validate(p)))
+
+    def test_expanded_ids_must_stay_unique(self):
+        p = self.plan(); dup = {k: v for k, v in p["sections"][0]["steps"][1].items() if k != "cases"}
+        p["sections"][0]["steps"].append(dict(dup, id="a.2.cloth"))
+        self.assertTrue(any("duplicate step id a.2.cloth" in e for e in ct.validate(p)))
+
+    def test_more_than_fifty_cases_fail(self):
+        p = self.plan(); p["sections"][0]["steps"][1]["cases"] = [{"id": "c%d" % i, "vars": {"slot": "x"}} for i in range(51)]
+        self.assertTrue(ct.validate(p))
+
 
 
 if __name__ == "__main__":

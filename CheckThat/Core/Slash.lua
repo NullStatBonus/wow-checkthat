@@ -24,7 +24,7 @@ function Slash.Run(args, deps)
     local cmd, rest = (args or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     local App = ns.App
-    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, undo = true, back = true, next = true, ["end"] = true }
+    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, undo = true, back = true, next = true, ["end"] = true, categories = true }
     if noArgs[cmd] and rest ~= "" then return { L["Usage: /ct %s takes no arguments."]:format(cmd) } end
     if cmd == "" then deps.card(); return {}
     elseif cmd == "settings" then
@@ -50,7 +50,7 @@ function Slash.Run(args, deps)
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
         elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run)."] }
         elseif topic == "runs" then return {
-            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload."] }
+            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
         return { L["Help: /ct help appearance, /ct help diagnostics, /ct help runs. Open /ct settings [page] or read /ct status [topic]."] }
     elseif cmd == "status" then
@@ -101,12 +101,59 @@ function Slash.Run(args, deps)
         if not run then return { err } end
         deps.endRun()
         return {}
+    elseif cmd == "categories" then
+        local rows, overall, total = App.Categories()
+        if not rows then return { L["There is no run."] } end
+        local out = {}
+        for _, row in ipairs(rows) do out[#out + 1] = App.CategoryLine(row) end
+        out[#out + 1] = L["Overall: %s, %d passed, %d failed, %d open"]:format(App.StateWord(overall, total), total.pass, total.fail, total.open)
+        return out
+    elseif cmd == "tracker" then
+        if rest ~= "" then return { L["Usage: /ct tracker takes no arguments."] } end
+        deps.tracker()
+        return {}
+    elseif cmd == "run" or cmd == "rerun" then
+        if rest == "" or rest:find("%s") then
+            return { cmd == "run" and L["Usage: /ct run <category or step id>."] or L["Usage: /ct rerun <category>."] }
+        end
+        if cmd == "run" then
+            local kind, id = App.Trigger(rest)
+            if not kind then return { id } end
+            deps.card(true)
+            return { L["Showing step %s."]:format(Slash.Esc(id)) }
+        end
+        local n, title = App.RerunCount(rest)
+        if not n then return { title } end
+        if n == 0 then return { L["Nothing to reopen in %s: no step has a result."]:format(title) } end
+        deps.confirmRerun(rest, n, title)
+        return {}
     elseif cmd == "export" then deps.export(); return {}
     elseif cmd == "fact" then
         local ok, why = ns.Facts.Report("CheckThat", "selftest", 1)
         if ok then return { L["Reported the test fact."] } end
         if why == "no run is open" then return { L["No run is open, so the test fact was not recorded."] } end
         return { L["The test fact was not recorded."] }
+    elseif cmd == "selftest" then
+        local what = rest:lower()
+        if what == "facts" then
+            local ok = ns.Facts.Report("CheckThat", "level", 3)
+            ok = ns.Facts.Report("CheckThat", "ratio", 0.5) and ok
+            ok = ns.Facts.Report("CheckThat", "hit", 1) and ok
+            ok = ns.Facts.Report("CheckThat", "hit", 1) and ok
+            ok = ns.Facts.Report("CheckThat", "mode", "fast") and ok
+            ok = ns.Facts.Report("CheckThat", "flag", true) and ok
+            -- A value that changes each call keeps the last lines of the list different, so a count of exactly n or an
+            -- absence can be shown (a tail of repeated lines cannot prove where the step began).
+            Slash.seq = (Slash.seq or 0) + 1
+            ok = ns.Facts.Report("CheckThat", "seq", (ns.Adapter.Now() or 0) * 100 + Slash.seq % 100) and ok
+            if ok then return { L["Reported the test facts."] } end
+            return { L["No run is open, so the test facts were not recorded."] }
+        elseif what == "error" then
+            ns.Errors.Hook()
+            if ns.Adapter.RaiseTestError("CheckThat self-test error") then return { L["Raised a test error. The game may show its error window."] } end
+            return { L["This client has no error handler, so no test error was raised."] }
+        end
+        return { L["Usage: /ct selftest facts or /ct selftest error."] }
     elseif cmd == "macro" then deps.macro(); return {}
     elseif cmd == "reload" then deps.reload(); return {}
     end
@@ -115,6 +162,8 @@ end
 
 function Slash.Register(addon)
     local deps = {
+        tracker = function() if ns.Tracker then ns.Tracker.Toggle() end end,
+        confirmRerun = function(what, n, title) if ns.Card then ns.Card.ConfirmRerun(what, n, title) end end,
         open = function(page) ns.Options.Open(page) end,
         card = function(show) if ns.Card then if show then ns.Card.Show() else ns.Card.Toggle() end end end,
         importPrompt = function() if ns.Card then ns.Card.ImportPrompt() end end,

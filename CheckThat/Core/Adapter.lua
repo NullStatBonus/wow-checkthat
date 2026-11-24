@@ -45,6 +45,53 @@ ns.version = Adapter.Version()
 function Adapter.After(sec, fn)
     if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(sec, fn) end
 end
+-- The error handler is one slot shared by every addon. HookErrors sets ours over the current one (make(previous)
+-- builds it) and does nothing when ours is still the current handler. Some addons take the slot and turn
+-- seterrorhandler into a no-op (BugGrabber does: docs/contracts.md), so the call is checked by reading the
+-- handler back. Returns true when ours is set. Returns nil when the client has no handler functions, and nil and
+-- "blocked" when the set had no effect.
+local oursHandler, blocked
+function Adapter.HookErrors(make)
+    local get, set = _G.geterrorhandler, _G.seterrorhandler
+    if type(get) ~= "function" or type(set) ~= "function" then return nil end
+    local ok, current = pcall(get)
+    if not ok then return nil end
+    if oursHandler ~= nil and current == oursHandler then return true end
+    local built = make(current)
+    if not (pcall(set, built)) then return nil end
+    local ok2, now = pcall(get)
+    if not ok2 or now ~= built then oursHandler, blocked = nil, true; return nil, "blocked" end
+    oursHandler, blocked = built, false
+    return true
+end
+-- Passes a message to the current error handler, as the game does for a Lua error. For the self-test only. Returns
+-- false when the client has no handler.
+function Adapter.RaiseTestError(msg)
+    local get = _G.geterrorhandler
+    if type(get) ~= "function" then return false end
+    local ok, handler = pcall(get)
+    if not ok or type(handler) ~= "function" then return false end
+    pcall(handler, msg)
+    return true
+end
+-- "current" when ours is the handler now, "replaced" when another addon set one after us, "blocked" when the set had no
+-- effect, "off" before the hook or where the client has no handler functions.
+function Adapter.ErrorHookState()
+    local get = _G.geterrorhandler
+    if type(get) ~= "function" then return "off" end
+    local ok, current = pcall(get)
+    if not ok then return "off" end
+    if oursHandler ~= nil then return current == oursHandler and "current" or "replaced" end
+    return blocked and "blocked" or "off"
+end
+-- Esc closes a named frame listed in UISpecialFrames. Registered once.
+function Adapter.SpecialFrame(name)
+    local list = _G.UISpecialFrames
+    if type(list) ~= "table" then return false end
+    for _, v in ipairs(list) do if v == name then return true end end
+    list[#list + 1] = name
+    return true
+end
 function Adapter.InCombat() return call("InCombatLockdown") and true or false end
 function Adapter.Reload() return call("ReloadUI") end
 -- Hide a frame for the whole of combat, and show it again when combat ends (the owner re-checks it then).

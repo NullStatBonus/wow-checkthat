@@ -68,6 +68,8 @@ if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "freeSlots",
 - Prefer your own log line when the event already has one. A fact is for a value or a gap.
 - Add the source to the plan: `global: CheckThatDB`, `path: global.facts`, `format: strings`. Then assert `equals: '[KeepThat] freeSlots=3'`, or `contains` for a changing value. See [Write a plan](authoring-plans.md#facts-from-the-addon-under-test).
 
+A fact can carry a value a plan checks by range, tolerance, type or list (see [Unit-test checks](features.md#unit-test-checks)). Report a number as a number, not as text with units, so `between` and `approx` work. Report once per call you want counted. Add one value that changes on each call (a counter or the time) if a plan will check "exactly n" or "never reported": a log of repeated identical lines cannot show where the step began, unless the plan gives the log source its `cap` (how many lines the log keeps) and the log holds fewer. a plan can require "reported exactly twice". CheckThat also records Lua errors while a run is open, so an addon needs no code to be checked for them.
+
 ## Checklist for an addon author
 
 - [ ] Recording is off by default, with `debug on|off` and `log`.

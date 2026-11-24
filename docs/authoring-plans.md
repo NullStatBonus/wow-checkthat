@@ -19,13 +19,13 @@ The plan format is specified in `openspec/specs/test-plan-format/`. Rules for au
 
 ## Plans in this repository
 
-- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles.
+- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 14 steps (15 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`.
 - `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account. The owner leaves a run open. The viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill.
 
 ## First live run
 
-Run `build/selftest.ct` first. It exercises the card, copy boxes, the Run button, log evidence and reload resume with no sibling addon.
+Run `build/selftest.ct` first. It exercises the card, copy boxes, the Run button, log evidence, reload resume, every fact and state operator, counts and Lua error capture with no sibling addon.
 
 1. `make build`, then copy `CheckThat/` to `Interface/AddOns/`.
 2. In game, `/ct import` with the contents of `build/selftest.ct`, then `/ct start CheckThat`.
@@ -37,6 +37,73 @@ Next, try `build/dontdothat.ct`.
 ## Good logs make good plans
 
 A step can only be checked from a log if the addon writes the line. See [Debug logging](debug-logging.md).
+
+## Categories
+
+```yaml
+categories:
+- id: bank
+  title: Bank
+- id: mail
+  title: Mail
+sections:
+- id: s1
+  title: Bank steps
+  category: bank        # the default for every step in the section
+  steps:
+  - id: bank.open
+    category: mail      # a step can name its own
+```
+
+Without `categories`, each section is a category. With them, every step must resolve to one. A category id is lower case letters, digits, `.`, `_` or `-`. Do not give a category the id of a step: `/ct run` refuses a name that matches both.
+
+## Unit-test checks
+
+Write them in a step's `assertions`. See [Feature reference](features.md#unit-test-checks) for how each is judged.
+
+```yaml
+logs:
+  facts: { global: CheckThatDB, path: global.facts, format: strings, cap: 300 }
+  errors: { global: CheckThatDB, path: global.errors, format: strings, quiet: true, cap: 100 }
+# in a step:
+    assertions:
+    - kind: fact            # a value in a range
+      source: facts
+      addon: KeepThat
+      key: freeSlots
+      op: between
+      value: [1, 5]
+    - kind: fact            # a number within a tolerance
+      source: facts
+      addon: KeepThat
+      key: ratio
+      op: approx
+      value: 0.5
+      tolerance: 0.01
+    - kind: fact            # reported at least twice
+      source: facts
+      addon: KeepThat
+      key: sold
+      op: exists
+      count: { min: 2 }
+    - kind: log             # no Lua error since the step opened
+      source: errors
+      pattern: .
+      absent: true
+```
+
+A step can expand into many with `cases`. `{{name}}` in the step's text is replaced for each case, and the ids become `id.case`:
+
+```yaml
+- id: bind
+  title: Bind a {{slot}} item
+  expect: Chat says the {{slot}} item is bound.
+  cases:
+  - { id: cloth, vars: { slot: cloth } }
+  - { id: mail, vars: { slot: mail } }
+```
+
+A unit test in an addon is its own command (for example `/kt selftest`) that calls the code and reports facts. The step runs that command with Run, and an `auto` step passes when the facts arrive.
 
 ## Facts from the addon under test
 

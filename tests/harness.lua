@@ -81,9 +81,14 @@ function H.stubClient(opts)
     _G.CreateMacro = function(n, _, body) st.macros[n] = true; st.macroBody = body end
     _G.EditMacro = function(_, _, _, body) st.macroBody = body end
     _G.SlashCmdList = {}
+    _G.UISpecialFrames = {}
     _G.StaticPopupDialogs = {}
     _G.StaticPopup_Show = function(which) st.popup = _G.StaticPopupDialogs[which] end
-    _G.geterrorhandler = function() return function(e) error(e, 0) end end
+    -- The error handler is one global slot, as in the game: seterrorhandler replaces it.
+    local handler = function(e) error(e, 0) end
+    st.errors = {}
+    _G.geterrorhandler = function() return handler end
+    _G.seterrorhandler = function(fn) handler = fn end
     _G.GetTime = function() return 1 end
     st.timers = {}
     _G.C_Timer = { After = function(_, fn) st.timers[#st.timers + 1] = fn end } -- queued; a test runs them
@@ -137,7 +142,7 @@ function H.plain(ns)
     assert(loadfile("CheckThat/Libs/LibDeflate/LibDeflate.lua"))()
     ns.LibDeflate = LibStub("LibDeflate")
     for _, m in ipairs({ "Locales/enUS", "Core/Init", "Core/Adapter", "Core/Defaults", "Model/Json", "Model/Codec", "Model/Plan",
-        "Model/Evidence", "Model/Facts", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
+        "Model/Evidence", "Model/Facts", "Model/Errors", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
         H.module(ns, m)
     end
 end

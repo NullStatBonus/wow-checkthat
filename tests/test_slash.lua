@@ -119,4 +119,56 @@ test("end asks through the card when a run can end", function()
     App.CanEnd = was
     T.ok(run("help runs")[1]:find("/ct end", 1, true))
 end)
+-- Category commands
+local function withRun(picks)
+    local env = { time = function() return 1000 end, GetBuildInfo = function() return "1.15.7", "63000", "x", 11507 end,
+        UnitName = function() return "Tester" end, GetRealmName = function() return "Realm" end }
+    local db = {}
+    ns.App.Init(db, env)
+    local function s(id) return { id = id, title = id, action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } } end
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "KT", sections = {
+        { id = "bank", title = "Bank", steps = { s("b1"), s("b2") } }, { id = "mail", title = "Mail", steps = { s("m1") } } } }
+    ns.App.ImportPlan(assert(ns.Codec.Encode(p)))
+    return assert(ns.App.Start("KeepThat", picks)), db
+end
+test("categories lists each category with a state word and counts", function()
+    withRun({ "bank" })
+    local out = run("categories")
+    T.eq(out[1], "Bank (bank): untested, 0 passed, 0 failed, 2 open"); T.eq(out[2], "Mail (mail): not picked")
+    T.eq(out[3], "Overall: untested, 0 passed, 0 failed, 2 open")
+    T.ok(run("categories now please")[1]:find("takes no arguments"), "surplus input is refused")
+end)
+test("run shows a category or a step and reports a bad name without changing the run", function()
+    called.card = nil
+    withRun({ "bank" })
+    T.ok(run("run")[1]:find("Usage: /ct run"), "no name")
+    T.ok(run("run bank mail")[1]:find("Usage: /ct run"), "two names")
+    T.ok(run("run nothing")[1]:find("no category or step called nothing"))
+    T.eq(called.card, nil, "the card does not open for a bad name")
+    T.eq(run("run mail")[1], "Showing step m1."); T.ok(called.card, "the card is shown")
+    T.ok(run("categories")[2]:find("Mail (mail): untested", 1, true), "run added the category")
+    T.eq(run("RUN b2")[1], "Showing step b2.", "a step by id")
+end)
+test("rerun reopens a category and refuses names it cannot", function()
+    withRun({ "bank" })
+    T.ok(run("rerun")[1]:find("Usage: /ct rerun"))
+    T.ok(run("rerun mail")[1]:find("not part of this run"))
+    T.ok(run("rerun zzz")[1]:find("no category called zzz"))
+    T.ok(run("rerun bank")[1]:find("Nothing to reopen in Bank", 1, true), "no result to reopen: no question")
+    called.confirmRerun = nil
+    local r = withRun({ "bank" }); ns.App.Begin(); ns.App.Verdict("pass")
+    T.eq(#run("rerun bank"), 0); T.eq(called.confirmRerun[1], "bank"); T.eq(called.confirmRerun[2], 1); T.eq(called.confirmRerun[3], "Bank")
+    T.eq(r.steps.b1.verdict, "pass", "the command only asks: nothing reopened yet")
+end)
+test("category commands refuse an ended run", function()
+    local r = withRun()
+    ns.App.End(r.runId)
+    T.eq(run("run bank")[1], "This run has ended.")
+    T.eq(run("rerun bank")[1], "This run has ended.")
+end)
+test("help runs names the category commands", function()
+    local h = run("help runs")[1]
+    T.ok(h:find("/ct categories", 1, true) and h:find("/ct rerun", 1, true), h)
+end)
+
 finish()

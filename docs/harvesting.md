@@ -40,3 +40,7 @@ It copies CheckThat and the three addons' saved variables (including Era per-cha
 ```
 
 The Windows PC does not need LuaJIT or Python for the copy step.
+
+## Categories in the report
+
+`report` prints a `categories:` line for each run that holds categories: blue, yellow, red, green or grey with the count of steps with a result over picked steps, or "not picked". Steps of a category that was not picked read `deselected` and are not counted as unverified. A run saved before categories prints no such line.

@@ -69,6 +69,13 @@ function Card.ApplyAppearance()
     else card:SetBackdrop(nil) end
     local ta = (c.textOpacity or 100) / 100
     for _, f in ipairs(card.texts or {}) do f:SetAlpha(ta) end
+    for _, s in ipairs(card.segs or {}) do s.back:SetAlpha(ta); for _, t in ipairs(s.parts) do t:SetAlpha(ta) end end
+    for _, t in ipairs(card.barParts) do t:SetAlpha(ta) end
+    if card.caption then card.caption:SetAlpha(ta) end
+    if ns.Tracker then ns.Tracker.ApplyAppearance() end
+    if card.barMode then card.barBack:SetAlpha(ta); card.barFill:SetAlpha(ta) end
+    -- Nothing is drawn at zero: redraw so a hidden or shown tracker follows the setting at once.
+    if card.drawn and card:IsShown() and Card.Refresh then Card.Refresh() end
 end
 
 local INNER = 356
@@ -93,6 +100,53 @@ end
 local function place(frame, x, y, anchor)
     frame:ClearAllPoints(); frame:SetPoint("TOPLEFT", anchor or card, "TOPLEFT", x, -y)
 end
+
+-- Tracker colors by category state. Blue is untested (the card's progress blue), yellow is partial or unverified.
+local STATE_COLOR = { red = { 0.9, 0.2, 0.2 }, yellow = { 1, 0.82, 0 }, green = { 0.1, 0.8, 0.1 }, blue = { 0.4, 0.7, 1 }, grey = { 0.5, 0.5, 0.5 }, off = { 0.3, 0.3, 0.3 } }
+local STATE_TEXT = { red = RED, yellow = AMBER, green = GREEN, blue = { 0.5, 0.75, 1 }, grey = GREY, off = GREY }
+Card.STATE_COLOR, Card.STATE_TEXT = STATE_COLOR, STATE_TEXT
+Card.MAX_SEGMENTS = 8
+local GAP = 2
+
+-- The colored parts of a bar of width w: passed in green, partial or unverified in yellow, failed in red, left to
+-- right. What is left over (untested, skipped) shows the track. A category with one failure among six passes is
+-- mostly green with a red end, not all red.
+local function parts(c, w)
+    local out, x = {}, 0
+    if not c or (c.total or 0) == 0 then return out end
+    for _, p in ipairs({ { "green", c.pass or 0 }, { "yellow", (c.partial or 0) + (c.unverified or 0) }, { "red", c.fail or 0 } }) do
+        local pw = math.floor(w * p[2] / c.total + 0.5)
+        if p[2] > 0 then pw = math.max(pw, 1) end
+        if pw > 0 then out[#out + 1] = { x = x, w = math.min(pw, w - x), state = p[1] }; x = x + pw end
+    end
+    return out
+end
+Card.Parts = parts
+
+-- The tracker row for a run: nil with one category (the plain bar). Two to eight categories get one segment each,
+-- with x and width in card units and the filled width. More than eight get one bar colored by the overall state.
+-- Plan order, and unpicked categories keep their place, so adding one never moves the others.
+function Card.Tracker(rows, overall, sum, inner)
+    if not rows or #rows < 2 then return nil end
+    if #rows > Card.MAX_SEGMENTS then
+        return { mode = "bar", state = overall, parts = parts(sum, inner), open = sum.open }
+    end
+    local n = #rows
+    local w = math.floor((inner - GAP * (n - 1)) / n)
+    local segs = {}
+    for i, row in ipairs(rows) do
+        segs[i] = { x = (i - 1) * (w + GAP), w = w, parts = row.picked and parts(row.counts, w) or {}, state = row.state, picked = row.picked,
+            open = row.counts.open, tip = App.CategoryLine(row) }
+    end
+    return { mode = "segments", segs = segs }
+end
+
+-- "1 failed · 4 of 8 done": the overall result in words, so the colors are never the only signal.
+function Card.Caption(overall, sum)
+    return L["%s · %d of %d passed"]:format(App.StatePhrase(overall, sum), sum.pass or 0, sum.total)
+end
+
+
 
 local function build()
     card = CreateFrame("Frame", "CheckThatCard", UIParent, "BackdropTemplate")
@@ -143,6 +197,22 @@ local function build()
     card.barBack:SetPoint("TOPLEFT", 12, -26); card.barBack:SetSize(INNER, 3)
     card.barFill = card:CreateTexture(nil, "OVERLAY"); card.barFill:SetColorTexture(0.4, 0.7, 1, 1)
     card.barFill:SetPoint("TOPLEFT", 12, -26); card.barFill:SetSize(1, 3)
+
+    -- The tracker: one segment per category (two to eight), a caption with the overall result in words, and the
+    -- Categories list. The segments only show a tooltip: a click on a 3 unit bar would be too easy to miss or to hit by mistake.
+    card.segs, card.barParts = {}, {}
+    card.caption = fs("GameFontHighlightSmall", GREY, 250); card.caption:SetPoint("TOPLEFT", 12, -31)
+    card.catBtn = CreateFrame("Button", nil, card)
+    card.catBtn:SetSize(84, 18)
+    card.catBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    card.catBtn:GetHighlightTexture():SetAlpha(0.35)
+    card.catBtn.label = card.catBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.catBtn.label:SetPoint("RIGHT", -2, 0); card.catBtn.label:SetText(L["Categories"])
+    card.texts[#card.texts + 1] = card.catBtn.label
+    card.catBtn:SetPoint("TOPRIGHT", -12, -28)
+    card.catBtn:SetScript("OnClick", function() ns.Tracker.Toggle() end)
+    card.picks = {}
+    card.pickNote = fs("GameFontHighlightSmall", GREY, 340)
 
     card.title = fs("GameFontHighlightLarge", { 1, 1, 1 }, INNER)
     -- Over the collapsed title: shows the full text on hover and passes a drag on to the card.
@@ -216,7 +286,8 @@ local function build()
     card.start = makeButton(card, L["Start run"], 100); card.start:SetHeight(24)
     card.start:SetPoint("BOTTOMLEFT", 12, 12)
     card.start:SetScript("OnClick", function()
-        local run, err = App.Start(App.db.ui.pendingStart or App.db.ui.lastImport)
+        local addon = App.db.ui.pendingStart or App.db.ui.lastImport
+        local run, err = App.Start(addon, App.PickedIds(addon))
         if not run then ns.Slash.Print(err) end
         Card.Refresh()
     end)
@@ -365,9 +436,12 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
-    card.barBack:Hide(); card.barFill:Hide()
+    card.barBack:Hide(); card.barFill:Hide(); card.caption:Hide(); card.catBtn:Hide()
+    for _, s in ipairs(card.segs) do s.back:Hide(); for _, t in ipairs(s.parts) do t:Hide() end; s.hit:Hide() end
+    for _, t in ipairs(card.barParts) do t:Hide() end
+    for _, p in ipairs(card.picks) do p.check:Hide(); p.label:Hide() end
     card.secureWanted = false
     if not A.InCombat() and card.secure then card.secure:Hide() end
 end
@@ -381,7 +455,128 @@ end
 -- A note belongs to one attempt of one step; the box is cleared when this key changes.
 local function noteKeyOf(run, step, rec) return run.runId .. "/" .. step.id .. "/" .. #rec.attempts end
 
+-- Draws the tracker and its caption. Returns how far the content moves down (the caption row), 0 with one category.
+-- Draws the colored parts of a bar into a list of textures (made on demand), at x from the card's left, 3 high.
+local function drawParts(list, ps, x0, ta)
+    for i = 1, 3 do if list[i] then list[i]:Hide() end end
+    for i, p in ipairs(ps) do
+        local t = list[i]
+        if not t then t = card:CreateTexture(nil, "OVERLAY"); list[i] = t end
+        local col = STATE_COLOR[p.state]
+        t:ClearAllPoints(); t:SetPoint("TOPLEFT", x0 + p.x, -26); t:SetSize(p.w, 3)
+        t:SetColorTexture(col[1], col[2], col[3], 1); t:SetAlpha(ta)
+        if ta > 0 then t:Show() end
+    end
+end
+
+function Card.DrawTracker(tracker, rows, overall, sum, inner, mini, resolved, total)
+    local ta = (cfg().textOpacity or 100) / 100
+    if not tracker then
+        -- One category: the plain bar, as before.
+        card.barMode = false
+        card.barBack:SetAlpha(1); card.barFill:SetAlpha(1)
+        card.barBack:SetColorTexture(0.2, 0.2, 0.2, 1)
+        card.barBack:SetWidth(inner); card.barBack:Show(); card.barFill:Show()
+        card.barFill:SetColorTexture(0.4, 0.7, 1, 1)
+        card.barFill:SetWidth(math.max(1, inner * (total > 0 and resolved / total or 0)))
+        return 0
+    end
+    card.caption:SetWidth(mini and inner or 250)
+    setText(card.caption, Card.Caption(overall, sum), STATE_TEXT[overall])
+    if not mini then card.catBtn:Show() end
+    if tracker.mode == "bar" then
+        local blue = STATE_COLOR.blue
+        if tracker.open > 0 then card.barBack:SetColorTexture(blue[1] * 0.3, blue[2] * 0.3, blue[3] * 0.3, 1) else card.barBack:SetColorTexture(0.25, 0.25, 0.25, 1) end
+        card.barBack:SetWidth(inner); card.barBack:SetAlpha(ta); card.barMode = true
+        card.barFill:Hide()
+        drawParts(card.barParts, tracker.parts, 12, ta)
+        if ta > 0 then card.barBack:Show() end
+        return 12
+    end
+    for i, seg in ipairs(tracker.segs) do
+        local s = card.segs[i]
+        if not s then
+            s = { back = card:CreateTexture(nil, "ARTWORK"), parts = {}, hit = CreateFrame("Frame", nil, card) }
+            s.hit:EnableMouse(true); s.hit:RegisterForDrag("LeftButton")
+            s.hit:SetScript("OnEnter", function(self) A.Tooltip(self, self.tip) end)
+            s.hit:SetScript("OnLeave", function() A.TooltipHide() end)
+            for _, ev in ipairs({ "OnDragStart", "OnDragStop" }) do
+                s.hit:SetScript(ev, function() local f = card:GetScript(ev); if f then f(card) end end)
+            end
+            card.segs[i] = s
+        end
+        s.back:ClearAllPoints(); s.back:SetPoint("TOPLEFT", 12 + seg.x, -26); s.back:SetSize(seg.w, 3)
+        -- The track behind the colored parts: a dim blue while steps are untested, grey when none are, and darker for a
+        -- category that is not picked.
+        local blue = STATE_COLOR.blue
+        if not seg.picked then s.back:SetColorTexture(0.2, 0.2, 0.2, 1)
+        elseif seg.open > 0 then s.back:SetColorTexture(blue[1] * 0.3, blue[2] * 0.3, blue[3] * 0.3, 1)
+        else s.back:SetColorTexture(0.25, 0.25, 0.25, 1) end
+        s.back:SetAlpha(ta)
+        drawParts(s.parts, seg.parts, 12 + seg.x, ta)
+        s.hit:ClearAllPoints(); s.hit:SetPoint("TOPLEFT", 12 + seg.x, -23); s.hit:SetSize(seg.w, 9)
+        s.hit.tip = seg.tip
+        s.hit:Show()
+        if ta > 0 then s.back:Show() end
+    end
+    return 12
+end
+
+-- The items for one category: add it, go to its first open step, or rerun it.
+function Card.CategoryItems(r)
+    local id, items = r.id, {}
+    if not r.picked then
+        items[#items + 1] = { L["Add to run: %s"]:format(r.title), function() local _, err = App.Select(id); if err then ns.Slash.Print(err) end; Card.Refresh() end }
+        return items
+    end
+    if r.counts.open > 0 then
+        items[#items + 1] = { L["Go to first open step: %s"]:format(r.title), function()
+            local kind, err = App.Trigger(id); if not kind then ns.Slash.Print(err) end; Card.Refresh() end }
+    end
+    if r.counts.resolved > 0 then
+        items[#items + 1] = { L["Rerun category: %s"]:format(r.title), function() Card.AskRerun(id) end }
+    end
+    return items
+end
+
+function Card.AskRerun(id)
+    local n, title = App.RerunCount(id)
+    if not n then ns.Slash.Print(title); return end
+    if n == 0 then ns.Slash.Print(L["Nothing to reopen in %s: no step has a result."]:format(title)); return end
+    Card.ConfirmRerun(id, n, title)
+end
+
+-- Ask first: a rerun reopens recorded results and takes them out of Undo. Earlier attempts stay in the export.
+function Card.ConfirmRerun(id, n, title)
+    local safe = tostring(title):gsub("%%", "%%%%") -- the dialog formats its text
+    local asked = App.Current()
+    local runId = asked and asked.runId
+    local shown = A.Confirm(L["Rerun %s? This reopens %d completed steps. Earlier attempts stay in the export."]:format(safe, n), function()
+        local now = App.Current()
+        if not (now and now.runId == runId) then ns.Slash.Print(L["The run on the card changed. Nothing was reopened."]); return end
+        local reopened, why = App.Rerun(id)
+        if reopened then ns.Slash.Print(L["Reopened %d steps in %s."]:format(reopened, ns.Slash.Esc(title))) else ns.Slash.Print(why) end
+        Card.Refresh()
+    end)
+    if not shown then ns.Slash.Print(L["The confirmation window is not available. The run stays as it is."]) end
+end
+
+local function makePick(i)
+    local p = {}
+    p.check = CreateFrame("CheckButton", nil, card, "UICheckButtonTemplate")
+    p.check:SetSize(24, 24)
+    p.check:SetScript("OnClick", function(self) App.SetPick(self.addon, self.cat, self:GetChecked() and true or false); Card.Refresh() end)
+    p.label = fs("GameFontHighlight", BODY, 300)
+    card.picks[i] = p
+    return p
+end
+
+local refreshCard
 function Card.Refresh()
+    refreshCard()
+    if ns.Tracker then ns.Tracker.Refresh() end
+end
+function refreshCard()
     if not card then return end
     if not card:IsShown() and card.secure and not A.InCombat() then card.secure:Hide() end
     local run, ctx, step = App.Current()
@@ -422,6 +617,34 @@ function Card.Refresh()
         y = 36 + card.title:GetStringHeight() + 8
         place(card.context, 12, y); setText(card.context, msg, BODY)
         y = y + card.context:GetStringHeight() + 12
+        card.start:SetEnabled(true)
+        local list = rec and App.Picks(pendingAddon or App.db.ui.lastImport) or {}
+        if #list > 1 and #list <= Card.MAX_SEGMENTS then
+            -- Choose what to run: one checkbox per category, all checked until the tester clears one.
+            local any = false
+            for i, ch in ipairs(list) do
+                local p = card.picks[i] or makePick(i)
+                p.check.addon, p.check.cat = pendingAddon or App.db.ui.lastImport, ch.id
+                p.check:SetChecked(ch.picked)
+                place(p.check, 10, y - 4); place(p.label, 38, y + 1)
+                p.check:Show()
+                setText(p.label, ch.steps == 1 and L["%s: 1 step"]:format(ch.title) or L["%s: %d steps"]:format(ch.title, ch.steps), BODY)
+                if ch.picked and ch.steps > 0 then any = true end
+                y = y + 24
+            end
+            if not any then
+                place(card.pickNote, 12, y + 2); setText(card.pickNote, L["Select at least one category."], AMBER)
+                y = y + card.pickNote:GetStringHeight() + 8
+                card.start:SetEnabled(false)
+            end
+        elseif #list > Card.MAX_SEGMENTS then
+            local any = false
+            for _, ch in ipairs(list) do if ch.picked and ch.steps > 0 then any = true end end
+            place(card.pickNote, 12, y)
+            setText(card.pickNote, any and L["This plan has more than 8 categories. Select them in Settings, Home."] or L["Select at least one category."], any and GREY or AMBER)
+            y = y + card.pickNote:GetStringHeight() + 8
+            card.start:SetEnabled(any)
+        end
         card.start:ClearAllPoints(); card.start:SetPoint("BOTTOMLEFT", 12, 12)
         card.importAgain:ClearAllPoints() -- the first visible button sits at the left edge
         if rec then card.importAgain:SetPoint("LEFT", card.start, "RIGHT", 6, 0) else card.importAgain:SetPoint("BOTTOMLEFT", 12, 12) end
@@ -432,21 +655,23 @@ function Card.Refresh()
     local total = #run.order
     local c = ns.Run.Counts(run)
     local resolved = total - (c.open or c.pending or 0)
-    card.barBack:Show(); card.barFill:Show()
-    card.barFill:SetWidth(math.max(1, inner * (total > 0 and resolved / total or 0)))
+    local rows, overall, sum = App.Categories()
+    card.drawn = true
+    local tracker = Card.Tracker(rows, overall, sum, inner)
+    local top = Card.DrawTracker(tracker, rows, overall, sum, inner, mini, resolved, total)
     if collapsed then
         card.step:SetText(("%d/%d"):format(step and run.current or (run.endedAt and resolved or total), total))
         local shownTitle = step and step.title or (run.endedAt and L["Run ended"] or L["Run complete"])
-        place(card.title, 12, 32); setText(card.title, shownTitle)
+        place(card.title, 12, 32 + top); setText(card.title, shownTitle)
         card.titleHit.full = shownTitle; card.titleHit:Show()
-        card:SetHeight(40 + math.min(card.title:GetStringHeight(), 36)); return
+        card:SetHeight(40 + top + math.min(card.title:GetStringHeight(), 36)); return
     end
     card.step:SetText(step and L["Step %d/%d"]:format(run.current, total) or ("%d/%d"):format(run.endedAt and resolved or total, total))
     if not step then
         -- Results and handoff. An ended run shows the same screen, with nothing to undo or step through.
         local ended = run.endedAt
-        place(card.title, 12, 36); setText(card.title, ended and L["Run ended"] or L["Run complete"])
-        local y = 36 + card.title:GetStringHeight() + 6
+        place(card.title, 12, 36 + top); setText(card.title, ended and L["Run ended"] or L["Run complete"])
+        local y = 36 + top + card.title:GetStringHeight() + 6
         place(card.tally, 12, y); setText(card.tally, L["%d passed   %d partial   %d failed   %d skipped"]:format(c.pass, c.partial, c.fail, c.skip), BODY)
         y = y + card.tally:GetStringHeight() + 8
         place(card.context, 12, y)
@@ -476,7 +701,7 @@ function Card.Refresh()
     end
     for _, v in ipairs(step.verify or {}) do if v == "reviewer" then hasExtra = true end end
     card.prevBtn:Show(); card.nextBtn:Show()
-    local y = 36
+    local y = 36 + top
     place(card.title, 12, y); setText(card.title, step.title)
     y = y + card.title:GetStringHeight() + 6
     -- Who checks this step: unmissable, right under the title.
@@ -607,6 +832,7 @@ function Card.ChecksText(items, reserve, left)
         if not label then
             if a.kind == "log-sequence" then label = L["Matching lines in the debug log, in order"]
             elseif a.kind == "state" then label = L["The game state matches"]
+            elseif a.kind == "fact" then label = L["A fact from the addon matches"]
             else label = L["A matching line in the debug log"] end
         end
         if it.state ~= "met" then allMet = false end
@@ -623,6 +849,7 @@ function Card.UpdateChecks()
     if not (card and card:IsShown() and card.checkStep) then return end
     local run, ctx, step = App.Current()
     if run and step and step.id == card.checkStep then
+        if ns.Errors then ns.Errors.Sample() end
         card.checks:SetText(Card.ChecksText(ns.Run.Preview(run, ctx, step.id), false, App.TimeLeft()))
     end
 end

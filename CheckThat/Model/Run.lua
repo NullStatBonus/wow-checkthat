@@ -5,6 +5,8 @@ ns.Run = Run
 
 -- partial: "mostly works". It is gated by evidence like pass and moves on like pass; the report lists it with its note.
 local VERDICTS = { pass = true, partial = true, fail = true, skip = true }
+-- A step the tester did not pick (deselected) or that is not for this client (inapplicable) has no place in the order.
+local OUT = { deselected = true, inapplicable = true }
 
 -- A short tag from the character name keeps run ids from two testers (two databases) apart.
 function Run.Tag(s)
@@ -13,22 +15,201 @@ function Run.Tag(s)
     return ("%04x"):format(h % 65536)
 end
 
--- ctx: { plan, client, build, character, now, env }
+-- ctx: { plan, client, build, character, now, env, selected }
+-- selected is a list of category ids to run, or nil for every category. Returns nil and a reason when no step is left.
 function Run.New(ctx)
     local steps, inapplicable = ns.Plan.Steps(ctx.plan, ctx.client)
+    local cats = ns.Plan.Categories(ctx.plan)
+    local picked = {}
+    if ctx.selected == nil then
+        for _, c in ipairs(cats) do picked[c.id] = true end
+    else
+        for _, id in ipairs(ctx.selected) do picked[id] = true end
+    end
     local run = {
         kind = "results", ct = 1,
         runId = ("%s-%d-%s"):format(ctx.plan.addon, ctx.now, Run.Tag(ctx.character)),
         revision = 0, addon = ctx.plan.addon, planDigest = ctx.planDigest, planTitle = ctx.plan.title,
         client = ctx.client, build = ctx.build, character = ctx.character,
         started = ctx.now, order = {}, steps = {}, current = 1,
+        categories = {}, cat = {}, selected = {},
     }
-    for i, e in ipairs(steps) do
-        run.order[i] = e.step.id
-        run.steps[e.step.id] = { attempts = {}, verdict = "pending" }
+    for _, c in ipairs(cats) do
+        run.categories[#run.categories + 1] = { id = c.id, title = c.title }
+        if picked[c.id] then run.selected[c.id] = true end
     end
-    for _, e in ipairs(inapplicable) do run.steps[e.step.id] = { attempts = {}, verdict = "inapplicable" } end
+    for _, e in ipairs(steps) do
+        run.cat[e.step.id] = e.category
+        if run.selected[e.category] then
+            run.order[#run.order + 1] = e.step.id
+            run.steps[e.step.id] = { attempts = {}, verdict = "pending" }
+        else
+            run.steps[e.step.id] = { attempts = {}, verdict = "deselected" }
+        end
+    end
+    for _, e in ipairs(inapplicable) do
+        run.cat[e.step.id] = e.category
+        run.steps[e.step.id] = { attempts = {}, verdict = "inapplicable" }
+    end
+    if #run.order == 0 then return nil, "no steps" end
     return run
+end
+
+-- A run saved before categories holds none: each section is a category and every one was picked.
+function Run.Normalize(run, plan, client)
+    if run.categories then return run end
+    local cats = ns.Plan.Categories(plan)
+    run.revision = (run.revision or 0) + 1 -- the content changes, so a copy collected before is not the same revision
+    run.categories, run.cat, run.selected = {}, {}, {}
+    for _, c in ipairs(cats) do
+        run.categories[#run.categories + 1] = { id = c.id, title = c.title }
+        run.selected[c.id] = true
+    end
+    local steps, skipped = ns.Plan.Steps(plan, client)
+    for _, e in ipairs(steps) do run.cat[e.step.id] = e.category end
+    for _, e in ipairs(skipped) do run.cat[e.step.id] = e.category end
+    return run
+end
+
+local function categoryOf(run, id)
+    for _, c in ipairs(run.categories or {}) do if c.id == id then return c end end
+end
+Run.CategoryOf = categoryOf
+
+-- Counts of the picked steps of one category.
+local function tally(run, id)
+    local c = { pass = 0, partial = 0, fail = 0, skip = 0, unverified = 0, pending = 0, total = 0 }
+    for sid, cat in pairs(run.cat or {}) do
+        local rec = run.steps[sid]
+        if cat == id and rec and not OUT[rec.verdict] then
+            c[rec.verdict] = (c[rec.verdict] or 0) + 1
+            c.total = c.total + 1
+        end
+    end
+    c.resolved = c.pass + c.partial + c.fail + c.skip
+    c.open = c.pending + c.unverified
+    return c
+end
+
+-- red: a step failed. yellow: a partial or unverified step. green: nothing open and one pass. blue: steps still
+-- untested (none run yet, or some run and some left). Else grey (only skips, or no steps).
+local function rule(c)
+    if c.fail > 0 then return "red" end
+    if c.partial > 0 or c.unverified > 0 then return "yellow" end
+    if c.open == 0 and c.pass > 0 then return "green" end
+    if c.open > 0 then return "blue" end
+    return "grey"
+end
+Run.Rule = rule
+
+-- State of one category: "red", "yellow", "green", "blue", "grey", or "off" when the tester did not pick it. And its counts.
+function Run.CategoryState(run, id)
+    local c = tally(run, id)
+    if not (run.selected and run.selected[id]) then return "off", c end
+    return rule(c), c
+end
+
+-- The same rule over every picked step.
+function Run.OverallState(run)
+    local sum = { pass = 0, partial = 0, fail = 0, skip = 0, unverified = 0, pending = 0, total = 0 }
+    for _, cat in ipairs(run.categories or {}) do
+        if run.selected and run.selected[cat.id] then
+            local c = tally(run, cat.id)
+            for k in pairs(sum) do sum[k] = sum[k] + c[k] end
+        end
+    end
+    sum.resolved = sum.pass + sum.partial + sum.fail + sum.skip
+    sum.open = sum.pending + sum.unverified
+    return rule(sum), sum
+end
+
+-- Rebuild the order of the picked steps in plan order. The viewed step stays viewed.
+local function reorder(run, ctx)
+    local viewing = run.order[run.current]
+    local wasEnd = run.current > #run.order
+    run.order = {}
+    for _, e in ipairs((ns.Plan.Steps(ctx.plan, ctx.client))) do
+        local rec = run.steps[e.step.id]
+        if rec and not OUT[rec.verdict] then run.order[#run.order + 1] = e.step.id end
+    end
+    local at = viewing and Run.IndexOf(run, viewing)
+    run.current = at or (wasEnd and Run.NextPending(run, 0)) or math.min(run.current, #run.order + 1)
+end
+
+-- Pick a category that was not picked. Returns true, or nil and a reason.
+function Run.Select(run, ctx, id)
+    if run.endedAt then return nil, "run ended" end
+    if not categoryOf(run, id) then return nil, "unknown category" end
+    if run.selected[id] then return false end
+    run.selected[id] = true
+    for sid, cat in pairs(run.cat) do
+        local rec = run.steps[sid]
+        if cat == id and rec.verdict == "deselected" then rec.verdict = "pending" end
+    end
+    reorder(run, ctx)
+    Run.Touch(run, ctx.now)
+    return true
+end
+
+local function isOpenId(run, sid)
+    local v = run.steps[sid] and run.steps[sid].verdict
+    return v == "pending" or v == "unverified"
+end
+
+-- Open a category (its first open step) or a step by id. A category that was not picked is picked first.
+-- Returns the kind ("category" or "step") and the step id now shown, or nil and a reason:
+-- "unknown", "done" (no open step), "not for this client", "run ended".
+function Run.Trigger(run, ctx, name)
+    if run.endedAt then return nil, "run ended" end
+    name = tostring(name or ""):lower()
+    local cat = categoryOf(run, name)
+    if cat and run.steps[name] then return nil, "ambiguous" end
+    if cat then
+        Run.Select(run, ctx, name)
+        for _, sid in ipairs(run.order) do
+            if run.cat[sid] == name and isOpenId(run, sid) then
+                run.current = Run.IndexOf(run, sid)
+                Run.Touch(run, ctx.now)
+                return "category", sid
+            end
+        end
+        return nil, "done"
+    end
+    local rec = run.steps[name]
+    if not rec then return nil, "unknown" end
+    if rec.verdict == "inapplicable" then return nil, "not for this client" end
+    if rec.verdict == "deselected" then Run.Select(run, ctx, run.cat[name]) end
+    run.current = Run.IndexOf(run, name)
+    Run.Touch(run, ctx.now)
+    return "step", name
+end
+
+-- Reopen the picked steps of a category as pending. Attempts stay. Returns how many steps reopened, or nil and a reason.
+function Run.Rerun(run, ctx, id)
+    if run.endedAt then return nil, "run ended" end
+    id = tostring(id or ""):lower()
+    if not categoryOf(run, id) then return nil, "unknown" end
+    if not run.selected[id] then return nil, "not picked" end
+    local n, first = 0, nil
+    for _, sid in ipairs(run.order) do
+        if run.cat[sid] == id then
+            first = first or sid
+            local rec = run.steps[sid]
+            if rec.verdict ~= "pending" then
+                rec.verdict, rec.evidence = "pending", nil
+                n = n + 1
+            end
+            -- A retry the card opened earlier holds old log positions and a start time: a fresh attempt starts instead.
+            local last = rec.attempts[#rec.attempts]
+            if last and not last.verdict then table.remove(rec.attempts) end
+        end
+    end
+    local keep = {}
+    for _, sid in ipairs(run.history or {}) do if run.cat[sid] ~= id then keep[#keep + 1] = sid end end
+    run.history = keep
+    if first then run.current = Run.IndexOf(run, first) end
+    Run.Touch(run, ctx.now)
+    return n
 end
 
 function Run.Touch(run, now) run.revision = run.revision + 1; run.updated = now end
@@ -50,7 +231,7 @@ function Run.Blocked(ctx, step)
             if op == nil then -- addon-loaded answers true or false, so "exists" would pass for an unloaded addon
                 if def.probe == "addon-loaded" then op, value = "eq", true else op = "exists" end
             end
-            local a = { kind = "state", probe = def.probe, name = def.name, path = def.path, op = op, value = value }
+            local a = { kind = "state", probe = def.probe, name = def.name, path = def.path, op = op, value = value, tolerance = def.tolerance }
             if ns.Evidence.CheckState(a, ctx.env) ~= "pass" then missing[#missing + 1] = def.text or r end
         end
     end
@@ -112,11 +293,17 @@ function Run.AutoSettle(run, ctx, id, note)
     if not (step and step.auto and rec) then return nil end
     local a = rec.attempts[#rec.attempts]
     if not a or a.verdict or a.noauto then return nil end
-    local allMet = true
+    local allMet, hasTimed, broke = true, false, false
     local items = ns.Evidence.Preview(step, a.snapshots, ctx.plan, ctx.env)
-    for _, it in ipairs(items) do if it.state ~= "met" then allMet = false end end
+    for _, it in ipairs(items) do
+        if it.timed then
+            hasTimed = true
+            if it.state == "bad" then broke = true end -- it can no longer hold: no reason to wait
+        elseif it.state ~= "met" then allMet = false end
+    end
     local due = step.timeout and (ctx.now - a.started) >= step.timeout
-    if due then return Run.Verdict(run, ctx, id, "pass", note, "auto") end
+    if due or broke then return Run.Verdict(run, ctx, id, "pass", note, "auto") end
+    if hasTimed then return nil end -- a check that something did not happen waits for the timeout
     -- A step that asks for a reload is not settled before the reload happened. The recording read must agree with the
     -- live read: a check that flipped in between is left for the next refresh, never recorded as a failure.
     local waitingReload = step.reload == "after_action" and not a.reloaded
@@ -225,7 +412,7 @@ function Run.UndoLast(run, ctx)
 end
 
 function Run.Counts(run)
-    local c = { pass = 0, partial = 0, fail = 0, skip = 0, unverified = 0, pending = 0, inapplicable = 0 }
+    local c = { pass = 0, partial = 0, fail = 0, skip = 0, unverified = 0, pending = 0, inapplicable = 0, deselected = 0 }
     for _, rec in pairs(run.steps) do c[rec.verdict] = (c[rec.verdict] or 0) + 1 end
     c.open = c.pending + c.unverified
     return c
