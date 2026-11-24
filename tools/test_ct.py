@@ -245,6 +245,17 @@ class LogCaps(unittest.TestCase):
         self.assertGreaterEqual(checked, 7)
 
 
+class NamedTools(unittest.TestCase):
+    """Player docs name only addons CheckThat works with (docs/contracts.md may record what a test machine had)."""
+    def test_docs_name_no_unrelated_tool(self):
+        import glob
+        files = [os.path.join(ROOT, "README.md")] + [p for p in glob.glob(os.path.join(ROOT, "docs", "*.md")) if not p.endswith("contracts.md")]
+        for path in files:
+            with open(path, encoding="utf-8") as f:
+                hit = re.search(r"wowunit|wowless|wowbench|bugsack|alluneve", f.read(), re.I)
+            self.assertIsNone(hit, f"{path} names {hit and hit.group(0)}")
+
+
 class PlanSkill(unittest.TestCase):
     SKILL = os.path.join(ROOT, "skills", "ct-test-plan")
 
