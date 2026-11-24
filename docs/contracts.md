@@ -11,6 +11,16 @@ What a client or another addon provides, as measured or source-reviewed. Add a r
 | ClosestVendor | `ClosestVendorCharDB.log.entries` is a list of `{ t, msg }`. It is per character. The log records only while `/cvn debug on` is set. With it on, `/cvn debug on` writes `debug log turned on`, and `/cvn test sell` and `/cvn test repair` write `test command: sell` and `test command: repair` (CheckThat `contains` assertions matched all three in game). `/cvn log clear` empties the list. | 2026-11-23 |
 | CheckThat | `CheckThatDB.global.log.entries` holds 300 lines. On Forever, the combat state driver `[combat] hide; show` shows the Run button again about five times a second out of combat, also after a script hides it. CheckThat now releases the driver while a step has no commands (not yet measured in game). | 2026-11-23 |
 
+## Public API of CheckThat
+
+What an addon that reports facts can rely on. It only grows: a released name, argument or line format does not change.
+
+| Name | Contract | Since |
+| --- | --- | --- |
+| `CheckThat.API_VERSION` | Number, 1. Rises only when something is added. | 0.9.0 |
+| `CheckThat.Report(addon, key, value)` | Returns true when it records `[addon] key=value`, false otherwise. Never raises. Records only while a run is open. Limits: addon 32, key 48, string value 120 characters, 30 facts per addon per second, 300 lines kept. | 0.9.0 |
+| `CheckThatDB.global.facts` | Array of the recorded lines, readable as a `strings` log. | 0.9.0 |
+
 ## Measured in game
 
 | Area | Fact | Checked |

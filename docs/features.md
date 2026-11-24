@@ -95,6 +95,24 @@ A plan step can set `auto: true`. It must verify by assertions only (no `player`
 
 Debug log: `step <id> <verdict> auto evidence <result>`. The report adds `auto=<count>` to the counts and marks the step.
 
+## Facts from other addons
+
+An addon under test can tell CheckThat what it did. CheckThat records the fact as one log line, and a plan checks it like any other log line.
+
+```lua
+if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "bagFull", true) end
+```
+
+- `CheckThat.Report(addon, key, value)` records `[addon] key=value` and returns true. It records nothing and returns false when no run is open or an argument is not valid. It never raises an error.
+- `addon` is 1 to 32 letters, digits, `_` or `-`. `key` is 1 to 48 of the same plus `.`. `value` is a string of up to 120 characters with no control characters, a finite number or a boolean. Tables and functions are refused.
+- One addon can record 30 facts a second. Facts over that are dropped. The list keeps the newest 300 lines.
+- `/ct fact` reports the fact `[CheckThat] selftest=1` through the same call. The self-test step "Report a fact" runs it with the Run button, so a plan can test the API with one click. With no run open it says so and records nothing.
+- `CheckThat.API_VERSION` is 1. Later versions only add to the API. A call that works now keeps working.
+- CheckThat keeps the lines in `CheckThatDB.global.facts`. A plan reads them as a log: `global: CheckThatDB`, `path: global.facts`, `format: strings`. See [Write a plan](authoring-plans.md#facts-from-the-addon-under-test).
+- A step counts only the facts reported after it opened. A fact is data and CheckThat never runs it.
+
+Debug log: `facts recorded <addon> <key>` and `facts dropped ...` with the reason. The report adds `Facts: <count>, last: <line>`.
+
 ## Long titles
 
 A title that does not fit stays inside the card and ends with "...". The minimized card shows it on one line and shows the whole title when you point at it. The expanded card allows two lines. A single word that is wider than the card is cut too.

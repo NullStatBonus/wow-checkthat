@@ -86,7 +86,7 @@ function H.plain(ns)
     assert(loadfile("CheckThat/Libs/LibDeflate/LibDeflate.lua"))()
     ns.LibDeflate = LibStub("LibDeflate")
     for _, m in ipairs({ "Locales/enUS", "Core/Init", "Core/Adapter", "Core/Defaults", "Model/Json", "Model/Codec", "Model/Plan",
-        "Model/Evidence", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
+        "Model/Evidence", "Model/Facts", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
         H.module(ns, m)
     end
 end

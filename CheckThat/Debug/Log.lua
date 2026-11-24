@@ -70,6 +70,7 @@ function Log.Report()
         for _ in pairs(ns.App.db.planStore) do plans = plans + 1 end
         local stored = ("Stored: %d runs (limit %d), %d plan copies"):format(runs, ns.App.RunLimit(), plans)
         out[#out + 1] = stored
+        if ns.Facts then out[#out + 1] = ("Facts: %d, last: %s"):format(ns.Facts.Count(), ns.Facts.Last() or "none") end
         ns.App.Log("report requested: " .. stored)
     end
     out[#out + 1] = ""

@@ -40,6 +40,10 @@ Judge each log assertion against `docs/debug-logging.md`.
 - A `reviewer` line names the partner files, the step IDs to compare and the relationship that must hold. A step ID is always paired with a file name.
 - Each role plan is compiled and validated. The import order is one role per character.
 
+## Facts
+- A step that asserts on a fact lists the `facts` log source (`global: CheckThatDB`, `path: global.facts`, `format: strings`) in the plan's `logs`.
+- The asserted line is `[addon] key=value`, the same text the addon's `CheckThat.Report` call produces. The plan notes which addon change adds the call until it ships.
+
 ## Shape and wording
 - One action and one expected result per step. A step with several actions or results exists only because the author asked for it, and carries `notes: Compound step, drafted on request.`
 - A sample plan has a handful of steps; a release plan has more.

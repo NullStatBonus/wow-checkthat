@@ -30,9 +30,9 @@ Ask **one question per turn** and wait for the answer. For each question say why
 8. **Evidence.** Align with the addon's own logging; do not require a CheckThat-style log. Ask these one at a time:
    - What is the debug-log SavedVariable name, its path inside it, and its format (`strings` or `entries`)? Check `LOGS` in `ct.py` and the addon source first, then confirm with the author.
    - Which behaviors already write a log line? Read the addon source for the lines. Do not invent lines.
-   - Which scope items write nothing? Those need a player check (see item 9).
+   - Which scope items write nothing? Those need a player check (see item 9). A result that is a value, or has no log line, can also become a fact: the addon calls `CheckThat.Report` and the plan asserts on a `facts` log source (see "Publish a fact" in `$CT/docs/debug-logging.md`). Offer it beside a new log line, and never write an assertion for a fact the addon does not report.
    - If the addon has no debug log at all, say so once and recommend adding one. Point to `$CT/docs/debug-logging.md` for the pattern and what a good line looks like. Ask: add one now, or draft with player checks? Either way, draft player checks, never invent log lines, and mark each step that would become a log assertion once the log exists (`notes: Becomes a log assertion once <addon> logs <event>.`).
-9. **Human eye.** For each changed behavior with no log line: can the author accept a player check, or should the addon gain a log line? List suggestions and let the author accept them all or decide one by one. What needs combat, a protected action, or a second client?
+9. **Human eye.** For each changed behavior with no log line: can the author accept a player check, or should the addon gain a log line or report a fact? List suggestions and let the author accept them all or decide one by one. What needs combat, a protected action, or a second client?
 10. **Reload and state.** Which steps need `/reload`? Which checks survive a reload and which are per attempt or per session? What setup and cleanup does each step need?
 11. **Return path.** Remind the author the result comes back by `/ct export`, then `/reload`, then `ct.py collect`, and then the `ct-verify` skill reads it back. The tool needs the WoW SavedVariables path; ask for it only if the author wants to harvest now. The tool reads `CT_WOW` (the game folder) from `$CT_ENV`, `.ct.env` or `~/.checkthat.env`, so ask for the path once and offer to write it there.
 
@@ -80,7 +80,7 @@ Re-run `validate` after changes, then run `compile <plan> -o <file>.ct` on every
 
 ## 5. Gaps
 
-For every step that has no log evidence, offer to open an issue in the addon's repository: `gh issue create`, with the gap, the code involved and a possible log line. If the addon has no debug log, offer one issue for the log facility (the pattern in `$CT/docs/debug-logging.md`) plus one issue per needed line, each naming the steps it unlocks. No personal names. Ask first; never open it unasked.
+For every step that has no log evidence, offer to open an issue in the addon's repository: `gh issue create`, with the gap, the code involved and a possible log line or fact (the guarded `CheckThat.Report` call and its key, from `$CT/docs/debug-logging.md`). If the addon has no debug log, offer one issue for the log facility (the pattern in `$CT/docs/debug-logging.md`) plus one issue per needed line, each naming the steps it unlocks. No personal names. Ask first; never open it unasked.
 
 ## Finish
 

@@ -54,6 +54,20 @@ A required assertion needs an unconditional line: the code path writes it every 
 
 Add a new addon's saved variable name, path and format to `LOGS` in `tools/ct.py` and to `docs/contracts.md`.
 
+## Publish a fact
+
+A result that is a value, or an event with no log line, can be published as a fact. CheckThat records it as one log line while a run is open, and a plan asserts on it.
+
+```lua
+if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "freeSlots", 3) end
+```
+
+- Keep the guard. The call must not break the addon when CheckThat is missing or old.
+- The addon name is the addon's own name. A key names the result in letters, digits, `_`, `.` or `-`, for example `bagFull` or `sell.count`. A value is a string (up to 120 characters), a number or a boolean.
+- Report once per result, where the code decides it. Do not report in a loop or an update handler: one addon can record 30 facts a second.
+- Prefer your own log line when the event already has one. A fact is for a value or a gap.
+- Add the source to the plan: `global: CheckThatDB`, `path: global.facts`, `format: strings`. Then assert `equals: '[KeepThat] freeSlots=3'`, or `contains` for a changing value. See [Write a plan](authoring-plans.md#facts-from-the-addon-under-test).
+
 ## Checklist for an addon author
 
 - [ ] Recording is off by default, with `debug on|off` and `log`.

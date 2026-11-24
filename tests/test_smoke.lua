@@ -13,6 +13,8 @@ test("smoke: enable, import, run, export and settings through the real addon", f
     addon:OnInitialize()
     addon:OnEnable()
     T.ok(addon.db.profile.card.scale == 100)
+    T.eq(type(_G.CheckThat), "table"); T.eq(_G.CheckThat.API_VERSION, 1)
+    T.eq(type(addon.db.global.facts), "table", "a save from before facts gets an empty list")
     local f = io.open("build/keepthat.ct"); local s = f:read("*a"); f:close()
     local plan, err = ns.App.ImportPlan(s)
     T.ok(plan, err)
@@ -20,12 +22,16 @@ test("smoke: enable, import, run, export and settings through the real addon", f
     T.ok(addon.db.global.plans.KeepThat, "plan saved in the global table")
     local lines = ns.Slash.Run("start KeepThat", { card = function() ns.Card.Show() end })
     T.ok(lines[1]:find("Started"), lines[1])
+    T.eq(_G.CheckThat.Report("KeepThat", "smoke", 1), true, "a fact is recorded while the run is open")
+    T.eq(addon.db.global.facts[#addon.db.global.facts], "[KeepThat] smoke=1")
     for _ = 1, 3 do ns.Card.Refresh(); ns.App.Verdict("skip") end
     ns.Card.Refresh()
     st.combat = true; ns.Card.Refresh(); ns.Card.ApplyAppearance(); st.combat = false
     ns.Card.MakeMacro()
     T.ok(ns.App.Export())
     T.ok(ns.Log.Report():find("CheckThat"))
+    T.ok(ns.App.End(ns.App.Current().runId))
+    T.eq(_G.CheckThat.Report("KeepThat", "late", 1), false, "no fact once the run ended")
     -- settings window tree validates against the real AceConfig registry
     local reg = LibStub("AceConfigRegistry-3.0")
     T.ok(pcall(reg.ValidateOptionsTable, reg, ns.Options.Build(), "CheckThat"), "options table is valid AceConfig")

@@ -106,11 +106,15 @@ When the target addon writes no debug log, the skill SHALL say so once, recommen
 - **THEN** each step that would gain a log assertion is marked, so the plan can be upgraded
 
 ### Requirement: Skill offers issues for missing log evidence
-For steps with no log evidence the skill SHALL offer to open issues in the addon's repository. When the addon has no debug log it SHALL offer one issue for the log facility plus one per needed line, naming the steps each unlocks. It SHALL ask first and SHALL NOT open an issue unasked.
+For steps with no log evidence the skill SHALL offer to open issues in the addon's repository. Each issue SHALL name a log line or a fact that the addon could publish with `CheckThat.Report`, the guarded call and its key, and the steps it unlocks. When the addon has no debug log it SHALL offer one issue for the log facility plus one per needed line or fact. It SHALL ask first and SHALL NOT open an issue unasked.
 
 #### Scenario: No log facility
 - **WHEN** the author accepts issues for an addon with no debug log
-- **THEN** the skill drafts one issue for the facility and one per needed line, each listing the steps it unlocks
+- **THEN** the skill drafts one issue for the facility and one per needed line or fact, each listing the steps it unlocks
+
+#### Scenario: A value with no log line
+- **WHEN** a step proves a value that the addon does not log
+- **THEN** the skill offers a fact beside a new log line, names the guarded `CheckThat.Report` call and key, and writes no assertion for a fact the addon does not yet report
 
 ### Requirement: A debug-logging guide ships with the skill
 The repository SHALL hold `docs/debug-logging.md`, which describes the shared debug-log pattern and what makes a line worth asserting on, with example lines from the sample addons. `make install-skill` SHALL install it in the bundle, and the skill SHALL read it when it judges evidence.

@@ -3,14 +3,18 @@ kind: plan
 addon: CheckThat
 title: CheckThat self-test
 preamble: Open the card with /ct. This plan checks the card, the copy boxes, the secure Run button, evidence
-  from the debug log, and reload resume.
+  from the debug log, a reported fact, and reload resume.
 handoff: Reload or log out so the game saves the run, then run the harvest script. The report should show
-  four steps and no unverified evidence.
+  five steps and no unverified evidence.
 logs:
   debug:
     global: CheckThatDB
     path: global.log.entries
     format: entries
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
 requirements:
   loaded:
     text: CheckThat is loaded
@@ -19,6 +23,8 @@ requirements:
 macros:
 - id: status
   text: /ct status
+- id: fact
+  text: /ct fact
 sections:
 - id: s1
   title: Card and evidence
@@ -70,6 +76,22 @@ sections:
       source: debug
       pattern: '^%[ct%] resumed run '
       label: Run resumed after the reload
+  - id: self.facts
+    title: Report a fact
+    action:
+      kind: secure-macro
+      macro: fact
+      text: Click Run on the card.
+    expect: Chat says the test fact was reported. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: log
+      source: facts
+      equals: '[CheckThat] selftest=1'
+      label: Fact reported through CheckThat.Report
   - id: self.export
     title: Export results
     action:
