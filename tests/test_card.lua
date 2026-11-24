@@ -520,6 +520,7 @@ end)
 
 test("a bound key records the same result as the button, only with a step on the card", function()
     local run, card = startCats(2)
+    _G.SlashCmdList["ACECONSOLE_CT"]("debug on")
     ns.Card.Refresh()
     T.eq(_G.BINDING_NAME_CHECKTHAT_FAIL, "Fail"); T.eq(type(_G.CheckThat_Key), "function")
     CheckThat_Key("pass")
@@ -527,6 +528,10 @@ test("a bound key records the same result as the button, only with a step on the
     card:Hide()
     CheckThat_Key("fail")
     T.eq(run.steps.s1b.verdict, "pending", "a hidden card records nothing")
+    local lines = {}
+    for _, e in ipairs(ns.Log.Entries()) do lines[#lines + 1] = e.msg end
+    local joined = table.concat(lines, "\n")
+    T.ok(joined:find("key pass", 1, true) and joined:find("key fail ignored: card not visible", 1, true), joined)
     card:Show(); ns.Card.Refresh()
     card.IsVisible = function() return false end -- the interface is hidden (Alt+Z): the card keeps its shown flag
     CheckThat_Key("fail")
@@ -537,6 +542,7 @@ test("a bound key records the same result as the button, only with a step on the
     CheckThat_Key("pass")
     T.eq(run.steps.s2a.verdict, "pending", "an ended run takes no key")
     run.endedAt = nil
+    _G.SlashCmdList["ACECONSOLE_CT"]("debug off")
 end)
 
 test("with more than eight categories all cleared, the card start screen turns Start run off", function()

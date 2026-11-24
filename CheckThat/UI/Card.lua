@@ -165,9 +165,11 @@ function Card.KeyVerdict(v)
     local btn = card and card[v]
     local function seen(f) return f and (f.IsVisible and f:IsVisible() or (not f.IsVisible and f:IsShown())) end -- hidden UI (Alt+Z) hides its children
     if not (card and seen(card) and seen(btn)) then
+        App.Log(("key %s ignored: card not visible"):format(v))
         ns.Slash.Print(L["Open the checklist and show a step to record a result with a key."])
         return
     end
+    App.Log(("key %s"):format(v)) -- before the verdict, so a step can check its own key press
     Card.Verdict(v)
 end
 _G.BINDING_HEADER_CHECKTHAT = "CheckThat"

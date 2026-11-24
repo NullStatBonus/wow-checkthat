@@ -22,6 +22,7 @@ The plan format is specified in `openspec/specs/test-plan-format/`. Rules for au
 - `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 14 steps (15 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`.
 - `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-0.16.yaml` tests Remove from run and the result keys on its own run, in forever-camelot only.
+- `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen.
 - `plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account. The owner leaves a run open. The viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill.
 
 ## First live run

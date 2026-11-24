@@ -160,6 +160,13 @@ sections:
     expect: The step records Pass and the card moves to the next step.
     verify:
     - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] key pass'
+      scope: attempt
+      label: The Pass key was pressed
   - id: ct16.key.partial
     category: keys
     title: Partial with the key
@@ -173,9 +180,9 @@ sections:
     assertions:
     - kind: log
       source: debug
-      equals: '[ct] step ct16.key.pass pass'
-      scope: session
-      label: The Pass key recorded the step before
+      equals: '[ct] key partial'
+      scope: attempt
+      label: The Partial key was pressed
   - id: ct16.key.skip
     category: keys
     title: Skip with the key
@@ -189,26 +196,25 @@ sections:
     assertions:
     - kind: log
       source: debug
-      equals: '[ct] step ct16.key.partial partial'
-      scope: session
-      label: The Partial key recorded the step before
+      equals: '[ct] key skip'
+      scope: attempt
+      label: The Skip key was pressed
   - id: ct16.key.hidden
     category: keys
     title: A key does nothing while the interface is hidden
     action:
       kind: manual
       text: Press |cffffd100Alt+Z|r to hide the interface. Press your Pass key. Press |cffffd100Alt+Z|r again. Then click |cffffd100Pass|r on the card.
-    expect: After the second Alt+Z the card still shows this step. The key did not record a result. Your click on Pass records this step.
+    expect: Nothing happens while the interface is hidden. That is the pass. After the second Alt+Z the card still shows this step, because the key recorded no result. Your click on Pass records this step.
     verify:
     - player
     - assertions
     assertions:
     - kind: log
       source: debug
-      contains: 'step ct16.key.hidden'
-      absent: true
+      equals: '[ct] key pass ignored: card not visible'
       scope: attempt
-      label: The key recorded nothing while the interface was hidden
+      label: The key was ignored while the interface was hidden
   - id: ct16.unbind
     category: keys
     title: Clear the keys
@@ -218,13 +224,6 @@ sections:
     expect: Pass, Partial, Fail and Skip show no key.
     verify:
     - player
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct16.key.skip skip'
-      scope: session
-      label: The Skip key recorded the step before
   - id: ct16.slash
     category: keys
     title: A result by slash command still works

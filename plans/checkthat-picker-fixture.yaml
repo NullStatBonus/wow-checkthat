@@ -1,0 +1,292 @@
+ct: 1
+kind: plan
+addon: ClosestVendor
+title: Picker fixture, 26 categories
+preamble: Do not run this plan. It only gives the card and Home a plan with many categories, so the category picker can be tested. Import it, look at the start screen, and do not press Start run unless a test step says so.
+sections:
+- id: cat1
+  title: Category 1
+  steps:
+  - id: fx.1
+    title: Fixture step 1
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat2
+  title: Category 2
+  steps:
+  - id: fx.2
+    title: Fixture step 2
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat3
+  title: Category 3
+  steps:
+  - id: fx.3
+    title: Fixture step 3
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat4
+  title: Category 4
+  steps:
+  - id: fx.4
+    title: Fixture step 4
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat5
+  title: Category 5
+  steps:
+  - id: fx.5
+    title: Fixture step 5
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat6
+  title: Category 6
+  steps:
+  - id: fx.6
+    title: Fixture step 6
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat7
+  title: Category 7
+  steps:
+  - id: fx.7
+    title: Fixture step 7
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat8
+  title: Category 8
+  steps:
+  - id: fx.8
+    title: Fixture step 8
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat9
+  title: Category 9
+  steps:
+  - id: fx.9
+    title: Fixture step 9
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat10
+  title: Category 10
+  steps:
+  - id: fx.10
+    title: Fixture step 10
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat11
+  title: Category 11
+  steps:
+  - id: fx.11
+    title: Fixture step 11
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat12
+  title: Category 12
+  steps:
+  - id: fx.12
+    title: Fixture step 12
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat13
+  title: Category 13
+  steps:
+  - id: fx.13
+    title: Fixture step 13
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat14
+  title: Category 14
+  steps:
+  - id: fx.14
+    title: Fixture step 14
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat15
+  title: Category 15
+  steps:
+  - id: fx.15
+    title: Fixture step 15
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat16
+  title: Category 16
+  steps:
+  - id: fx.16
+    title: Fixture step 16
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat17
+  title: Category 17
+  steps:
+  - id: fx.17
+    title: Fixture step 17
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat18
+  title: Category 18
+  steps:
+  - id: fx.18
+    title: Fixture step 18
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat19
+  title: Category 19
+  steps:
+  - id: fx.19
+    title: Fixture step 19
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat20
+  title: Category 20
+  steps:
+  - id: fx.20
+    title: Fixture step 20
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat21
+  title: Category 21
+  steps:
+  - id: fx.21
+    title: Fixture step 21
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat22
+  title: Category 22
+  steps:
+  - id: fx.22
+    title: Fixture step 22
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat23
+  title: Category 23
+  steps:
+  - id: fx.23
+    title: Fixture step 23
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat24
+  title: Category 24
+  steps:
+  - id: fx.24
+    title: Fixture step 24
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat25
+  title: Category 25
+  steps:
+  - id: fx.25
+    title: Fixture step 25
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player
+- id: cat26
+  title: Category 26
+  steps:
+  - id: fx.26
+    title: Fixture step 26
+    action:
+      kind: manual
+      text: Do nothing. This step only fills the category list.
+    expect: Nothing. This plan is not for testing.
+    verify:
+    - player

@@ -1,0 +1,104 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.16 Category picker for plans with many categories
+preamble: |-
+  This plan runs in forever-camelot. Import |cff99ccffbuild/checkthat-picker-fixture.ct|r with |cff99ccff/ct import|r before you start. It is a plan for ClosestVendor with 26 categories. It replaces your stored ClosestVendor plan until you import yours again. Do not press End run on this plan. Several steps show the fixture's start screen. Press |cffffd100Resume run|r on the card to come back to this plan.
+handoff: End the fixture run the last step starts, with |cff99ccff/ct end|r. Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves this run. Import your own ClosestVendor plan again.
+logs:
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s1
+  title: The category picker
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct16p.debug
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.". The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+  - id: ct16p.card
+    title: The start screen offers a button, not boxes
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct import|r and paste the fixture plan. Look at the card. Then press |cffffd100Resume run|r.
+      commands:
+      - /ct import
+    expect: 'The card shows "26 of 26 categories picked." and a Choose categories button. It shows no list of checkboxes. After Resume run it shows this step again.'
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: 'plan ClosestVendor digest'
+      scope: attempt
+      label: The fixture plan was imported
+  - id: ct16p.window
+    title: The picker pages and shares the choice
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct import|r and paste the fixture plan again. Press |cffffd100Choose categories|r. Press the |cffffd100>|r button. On the second page clear the box of |cffffd100Category 20|r. Then press |cffffd100Resume run|r.
+      commands:
+      - /ct import
+    expect: 'The window first lists 14 categories and says "Showing 1 to 14 of 26.". After > it lists Category 15 to Category 26, and > is dimmed. After you clear Category 20 the card says "25 of 26 categories picked.". The window closes when you press Resume run.'
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: 'plan ClosestVendor digest'
+      scope: attempt
+      label: The fixture plan was imported again
+  - id: ct16p.home
+    title: Home pages 24 categories at a time
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct settings home|r. Under |cffffd100Start a run|r pick the plan |cffffd100Picker fixture, 26 categories|r. Look at the list. Select |cffffd100Next page|r. Look again. Select |cffffd100Previous page|r, and tick the box of |cffffd100Category 20|r again.
+      commands:
+      - /ct settings home
+    expect: 'Home lists Category 1 to Category 24 and says "Showing 1 to 24 of 26.". Category 20 is cleared. Next page lists Category 25 and Category 26 only. After you tick Category 20 again, all 26 are ticked.'
+    verify:
+    - player
+  - id: ct16p.start
+    title: Start a run from the picker
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct import|r and paste the fixture plan. Press |cffffd100Choose categories|r and clear |cffffd100Category 3|r. Close the window and press |cffffd100Start run|r. Type |cff99ccff/ct tracker|r. Then open Home, select your run of this plan under |cffffd100Past runs|r, select |cffffd100Open run|r and |cffffd100Accept|r. Press |cffffd100Pass|r on the card.
+      commands:
+      - /ct import
+      - /ct tracker
+      - /ct settings home
+    expect: 'The picker closes when the run starts. The Categories window lists 26 rows, and Category 3 reads "not picked". The card shows this step again after Open run.'
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] run started ClosestVendor%-'
+      scope: attempt
+      label: A run of the fixture plan started

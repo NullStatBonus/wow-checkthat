@@ -144,7 +144,7 @@ Debug log: `facts recorded <addon> <key>` and `facts dropped ...` with the reaso
 
 ## Categories and the tracker
 
-Key bindings: Pass, Partial, Fail and Skip are in Key Bindings under AddOns, CheckThat. They record the same result as the card buttons, with the note typed on the card, and no key is set by default. A key does nothing, and says so in chat, when the card is hidden or shows no step with buttons. Keys never send a protected action.
+Key bindings: Pass, Partial, Fail and Skip are in Key Bindings under AddOns, CheckThat. They record the same result as the card buttons, with the note typed on the card, and no key is set by default. A key does nothing, and says so in chat, when the card is hidden or shows no step with buttons. Keys never send a protected action. With debug on, a key writes `[ct] key <result>` before it records, or `[ct] key <result> ignored: card not visible` when it does nothing.
 
 A plan groups its steps into categories. A plan that declares none uses each section as a category, so every plan has them.
 
