@@ -89,7 +89,7 @@ end
 function Adapter.Stack()
     local f = _G.debugstack
     if type(f) ~= "function" then return nil end
-    local ok, s = pcall(f, 4, 12, 0)
+    local ok, s = pcall(f, 4, 20, 0)
     return ok and type(s) == "string" and s or nil
 end
 -- Esc closes a named frame listed in UISpecialFrames. Registered once.

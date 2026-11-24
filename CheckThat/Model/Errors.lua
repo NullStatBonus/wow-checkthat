@@ -39,10 +39,21 @@ end
 -- A new step wants a stack again: only the first error of a step keeps one.
 function Errors.StepStarted() wantStack = true end
 
+-- Our own handler frames come first in a stack read inside the handler. Drop them (and the pcall frames between them),
+-- so the 600 characters hold the code that raised the error.
+local function ownFrames(text)
+    local out, leading = {}, true
+    for line in (text .. "\n"):gmatch("(.-)\n") do
+        if leading and (line:find("Model/Errors%.lua", 1) or line:find("^%[C%]: in function 'pcall'")) then -- skip
+        else leading = false; out[#out + 1] = line end
+    end
+    return table.concat(out, "\n")
+end
+
 -- stack is the call stack text, or a function that returns it (called only when this error keeps one).
 local function keepStack(sec, n, stack)
     if not (stacks and wantStack) then return end
-    if type(stack) == "function" then local ok, s = pcall(stack); stack = ok and s or nil end
+    if type(stack) == "function" then local ok, s = pcall(stack); stack = ok and type(s) == "string" and ownFrames(s) or nil end
     if type(stack) ~= "string" or stack == "" then return end
     wantStack = false
     stack = stack:gsub("%c+", " / "):sub(1, Errors.STACK)

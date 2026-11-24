@@ -144,7 +144,7 @@ Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categor
    Log: `[errors] another addon took the error handler: set ours again`, `[errors] handler current`, and `CheckThatDB.global.errors` ends with `[?] CheckThat self-test error`.
 9. **A stack for the first error of a step.** With BugGrabber disabled, open "Record a Lua error" and click Run. Play on for a minute.
    Check: the game does not slow down and shows no second error window.
-   Log: `CheckThatDB.global.errorStacks` holds one line for the step, cut to 600 characters, and `/ct log` shows `Last error stack:`. Measure on Era and on Forever: `debugstack` inside the handler is not measured yet.
+   Log: `CheckThatDB.global.errorStacks` holds one line for the step, cut to 600 characters, and `/ct log` shows `Last error stack:`. The first line of the stack names the code that raised the error, not `Errors.lua`. Forever is measured (no slowdown report yet); measure Era.
 10. **A failed step keeps its log lines.** Type `/ct run self.exact`. Click Run twice in a row.
     Check: the step records Fail (red) and the game stays responsive.
     Log: the failed attempt of `self.exact` in `CheckThatDB.global.runs` holds `excerpt` with the new fact lines (at most 20, each at most 200 characters), and `tools/ct.py report` prints them under the attempt.

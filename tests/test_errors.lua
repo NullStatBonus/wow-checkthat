@@ -343,4 +343,23 @@ test("blind says so only while a run is open and nothing records errors", functi
     _G.seterrorhandler = real
 end)
 
+test("the kept stack starts at the code that raised the error, not at our own handler frames", function()
+    local list, t = bind(); local stacks = {}
+    ns.Errors.Bind(list, function() return t.now end, function() return true end, nil, stacks)
+    local real = _G.debugstack
+    _G.debugstack = function()
+        return "[Interface/AddOns/CheckThat/Model/Errors.lua]:45: in function <x>\n[C]: in function 'pcall'\n"
+            .. "[Interface/AddOns/CheckThat/Model/Errors.lua]:83: in function <y>\n[C]: in function 'pcall'\n"
+            .. "[Interface/AddOns/KeepThat/Bags.lua]:12: in function 'Sort'\n[Interface/AddOns/CheckThat/Model/Errors.lua]:1: later"
+    end
+    ns.Errors.Record("boom", ns.Adapter.Stack)
+    T.ok(stacks[1]:find("%d+%.%d+ %[Interface/AddOns/KeepThat/Bags.lua%]:12", 1), stacks[1])
+    T.ok(stacks[1]:find("Errors.lua]:1: later", 1, true), "only the leading frames go")
+    -- a stack that BugGrabber kept is not ours to trim
+    ns.Errors.StepStarted()
+    ns.Errors.Record("bang", "[C]: in function 'pcall' / [x]:1")
+    T.ok(stacks[2]:find("%d+%.%d+ %[C%]: in function 'pcall'"), stacks[2])
+    _G.debugstack = real
+end)
+
 finish()
