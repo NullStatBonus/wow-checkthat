@@ -2,7 +2,7 @@
 
 ## Why
 
-Plans for KeepThat, DontDoThat and ClosestVendor declare no `cap`, so absence checks and exact counts on their debug logs can stay unverified when the last lines are alike (issue #76). No page says where CheckThat fits beside wowless and BugGrabber (issue #72).
+Plans for KeepThat, DontDoThat and ClosestVendor declare no `cap`, so absence checks and exact counts on their debug logs can stay unverified when the last lines are alike (issue #76). No page says which optional addons make CheckThat better (issue #72).
 
 ## What Changes
 

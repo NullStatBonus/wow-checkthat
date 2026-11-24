@@ -22,4 +22,4 @@ A plan that must show "no error from my addon" cannot tell whose error it saw (i
 ## Impact
 
 - Code: `Model/Errors.lua`, `Core/Adapter.lua` (`Adapter.Stack`), `Model/App.lua`, `UI/Card.lua`, `Debug/Log.lua`. Tests, docs, version 0.12.0.
-- BugGrabber and BugSack stay optional.
+- BugGrabber stays optional.

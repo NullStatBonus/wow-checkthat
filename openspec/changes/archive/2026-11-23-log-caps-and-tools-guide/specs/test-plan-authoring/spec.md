@@ -8,7 +8,7 @@ The sample and full plans for an addon whose debug log has a known bound SHALL d
 - **THEN** its `cap` equals the tool's value
 
 ### Requirement: A guide says which tool to use
-`docs/tools-guide.md` SHALL say what each of wowless, BugGrabber, BugSack and CheckThat does and cannot do, with the pages it is based on and the date they were read. It SHALL name the other addons as optional. CheckThat SHALL declare no required dependency.
+`docs/tools-guide.md` SHALL say what CheckThat does not do and which addons make it better, with the pages it is based on and the date they were read. It SHALL name only addons CheckThat works with, as optional. CheckThat SHALL declare no required dependency.
 
 #### Scenario: Optional addons
 - **WHEN** the TOC files are read

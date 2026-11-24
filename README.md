@@ -91,7 +91,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - [Collect evidence](docs/harvesting.md): `collect`, `report`, per-character data on Classic Era, and Windows.
 - [Plan skills](docs/skills.md): `ct-test-plan` and `ct-verify` for Claude Code, Codex and other agents, and the Claude Code plugin.
 - [Debug logging](docs/debug-logging.md): what a good addon debug log looks like.
-- [Which tool to use](docs/tools-guide.md): where CheckThat fits beside wowless, BugGrabber and BugSack. Other addons are optional extras.
+- [Which tool to use](docs/tools-guide.md): what CheckThat does not do, and the optional addons that make it better.
 - [Feature reference](docs/features.md): how each feature behaves, including the debug log lines.
 - [Manual test plan](docs/test-plan.md).
 
