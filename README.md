@@ -49,6 +49,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct back`, `/ct next` | Move to the previous or next step. The card has < and > buttons too. |
 | `/ct export` | Show the results string. |
 | `/ct macro` | Create a macro for the current step. |
+| `/ct fact` | Report a test fact during a run. The self-test uses it. |
 | `/ct reload` | Reload the interface so saved variables are written. |
 
 ## Settings

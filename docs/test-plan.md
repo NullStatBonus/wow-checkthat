@@ -107,12 +107,12 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: the results screen shows no Run button, before and after the fight.
    Log: none when the button stayed hidden; one `[ct] run button hidden: nothing to run on this screen` line for the screen if the game showed it and CheckThat hid it again.
 
-10. **A fact is recorded during a run.** Setup, in this order: type `/ct debug on`. Type `/ct import`, paste the contents of `build/selftest.ct`, press Import, then select Start run. Do the first three steps as the card says. On the "Report a fact" step, click the chat box, type `/run CheckThat.Report("CheckThat", "selftest", 1)` and press Enter.
-   Check: chat shows no new line, no error window appears, and the card records the step as passed by itself and moves to "Export results".
+10. **A fact is recorded during a run.** Setup, in this order: type `/ct debug on`. Type `/ct import`, paste the contents of `build/selftest.ct`, press Import, then select Start run. Do the first three steps as the card says. On the "Report a fact" step, click Run on the card.
+   Check: chat says "Reported the test fact." and the card records the step as passed by itself and moves to "Export results".
    Log: `[facts] recorded CheckThat selftest`, and `[ct] step self.facts pass auto evidence matched`. A `/ct log` report holds `Facts: 1, last: [CheckThat] selftest=1`.
-11. **No fact once the run has ended.** Setup: after check 10, click Run in the card header, choose End run and answer Yes. Then click the chat box, type `/run CheckThat.Report("Demo", "late", 1)` and press Enter.
-   Check: chat shows no new line and no error window appears.
-   Log: no `recorded Demo late` line. A new `/ct log` report still holds `Facts: 1, last: [CheckThat] selftest=1`.
+11. **No fact once the run has ended.** Setup: after check 10, click Run in the card header, choose End run and answer Yes. Then click the chat box, type `/ct fact` and press Enter.
+   Check: chat says "No run is open, so the test fact was not recorded."
+   Log: no second `recorded CheckThat selftest` line. A new `/ct log` report still holds `Facts: 1, last: [CheckThat] selftest=1`.
 
 ## 5. Plan skills (no game needed)
 

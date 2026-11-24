@@ -24,7 +24,7 @@ function Slash.Run(args, deps)
     local cmd, rest = (args or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     local App = ns.App
-    local noArgs = { import = true, export = true, macro = true, reload = true, undo = true, back = true, next = true, ["end"] = true }
+    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, undo = true, back = true, next = true, ["end"] = true }
     if noArgs[cmd] and rest ~= "" then return { L["Usage: /ct %s takes no arguments."]:format(cmd) } end
     if cmd == "" then deps.card(); return {}
     elseif cmd == "settings" then
@@ -48,7 +48,7 @@ function Slash.Run(args, deps)
         if topic == "appearance" then return {
             L["Keys: card.scale (50-200), card.background-opacity (0-100), card.text-opacity (0-100), card.locked (on or off)."],
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
-        elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required)."] }
+        elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run)."] }
         elseif topic == "runs" then return {
             L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
@@ -102,6 +102,11 @@ function Slash.Run(args, deps)
         deps.endRun()
         return {}
     elseif cmd == "export" then deps.export(); return {}
+    elseif cmd == "fact" then
+        local ok, why = ns.Facts.Report("CheckThat", "selftest", 1)
+        if ok then return { L["Reported the test fact."] } end
+        if why == "no run is open" then return { L["No run is open, so the test fact was not recorded."] } end
+        return { L["The test fact was not recorded."] }
     elseif cmd == "macro" then deps.macro(); return {}
     elseif cmd == "reload" then deps.reload(); return {}
     end

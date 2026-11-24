@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1
+
+New: **/ct fact** reports a test fact while a run is open. The self-test now uses it with the Run button.
+
 ## 0.9.0
 
 New: **Facts from other addons.** An addon under test can report a fact while you run a plan.

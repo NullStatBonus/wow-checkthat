@@ -27,8 +27,12 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     local a = App.AutoSettle()
     T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched"); T.eq(a.by, "auto")
     -- facts step: waits until the player types the /run line, then passes by itself
+    local _, fctx, fstep = App.Current()
+    T.eq(fstep.id, "self.facts"); T.eq(fstep.action.kind, "secure-macro")
+    local body; for _, m in ipairs(fctx.plan.macros) do if m.id == fstep.action.macro then body = m.text end end
+    T.eq(body, "/ct fact", "the Run button runs the fact command")
     App.Begin(); T.eq(App.AutoSettle(), nil, "waits for the fact")
-    ns.Facts.Report("CheckThat", "selftest", 1)  -- the player types /run CheckThat.Report("CheckThat", "selftest", 1)
+    T.eq(ns.Slash.Run("fact", {})[1], "Reported the test fact.")  -- the player clicks Run, which runs /ct fact
     local f = App.AutoSettle()
     T.eq(f.verdict, "pass"); T.eq(f.evidence, "matched"); T.eq(f.by, "auto")
     App.Begin(); T.eq(App.Verdict("pass").verdict, "pass")

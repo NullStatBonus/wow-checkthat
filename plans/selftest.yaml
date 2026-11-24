@@ -23,6 +23,8 @@ requirements:
 macros:
 - id: status
   text: /ct status
+- id: fact
+  text: /ct fact
 sections:
 - id: s1
   title: Card and evidence
@@ -77,9 +79,10 @@ sections:
   - id: self.facts
     title: Report a fact
     action:
-      kind: manual
-      text: 'Click the chat box, type |cffffd100/run CheckThat.Report("CheckThat", "selftest", 1)|r and press Enter.'
-    expect: Chat shows nothing new. The card records the result by itself.
+      kind: secure-macro
+      macro: fact
+      text: Click Run on the card.
+    expect: Chat says the test fact was reported. The card records the result by itself.
     verify:
     - assertions
     auto: true
