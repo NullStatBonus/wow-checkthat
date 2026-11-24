@@ -172,6 +172,59 @@ class Logic(unittest.TestCase):
         self.assertEqual(code, 2); self.assertIn("needs a terminal", err.getvalue()); self.assertIn("status --dest", err.getvalue()); self.assertIn("report --failed-only", err.getvalue())
 
 
+@unittest.skipUnless(HAVE_TEXTUAL, "Textual (and Rich) is not installed")
+class Views(unittest.TestCase):
+    def setUp(self):
+        self.d = make_dest(); self.addCleanup(shutil.rmtree, self.d)
+        self.runs = ct.latest_runs(self.d)
+
+    def test_runs_count_once_and_show_done_over_eligible(self):
+        rows = ct_tui.run_rows(self.runs, 4000)
+        bad = rows[0]
+        self.assertEqual((bad["resolved"], bad["eligible"]), (3, 4))   # pass and fail count; unverified does not
+        self.assertEqual(ct_tui.run_summary(rows), {"runs": 3, "failing": 1, "unverified": 1, "no_flags": 1})
+        both = dict(bad, unverified=5)
+        self.assertEqual(ct_tui.run_summary([both]), {"runs": 1, "failing": 1, "unverified": 0, "no_flags": 0})   # fail wins, once
+
+    def test_run_cells_use_words_and_marks_and_a_dash_for_no_eligible_steps(self):
+        rows = {r["id"]: r for r in ct_tui.run_rows(self.runs, 4000)}
+        plain = lambda row, wide: [c.plain for c in ct_tui.run_cells(row, wide)]
+        self.assertEqual(plain(rows["R-bad"], False), ["✗ FAIL", "R-bad", "3/4"])
+        self.assertEqual(plain(rows["R-un"], False)[0], "? UNVER"); self.assertEqual(plain(rows["R-ok"], False)[0], "—")
+        self.assertEqual(plain(rows["R-bad"], True), ["✗ FAIL", "R-bad", "plan R-bad", "2", "3/4", "2", "1", plain(rows["R-bad"], True)[7]])
+        self.assertEqual(plain(dict(rows["R-ok"], eligible=0, resolved=0), False)[2], "—")
+        self.assertEqual(len(ct_tui.RUN_COLUMNS[False]), 3); self.assertEqual(len(ct_tui.RUN_COLUMNS[True]), 8)
+
+    def test_runs_header_counts_and_caps_the_problem_to_one_line(self):
+        rows = ct_tui.run_rows(self.runs, 4000)
+        text = ct_tui.render_plain(ct_tui.runs_header(rows, ["a", "b"], False), 60)
+        self.assertIn("3 runs · 1 fail · 1 unver · 1 no flag", text); self.assertIn("⚠ 2 problems: a", text); self.assertNotIn("b\n", text)
+        self.assertIn("1 no flags", ct_tui.render_plain(ct_tui.runs_header(rows, []), 80))
+
+    def test_step_cells_carry_the_result_in_words_and_marks(self):
+        steps = {s["id"]: s for s in ct_tui.step_rows("R-bad", self.runs["R-bad"])[0]}
+        self.assertEqual([c.plain for c in ct_tui.step_cells(steps["a"], False)], ["✗ fail", "a"])
+        self.assertEqual([c.plain for c in ct_tui.step_cells(steps["b"], True)], ["? unverified", "b", "c1", "no evidence"])
+        self.assertEqual(ct_tui.step_cells(steps["c"], False)[0].plain, "✓ pass")
+
+    def test_a_category_chip_follows_the_evidence_not_the_players_pass(self):
+        rec = {"verdict": "pass", "attempts": [at(1, "pass", outcomes=[{"result": "fail", "why": "line seen"}])]}
+        r = run("R-x", {"a": rec}, 1)
+        self.assertEqual(ct_tui.category_chips("R-x", r)[0][:2], ("c1", "red"))   # the tracker would say green
+        self.assertEqual(ct_tui.category_chips("R-x", r)[1][1], "grey")             # c2 has no steps in this run
+        r["selected"]["c2"] = False
+        self.assertEqual(ct_tui.category_chips("R-x", r)[1][1], "off")
+
+    def test_steps_header_narrow_and_wide(self):
+        r = self.runs["R-bad"]
+        narrow = ct_tui.render_plain(ct_tui.steps_header("R-bad", r, "fail", None, 2, 4, False), 40)
+        self.assertIn(" FAIL ", narrow); self.assertIn("R-bad  2✗ 1? 1✓", narrow); self.assertIn("f: fail   /: all categories   2/4", narrow)
+        self.assertNotIn("c1", narrow)   # no chip wall at 40 columns
+        wide = ct_tui.render_plain(ct_tui.steps_header("R-bad", r, "fail", "c2", 1, 4, True), 100)
+        self.assertIn("✗ c1 2/3", wide); self.assertIn("✗ c2 1/1", wide); self.assertIn("category  c2", wide); self.assertIn("1/4", wide)
+        self.assertIn("No matching steps", ct_tui.render_plain(ct_tui.steps_header("R-bad", r, "fail", "c2", 0, 4, True), 100))
+
+
 @unittest.skipUnless(HAVE_TEXTUAL, "Textual is not installed")
 class Screens(unittest.TestCase):
     def setUp(self):
@@ -268,6 +321,31 @@ class Screens(unittest.TestCase):
             await pilot.press("left_square_bracket"); await pilot.pause()
             self.assertIn("attempt 1 of 3", body()); self.assertIn("one", body())
         self.drive(script)
+
+    def test_a_narrow_terminal_shows_triage_columns_and_a_wide_one_brings_the_rest_back(self):
+        with open(os.path.join(self.d, "runs", "R-bad", "r3.json"), "w") as fh:
+            fh.write("{broken, and a very long problem line follows so that it would wrap at forty columns if it were allowed to")   # a problem to show
+        async def script(app, pilot):
+            await pilot.press("r"); await pilot.pause()
+            t = self.table(app)
+            self.assertIn("red", str(t.get_row("R-bad")[0].style))   # the styles reach the table
+            self.assertEqual(app.screen.query_one("#note").size.height, 2)   # summary and one problem line, nothing wrapped
+            self.assertEqual([str(c.label) for c in t.columns.values()], list(ct_tui.RUN_COLUMNS[False]))
+            row = [c.plain for c in t.get_row("R-bad")]
+            self.assertEqual(row, ["✗ FAIL", "R-bad", "3/4"])
+            await pilot.resize_terminal(100, 30); await pilot.pause()
+            t = self.table(app)
+            self.assertEqual([str(c.label) for c in t.columns.values()], list(ct_tui.RUN_COLUMNS[True]))
+            self.assertEqual(t.row_count, 3)
+            await pilot.press("enter"); await pilot.pause()
+            self.assertEqual([str(c.label) for c in self.table(app).columns.values()], list(ct_tui.STEP_COLUMNS[True]))
+            await pilot.resize_terminal(40, 12); await pilot.pause()
+            t = self.table(app)
+            self.assertEqual([str(c.label) for c in t.columns.values()], list(ct_tui.STEP_COLUMNS[False]))
+            self.assertEqual([c.plain for c in t.get_row("a")], ["✗ fail", "a"])
+            await pilot.press("f", "f", "f"); await pilot.pause()
+            self.assertIn("f: all", ct_tui.render_plain(app.screen.shown, 40))
+        self.drive(script, size=(40, 12))
 
     def test_a_narrow_terminal_still_works(self):
         async def script(app, pilot):

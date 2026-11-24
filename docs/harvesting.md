@@ -36,11 +36,11 @@ The viewer only reads. Collect in a shell, as before. The screen reloads when th
 
 | Screen | Shows | Keys |
 | --- | --- | --- |
-| Runs | run, plan, revision, fail and unverified counts, age. Failures first, then unverified, newest first. A line above says how many problems `status` finds. | Enter opens a run |
-| Steps | step, category, result, reason, in plan order. The line above shows the filter and how many of the steps show. | `f` cycles all, fail, unverified. `/` cycles the categories. Enter opens a step. Esc goes back. |
+| Runs | A strip counts the runs: failing, unverified and no flags (each run counts once, fail first), and shows the first problem `status` finds. Each row has a result word and mark (`✗ FAIL`, `? UNVER`, or `—` for no flags), the run id and steps done over steps that apply. From 76 columns it adds plan, revision, fail and unverified counts and age. Failures first, then unverified, newest first. | Enter opens a run |
+| Steps | A header with the run result and counts, and the filter. From 76 columns it adds a chip for each category (`✗` red, `?` yellow, `✓` green, `…` still open, `·` empty, `–` not picked) with steps done over total. A chip follows the evidence, so an overturned pass makes it red. Each row has a result word and mark and the step id. From 76 columns it adds category and reason. A filter with no match says "No matching steps". | `f` cycles all, fail, unverified. `/` cycles the categories. Enter opens a step. Esc goes back. |
 | Step | A colored banner with the result (red fail, yellow unverified, green pass) and the player's verdict. It warns when the evidence overrules a pass. Below it an attempt strip (the shown attempt is filled, an open one is hollow) and one attempt: its facts, the note, a table of required and diagnostic checks, the log lines kept with line numbers, and each error raised while it was open with its stack, frame by frame. | `[` and `]` move between attempts. Esc goes back. |
 
-Everywhere: `e` shows what an export will write (scope, format, file, stacks) and writes it on Enter. `c` shows the collect command. `?` shows the keys. `q` quits. Evidence shows as plain text. Stacks stay out of a JSON or JUnit export until you press `s`, because they can hold private paths.
+Everywhere: `e` shows what an export will write (scope, format, file, stacks) and writes it on Enter. `c` shows the collect command. `?` shows the keys. `q` quits. Marks and words carry every state, so nothing depends on color. `NO_COLOR` turns color off. Evidence shows as plain text. Stacks stay out of a JSON or JUnit export until you press `s`, because they can hold private paths.
 
 ## Local paths
 

@@ -18,11 +18,14 @@ def run_rows(runs, now=None):
     now = time.time() if now is None else now
     rows = []
     for rid, r in runs.items():
-        c = ct.run_model(rid, r)["counts"]
+        m = ct.run_model(rid, r)
+        c = m["counts"]
+        eligible = [s for s in m["steps"] if s["verdict"] not in ("deselected", "inapplicable")]   # the rule status_data uses
+        resolved = sum(1 for s in eligible if s["verdict"] in ("pass", "partial", "fail", "skip"))
         stamp = r.get("updated") or r.get("started")
         stamp = stamp if isinstance(stamp, (int, float)) else 0
         rows.append({"id": rid, "plan": str(r.get("planTitle") or r.get("addon") or ""), "rev": r.get("revision"),
-                     "fail": c.get("fail", 0), "unverified": c.get("unverified", 0), "stamp": stamp,
+                     "fail": c.get("fail", 0), "unverified": c.get("unverified", 0), "stamp": stamp, "resolved": resolved, "eligible": len(eligible),
                      "age": ct.age(now - stamp) if stamp else "?"})
     rows.sort(key=lambda x: (0 if x["fail"] else 1 if x["unverified"] else 2, -x["stamp"], x["id"]))
     return rows
@@ -198,6 +201,114 @@ def render_plain(renderable, width=100):
     return c.export_text()
 
 
+WIDE = 76   # columns from which the extra columns come back; below it a screen shows only what triage needs
+RESULT_MARKS = {"fail": "✗", "unverified": "?", "pass": "✓", "partial": "~", "skipped": "·"}
+CATEGORY_MARKS = {"red": "✗", "yellow": "?", "green": "✓", "blue": "…", "grey": "·", "off": "–"}
+CATEGORY_COLORS = {"red": "red", "yellow": "yellow", "green": "green", "blue": "blue", "grey": "grey62", "off": "grey42"}
+RUN_COLUMNS = {False: ("result", "run", "done"), True: ("result", "run", "plan", "rev", "done", "fail", "unver", "age")}
+STEP_COLUMNS = {False: ("result", "step"), True: ("result", "step", "category", "reason")}
+
+
+def run_state(row):
+    """fail, unverified or None. A run counts once, and fail wins."""
+    return "fail" if row["fail"] else "unverified" if row["unverified"] else None
+
+
+def run_summary(rows):
+    states = [run_state(r) for r in rows]
+    return {"runs": len(rows), "failing": states.count("fail"), "unverified": states.count("unverified"), "no_flags": states.count(None)}
+
+
+def run_cells(row, wide):
+    """The cells of one runs-table row as styled Text. The words and marks carry the meaning; color only helps."""
+    from rich.text import Text
+    st = run_state(row)
+    badge = Text({"fail": "✗ FAIL", "unverified": "? UNVER", None: "—"}[st], style=("bold " + COLORS[st]) if st else "dim")
+    done = Text("%d/%d" % (row["resolved"], row["eligible"]) if row["eligible"] else "—")
+    rid = Text(str(row["id"]), style="bold" if st else "")
+    if not wide:
+        return [badge, rid, done]
+    return [badge, rid, Text(row["plan"], style="dim"), Text(str(row["rev"]), style="dim"), done,
+            Text(str(row["fail"]), style="bold red" if row["fail"] else "dim"), Text(str(row["unverified"]), style="bold yellow" if row["unverified"] else "dim"),
+            Text(row["age"], style="dim")]
+
+
+def runs_header(rows, problems, wide=True):
+    """The line above the runs table: counts of runs by state, and one line for the problems (the first one, with a count).
+    The app's CSS keeps each line to one row and ends a long one with an ellipsis."""
+    from rich.text import Text
+    s = run_summary(rows)
+    t = Text("%d run%s" % (s["runs"], "" if s["runs"] == 1 else "s"), style="bold")
+    labels = (("failing", "unverified", "no flags") if wide else ("fail", "unver", "no flag"))
+    for label, n, style in zip(labels, (s["failing"], s["unverified"], s["no_flags"]), ("bold red", "bold yellow", "green")):
+        t.append(" · " if not wide else "  ·  ", style="dim")
+        t.append("%d %s" % (n, label), style=style if n else "dim")
+    if problems:
+        t.append("\n⚠ %d problem%s: %s" % (len(problems), "" if len(problems) == 1 else "s", problems[0]), style="yellow")
+    return t
+
+
+def step_cells(step, wide):
+    from rich.text import Text
+    st = step["result"]
+    col = COLORS.get(st, "white")
+    bad = st in ("fail", "unverified")
+    result = Text("%s %s" % (RESULT_MARKS.get(st, "·"), st), style=("bold " if bad else "") + col)
+    sid = Text(str(step["id"]), style="bold" if bad else "")
+    if not wide:
+        return [result, sid]
+    return [result, sid, Text(str(step["category"] or ""), style="dim"), Text(str(step["reason"]))]
+
+
+def category_chips(rid, r):
+    """[(category id, state, resolved, total)]: the tracker's rule, but fed with the evidence-based result of a step
+    (a pass the evidence overturned counts as fail), so a green chip never sits over a red step."""
+    steps = ct.run_model(rid, r)["steps"]
+    out = []
+    for c in r.get("categories") or []:
+        cid = c.get("id")
+        counts = {}
+        for s in steps:
+            if s["category"] != cid or s["verdict"] in ("deselected", "inapplicable", None):
+                continue
+            key = s["result"] if s["result"] in ("fail", "unverified") else s["verdict"]
+            counts[key] = counts.get(key, 0) + 1
+        out.append((cid, ct.category_rule(counts) if (r.get("selected") or {}).get(cid) else "off",
+                    sum(counts.get(k, 0) for k in ("pass", "partial", "fail", "skip")), sum(counts.values())))
+    return out
+
+
+def steps_header(rid, r, flt, cat, shown, total, wide):
+    """Run result and counts, category chips (wide only), and the filter line."""
+    from rich.text import Text
+    m = ct.run_model(rid, r)
+    c = m["counts"]
+    st = "fail" if c.get("fail") else "unverified" if c.get("unverified") else None
+    t = Text()
+    t.append(" %s " % {"fail": "FAIL", "unverified": "UNVERIFIED", None: "no flags"}[st], style=("bold black on " + COLORS[st]) if st else "green")
+    t.append("  " + rid, style="bold")
+    n_fail, n_unver, n_pass = c.get("fail", 0), c.get("unverified", 0), c.get("pass", 0) + c.get("partial", 0)
+    t.append(("   %d fail  %d unverified  %d pass" % (n_fail, n_unver, n_pass)) if wide else ("  %d✗ %d? %d✓" % (n_fail, n_unver, n_pass)), style="dim")
+    if wide:
+        chips = category_chips(rid, r)
+        if chips:
+            t.append("\n")
+            for cid, state, res, tot in chips:
+                t.append("%s %s %d/%d" % (CATEGORY_MARKS[state], cid, res, tot), style=CATEGORY_COLORS[state] + (" underline" if cid == cat else ""))
+                t.append("   ")
+        t.append("\nfilter  ", style="dim")
+        for f in FILTERS:
+            t.append(" %s " % f, style="bold reverse" if f == flt else "dim")
+            t.append(" ")
+        t.append("  category  %s" % (cat or "all"), style="dim")
+    else:
+        t.append("\nf: %s   /: %s" % (flt, cat or "all categories"), style="dim")
+    t.append("   %d/%d" % (shown, total), style="bold")
+    if not shown:
+        t.append("\nNo matching steps", style="yellow")
+    return t
+
+
 EXPORTS = {"md": ("REPORT.md", "Markdown"), "json": ("REPORT.json", "JSON"), "junit": ("REPORT.xml", "JUnit XML")}
 
 
@@ -290,7 +401,7 @@ def make_app(store, interval=2.0):
     def fill(table, rows, keep):
         table.clear()
         for key, cells in rows:
-            table.add_row(*[Text(str(c)) for c in cells], key=key)   # Text: evidence is not markup
+            table.add_row(*[c if isinstance(c, Text) else Text(str(c)) for c in cells], key=key)   # Text: evidence is not markup
         if keep is not None:
             try:
                 table.move_cursor(row=table.get_row_index(keep))
@@ -303,7 +414,27 @@ def make_app(store, interval=2.0):
         def action_back(self):
             self.app.pop_screen()
 
-    class RunsScreen(Screen):
+    class Wide:
+        """Both table screens switch columns when the terminal crosses WIDE."""
+        wide = None
+
+        def sync_columns(self, columns):
+            wide = self.app.size.width >= WIDE
+            if wide == self.wide:
+                return False
+            self.wide = wide
+            t = self.query_one(DataTable)
+            t.clear(columns=True)
+            t.add_columns(*columns[wide])
+            return True
+
+        def on_resize(self, event):
+            if self.is_mounted and self.sync_columns(self.COLUMNS):
+                self.refill()
+
+    class RunsScreen(Wide, Screen):
+        COLUMNS = RUN_COLUMNS
+
         def compose(self):
             yield Header()
             yield Static("", id="note", markup=False)
@@ -311,20 +442,20 @@ def make_app(store, interval=2.0):
             yield Footer()
 
         def on_mount(self):
-            self.query_one(DataTable).add_columns("run", "plan", "rev", "fail", "unver", "age")
+            self.sync_columns(self.COLUMNS)
             self.refill()
             self.query_one(DataTable).focus()
 
         def refill(self):
             t = self.query_one(DataTable)
-            fill(t, [(r["id"], (r["id"], r["plan"], str(r["rev"]), str(r["fail"]), str(r["unverified"]), r["age"])) for r in self.app.store.rows], cursor_key(t))
-            p = self.app.store.problems
-            self.query_one("#note", Static).update(("%d problem%s: %s" % (len(p), "" if len(p) == 1 else "s", p[0])) if p else "%d run%s, no problems" % (len(self.app.store.rows), "" if len(self.app.store.rows) == 1 else "s"))
+            fill(t, [(r["id"], run_cells(r, self.wide)) for r in self.app.store.rows], cursor_key(t))
+            self.query_one("#note", Static).update(runs_header(self.app.store.rows, self.app.store.problems, self.wide))
 
         def on_data_table_row_selected(self, ev):
             self.app.push_screen(StepsScreen(ev.row_key.value))
 
-    class StepsScreen(Back):
+    class StepsScreen(Wide, Back):
+        COLUMNS = STEP_COLUMNS
         BINDINGS = [Binding("f", "filter", "Filter"), Binding("slash", "category", "Category")]
 
         def __init__(self, rid):
@@ -338,7 +469,7 @@ def make_app(store, interval=2.0):
             yield Footer()
 
         def on_mount(self):
-            self.query_one(DataTable).add_columns("step", "category", "result", "reason")
+            self.sync_columns(self.COLUMNS)
             self.refill()
             self.query_one(DataTable).focus()
 
@@ -348,8 +479,9 @@ def make_app(store, interval=2.0):
                 return   # the app drops this screen
             rows, total = step_rows(self.rid, r, FILTERS[self.flt], self.cat)
             t = self.query_one(DataTable)
-            fill(t, [(s["id"], (s["id"], str(s["category"] or ""), s["result"], s["reason"])) for s in rows], cursor_key(t))
-            self.query_one("#note", Static).update("%s   filter: %s   category: %s   showing %d of %d" % (self.rid, FILTERS[self.flt], self.cat or "all", len(rows), total))
+            fill(t, [(s["id"], step_cells(s, self.wide)) for s in rows], cursor_key(t))
+            self.shown = steps_header(self.rid, r, FILTERS[self.flt], self.cat, len(rows), total, self.wide)
+            self.query_one("#note", Static).update(self.shown)
 
         def action_filter(self):
             self.flt = (self.flt + 1) % len(FILTERS)
@@ -449,6 +581,7 @@ def make_app(store, interval=2.0):
 
     class CtApp(App):
         TITLE = "CheckThat evidence"
+        CSS = "#note { height: auto; text-wrap: nowrap; text-overflow: ellipsis; padding: 0 1; }"
         BINDINGS = [Binding("q", "quit", "Quit"), Binding("r", "reload", "Reload"), Binding("question_mark", "help", "Help"),
                     Binding("c", "collect", "Collect"), Binding("e", "export", "Export")]
 
