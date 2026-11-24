@@ -144,7 +144,7 @@ Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categor
    Log: `[errors] another addon took the error handler: set ours again`, `[errors] handler current`, and `CheckThatDB.global.errors` ends with `[?] CheckThat self-test error`.
 9. **A stack for the first error of a step.** With BugGrabber disabled, open "Record a Lua error" and click Run. Play on for a minute.
    Check: the game does not slow down and shows no second error window.
-   Log: `CheckThatDB.global.errorStacks` holds one line for the step, cut to 600 characters, and `/ct log` shows `Last error stack:`. The first line of the stack names the code that raised the error, not `Errors.lua`. Forever is measured (no slowdown report yet); measure Era.
+   Log: `CheckThatDB.global.errorStacks` holds one line for the step, cut to 600 characters, and `/ct log` shows `Last error stack:`. The first line of the stack names the code that raised the error, not `Errors.lua`. Forever: no slowdown; the trim of our own frames is not yet confirmed in the game.
 10. **Amber warning.** Disable BugGrabber and reload. Open "No Lua error" (`/ct run self.noerror`), then type `/run seterrorhandler(function() end); seterrorhandler = function() end` and wait two seconds. Reload afterwards.
     Check: the card shows the amber line "CheckThat cannot detect new Lua errors." above the countdown.
     Log: `[errors] another addon took the error handler: set ours again` and no `recorded an error` line.
