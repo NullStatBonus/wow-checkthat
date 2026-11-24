@@ -554,15 +554,18 @@ A new run SHALL NOT take the id of a run set aside. A run set aside SHALL move b
 - **THEN** both runs stay where they are
 
 ### Requirement: The tools refuse a newer major before they read it
-`ct.py` SHALL refuse a run whose `ct` is higher than it reads, or present and not a whole number, before it checks any other key, SHALL name the file and the number, and SHALL accept a higher `formatRev`. `collect` and `import-results` SHALL refuse such a run; `collect` SHALL store nothing of it and SHALL keep the refusal until a revision at least as new is stored. `report` SHALL warn when it shows an older revision, or none, because a newer one could not be read, and `report --strict` SHALL fail.
-
-#### Scenario: A refusal outlives the collect
-- **WHEN** `collect` refused a run and an older revision of it is stored
-- **THEN** `report --strict` exits 1 until a revision at least as new as the refused one is stored
+`ct.py` SHALL refuse a run whose `ct` is higher than it reads, or present and not a whole number, before it checks any other key, SHALL name the file and the number, and SHALL accept a higher `formatRev`. `collect` and `import-results` SHALL refuse such a run.
 
 #### Scenario: A newer revision of a run
 - **WHEN** the newest revision file of a run is in a newer major format and an older one is readable
 - **THEN** `status` names the file and the reason, `report` warns, and `report --strict` exits 1
+
+### Requirement: A refusal is kept until the run is stored
+`collect` SHALL store nothing of a refused run and SHALL keep the refusal until a revision at least as new is stored. `report` SHALL warn when it shows an older revision, or none, because a newer one could not be read, and `report --strict` SHALL fail.
+
+#### Scenario: A refusal outlives the collect
+- **WHEN** `collect` refused a run and an older revision of it is stored
+- **THEN** `report --strict` exits 1 until a revision at least as new as the refused one is stored
 
 ### Requirement: The format page matches the code
 `docs/results-format.md` SHALL state the current `ct` and `formatRev` and list a row for the current revision, and a test SHALL fail when it does not agree with `Run.MAJOR`, `Run.FORMAT_REV` and the major `ct.py` reads.
