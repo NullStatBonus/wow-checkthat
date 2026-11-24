@@ -34,6 +34,12 @@ logs:
     format: strings
     quiet: true
     cap: 100
+  stacks:
+    global: CheckThatDB
+    path: global.errorStacks
+    format: strings
+    quiet: true
+    cap: 20
 requirements:
   loaded:
     text: CheckThat is loaded
@@ -473,6 +479,10 @@ sections:
       source: errors
       contains: CheckThat self-test error
       label: CheckThat recorded the test error
+    - kind: log
+      source: stacks
+      pattern: .
+      label: CheckThat kept a call stack for the error
   - id: self.export
     category: card
     title: Export results
