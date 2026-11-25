@@ -38,13 +38,15 @@ Next, try `build/dontdothat.ct`.
 
 ## Replay a plan
 
-Before a tester runs a CheckThat plan, play it in the fake client: `make build`, then `luajit tests/replay_plan.lua build/<plan>.ct [hooks.lua]`. It starts a run and does what a tester does at each step: it writes the debug lines and facts the step's checks need, lets an automatic step settle, and presses Pass. It prints each step's result and exits 1 on a problem:
+Before a tester runs a plan, play it in the fake client: `ct.py replay-flow plans/<addon>.yaml [--hooks hooks.lua]` (it works from the installed skill, needs `luajit`; in a checkout `make build` then `luajit tests/replay_plan.lua build/<plan>.ct [hooks.lua]` does the same). It starts a run and does what a tester does at each step: it writes the debug lines and facts the step's checks need, lets an automatic step settle, and presses Pass. It runs once for each client (Forever and Classic Era) and fails when a step ran on neither. It prints each step's result and exits 1 on a problem:
 
 - a step asserts the line its own result writes (`[ct] step <its id> ...`). CheckThat judges the result first, so the result stays unverified and the card does not advance;
 - an automatic step never settles, or a step has no result after its action;
 - a step never gets reached.
 
 It warns when the card shows a step a second time, because the step's text must cover both visits. A hooks file (`tests/replay/checkthat-0.17.lua` is an example) says which result to press (`verdict`), which steps the card shows again on purpose (`revisits`), and what to do for a step that moves the card, such as Undo, a click on a step row or Remove from run (`action`). `tests/test_replay.lua` replays the 0.17 plan on every `make test`. It checks the plan's flow only. What the addon does is for the game.
+
+For a plan about another addon, the replay writes the lines the checks look for into the plan's own log source (a literal line, a pattern's shortest match, each item of a sequence), marks an automatic step's `/reload` as done and prints `evidence assumed`, so most plans need no hooks file. It warns `evidence not derived` for a check it cannot write (a back-reference in a pattern); give that step a hooks `action`. Because the replay writes those lines itself, a pass says nothing about whether the addon logs them. `ct.py lines plans/<addon>.yaml --addon-src <addon folder>` checks that each asserted line and fact key appears in the addon's Lua source (a line built at run time matches on its longest plain part; `--strict` exits 1 on a miss). The offline block and `replay --sv` are the checks that prove it without the game.
 
 ## Check a plan against saved variables
 
@@ -58,7 +60,7 @@ It warns when the card shows a step a second time, because the step's text must 
 
 ## Check addon code offline
 
-A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offline plans/<addon>.yaml` loads the addon's TOC files in the fake client and runs the block. It needs `luajit` and a CheckThat checkout. It prints JUnit and exits 1 when a step fails, and 2 when the plan has no block or the run cannot start. Compile removes the block, so the game never receives it and the plan digest ignores it.
+A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offline plans/<addon>.yaml` loads the addon's TOC files in the fake client and runs the block. It needs `luajit`. The installed skill has everything else. `--addons` defaults to the folder above the repository (above the current folder when `ct.py` runs from the installed skill). It prints JUnit and exits 1 when a step fails, and 2 when the plan has no block or the run cannot start. Compile removes the block, so the game never receives it and the plan digest ignores it.
 
 **It runs the addon's Lua with your permissions.** The plan's `toc` is read from inside the folder you pass with `--addons` (default: the folder above this repository), and a path that leaves that folder is refused. Pass only addons you trust, and treat a plan from someone else like code.
 

@@ -290,7 +290,29 @@ def version_warning(plan):
     if "version" not in text.lower():
         return "%s: the first step does not check the version under test (a run on another build wastes the tester's time)" % st["id"]
 
+CARD_MOVES = re.compile(r"^/(ct|checkthat)\s+(pass|partial|fail|skip|undo|back|next|run|rerun|end|start|import)\b", re.I)
+
+def card_move_warnings(plan):
+    """[(step id, command)] for a manual step whose own commands (the Run button) or macro lines move the card or record a result,
+    so the press records a result on the step or leaves it. A step whose notes say "on purpose" is left out."""
+    out = []
+    macros = {m.get("id"): m.get("text") or "" for m in plan.get("macros") or []}
+    for sec in expand_cases(plan)["sections"]:
+        for st in sec["steps"]:
+            if st.get("auto") or "on purpose" in (st.get("notes") or "").lower():
+                continue
+            act = st.get("action") or {}
+            lines = [l for c in act.get("commands") or [] for l in c.splitlines()]
+            if act.get("kind") == "secure-macro":
+                lines += macros.get(act.get("macro"), "").splitlines()
+            for l in lines:
+                if CARD_MOVES.match(l.strip()):
+                    out.append((st["id"], l.strip()))
+    return out
+
 def print_warnings(plan):
+    for sid, cmd in card_move_warnings(plan):
+        print("warning: %s: the Run button sends %s, which moves the card or records a result. Say so in notes (on purpose) or take it out of commands" % (sid, cmd))
     for sid, cmd in warnings(plan):
         print("warning: %s: command named in text but not in commands: %s" % (sid, cmd))
     w = version_warning(plan)
@@ -615,7 +637,7 @@ def replay_plan(plan, fixture, today=None):
         path = os.path.join(d, "plan.json")
         with open(path, "w", encoding="utf-8") as f:
             f.write(canonical(merged))
-        r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "replay_sv.lua"), path] + files, capture_output=True, text=True)
+        r = run_luajit([os.path.join(ROOT, "tools", "replay_sv.lua"), path] + files)
     if r.returncode:
         raise RuntimeError(r.stderr.strip())
     return json.loads(r.stdout), notes
@@ -634,6 +656,164 @@ def replay_junit(plan, items):
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode") + "\n"
 
 
+# ---------------------------------------------------------------- flow replay and line source check
+
+def default_addons():
+    """The folder above the repository: this checkout's, or (installed skill, no .git beside ct.py) the current folder's."""
+    return os.path.dirname(ROOT) if os.path.exists(os.path.join(ROOT, ".git")) else os.path.dirname(os.getcwd())
+
+
+def run_luajit(cmd, cwd=None):
+    try:
+        return subprocess.run(["luajit"] + cmd, capture_output=True, text=True, cwd=cwd)
+    except FileNotFoundError:
+        raise ValueError("this command needs luajit, which is not installed")
+
+
+CLIENTS = (("forever-camelot", "16000"), ("classic-era", "11507"))
+
+
+def replay_flow(plan, hooks=None, requirements=None):
+    """Play a plan's steps in the fake client (tests/replay_plan.lua) the way a tester would, once for each client, and check that
+    every step ran on at least one. Returns (exit code, text). Needs luajit and the bundle's tests/ files. Log lines the plan expects
+    are written by the replay itself, so a pass proves the plan flow, not that the addon writes them (see lines_check)."""
+    import tempfile
+    if not os.path.exists(os.path.join(ROOT, "tests", "replay_plan.lua")):
+        raise ValueError("replay-flow needs tests/replay_plan.lua (missing): reinstall the skill with make install-skill")
+    errs = validate(plan, requirements)
+    if errs:
+        raise ValueError("the plan is not valid: " + "; ".join(errs))
+    merged = merge_sections(plan)
+    ids = [st["id"] for sec in merged["sections"] for st in sec["steps"]]
+    text, code, ran = [], 0, set()
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "plan.ct")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(encode(merged) + "\n")
+        for name, iface in CLIENTS:
+            if not any(not st.get("clients") or name in st["clients"] for sec in merged["sections"] for st in sec["steps"]):
+                text.append("== %s\nno step is for this client" % name)
+                continue
+            cmd = [os.path.join("tests", "replay_plan.lua"), path, os.path.abspath(hooks) if hooks else "-", iface]
+            r = run_luajit(cmd, ROOT)
+            out = r.stdout + r.stderr
+            text.append("== %s\n%s" % (name, out))
+            code = code or r.returncode
+            ran.update(m.group(1) for m in re.finditer(r"^(\S+)\s+(?:pass|partial|fail|skip|unverified|pending)\b", out, re.M))
+    missing = [i for i in ids if i not in ran]
+    if missing:
+        code = 1
+        text.append("PROBLEM: no client ran %s" % ", ".join(missing))
+    return code, "\n".join(text)
+
+
+def literal_run(pat):
+    """The longest run of plain characters a Lua pattern must contain, or "". A character before *, ? or - may be absent. ^ is an
+    anchor only first and $ only last; elsewhere they are plain characters."""
+    runs, cur, i, n = [], "", 0, len(pat)
+    def end():
+        nonlocal cur
+        runs.append(cur); cur = ""
+    while i < n:
+        c = pat[i]
+        if c == "^" and i == 0:
+            i += 1; continue
+        if c == "$" and i == n - 1:
+            i += 1; continue
+        if c == "%" and i + 1 < n:
+            e = pat[i + 1]
+            lit = None if e.isalnum() else e
+            i += 2
+        elif c == "[":
+            j = i + 1
+            if j < n and pat[j] == "^":
+                j += 1
+            if j < n and pat[j] == "]":
+                j += 1
+            while j < n and pat[j] != "]":
+                j += 2 if pat[j] == "%" else 1
+            i = min(j, n - 1) + 1
+            lit = None
+        elif c in "().":
+            i += 1; lit = None
+        else:
+            lit = c; i += 1
+        q = pat[i] if i < n else ""
+        if lit is None or q in ("*", "?", "-"):
+            end()
+            if q in ("*", "?", "-", "+"):
+                i += 1
+            continue
+        cur += lit
+        if q == "+":
+            i += 1; end()
+    end()
+    return max(runs, key=len)
+
+
+def asserted_lines(plan):
+    """[(step id, label, text to find in the addon source)] for each required log line and fact key a plan asserts. CheckThat's own
+    lines ([ct] ...) are skipped; a fact is the addon's own when it names another addon than CheckThat."""
+    out = []
+    logs = plan.get("logs") or {}
+    for sec in merge_sections(plan).get("sections", []):
+        for st in sec.get("steps", []):
+            for a in st.get("assertions") or []:
+                if a.get("diagnostic") or a.get("absent"):
+                    continue
+                own = (logs.get(a.get("source")) or {}).get("global") == "CheckThatDB"
+                items = (a.get("sequence") or [a]) if a.get("kind") in ("log", "log-sequence") else []
+                for it in items:
+                    text = it.get("equals") or it.get("contains") or (literal_run(it["pattern"]) if it.get("pattern") else "")
+                    if text.startswith("[ct] ") and own:
+                        continue
+                    out.append((st["id"], a.get("label") or text, text))
+                if a.get("kind") == "fact" and a.get("key") and a.get("addon") != "CheckThat":
+                    out.append((st["id"], a.get("label") or a["key"], a["key"]))
+    return out
+
+
+def addon_source(src):
+    """The addon's Lua text without comments, libraries and tests (a line in a test or a comment is not a line the addon writes)."""
+    blob = []  # one string for each file
+    for dp, dn, fn in os.walk(src):
+        dn[:] = [d for d in dn if d.lower() not in ("libs", "tests", "test")]
+        for f in sorted(fn):
+            if f.endswith(".lua"):
+                with open(os.path.join(dp, f), encoding="utf-8", errors="replace") as h:
+                    text = h.read()
+                text = re.sub(r"--\[(=*)\[.*?\]\1\]", "", text, flags=re.S)
+                blob.append("\n".join(l for l in text.splitlines() if not l.lstrip().startswith("--")))
+    return [b.replace('\\"', '"') for b in blob]
+
+
+def lines_check(plan, src):
+    """Which asserted log lines and fact keys no Lua file of the addon contains. The whole line is tried first. A line built from a
+    format string or two strings (a log tag and its message) matches when the tag sits in quotes in a file that holds most of the
+    message's words, so a miss is a warning to check by hand, not proof. Returns (found, missing)."""
+    files = addon_source(src)
+    found, missing = [], []
+    def present(text):
+        text = text.strip()
+        if text.startswith("entry."):  # an entry registered by name is reported as entry.<name>
+            text = text[len("entry."):]
+        if len(text) >= 3 and any(text in f for f in files):
+            return True
+        m = re.match(r"^\[([^\]]+)\] ?(.*)$", text, re.S)
+        if not m:
+            return False
+        tag, rest = m.group(1), m.group(2).strip()
+        words = re.findall(r"[A-Za-z]{4,}", rest)
+        for f in files:
+            if '"%s"' % tag in f or "'%s'" % tag in f:
+                if not words or sum(w in f for w in words) * 2 >= len(words):
+                    return True
+        return False
+    for sid, label, text in asserted_lines(plan):
+        (found if present(text) else missing).append((sid, label, text))
+    return found, missing
+
+
 # ---------------------------------------------------------------- offline entry runner
 
 def offline_plan(plan, addons, requirements=None):
@@ -643,7 +823,7 @@ def offline_plan(plan, addons, requirements=None):
     Returns items {step, label, result: pass|fail, why}. Needs luajit."""
     import tempfile
     if not os.path.exists(os.path.join(ROOT, "tests", "harness.lua")):
-        raise ValueError("offline needs a CheckThat checkout (tests/harness.lua is missing): run it from the repository")
+        raise ValueError("offline needs tests/harness.lua (missing): reinstall the skill with make install-skill")
     errs = validate(plan, requirements)
     if errs:
         raise ValueError("the plan is not valid: " + "; ".join(errs))
@@ -659,7 +839,7 @@ def offline_plan(plan, addons, requirements=None):
         path = os.path.join(d, "spec.json")
         with open(path, "w", encoding="utf-8") as f:
             f.write(json.dumps(spec))
-        r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "entry_runner.lua"), path], capture_output=True, text=True, cwd=ROOT)
+        r = run_luajit([os.path.join(ROOT, "tools", "entry_runner.lua"), path], ROOT)
     try:
         res = json.loads(r.stdout)
     except ValueError:
@@ -1485,6 +1665,32 @@ def stack_hits(r, stacks):
                     count[key] = count.get(key, 0) + 1
     return hits, {k for k, n in count.items() if n > 1}
 
+def run_warnings(runs, expect_version=None, digest=None, addon=None, title=None):
+    """Warnings about the build a run used: the tested addon's version, CheckThat's own version against this tools bundle, and
+    the plan digest. A run with no record of a field says nothing about it."""
+    bundle = None
+    for name in ("VERSION", os.path.join("CheckThat", "CheckThat_Vanilla.toc")):  # an installed bundle has VERSION, a checkout the TOC
+        try:
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                text = f.read()
+            bundle = (re.search(r"## Version:\s*(\S+)", text) or [None, text.strip()])[1] or None
+            break
+        except OSError:
+            pass
+    out, told = [], set()
+    for rid, r in sorted(runs.items()):
+        if (addon and r.get("addon") != addon) or (title and r.get("planTitle") != title):
+            continue  # another addon's run or a partner role's plan is not judged against this plan
+        if expect_version and r.get("targetVersion") and r["targetVersion"] != expect_version:
+            out.append("run %s tested addon version %s, not the expected %s: its results do not count for that build" % (rid, r["targetVersion"], expect_version))
+        if bundle and r.get("writerVersion") and r["writerVersion"] != bundle and r["writerVersion"] not in told:
+            told.add(r["writerVersion"])
+            out.append("run %s was written by CheckThat %s but these tools are %s: reinstall the skill if the report looks wrong" % (rid, r["writerVersion"], bundle))
+        if digest and r.get("planDigest") and r["planDigest"] != digest:
+            out.append("run %s used plan %s, the plan file is %s now: edits since that run are untested" % (rid, r["planDigest"], digest))
+    return out
+
+
 def report_text(runs, dest=None, stacks=True, failed_only=False, step=None):
     """The Markdown report. failed_only keeps the runs and steps that failed or are unverified. step (one id) shows every attempt of that step."""
     out = ["# CT report", ""]
@@ -1753,7 +1959,7 @@ def plan_store(dest):
             store.setdefault(digest, plan)
     return store
 
-def step_prints(store, digest):
+def step_prints(store, digest, ignore_id=False):
     """{step id: fingerprint} of the stored plan with this digest, or None when the plan is not stored. The fingerprint is a hash of the whole step."""
     plan = store.get(digest) if digest is not None else None
     if not isinstance(plan, dict):
@@ -1762,7 +1968,8 @@ def step_prints(store, digest):
     for sec in plan.get("sections") or []:
         for st in (sec.get("steps") or []) if isinstance(sec, dict) else []:
             if isinstance(st, dict) and isinstance(st.get("id"), str):
-                out[st["id"]] = hashlib.sha1(canonical(st).encode("utf-8")).hexdigest()[:12]
+                body = {k: v for k, v in st.items() if k != "id"} if ignore_id else st
+                out[st["id"]] = hashlib.sha1(canonical(body).encode("utf-8")).hexdigest()[:12]
     return out
 
 def same_step(ra, rb, sid, store):
@@ -1816,6 +2023,18 @@ def diff_data(ida, ra, idb, rb, store):
     warnings = []
     if unknown:
         warnings.append("plan changed and no stored plan for digest %s: collect the saved variables of the machine that ran it" % ", ".join(missing_plans([ra, rb], store)))
+    pa, pb = step_prints(store, ra.get("planDigest"), True), step_prints(store, rb.get("planDigest"), True)
+    if pa and pb:  # a step that kept its text but changed its id splits its history: say so
+        gone = {r["id"]: r for r in rows if r["label"] == "removed"}
+        news = [r for r in rows if r["label"] == "added"]
+        count = lambda prints, ids, fp: sum(1 for i in ids if prints.get(i) == fp)
+        for new in news:
+            fp = pb.get(new["id"])
+            old = next((i for i in gone if pa.get(i) is not None and pa[i] == fp), None)
+            # only a one-to-one match is a rename: steps with identical bodies cannot be told apart
+            if old and count(pa, gone, fp) == 1 and count(pb, [n["id"] for n in news], fp) == 1:
+                gone[old]["reason"], new["reason"] = "renamed to " + new["id"], "renamed from " + old
+                warnings.append("step id %s is now %s with the same text: its history is split. Keep a step's id when you edit the plan" % (old, new["id"]))
     counts = {}
     for row in rows:
         counts[row["label"]] = counts.get(row["label"], 0) + 1
@@ -2099,7 +2318,9 @@ def main(argv=None):
     p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
-    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=os.path.dirname(ROOT), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help)
+    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository, or above the current folder when ct.py runs from an installed skill)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help)
+    p = sub.add_parser("replay-flow", help="play a plan's steps in the fake client and report plan mistakes (needs luajit). Log lines the plan expects are written by the replay: it checks the plan, not the addon"); p.add_argument("plan"); p.add_argument("--hooks", help="Lua hooks file for steps that need more than a Pass (see docs/authoring-plans.md)"); p.add_argument("--specs", help=specs_help)
+    p = sub.add_parser("lines", help="check that each log line and fact key a plan asserts appears in the addon's Lua source"); p.add_argument("plan"); p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC)"); p.add_argument("--strict", action="store_true", help="exit 1 when a line is missing")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
@@ -2109,7 +2330,7 @@ def main(argv=None):
     p.add_argument("--shot-slack", dest="shot_slack", type=float, default=2, help="seconds a screenshot may lie outside an attempt's window and still match it (default 2)")
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
-    p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, there are no runs, or a revision could not be read")
     p.add_argument("--lines", action="store_true", help="put the log lines that decided each check (and values the checks saw) in json and junit; they can hold private data")
@@ -2183,6 +2404,21 @@ def main(argv=None):
         else:
             print(xml, end="")
         return 1 if n("fail") else 0
+    if a.cmd == "replay-flow":
+        plan = load_yaml(a.plan)
+        try:
+            code, text = replay_flow(plan, a.hooks, plan_requirements(plan, a.plan, a.specs))
+        except (ValueError, RuntimeError) as e:
+            print("error:", e, file=sys.stderr); return 2
+        print(text, end="")
+        return code
+    if a.cmd == "lines":
+        plan = load_yaml(a.plan)
+        found, missing = lines_check(plan, a.addon_src)
+        print("lines: %d found in the source, %d not found" % (len(found), len(missing)))
+        for sid, label, text in missing:
+            print("  not found  %s  %s: %r" % (sid, label, text))
+        return 1 if missing and a.strict else 0
     if a.cmd == "offline":
         plan = load_yaml(a.plan)
         try:
@@ -2248,6 +2484,15 @@ def main(argv=None):
         runs = latest_runs(a.dest, skipped)
         for rid, f, why in skipped:
             print("warning: run %s: %s is unreadable (%s); %s" % (rid, f, why, "the report shows an older revision" if rid in runs else "the run is not in this report"), file=sys.stderr)
+        digest = scope = None
+        if a.plan_file:
+            try:
+                scope = load_yaml(a.plan_file)
+                digest = encode(merge_sections(scope)).split("!")[2]
+            except (OSError, IndexError, KeyError, ValueError) as e:
+                print("error: cannot read the digest of %s: %s" % (a.plan_file, e), file=sys.stderr); return 2
+        for w in run_warnings(runs, a.expect_version, digest, scope and scope.get("addon"), scope and scope.get("title")):
+            print("warning: " + w, file=sys.stderr)
         if a.format == "md":
             txt = report_text(runs, a.dest, failed_only=a.failed_only)
             os.makedirs(a.dest, exist_ok=True)

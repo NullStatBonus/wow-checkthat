@@ -18,6 +18,57 @@ local function tocVersion(path)
     return text:match("## Version:%s*([%w%.%-]+)") or "0.0.0"
 end
 
+-- A string a Lua pattern matches: the shortest sample made from its literals and classes. nil when it cannot build one.
+local function oneOf(tok) -- a character the single class or set `tok` matches
+    local ok, found = pcall(function()
+        for b = 33, 126 do
+            local c = string.char(b)
+            if c:find("^" .. tok .. "$") then return c end
+        end
+        if (" "):find("^" .. tok .. "$") then return " " end
+    end)
+    return ok and found or nil
+end
+local function sample(pat)
+    local out, i, n = {}, 1, #pat
+    while i <= n do
+        local c, piece = pat:sub(i, i), nil
+        if c == "^" and i == 1 then i = i + 1; goto continue end
+        if c == "$" and i == n then i = i + 1; goto continue end
+        if c == "%" then
+            local e = pat:sub(i + 1, i + 1)
+            if e == "" or e == "b" or e == "f" or e:match("%d") then return nil end
+            if e:match("%a") then piece = oneOf("%" .. e) else piece = e end
+            if not piece then return nil end
+            i = i + 2
+        elseif c == "[" then
+            local j = i + 1
+            if pat:sub(j, j) == "^" then j = j + 1 end
+            if pat:sub(j, j) == "]" then j = j + 1 end
+            while j <= n and pat:sub(j, j) ~= "]" do
+                if pat:sub(j, j) == "%" then j = j + 1 end
+                j = j + 1
+            end
+            if j > n then return nil end
+            piece = oneOf(pat:sub(i, j))
+            if not piece then return nil end
+            i = j + 1
+        elseif c == "." then piece = "x"; i = i + 1
+        elseif c:match("[%(%)]") then i = i + 1; goto continue
+        else piece = c; i = i + 1 end
+        do
+            local q = pat:sub(i, i)
+            if q == "+" then i = i + 1 elseif q == "*" or q == "-" or q == "?" then i = i + 1; piece = "" end
+            out[#out + 1] = piece
+        end
+        ::continue::
+    end
+    local s = table.concat(out)
+    local ok, hit = pcall(string.find, s, pat)
+    return ok and hit and s or nil
+end
+Replay.sample = sample
+
 -- A value that satisfies a fact operator.
 local function factValue(a)
     local v, op = a.value, a.op
@@ -40,36 +91,69 @@ function Replay.run(ns, planString, opts)
 
     local clock = 7000
     ns.version = opts.version or tocVersion(opts.toc or "CheckThat/CheckThat_Camelot.toc")
+    local loadedAddon -- the addon the plan is for: its addon-loaded check must pass
     local env = { time = function() return clock end, GetBuildInfo = function() return "1.0", "1", "x", opts.interface or 16000 end,
         UnitName = function() return "Replay" end, GetRealmName = function() return "R" end,
-        IsAddOnLoaded = function(n) return n == "CheckThat" end, CheckThat = ns.Facts.API() }
+        IsAddOnLoaded = function(n) return n == "CheckThat" or n == loadedAddon end, CheckThat = ns.Facts.API() }
     local db = {}
     env.CheckThatDB = { global = db }
     App.Init(db, env)
     local imported, err = App.ImportPlan(planString)
     if not imported then problem("the plan did not import: " .. tostring(err)); return out end
+    loadedAddon = imported.addon
     local run = App.Start(opts.addon or imported.addon or "CheckThat")
     if not run then problem("the run did not start"); return out end
     db.log.enabled = true
 
     local R = { App = App, ns = ns }
+    local _, ctx0 = App.Current()
+    local assumed = {}
     -- Write what the step's checks need: the debug lines and facts a tester's actions would produce.
+    -- A plan's own log source (not CheckThat's debug log): make its list, so the log is readable when a step opens.
+    local function sourceList(src)
+        local node = env[src.global]; if node == nil then node = {}; env[src.global] = node end
+        for p in src.path:gmatch("[^.]+") do node[p] = node[p] or {}; node = node[p] end
+        return node
+    end
+    for _, src in pairs(ctx0.plan.logs or {}) do
+        if src.global and src.global ~= "CheckThatDB" and src.path then sourceList(src) end
+    end
+    -- Writes one line for a check; true when it went into a plan's own log source (evidence the replay made up).
+    local function writeLine(step, a, source, text)
+        local src = ctx0.plan.logs and ctx0.plan.logs[source]
+        local own = source == "debug" and (not src or src.global == "CheckThatDB")
+        if not text then warn(step.id .. ": evidence not derived, cannot write the check \"" .. tostring(a.label) .. "\" (" .. tostring(source) .. " source, no literal line). Add a hook")
+        elseif own and a.equals and not text:find("^%[ct%] ") then warn(step.id .. ": the line \"" .. text .. "\" does not come from CheckThat")
+        elseif text:find("[ct] step " .. step.id .. " ", 1, true) == 1 then -- its own result line: nothing can write it first
+        elseif own then App.Log((text:gsub("^%[ct%] ", "")))
+        elseif src and src.global and src.path then
+            local list = sourceList(src)
+            list[#list + 1] = src.format == "entries" and { msg = text } or text
+            local cap = tonumber(src.cap)
+            while cap and #list > cap do table.remove(list, 1) end
+            return true
+        else warn(step.id .. ": evidence not derived, no log source named " .. tostring(source)) end
+    end
+    local function lineOf(a) return a.equals or a.contains or (a.pattern and sample(a.pattern)) end
     function R.feed(step)
         for _, a in ipairs(step.assertions or {}) do
-            if not a.diagnostic and not a.absent and a.op ~= "missing" then
+            local c = type(a.count) == "table" and a.count or nil
+            local none = c and (c.exactly == 0 or c.max == 0) -- "must not appear": write nothing
+            if not a.diagnostic and not a.absent and a.op ~= "missing" and not none then
+                local made = false
                 if a.kind == "log" then
-                    local text = a.equals or a.contains
-                    if a.source ~= "debug" or not text then warn(step.id .. ": cannot write the check \"" .. tostring(a.label) .. "\" (source " .. tostring(a.source) .. ")")
-                    elseif a.equals and not text:find("^%[ct%] ") then warn(step.id .. ": the line \"" .. text .. "\" does not come from CheckThat")
-                    elseif text:find("[ct] step " .. step.id .. " ", 1, true) == 1 then -- its own result line: nothing can write it first
-                    else App.Log((text:gsub("^%[ct%] ", ""))) end
+                    for _ = 1, math.max(1, c and (c.exactly or c.min) or 1) do made = writeLine(step, a, a.source, lineOf(a)) or made end
+                elseif a.kind == "log-sequence" and a.sequence then
+                    for _, item in ipairs(a.sequence) do made = writeLine(step, a, a.source, lineOf(item)) or made end
                 elseif a.kind == "fact" then
                     local value = factValue(a)
                     clock = clock + 2
-                    if value == nil or not ns.Facts.Report(a.addon, a.key, value) then warn(step.id .. ": cannot report the fact " .. tostring(a.key)) end
+                    if value == nil or not ns.Facts.Report(a.addon, a.key, value) then warn(step.id .. ": cannot report the fact " .. tostring(a.key))
+                    elseif a.addon ~= "CheckThat" then made = true end
                 else
                     warn(step.id .. ": cannot write a " .. tostring(a.kind) .. " check")
                 end
+                if made then assumed[#assumed + 1] = step.id end
             end
         end
     end
@@ -83,6 +167,14 @@ function Replay.run(ns, planString, opts)
                 local text = a.equals or a.contains
                 if text and text:find("[ct] step " .. st.id .. " ", 1, true) == 1 then
                     problem(st.id .. ": asserts the line its own result writes (" .. text .. "). The result is judged before the line exists")
+                elseif a.pattern then
+                    for _, v in ipairs({ "pass", "partial", "fail", "skip" }) do
+                        local ok, hit = pcall(string.find, "[ct] step " .. st.id .. " " .. v, a.pattern)
+                        if ok and hit then
+                            problem(st.id .. ": the pattern \"" .. a.pattern .. "\" matches the line its own result writes. The result is judged before the line exists")
+                            break
+                        end
+                    end
                 end
             end
         end
@@ -106,6 +198,9 @@ function Replay.run(ns, planString, opts)
             custom(R)
         elseif step.auto then
             R.feed(step)
+            if step.reload == "after_action" then -- the tester's /reload after the action
+                App.MarkReloaded()
+            end
             local a = App.AutoSettle()
             if not a and step.timeout then clock = clock + step.timeout + 1; a = App.AutoSettle() end
             if not a then problem(step.id .. ": the automatic step did not settle") end
@@ -120,6 +215,9 @@ function Replay.run(ns, planString, opts)
         if last and last.verdict == "unverified" then
             problem(step.id .. ": the result is unverified, so the card stays on the step (" .. tostring(last.outcomes and last.outcomes[1] and last.outcomes[1].why) .. ")")
         end
+        if rec and rec.verdict == "fail" and not custom and (hooks.verdict or {})[step.id] ~= "fail" then
+            problem(step.id .. ": the step failed although the replay did what its checks need (" .. tostring(last and last.outcomes and last.outcomes[1] and last.outcomes[1].why) .. ")")
+        end
         out.trace[#out.trace + 1] = ("%-20s %s%s"):format(step.id, tostring(rec and rec.verdict), last and last.by == "auto" and " (auto)" or "")
         local _, _, nxt = App.Current()
         if nxt and nxt.id == step.id and not (rec and rec.verdict and rec.verdict ~= "pending") then
@@ -127,6 +225,9 @@ function Replay.run(ns, planString, opts)
         end
     end
 
+    if #assumed > 0 then
+        out.warnings[#out.warnings + 1] = "evidence assumed: the replay made up the lines and facts that " .. #assumed .. " check(s) look for in the plan's own log source. It proves the plan flow, not that the addon writes them"
+    end
     for _, id in ipairs(run.order) do
         local rec = run.steps[id]
         local v = rec and rec.verdict
