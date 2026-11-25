@@ -676,6 +676,7 @@ class InstallSkill(unittest.TestCase):
             self.assertIn("offline: 5 passed, 0 failed", r.stderr)
             self.assertEqual(os.listdir(work), [], "nothing is written to the working folder")
 
+    @unittest.skipIf(os.name == "nt", "the launcher is a shell script and the link needs a POSIX shell")
     def test_bin_dir_links_a_launcher_that_finds_the_skill_python(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(self.make(d, SKILL_NO_VENV="1", BIN_DIR=os.path.join(d, "bin")).returncode, 0)
