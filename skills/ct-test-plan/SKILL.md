@@ -79,7 +79,7 @@ Review while you draft: show each step with its evidence choice and client tags 
 After the last step, compile the plan (`$PY $CT/tools/ct.py compile <plan> -o <file>.ct`) and, when `$CT` is a checkout (it has `tests/replay_plan.lua`), run `luajit $CT/tests/replay_plan.lua <file>.ct` from `$CT`. It plays every step in the fake client and exits 1 on a problem: a step that never settles, a card that shows a step twice, a step never reached. Show its result in the review and fix each problem before you call the plan final. In an installed bundle there is no replay: say so.
 
 Then show the author:
-- Coverage: each scope item and the step(s) that cover it; gaps in bold.
+- Coverage: each scope item and the step(s) that cover it; gaps in bold. When `$CT` and the addon source are at hand, `$PY $CT/tools/ct.py coverage <plan...> --addon-src <addon folder>` lists the subcommands, settings and spec requirements no step touches; a step or section names a requirement with `covers: [heading text]`.
 - For a set of plans: each preamble names every partner file, and the reviewer line names the partner files and step IDs.
 - The checklist in `reference.md`, with each finding tied to a step id.
 

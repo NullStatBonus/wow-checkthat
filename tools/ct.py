@@ -80,6 +80,41 @@ def check_op(a, sid, errs):
         errs.append("%s: tolerance belongs to approx" % sid)
 
 
+def check_covers(box, where, requirements, errs):
+    for name in box.get("covers", []):
+        if requirements is None:
+            errs.append("%s: covers needs the addon's openspec/specs folder to check %r (pass --specs)" % (where, name)); break
+        if name not in requirements:
+            errs.append("%s: covers %r matches no requirement heading" % (where, name))
+
+REQ_HEAD = re.compile(r"^### Requirement:[ \t]*(.+?)[ \t]*$", re.M)
+
+def requirement_names(specs):
+    """{requirement name: spec file} for each `### Requirement:` heading under specs/*/spec.md."""
+    out = {}
+    for p in sorted(glob.glob(os.path.join(specs, "*", "spec.md"))):
+        with open(p, encoding="utf-8") as f:
+            for m in REQ_HEAD.finditer(f.read()):
+                out.setdefault(m.group(1), p)
+    return out
+
+def find_specs(path):
+    """The nearest openspec/specs folder above the plan file, or None."""
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        c = os.path.join(d, "openspec", "specs")
+        if os.path.isdir(c):
+            return c
+        up = os.path.dirname(d)
+        if up == d:
+            return None
+        d = up
+
+def plan_requirements(plan, path, specs=None):
+    """The requirement names to check covers against, or None when the plan has no covers (nothing to check) or no specs folder is known."""
+    specs = specs or find_specs(path)
+    return set(requirement_names(specs)) if specs and os.path.isdir(specs) else None
+
 def check_count(a, sid, errs):
     c = a.get("count")
     if c is None:
@@ -131,8 +166,8 @@ def expand_cases(plan):
     return out
 
 
-def validate(plan):
-    """Return a list of error strings; empty means valid."""
+def validate(plan, requirements=None):
+    """Return a list of error strings; empty means valid. requirements is the set of requirement names a covers field may use; None when no specs folder is known."""
     import jsonschema
     with open(SCHEMA, encoding="utf-8") as f:
         schema = json.load(f)
@@ -171,6 +206,7 @@ def validate(plan):
         if sec["id"] in sec_ids:
             errs.append("duplicate section id %s" % sec["id"])
         sec_ids.add(sec["id"])
+        check_covers(sec, 'section %s' % sec["id"], requirements, errs)
         for r in sec.get("requires", []):
             if r not in reqs:
                 errs.append("section %s: unresolved requirement %s" % (sec["id"], r))
@@ -181,6 +217,7 @@ def validate(plan):
             if sid in seen:
                 errs.append("duplicate step id %s" % sid)
             seen.add(sid)
+            check_covers(st, sid, requirements, errs)
             if "category" in st and st["category"] not in cats:
                 errs.append("%s: unknown category %s" % (sid, st["category"]))
             elif cats and "category" not in st and "category" not in sec:
@@ -262,6 +299,9 @@ def merge_sections(plan):
     out["kind"], out["ct"] = "plan", 1
     out.pop("offline", None)  # tools only: the game never receives it
     for sec in out["sections"]:
+        sec.pop("covers", None)  # tools only, like offline
+        for st in sec["steps"]:
+            st.pop("covers", None)
         sreq, ssetup, scl = sec.pop("requires", []), sec.pop("setup", None), sec.get("clients")
         scat = sec.pop("category", None)
         sshare = sec.pop("share", None)
@@ -1835,6 +1875,138 @@ def status_text(rows, problems, extra, dest):
 
 # ---------------------------------------------------------------- CLI
 
+# --- coverage: which commands, settings and requirements the plans touch (docs/authoring-plans.md) ---
+SLASH_CMD = re.compile(r'\bcmd\s*==\s*"(\w+)"')
+WIDGETS = "toggle|range|select|multiselect|input|color|keybinding"
+SETTING_LITERAL = re.compile(r'(?:\["([^"\n]+)"\]|\b([A-Za-z_]\w*))\s*=\s*\{[^{}]*?\btype\s*=\s*"(?:%s)"' % WIDGETS)
+SETTING_CALL = re.compile(r'\w+\(\s*[\w.]+\s*,\s*"([^"\n]+)"\s*,\s*\{\s*type\s*=\s*"(?:%s)"' % WIDGETS)
+SETTING_KEYS = re.compile(r'\["([A-Za-z][\w-]*(?:\.[\w-]+)+)"\]\s*=\s*\{')
+
+def lua_files(src):
+    for root, dirs, files in os.walk(src):
+        dirs[:] = sorted(d for d in dirs if d not in ("Libs", "Locales"))
+        for f in sorted(files):
+            if f.endswith(".lua"):
+                yield os.path.join(root, f)
+
+def slash_commands(src):
+    """Subcommand names an addon handles: cmd == "name" in its Slash*.lua files."""
+    out = set()
+    for p in lua_files(src):
+        if os.path.basename(p).startswith("Slash"):
+            with open(p, encoding="utf-8", errors="replace") as f:
+                out.update(SLASH_CMD.findall(f.read()))
+    return sorted(out)
+
+def setting_keys(src):
+    """Setting keys an addon declares: AceConfig widgets (key = { type = "toggle" ... } or add(group, "key", { type = "toggle" ...)
+    and dotted keys of a Settings*.lua table (["card.scale"] = {)."""
+    out = set()
+    for p in lua_files(src):
+        with open(p, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        out.update(a or b for a, b in SETTING_LITERAL.findall(text))
+        out.update(SETTING_CALL.findall(text))
+        if os.path.basename(p).startswith("Settings"):
+            out.update(SETTING_KEYS.findall(text))
+    return sorted(out)
+
+CMD_AT = re.compile(r"(?<![\w/])(/[A-Za-z]+)(?=[\s.,;:)]|$)(.*)")
+
+def step_touches(plan):
+    """[(step id, covers, commands [(subcommand, rest of the line)], fact and state names)] for each step of the expanded plan."""
+    plan = expand_cases(plan)
+    macros = {m["id"]: m["text"] for m in plan.get("macros", [])}
+    aliases = set(SLASH.get(plan["addon"], []))
+    out = []
+    for sec in plan["sections"]:
+        for st in sec["steps"]:
+            act = st["action"]
+            texts = [act.get("text", ""), sec.get("setup", ""), st.get("setup", ""), st.get("cleanup", "")] + list(act.get("commands", []))
+            if act.get("kind") == "secure-macro":
+                texts.append(macros.get(act.get("macro"), ""))
+            cmds = []
+            for t in texts:
+                for line in re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "\n", t or "").split("\n"):
+                    for m in CMD_AT.finditer(line):
+                        if m.group(1).lower() in aliases:
+                            w = m.group(2).split()
+                            cmds.append((w[0].lower().strip(".,;:)") if w else "", m.group(2)))
+            names = [a.get(k) for a in st.get("assertions", []) for k in ("key", "name", "path") if a.get("kind") in ("fact", "state") and a.get(k)]
+            out.append((st["id"], list(sec.get("covers", [])) + list(st.get("covers", [])), cmds, names))
+    return out
+
+def coverage_data(plans, src, specs=None, runs=None):
+    """Every subcommand, setting key and requirement name with the ids of the steps that cover it. runs ({id: run}, or None) adds a result:
+    passed (a covering step passed), failed (one failed or is unverified), never-run."""
+    addons = {p["addon"] for p in plans}
+    if len(addons) != 1:
+        raise ValueError("the plans belong to %d addons (%s); give the plans of one addon" % (len(addons), ", ".join(sorted(addons))))
+    if not SLASH.get(plans[0]["addon"]):
+        raise ValueError("unknown addon %s: no slash aliases known" % plans[0]["addon"])
+    cmds = slash_commands(src)
+    if not cmds:
+        raise ValueError("no subcommand found in %s: the extractor reads cmd == \"name\" in Slash*.lua" % src)
+    keys = setting_keys(src)
+    reqs = sorted(requirement_names(specs)) if specs else None
+    cover = {"commands": {c: [] for c in cmds}, "settings": {k: [] for k in keys}, "requirements": {r: [] for r in reqs or []}}
+    ok = {}
+    notes = []
+    for i, plan in enumerate(plans):
+        res = {}
+        if runs is not None:
+            fin = [(r.get("started") or 0, rid) for rid, r in runs.items() if r.get("addon") == plan["addon"] and r.get("planTitle") == plan["title"] and finished(r)]
+            if fin:
+                rid = max(fin)[1]
+                res = {s["id"]: s["result"] for s in run_model(rid, runs[rid])["steps"]}
+                notes.append("%s: run %s" % (plan["title"], rid))
+            else:
+                notes.append("%s: no finished run" % plan["title"])
+        for sid, covers, cm, names in step_touches(plan):
+            ok[(i, sid)] = res.get(sid)
+            def add(kind, name):
+                if (i, sid) not in cover[kind][name]:
+                    cover[kind][name].append((i, sid))
+            for sub, rest in cm:
+                if sub in cover["commands"]:
+                    add("commands", sub)
+                for k in cover["settings"]:
+                    if re.search(r"(?<![\w.-])%s(?![\w-]|\.\w)" % re.escape(k), rest):
+                        add("settings", k)
+            for k in cover["settings"]:
+                if any(n == k or n.endswith("." + k) for n in names):
+                    add("settings", k)
+            for r in covers:
+                if r in cover["requirements"]:
+                    add("requirements", r)
+    def result(steps):
+        if runs is None or not steps:
+            return None
+        got = [ok.get(s) for s in steps]
+        return "passed" if any(g in OK_RESULTS for g in got) else ("failed" if any(g in ("fail", "unverified") for g in got) else "never-run")
+    out = {"addon": plans[0]["addon"], "plans": [p["title"] for p in plans], "evidence": runs is not None, "notes": notes}
+    for kind, items in cover.items():
+        if kind == "requirements" and reqs is None:
+            continue
+        out[kind] = [{"name": n, "steps": [s for _, s in v], "result": result(v)} for n, v in items.items()]
+    return out
+
+def coverage_text(d):
+    lines = ["Coverage of %s by %s" % (d["addon"], ", ".join(d["plans"]))] + ["evidence: " + n for n in d["notes"]]
+    for kind in ("commands", "settings", "requirements"):
+        if kind not in d:
+            continue
+        items = d[kind]
+        used = [i for i in items if i["steps"]]
+        lines += ["", "%s: %d of %d covered" % (kind, len(used), len(items))]
+        for i in used:
+            lines.append("  covered  %s  %s%s" % (i["name"], ", ".join(i["steps"]), "  [%s]" % i["result"] if i["result"] else ""))
+        for i in items:
+            if not i["steps"]:
+                lines.append("  unused   %s" % i["name"])
+    return "\n".join(lines)
+
+
 def load_env(paths=None):
     """Fill unset environment variables from KEY=VALUE files. Earlier files win; real variables and flags win over all."""
     for p in paths or [os.environ.get("CT_ENV"), os.path.join(os.getcwd(), ".ct.env"), os.path.expanduser("~/.checkthat.env")]:
@@ -1858,8 +2030,14 @@ def main(argv=None):
     load_env()
     ap = argparse.ArgumentParser(prog="ct")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("validate"); p.add_argument("plan")
-    p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o")
+    specs_help = "folder of the addon's openspec specs that covers names are checked against (default: the nearest openspec/specs above the plan)"
+    p = sub.add_parser("validate"); p.add_argument("plan"); p.add_argument("--specs", help=specs_help)
+    p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help)
+    p = sub.add_parser("coverage", help="list the addon's slash subcommands, settings and spec requirements that the plans cover or leave unused (reads the addon's Lua source)"); p.add_argument("plans", nargs="+")
+    p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC): Slash*.lua gives the subcommands, its option tables the setting keys")
+    p.add_argument("--specs", help="requirements: folder of the addon's openspec specs (default: openspec/specs next to the addon folder, when it exists)")
+    p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p.add_argument("--format", choices=("md", "json"), default="md")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
     p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=os.path.dirname(ROOT), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository)"); p.add_argument("-o")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
@@ -1892,16 +2070,33 @@ def main(argv=None):
 
     if a.cmd == "validate":
         plan = load_yaml(a.plan)
-        errs = validate(plan)
+        errs = validate(plan, plan_requirements(plan, a.plan, a.specs))
         for e in errs:
             print("error:", e)
         if not errs:
             print_warnings(plan)
         print("ok" if not errs else "%d errors" % len(errs))
         return 1 if errs else 0
+    if a.cmd == "coverage":
+        plans, specs = [], a.specs or os.path.join(os.path.dirname(os.path.abspath(a.addon_src)), "openspec", "specs")
+        specs = specs if os.path.isdir(specs) else None
+        for path in a.plans:
+            plan = load_yaml(path)
+            errs = validate(plan, set(requirement_names(specs)) if specs else None)
+            for e in errs:
+                print("error: %s: %s" % (path, e), file=sys.stderr)
+            if errs:
+                return 2
+            plans.append(plan)
+        try:
+            d = coverage_data(plans, a.addon_src, specs, latest_runs(a.dest) if a.evidence else None)
+        except ValueError as e:
+            print("error:", e, file=sys.stderr); return 2
+        print(json.dumps(d, indent=1, sort_keys=True) if a.format == "json" else coverage_text(d))
+        return 0
     if a.cmd == "compile":
         plan = load_yaml(a.plan)
-        errs = validate(plan)
+        errs = validate(plan, plan_requirements(plan, a.plan, a.specs))
         if errs:
             for e in errs:
                 print("error:", e, file=sys.stderr)

@@ -101,6 +101,31 @@ An auto step can call a function the addon registered with `CheckThat.Entry` (se
 
 The step needs the `facts` log source. `call` works only on an auto step. The same entry can be called offline with the [offline block](#check-addon-code-offline).
 
+## Check what the plans cover
+
+```
+.venv/bin/python tools/ct.py coverage plans/<addon>.yaml [more plans of the same addon] --addon-src <addon folder> [--specs <folder>] [--evidence [--dest evidence]] [--format md|json]
+```
+
+The report lists each slash subcommand, setting key and spec requirement of the addon as covered (with the ids of the steps that cover it) or unused. It reads the addon's Lua source, so a refactor can change what it finds. An extractor that finds no subcommand is an error.
+
+- **Subcommands** come from `cmd == "name"` in the addon's `Slash*.lua` files. A step covers one when its action text, `commands`, macro, setup or cleanup holds `/alias name`. An addon that registers through `SlashCmdList` another way needs its own extractor.
+- **Settings** come from AceConfig widgets (`key = { type = "toggle" ...` or `add(group, "key", { type = "toggle" ...`) and from the dotted keys of a `Settings*.lua` table. A step covers one when a slash command in its text names the key, or when a fact check uses it as its key (or its last dotted parts), or a state probe as its name or path.
+- **Requirements** come from the `### Requirement:` headings of `openspec/specs/*/spec.md` next to the addon folder (or `--specs`). A step or section names what it covers with `covers`:
+
+```yaml
+sections:
+  - id: tally
+    covers: [The tally window lists every item]
+    steps:
+      - id: tally.open
+        covers: [The tally is saved with the character]
+```
+
+`covers` is for the tools. `validate` fails for a name that matches no heading, or when no specs folder is found (use `--specs`). Compile drops the field, so the compiled string and the plan digest do not change. The schema rejects every other unknown field. The game ignores unknown fields, so a field for the tools never stops an import.
+
+- **Evidence.** `--evidence` joins the newest finished run of each plan (same addon and plan title) from the collected runs. Each covered item reads `passed` (a covering step passed), `failed` (a covering step failed or is unverified) or `never-run` (the run skipped or lacks it, or the plan has no finished run).
+
 ## Good logs make good plans
 
 A step can only be checked from a log if the addon writes the line. See [Debug logging](debug-logging.md).

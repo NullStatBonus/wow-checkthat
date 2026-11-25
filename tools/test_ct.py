@@ -1995,5 +1995,129 @@ class CompareRuns(unittest.TestCase):
         self.assertIn("no stored plan for digest d1, d2", err)
 
 
+class Coverage(unittest.TestCase):
+    """ct.py coverage and the covers field, on the fixture addon in tests/fixtures/coverage."""
+    FX = os.path.join(ROOT, "tests", "fixtures", "coverage")
+    SRC = os.path.join(FX, "addon")
+
+    def plan(self, *steps, covers=None):
+        p = good()
+        p["sections"] = [{"id": "s", "title": "S", "steps": [
+            {"id": sid, "title": sid, "action": act, "expect": "e", "verify": ["player"] if not asr else ["assertions"],
+             **({"assertions": asr} if asr else {})} for sid, act, asr in steps]}]
+        if covers:
+            p["sections"][0]["covers"] = covers
+        return p
+
+    def fact(self, key):
+        return [{"kind": "fact", "source": "debug", "addon": "KeepThat", "key": key, "op": "exists"}]
+
+    def cov(self, *plans, extra=()):
+        dirs = []
+        for i, p in enumerate(plans):
+            f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False); dirs.append(f.name); self.addCleanup(os.unlink, f.name)
+            import yaml
+            yaml.safe_dump(p, f); f.close()
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = ct.main(["coverage", *dirs, "--addon-src", self.SRC, "--format", "json", *extra])
+        return code, (json.loads(out.getvalue()) if out.getvalue().strip() else None), err.getvalue()
+
+    def by(self, d, kind):
+        return {i["name"]: i for i in d[kind]}
+
+    def test_two_of_three_subcommands_used_one_unused(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "Type |cff99ccff/kt alpha|r.", "commands": ["/kt alpha"]}, None),
+                      ("c2", {"kind": "copy-slash", "text": "/kt beta 5"}, None))
+        code, d, _ = self.cov(p)
+        self.assertEqual(code, 0)
+        c = self.by(d, "commands")
+        self.assertEqual({k: v["steps"] for k, v in c.items()}, {"alpha": ["c1"], "beta": ["c2"], "gamma": []})
+
+    def test_a_setting_used_only_by_a_fact_check_counts_as_covered(self):
+        p = self.plan(("f1", {"kind": "manual", "text": "Look."}, self.fact("settings.size")),
+                      ("f2", {"kind": "manual", "text": "Type /kt verbose."}, None))
+        s = self.by(self.cov(p)[1], "settings")
+        self.assertEqual({k: v["steps"] for k, v in s.items()}, {"verbose": ["f2"], "size": ["f1"], "quiet": []})
+
+    def test_a_plain_word_in_prose_is_not_a_command(self):
+        p = self.plan(("t1", {"kind": "manual", "text": "The size is large and verbose, and alpha is a letter."}, None))
+        d = self.cov(p)[1]
+        self.assertTrue(all(not i["steps"] for i in d["commands"] + d["settings"]))
+
+    def test_nothing_extracted_and_mixed_addons_are_errors(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
+        out = io.StringIO()
+        with contextlib.redirect_stderr(out):
+            code = ct.main(["coverage", "--addon-src", os.path.join(self.FX, "openspec"), os.path.join(ROOT, "plans", "selftest.yaml")])
+        self.assertEqual(code, 2); self.assertIn("no subcommand found", out.getvalue())
+        q = self.plan(("c1", {"kind": "manual", "text": "t"}, None)); q["addon"] = "DontDoThat"; q["macros"] = []
+        code, _, err = self.cov(p, q)
+        self.assertEqual(code, 2); self.assertIn("2 addons", err)
+
+    def test_covers_names_a_requirement_and_the_report_lists_the_rest(self):
+        p = self.plan(("r1", {"kind": "manual", "text": "t"}, None), covers=["First thing works"])
+        p["sections"][0]["steps"][0]["covers"] = ["Second thing works"]
+        code, d, _ = self.cov(p)
+        self.assertEqual(code, 0)
+        self.assertEqual({k: v["steps"] for k, v in self.by(d, "requirements").items()},
+                         {"First thing works": ["r1"], "Second thing works": ["r1"], "Third thing works": []})
+
+    def test_an_unknown_requirement_name_is_a_validation_error(self):
+        p = self.plan(("r1", {"kind": "manual", "text": "t"}, None))
+        p["sections"][0]["steps"][0]["covers"] = ["No such thing"]
+        names = ct.requirement_names(os.path.join(self.FX, "openspec", "specs"))
+        errs = ct.validate(p, set(names))
+        self.assertTrue(any("r1" in e and "No such thing" in e for e in errs), errs)
+        self.assertEqual(ct.validate(p, None)[0].split(":")[0], "r1")   # no specs folder to check against
+        self.assertEqual(self.cov(p)[0], 2)
+        p["sections"][0]["steps"][0]["covers"] = ["Third thing works"]
+        self.assertEqual(ct.validate(p, set(names)), [])
+
+    def test_the_schema_alone_allows_covers_and_rejects_other_unknown_fields(self):
+        import jsonschema
+        with open(ct.SCHEMA) as f:
+            schema = json.load(f)
+        p = self.plan(("r1", {"kind": "manual", "text": "t"}, None), covers=["x"])
+        v = jsonschema.Draft202012Validator(schema)
+        self.assertEqual(list(v.iter_errors(p)), [])
+        p["sections"][0]["bogus"] = 1
+        self.assertTrue(list(v.iter_errors(p)))
+
+    def test_compile_drops_covers_and_the_string_is_byte_identical(self):
+        a = self.plan(("r1", {"kind": "manual", "text": "t {{x}}"}, None), ("r2", {"kind": "manual", "text": "t"}, None))
+        a["sections"][0]["steps"][0]["cases"] = [{"id": "one", "vars": {"x": 1}}, {"id": "two", "vars": {"x": 2}}]
+        b = json.loads(json.dumps(a))
+        b["sections"][0]["covers"] = ["First thing works"]
+        b["sections"][0]["steps"][0]["covers"] = ["Second thing works"]
+        b["sections"][0]["steps"][1]["covers"] = ["Third thing works"]
+        self.assertEqual(ct.encode(ct.merge_sections(a)), ct.encode(ct.merge_sections(b)))
+        self.assertNotIn("covers", json.dumps(ct.merge_sections(b)))
+
+    def test_evidence_joins_the_newest_finished_run(self):
+        p = self.plan(("e1", {"kind": "copy-slash", "text": "/kt alpha"}, None), ("e2", {"kind": "copy-slash", "text": "/kt beta"}, None),
+                      ("e3", {"kind": "copy-slash", "text": "/kt gamma"}, None))
+        p["title"] = "P"
+        st = lambda v: {"verdict": v, "attempts": [{"n": 1, "verdict": v}] if v != "skip" else []}
+        def run(started, **steps):
+            return {"planTitle": "P", "addon": "KeepThat", "revision": 1, "client": "classic-era", "build": "1", "character": "X", "planDigest": "d",
+                    "started": started, "endedAt": started + 5, "order": list(steps), "steps": {k: st(v) for k, v in steps.items()}}
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        ct.write_revision(d, {**run(1, e1="fail", e2="fail", e3="fail"), "runId": "R-1"})   # older: ignored
+        ct.write_revision(d, {**run(2, e1="pass", e2="fail", e3="skip"), "runId": "R-2"})
+        code, data, _ = self.cov(p, extra=("--evidence", "--dest", d))
+        self.assertEqual(code, 0)
+        self.assertEqual({k: v["result"] for k, v in self.by(data, "commands").items()}, {"alpha": "passed", "beta": "failed", "gamma": "never-run"})
+        self.assertEqual(data["notes"], ["P: run R-2"])
+        self.assertIsNone(self.cov(p)[1]["commands"][0]["result"])
+
+    def test_a_plan_with_no_finished_run_is_never_run(self):
+        p = self.plan(("e1", {"kind": "copy-slash", "text": "/kt alpha"}, None))
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        data = self.cov(p, extra=("--evidence", "--dest", d))[1]
+        self.assertEqual(self.by(data, "commands")["alpha"]["result"], "never-run")
+        self.assertEqual(self.by(data, "commands")["beta"]["result"], None)
+
+
 if __name__ == "__main__":
     unittest.main()
