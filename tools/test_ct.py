@@ -1861,5 +1861,139 @@ class Results(unittest.TestCase):
         self.assertEqual(ct.load_errors(dest), ({"7.001": "[K] e"}, {"7.001": "s1 / s2"}))
 
 
+class CompareRuns(unittest.TestCase):
+    """ct.py diff and trend, on made-up runs."""
+    def st(self, verdict, result=None):
+        at = {"n": 1, "verdict": verdict}
+        if result:
+            at["outcomes"] = [{"result": result, "why": "w"}]
+        return {"verdict": verdict, "attempts": [at] if verdict not in ("pending", "skip", "deselected", "inapplicable") else []}
+
+    def mk(self, steps, digest="d1", started=100, ended=True, **extra):
+        return {"planTitle": "P", "addon": "KeepThat", "revision": 1, "client": "classic-era", "build": "1", "character": "X", "planDigest": digest,
+                "started": started, "order": [s for s in steps if steps[s]["verdict"] not in ("deselected", "inapplicable")], "steps": steps,
+                **({"endedAt": started + 50} if ended else {}), **extra}
+
+    def dest(self, runs, store=None):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        for rid, r in runs.items():
+            ct.write_revision(d, {**r, "runId": rid})
+        if store is not None:
+            import verify_fixture
+            os.makedirs(os.path.join(d, "sv"))
+            with open(os.path.join(d, "sv", "CheckThat-abc.lua"), "w") as f:
+                f.write("CheckThatDB = %s\n" % verify_fixture.lua({"planStore": store}))
+        return d
+
+    def cli(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = ct.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def diff(self, a, b, *extra, store=None):
+        d = self.dest({"A-1": a, "B-1": b}, store)
+        code, out, err = self.cli("diff", "A-1", "B-1", "--dest", d, "--format", "json", *extra)
+        return code, (json.loads(out) if out.strip() else None), err
+
+    def labels(self, data):
+        return {r["id"]: r["label"] for r in data["steps"]}
+
+    def test_each_change_gets_its_label(self):
+        a = self.mk({"s1": self.st("pass"), "s2": self.st("fail"), "s3": self.st("pass"), "s4": self.st("fail"), "s5": self.st("pass"), "s6": self.st("pass")})
+        b = self.mk({"s1": self.st("fail"), "s2": self.st("pass"), "s3": self.st("unverified"), "s4": self.st("fail"), "s5": self.st("pass"), "s6": self.st("skip")})
+        code, d, _ = self.diff(a, b)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.labels(d), {"s1": "regressed", "s2": "fixed", "s3": "newly-unverified", "s4": "still-failing", "s5": "unchanged", "s6": "not-comparable"})
+        self.assertFalse(d["planChanged"])
+
+    def test_a_pass_with_contradicting_evidence_counts_as_fail(self):
+        a = self.mk({"s1": self.st("pass", "pass")})
+        b = self.mk({"s1": self.st("pass", "fail")})
+        self.assertEqual(self.labels(self.diff(a, b)[1]), {"s1": "regressed"})
+
+    def test_pending_and_not_for_this_client_are_not_comparable(self):
+        a = self.mk({"s1": self.st("pass"), "s2": self.st("pass")})
+        b = self.mk({"s1": self.st("pending"), "s2": self.st("inapplicable")})
+        d = self.diff(a, b)[1]
+        self.assertEqual(self.labels(d), {"s1": "not-comparable", "s2": "not-comparable"})
+        self.assertEqual(d["counts"], {"not-comparable": 2})
+
+    def test_other_digests_show_added_removed_and_plan_changed(self):
+        a = self.mk({"s1": self.st("pass"), "gone": self.st("pass")})
+        b = self.mk({"s1": self.st("fail"), "new": self.st("pass")}, digest="d2")
+        plan = lambda *ids: {"sections": [{"steps": [{"id": i, "title": i} for i in ids]}]}
+        code, d, err = self.diff(a, b, store={"d1": plan("s1", "gone"), "d2": plan("s1", "new")})
+        self.assertTrue(d["planChanged"])
+        self.assertEqual(self.labels(d), {"s1": "regressed", "gone": "removed", "new": "added"})
+        self.assertIn("plan changed", self.cli("diff", "A-1", "B-1", "--dest", self.dest({"A-1": a, "B-1": b}))[1])
+
+    def test_a_changed_step_is_not_comparable_and_a_missing_plan_is_never_guessed(self):
+        a = self.mk({"s1": self.st("pass"), "s2": self.st("pass")})
+        b = self.mk({"s1": self.st("fail"), "s2": self.st("fail")}, digest="d2")
+        p1 = {"sections": [{"steps": [{"id": "s1", "expect": "old"}, {"id": "s2", "expect": "x"}]}]}
+        p2 = {"sections": [{"steps": [{"id": "s1", "expect": "new"}, {"id": "s2", "expect": "x"}]}]}
+        d = self.diff(a, b, store={"d1": p1, "d2": p2})[1]
+        self.assertEqual(self.labels(d), {"s1": "not-comparable", "s2": "regressed"})
+        code, d, err = self.diff(a, b)
+        self.assertEqual(self.labels(d), {"s1": "not-comparable", "s2": "not-comparable"})
+        self.assertIn("no stored plan for digest d1, d2", err)
+
+    def test_strict_exits_1_on_a_regression_0_otherwise_and_2_for_an_unknown_run(self):
+        good = self.mk({"s1": self.st("pass")}); bad = self.mk({"s1": self.st("fail")})
+        self.assertEqual(self.diff(good, bad, "--strict")[0], 1)
+        self.assertEqual(self.diff(bad, good, "--strict")[0], 0)
+        self.assertEqual(self.diff(good, bad)[0], 0)
+        d = self.dest({"A-1": good})
+        code, _, err = self.cli("diff", "A-1", "nope", "--dest", d, "--strict")
+        self.assertEqual(code, 2)
+        self.assertIn("no run 'nope'", err)
+
+    def test_an_unfinished_run_needs_include_open(self):
+        a = self.mk({"s1": self.st("pass")}); b = self.mk({"s1": self.st("fail")}, ended=False)
+        code, d, err = self.diff(a, b)
+        self.assertEqual(code, 2)
+        self.assertIn("not finished", err)
+        self.assertEqual(self.diff(a, b, "--include-open")[0], 0)
+
+    def test_a_newer_format_run_is_refused_and_named(self):
+        good = self.mk({"s1": self.st("pass")})
+        d = self.dest({"A-1": good, "B-1": good})
+        ct.set_refused(d, "C-1", 3, "format 2 is newer than this tool reads (1)")
+        code, _, err = self.cli("diff", "A-1", "C-1", "--dest", d)
+        self.assertEqual(code, 2)
+        self.assertIn("C-1 was left out: format 2 is newer", err)
+        code, out, err = self.cli("trend", "--dest", d)
+        self.assertEqual(code, 0)
+        self.assertIn("left out: C-1", err)
+        self.assertEqual(len(json.loads(self.cli("trend", "--dest", d, "--format", "json")[1])["groups"][0]["runs"]), 2)
+
+    def test_trend_marks_flaky_steps_and_skips_open_runs(self):
+        runs = {"R-%d" % i: self.mk({"s1": self.st(v), "s2": self.st("pass")}, started=100 * i, ended=i != 4) for i, v in ((1, "pass"), (2, "fail"), (3, "pass"), (4, "fail"))}
+        d = self.dest(runs)
+        code, out, err = self.cli("trend", "--dest", d, "--format", "json", "--by", "build")
+        t = json.loads(out)
+        g = t["groups"][0]
+        self.assertEqual([r["runId"] for r in g["runs"]], ["R-1", "R-2", "R-3"])
+        self.assertEqual({s["id"]: (s["cells"], s["flaky"]) for s in g["steps"]}, {"s1": (["P", "F", "P"], True), "s2": (["P", "P", "P"], False)})
+        self.assertEqual(g["runs"][0]["label"], "1")
+        text = self.cli("trend", "--dest", d, "--include-open", "--last", "2")[1]
+        self.assertIn("R-4  (open)", text)
+        self.assertNotIn("R-2", text)
+        self.assertEqual(self.cli("trend", "--dest", d, "--addon", "Other")[0], 2)
+
+    def test_trend_marks_a_changed_step_and_warns_when_the_plan_is_not_stored(self):
+        runs = {"R-1": self.mk({"s1": self.st("pass"), "s2": self.st("pass")}, started=1),
+                "R-2": self.mk({"s1": self.st("pass"), "s2": self.st("fail")}, digest="d2", started=2)}
+        p1 = {"sections": [{"steps": [{"id": "s1", "expect": "old"}, {"id": "s2", "expect": "x"}]}]}
+        p2 = {"sections": [{"steps": [{"id": "s1", "expect": "new"}, {"id": "s2", "expect": "x"}]}]}
+        t = json.loads(self.cli("trend", "--dest", self.dest(runs, {"d1": p1, "d2": p2}), "--format", "json")[1])
+        self.assertEqual({s["id"]: s["cells"] for s in t["groups"][0]["steps"]}, {"s1": ["~", "P"], "s2": ["P", "F"]})
+        self.assertFalse(t["groups"][0]["steps"][0]["flaky"])
+        code, out, err = self.cli("trend", "--dest", self.dest(runs), "--format", "json")
+        self.assertEqual({s["id"]: s["cells"] for s in json.loads(out)["groups"][0]["steps"]}, {"s1": ["?", "P"], "s2": ["?", "F"]})
+        self.assertIn("no stored plan for digest d1, d2", err)
+
+
 if __name__ == "__main__":
     unittest.main()

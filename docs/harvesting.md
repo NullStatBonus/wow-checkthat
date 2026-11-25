@@ -16,6 +16,7 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 - **Which files.** With no plan, `collect` copies the saved variables of CheckThat, KeepThat, DontDoThat and ClosestVendor. `--plan <plan.yaml>` copies CheckThat's file, the file named for the plan's `addon`, and every file that assigns a `logs.*.global` of the plan, so a plan for any addon is collected. Each file prints its path, modified time and age (`source: ..., modified 2026-11-24 21:03:10, 12m ago`), so a stale copy shows. A plan global that no file defines prints a warning on stderr and `collect` still exits 0.
 - **Report.** `REPORT.md` gives each run a `result:` line (`ok`, `UNVERIFIED` or `FAIL` with counts) and a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass. A step that passed after a rerun lists its earlier failed or unverified attempts too. A failed or unverified attempt shows the Lua error that was raised while it was open, with its call stack. The match is by time (whole seconds), so a stack that also fits another attempt says so.
 - **Status.** `status` prints one row per run at its newest readable revision: steps done over steps that apply, fail, unverified and open counts, age, and the export size as a percent of the 2 MB limit (`size~`, an estimate from the saved run). It names every revision file it cannot read and every conflict or decode failure `collect` met (kept in `evidence/problems.log`; delete the file once you have looked). It judges the evidence, not the test result. `--json` prints the same as JSON.
+- **Compare runs.** `ct.py diff <run A> <run B>` and `ct.py trend` read the collected runs. See [Compare runs](#compare-runs).
 - **Newer format.** A run saved in a newer major format is refused with its file name and the reason. `collect` stores nothing of it and writes `refused.json`. `status` lists it, `report` warns (it shows an older revision when there is one, and says when the run is missing), and `report --strict` fails until a later `collect` stores a revision at least as new. `import-results` refuses it before it reads anything else. Update the tools folder. See [Results format](results-format.md).
 - **Exit codes.** `status` exits 0 when every revision is readable and nothing conflicts, 1 when there is no run, a revision is unreadable, a conflict was logged or a run is over 80% of the size limit. `report --strict` exits 1 when any step failed or is unverified (a pass or partial whose required evidence failed or has no result counts too), or when there are no runs. Without `--strict` `report` exits 0.
 - **Browse.** `browse` (or `tools/ct_tui.py`) opens a read-only viewer in the terminal: runs (failures first), the steps of a run, and one step with its attempts. It needs a terminal and Textual, which is not installed with the plan tools: `.venv/bin/python -m pip install -r requirements-tui.txt`. Without a terminal it prints the `status`, `report --failed-only` and `show` commands that give the same facts. See [Browse the evidence](#browse-the-evidence).
@@ -27,6 +28,22 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 - **Log lines.** A run keeps about 60 000 bytes of log lines in failed attempts. When it holds more, the oldest attempts lose theirs first. They keep their attempt records.
 - **Results string.** Paste one from `/ct export` with `.venv/bin/python tools/ct.py import-results "<string>"`. A file path works too.
 - Keep `evidence/` out of Git.
+
+## Compare runs
+
+```
+.venv/bin/python tools/ct.py diff <run A> <run B> [--format md|json] [--strict] [--include-open]
+.venv/bin/python tools/ct.py trend [--addon X] [--title T] [--by client|character|build|version] [--last N] [--format md|json] [--include-open]
+```
+
+Both read the newest readable revision of each collected run. Each step is judged as `report` judges it, so a pass with a contradicted check counts as a fail. A run id can be a part of the id that names one run.
+
+- **Diff labels.** `regressed` (pass or partial, then fail), `fixed` (fail or unverified, then pass or partial), `newly-unverified` (pass, then unverified), `still-failing`, `not-comparable` (one side is pending, skipped, deselected, not for that client or reopened), `added` and `removed` (a step id only one run has). Unchanged steps are counted, not listed. The header names each run's client, build, character, plan digest and CheckThat version, and says "plan changed" when the digests differ.
+- **Exit codes.** `diff` exits 0 and, with `--strict`, 1 when a step regressed. It exits 2 for an unknown run, a run that was left out, or a run that has not ended.
+- **Unfinished and newer runs.** A run that has not ended is left out unless you add `--include-open`. A run in a newer format is never read: `diff` refuses it by name, and `trend` leaves it out and lists it as a warning.
+- **Same plan, same step?** Equal plan digests mean equal steps. Otherwise the tool compares a fingerprint (a hash of the whole step) from the plan the run stored. The plans come from the collected CheckThat saved variables (`planStore`). A changed step is `not-comparable` (`~` in a trend). When a plan is not stored, the step is `not-comparable` (`?` in a trend) and a warning names the digest. The tool never guesses.
+- **Trend.** One table for each addon and plan title, so plan edits stay in one table. Columns are runs, oldest first, named 1, 2, 3 and listed above the table; `--by` adds that value of each run to its line (`version` is the CheckThat version that wrote the run). `--last` keeps the newest runs. Cells are `P` pass, `p` partial, `F` fail, `U` unverified, `-` not run, blank for no such step. A step that passed in one run and failed or went unverified in another is marked `flaky`. It exits 2 when no run matches.
+- **Limits.** Runs that CheckThat pruned before `collect` are not there. The version of the addon under test is not recorded yet, so a trend cannot name it.
 
 ## Browse the evidence
 

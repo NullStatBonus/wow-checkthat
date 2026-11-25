@@ -1643,6 +1643,168 @@ def show_text(runs, dest, name, step=None):
         raise ValueError("run %s has no step %r; steps: %s" % (rid, step, ", ".join(step_ids(runs[rid]))))
     return report_text({rid: runs[rid]}, dest, True, step=step)
 
+# ---------------------------------------------------------------- compare runs
+
+OK_RESULTS = ("pass", "partial")
+
+def plan_store(dest):
+    """{digest: plan} from the CheckThat saved variables that collect copied to dest/sv. A file that cannot be read adds nothing."""
+    store = {}
+    for p in sorted(glob.glob(os.path.join(dest, "sv", "CheckThat*.lua"))):
+        try:
+            db = sv_json(p).get("CheckThatDB")
+        except (OSError, ValueError, RecursionError):
+            continue
+        ps = db.get("planStore") if isinstance(db, dict) else None
+        for digest, plan in (ps.items() if isinstance(ps, dict) else []):
+            store.setdefault(digest, plan)
+    return store
+
+def step_prints(store, digest):
+    """{step id: fingerprint} of the stored plan with this digest, or None when the plan is not stored. The fingerprint is a hash of the whole step."""
+    plan = store.get(digest) if digest is not None else None
+    if not isinstance(plan, dict):
+        return None
+    out = {}
+    for sec in plan.get("sections") or []:
+        for st in (sec.get("steps") or []) if isinstance(sec, dict) else []:
+            if isinstance(st, dict) and isinstance(st.get("id"), str):
+                out[st["id"]] = hashlib.sha1(canonical(st).encode("utf-8")).hexdigest()[:12]
+    return out
+
+def same_step(ra, rb, sid, store):
+    """True when the step is the same plan step in both runs, False when its fingerprint changed, None when that cannot be told.
+    The same plan digest means the same steps. Otherwise both stored plans must name the step: a missing one is never guessed."""
+    da, db = ra.get("planDigest"), rb.get("planDigest")
+    if da is not None and da == db:
+        return True
+    pa, pb = step_prints(store, da), step_prints(store, db)
+    fa, fb = (pa or {}).get(sid), (pb or {}).get(sid)
+    return None if fa is None or fb is None else fa == fb
+
+def missing_plans(runs, store):
+    return sorted({r.get("planDigest") or "(none)" for r in runs if step_prints(store, r.get("planDigest")) is None})
+
+def diff_label(x, y):
+    if x in OK_RESULTS:
+        return "unchanged" if y in OK_RESULTS else ("regressed" if y == "fail" else "newly-unverified")
+    return "fixed" if y in OK_RESULTS else "still-failing"
+
+DIFF_ORDER = ("regressed", "newly-unverified", "still-failing", "fixed", "not-comparable", "added", "removed")
+
+def run_head(rid, r):
+    return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "planDigest": r.get("planDigest"), "client": r.get("client"),
+            "build": r.get("build"), "character": r.get("character"), "writerVersion": r.get("writerVersion")}
+
+def diff_data(ida, ra, idb, rb, store):
+    """Both runs through run_model (a pass with contradicting evidence is a fail), then one label for each step id."""
+    sa = {s["id"]: s for s in run_model(ida, ra)["steps"]}
+    sb = {s["id"]: s for s in run_model(idb, rb)["steps"]}
+    rows, unknown = [], False
+    for sid in list(sa) + [i for i in sb if i not in sa]:
+        x, y = sa.get(sid), sb.get(sid)
+        row = {"id": sid, "a": x and x["result"], "b": y and y["result"], "label": None, "reason": ""}
+        if y is None:
+            row["label"] = "removed"
+        elif x is None:
+            row["label"] = "added"
+        elif "skipped" in (x["result"], y["result"]):
+            row["label"], row["reason"] = "not-comparable", "A: %s; B: %s" % (x["reason"] if x["result"] == "skipped" else x["result"], y["reason"] if y["result"] == "skipped" else y["result"])
+        else:
+            same = same_step(ra, rb, sid, store)
+            if same is None:
+                row["label"], row["reason"], unknown = "not-comparable", "the plan changed and its steps are not stored", True
+            elif not same:
+                row["label"], row["reason"] = "not-comparable", "the step changed in the plan"
+            else:
+                row["label"] = diff_label(x["result"], y["result"])
+        rows.append(row)
+    warnings = []
+    if unknown:
+        warnings.append("plan changed and no stored plan for digest %s: collect the saved variables of the machine that ran it" % ", ".join(missing_plans([ra, rb], store)))
+    counts = {}
+    for row in rows:
+        counts[row["label"]] = counts.get(row["label"], 0) + 1
+    return {"a": run_head(ida, ra), "b": run_head(idb, rb), "planChanged": ra.get("planDigest") != rb.get("planDigest"),
+            "counts": counts, "steps": rows, "warnings": warnings}
+
+def head_text(tag, h):
+    return "%s: %s  client %s, build %s, character %s, plan %s, writer %s" % (tag, h["runId"], h["client"] or "?", h["build"] or "?", h["character"] or "?",
+                                                                       h["planDigest"] or "?", h["writerVersion"] or "?")
+
+def diff_text(d):
+    lines = ["# Diff", head_text("A", d["a"]), head_text("B", d["b"])]
+    if d["planChanged"]:
+        lines.append("plan changed")
+    lines.append("summary: " + (", ".join("%d %s" % (d["counts"][k], k) for k in DIFF_ORDER + ("unchanged",) if k in d["counts"]) or "no steps"))
+    for k in DIFF_ORDER:
+        rows = [r for r in d["steps"] if r["label"] == k]
+        if rows:
+            lines += ["", "## " + k]
+            lines += ["- %s: %s -> %s%s" % (r["id"], r["a"] or "-", r["b"] or "-", " (%s)" % r["reason"] if r["reason"] else "") for r in rows]
+    return "\n".join(lines)
+
+def finished(r):
+    return bool(r.get("endedAt"))
+
+CELL = {"pass": "P", "partial": "p", "fail": "F", "unverified": "U", "skipped": "-"}
+
+def trend_data(runs, store, addon=None, title=None, by=None, last=None, include_open=False):
+    """One table for each addon and plan title: a row for each step, a column for each run (oldest first), judged against the newest run's plan.
+    Cells: P pass, p partial, F fail, U unverified, - not run here, ~ the step changed in the plan, ? it cannot be told, blank the run has no such step."""
+    groups, warnings = {}, []
+    for rid, r in runs.items():
+        if (addon and r.get("addon") != addon) or (title and r.get("planTitle") != title):
+            continue
+        if finished(r) or include_open:
+            groups.setdefault((r.get("addon"), r.get("planTitle")), []).append((rid, r))
+    out = []
+    for (ad, ti), members in sorted(groups.items(), key=lambda kv: tuple(str(x) for x in kv[0])):
+        members.sort(key=lambda m: (m[1].get("started") or 0, m[0]))
+        members = members[-last:] if last else members
+        ref = members[-1][1]
+        models = [{s["id"]: s for s in run_model(rid, r)["steps"]} for rid, r in members]
+        ids = list(step_ids(ref)) + sorted({i for m in models for i in m} - set(step_ids(ref)))
+        rows, unknown = [], False
+        for sid in ids:
+            cells = []
+            for (rid, r), m in zip(members, models):
+                s = m.get(sid)
+                if s is None:
+                    cells.append(" ")
+                    continue
+                same = same_step(r, ref, sid, store) if s["result"] != "skipped" else True
+                unknown = unknown or same is None
+                cells.append(CELL[s["result"]] if same else ("~" if same is False else "?"))
+            seen = {c for c in cells if c in "PpFU"}
+            rows.append({"id": sid, "cells": cells, "flaky": bool(seen & set("Pp")) and bool(seen & set("FU"))})
+        if unknown:
+            warnings.append("%s / %s: plan changed and no stored plan for digest %s: marked ?" % (ad, ti, ", ".join(missing_plans([r for _, r in members], store))))
+        out.append({"addon": ad, "plan": ti, "runs": [dict(run_head(rid, r), label=r.get(by_key(by)) if by else None, open=not finished(r)) for rid, r in members], "steps": rows})
+    return {"groups": out, "warnings": warnings}
+
+def by_key(by):
+    return {"client": "client", "character": "character", "build": "build", "version": "writerVersion"}[by]
+
+def trend_text(t):
+    lines = []
+    for g in t["groups"]:
+        n = len(g["runs"])
+        wc = len(str(n))
+        lines += ["# %s / %s" % (g["addon"], g["plan"]), ""]
+        for i, h in enumerate(g["runs"], 1):
+            lines.append("%d  %s%s%s" % (i, h["runId"], "" if h["label"] is None else "  " + str(h["label"]), "  (open)" if h["open"] else ""))
+        w = max([len(s["id"]) for s in g["steps"]] + [4])
+        lines += ["", "%s  %s  flaky" % ("step".ljust(w), " ".join(str(i).rjust(wc) for i in range(1, n + 1)))]
+        lines += ["%s  %s  %s" % (s["id"].ljust(w), " ".join(c.rjust(wc) for c in s["cells"]), "flaky" if s["flaky"] else "") for s in g["steps"]]
+        lines.append("")
+    lines.append("P pass, p partial, F fail, U unverified, - not run, ~ step changed in the plan, ? cannot be told")
+    return "\n".join(lines)
+
+def left_out(skipped):
+    return ["%s: %s (%s)" % (rid, f, why) for rid, f, why in sorted(skipped)]
+
+
 def status_watch(dest, interval, sleep=time.sleep, rounds=None, out=print, tty=False):
     """Print status again every interval seconds until Ctrl-C (or rounds). Returns the last exit code."""
     code, n = 0, 0
@@ -1721,6 +1883,11 @@ def main(argv=None):
     p = sub.add_parser("status", help="check what the evidence folder holds: readable revisions, conflicts, sizes"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--json", action="store_true")
     p.add_argument("--watch", action="store_true", help="print status again every --interval seconds until Ctrl-C"); p.add_argument("--interval", type=float, default=5)
     p = sub.add_parser("import-results"); p.add_argument("string_or_file"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p = sub.add_parser("diff", help="compare two finished runs step by step: regressed, fixed, newly-unverified, still-failing, not-comparable, added, removed"); p.add_argument("a", help="run id (or part of it) to compare from"); p.add_argument("b", help="run id (or part of it) to compare to"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
+    p.add_argument("--format", choices=("md", "json"), default="md"); p.add_argument("--strict", action="store_true", help="exit 1 when a step regressed"); p.add_argument("--include-open", dest="include_open", action="store_true", help="allow a run that has not ended")
+    p = sub.add_parser("trend", help="one row for each step, one column for each finished run of a plan, with flaky steps marked"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--addon"); p.add_argument("--title", help="plan title")
+    p.add_argument("--by", choices=("client", "character", "build", "version"), help="name each column by this value of its run (version is the CheckThat version that wrote it)"); p.add_argument("--last", type=int, help="only the newest N runs of each plan")
+    p.add_argument("--format", choices=("md", "json"), default="md"); p.add_argument("--include-open", dest="include_open", action="store_true", help="add runs that have not ended")
     a = ap.parse_args(argv)
 
     if a.cmd == "validate":
@@ -1842,6 +2009,38 @@ def main(argv=None):
         if a.strict and (not runs or bad_steps(models(runs))):
             print("strict: %s" % ("no runs" if not runs else "%d step(s) failed or are unverified" % bad_steps(models(runs))), file=sys.stderr)
             return 1
+        return 0
+    if a.cmd == "diff":
+        skipped = []
+        runs = latest_runs(a.dest, skipped)
+        ids = []
+        for name in (a.a, a.b):
+            try:
+                ids.append(find_run(runs, name))
+            except ValueError as e:
+                out = [s for s in skipped if s[0] == name]
+                print("error: run %s was left out: %s" % (name, out[0][2]) if out else "error: %s" % e, file=sys.stderr); return 2
+        for rid in ids:
+            if not finished(runs[rid]) and not a.include_open:
+                print("error: run %s is not finished: end it, or add --include-open" % rid, file=sys.stderr); return 2
+        d = diff_data(ids[0], runs[ids[0]], ids[1], runs[ids[1]], plan_store(a.dest))
+        d["warnings"] += ["run %s: %s: %s" % s for s in skipped if s[0] in ids]
+        for w in d["warnings"]:
+            print("warning:", w, file=sys.stderr)
+        print(json.dumps(d, indent=1, sort_keys=True) if a.format == "json" else diff_text(d))
+        if a.strict and d["counts"].get("regressed"):
+            print("strict: %d step(s) regressed" % d["counts"]["regressed"], file=sys.stderr); return 1
+        return 0
+    if a.cmd == "trend":
+        skipped = []
+        runs = latest_runs(a.dest, skipped)
+        t = trend_data(runs, plan_store(a.dest), a.addon, a.title, a.by, a.last, a.include_open)
+        t["warnings"] += ["left out: %s" % s for s in left_out(skipped)]
+        for w in t["warnings"]:
+            print("warning:", w, file=sys.stderr)
+        if not t["groups"]:
+            print("error: no %srun matches" % ("" if a.include_open else "finished "), file=sys.stderr); return 2
+        print(json.dumps(t, indent=1, sort_keys=True) if a.format == "json" else trend_text(t))
         return 0
     if a.cmd == "browse":
         import ct_tui   # only here: the viewer and Textual stay optional
