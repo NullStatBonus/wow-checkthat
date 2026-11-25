@@ -26,6 +26,15 @@ test("plan rejects Markdown in display text", function()
     local p = good(); p.sections[1].steps[2].expect = "Press |cffffd100Pass|r."
     T.eq(#ns.Plan.Validate(p), 0, "native color codes are fine")
 end)
+-- Fields meant for the tools (covers) must never stop an import: the schema rejects unknown fields, the game ignores them.
+test("plan ignores a field it does not know", function()
+    local p = good()
+    p.sections[1].covers = { "First thing works" }
+    p.sections[1].steps[1].covers = { "Second thing works" }
+    p.sections[1].steps[2].futureField = { x = 1 }
+    p.futureField = true
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+end)
 test("plan rejects duplicate id", function() bad(function(p) p.sections[1].steps[2].id = "a.1" end, "duplicate") end)
 test("plan rejects unknown action kind", function() bad(function(p) p.sections[1].steps[2].action.kind = "cast" end, "unknown action") end)
 test("plan rejects unresolved requirement", function() bad(function(p) p.sections[1].steps[1].requires = { "zzz" } end, "unresolved") end)
