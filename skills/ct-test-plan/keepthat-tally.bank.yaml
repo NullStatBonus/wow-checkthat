@@ -8,6 +8,14 @@ sections:
 - id: kb
   title: Bank character
   steps:
+  - id: kb.v
+    title: Check the KeepThat version
+    action:
+      kind: manual
+      text: Open the AddOns list at the character screen and read the KeepThat version.
+    expect: the version is the one under test. Press Pass.
+    verify:
+    - player
   - id: kb.1
     title: Open the bank
     action:

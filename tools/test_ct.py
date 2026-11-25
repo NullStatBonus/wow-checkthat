@@ -525,7 +525,7 @@ class PlanSkill(unittest.TestCase):
             self.assertIn("%s: preamble does not name keepthat-tally.alt.yaml" % os.path.basename(paths[0]), self.partner_problems(paths))
             for p in paths:
                 plan = ct.load_yaml(p)
-                plan["sections"][0]["steps"][1]["reviewer"] = "Compare the totals."
+                plan["sections"][0]["steps"][2]["reviewer"] = "Compare the totals."
                 with open(p, "w") as f:
                     yaml.safe_dump(plan, f)
             self.assertTrue(any("no plan has reviewer lines" in x for x in self.partner_problems(paths)))
@@ -547,7 +547,7 @@ class PlanSkill(unittest.TestCase):
         self.assertIn("CheckThat.Report", guide)
         plan = ct.load_yaml(os.path.join(self.SKILL, "example.yaml"))
         plan["logs"]["facts"] = {"global": "CheckThatDB", "path": "global.facts", "format": "strings"}
-        step = plan["sections"][0]["steps"][0]
+        step = plan["sections"][0]["steps"][1]
         step["assertions"] = [{"kind": "log", "source": "facts", "equals": "[KeepThat] freeSlots=3"}]
         self.assertEqual(ct.validate(plan), [])
 
@@ -979,6 +979,36 @@ class RunWarnings(unittest.TestCase):
         self.assertTrue(any("R-1" in w and "untested" in w for w in scoped))
         two = {"R-%d" % i: {"writerVersion": "0.0.1"} for i in (1, 2)}
         self.assertLessEqual(sum("written by" in w for w in ct.run_warnings(two)), 1, "one warning for each writer version")
+
+
+class GoldenPlans(unittest.TestCase):
+    """The plans the skill ships as its examples must pass what the skill tells authors to run: no validate error or warning,
+    compile, a clean flow replay, and partner references that resolve."""
+    DIR = os.path.join(ROOT, "skills", "ct-test-plan")
+    PLANS = sorted(glob.glob(os.path.join(DIR, "*.yaml")))
+
+    def test_each_example_validates_without_warning_and_compiles(self):
+        self.assertTrue(self.PLANS)
+        for path in self.PLANS:
+            plan = ct.load_yaml(path)
+            self.assertEqual(ct.validate(plan), [], path)
+            self.assertIsNone(ct.version_warning(plan), path)
+            self.assertEqual(ct.card_move_warnings(plan), [], path)
+            self.assertEqual(ct.warnings(plan), [], path)
+            self.assertIn("!CT1!", ct.encode(ct.merge_sections(plan)), path)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_each_example_replays_cleanly(self):
+        for path in self.PLANS:
+            code, text = ct.replay_flow(ct.load_yaml(path))
+            self.assertEqual(code, 0, path + "\n" + text)
+
+    def test_partner_references_name_a_real_step(self):
+        steps = {os.path.basename(p): {s["id"] for sec in ct.load_yaml(p)["sections"] for s in sec["steps"]} for p in self.PLANS}
+        for path in self.PLANS:
+            with open(path, encoding="utf-8") as f:
+                for name, sid in re.findall(r"([\w.-]+\.yaml) step (\w+(?:\.\w+)*)", f.read()):
+                    self.assertIn(sid, steps.get(name, set()), "%s names %s step %s" % (os.path.basename(path), name, sid))
 
 
 class SkillText(unittest.TestCase):

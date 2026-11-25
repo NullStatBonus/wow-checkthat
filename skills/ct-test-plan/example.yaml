@@ -12,6 +12,14 @@ sections:
 - id: s1
   title: Test sell question
   steps:
+  - id: cv.v
+    title: Check the ClosestVendor version
+    action:
+      kind: manual
+      text: Open the AddOns list at the character screen and read the ClosestVendor version.
+    expect: the version is the one under test. Press Pass.
+    verify:
+    - player
   - id: cv.s1.1
     title: Sell test question
     action:
