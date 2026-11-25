@@ -95,6 +95,22 @@ Re-run `validate` and the gate after changes, then run `compile <plan> -o <file>
 
 A step id is a key: `ct.py diff` and `trend` follow a step by its id. When you edit an existing plan, never renumber or rename an id. Add a new step with a new id (append to the section, or use the next free number), and retire a step by removing it. `ct.py diff` reports a step that kept its text but changed its id as "renamed" and warns that its history is split.
 
+## 4c. Revise after a run
+
+Use this when the author has run a plan and wants it fixed. Never edit addon code unasked.
+
+1. Collect and read the run with the `ct-verify` skill's commands first: `$PY $CT/tools/ct.py report --failed-only --dest <evidence> --expect-version <addon version> --plan <plan file>`. Relay every `warning:` before anything else. A run of another build, or of an older plan file, says nothing about the current plan: stop and ask for a new run.
+2. Sort each failed, unverified or contradicted step with `ct.py show <run> <step>` (attempts, `rule`, `hits`, `excerpt`, error stacks):
+   - **Plan fault.** The step asserts its own result line; the log was not readable (debug not on, wrong log source or path); the pattern is stricter than the line the addon writes (a hit shows a near match); `scope` is wrong; the timeout is too short; the step order or the `expect` text sends the tester the wrong way; a manual step's Run button moved the card.
+   - **Addon fault.** The rule is right and the evidence contradicts it: a forbidden line appeared, a state check failed, a Lua error from the addon fell inside the step.
+   - **Cannot tell.** Say so and ask the author. Do not guess.
+3. Edit only plan faults, keep every step id (section 4b), and run the handoff gate (section 4) again. Say which plan version the run used and which plan version you now hand over.
+4. Tell the author what to do next:
+   - Addon faults only, plan unchanged: fix the addon, `/reload`, then `/ct rerun failed` in the same run.
+   - The plan changed: import the new plan and start a new run (the old run belongs to the old plan digest). `/ct run <category>` limits it to the areas that failed.
+   - After the new run, `$PY $CT/tools/ct.py diff <old run> <new run> --dest <evidence>` shows which steps were fixed, regressed or are not comparable. A `not-comparable` step is unknown, not fixed.
+5. Report three lists: plan faults fixed (step id, what changed), addon faults for the author's code (step id, the evidence that shows it), unknown steps.
+
 ## 5. Gaps
 
 For every step that has no log evidence, offer to open an issue in the addon's repository: `gh issue create`, with the gap, the code involved and a possible log line or fact (the guarded `CheckThat.Report` call and its key, from `$CT/docs/debug-logging.md`). If the addon has no debug log, offer one issue for the log facility (the pattern in `$CT/docs/debug-logging.md`) plus one issue per needed line, each naming the steps it unlocks. No personal names. Ask first; never open it unasked.

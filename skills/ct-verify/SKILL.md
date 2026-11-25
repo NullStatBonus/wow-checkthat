@@ -75,6 +75,8 @@ For each `reviewer` line that names partner files, step IDs and a relationship:
 
 ## 6. Report
 
+When a step failed because of the plan and not the addon (a circular assertion, an unreadable log, a pattern stricter than the line), say so in the report and point the author to the `ct-test-plan` skill's "Revise after a run" section. You still never edit the plan.
+
 Start with the `status` result (healthy or not) in one line. Print one table per run (step, effective, claimed, by, evidence, citation), then the cross-character results, then a short list of: contradicted steps, unverified steps, steps with no evidence, and suggested assertions or log lines. Say what you could not judge and why (partial input, plan not established, missing role). Do not edit the plan; the author decides what to change. Do not commit the evidence folder.
 
 ## Rules

@@ -5,6 +5,7 @@ Two skills help addon developers write plans and read finished runs back. They a
 - **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time.
   - By default each step has one action and one expected result. Ask for a compound step when you need one.
   - Before a plan goes to a tester it runs a gate: `validate`, `compile`, `ct.py replay-flow`, `ct.py lines`, the `offline` block, and a review against what the card shows, with every finding fixed.
+  - After a run it revises the plan: it sorts each failing step into plan fault, addon fault or unknown, edits only plan faults, and says whether to `/ct rerun failed` or import the new plan.
   - A step id is a key: never renumber or rename one. `ct.py diff` marks a step that kept its text but changed its id as renamed.
   - A check that needs several characters becomes one plan for each character role, named `<name>.<role>.yaml`. Each preamble names every partner plan.
   - Examples: `skills/ct-test-plan/keepthat-tally.bank.yaml` and `keepthat-tally.alt.yaml`.

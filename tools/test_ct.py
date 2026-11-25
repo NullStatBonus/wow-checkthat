@@ -1021,6 +1021,17 @@ class SkillText(unittest.TestCase):
             self.assertEqual(sorted(named - real), [], path)
 
 
+class ReviseMode(unittest.TestCase):
+    def test_skill_states_the_revise_rules(self):
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
+            text = f.read()
+        for rule in ("## 4c. Revise after a run", "**Plan fault.**", "**Addon fault.**", "**Cannot tell.**", "/ct rerun failed", "new run", "ct.py diff",
+                     "Never edit addon code unasked", "keep every step id"):
+            self.assertIn(rule, text)
+        with open(os.path.join(ROOT, "skills", "ct-verify", "SKILL.md"), encoding="utf-8") as f:
+            self.assertIn("Revise after a run", f.read())
+
+
 class CardMoveWarning(unittest.TestCase):
     def plan(self, cmds, **extra):
         st = {"id": "a.1", "action": {"kind": "manual", "text": "t", "commands": cmds}}
