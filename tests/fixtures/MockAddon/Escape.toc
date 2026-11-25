@@ -1,4 +1,4 @@
 ## Interface: 11509
 ## Title: Escape
 ## Notes: Fixture: a TOC line that climbs out of the addon folder. The runner must refuse it. Not shipped.
-../mockaddon/Core.lua
+../MockAddon/Core.lua

@@ -147,7 +147,7 @@ function Runner.run(spec, opts)
     table.sort(mockNames)
     local hasMocks = #mockNames > 0
 
-    local name = spec.toc:match("([^/]+)%.toc$") or "Addon"
+    local name = spec.toc:match("([^/]+)/[^/]+%.toc$") or spec.toc:match("([^/]+)%.toc$") or "Addon" -- the game passes the folder name
     local ns = {}
     local loaded, loadErr
     local unlisted
