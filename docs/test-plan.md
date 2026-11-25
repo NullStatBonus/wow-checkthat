@@ -119,8 +119,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
     Log: `evidence/runs/<run id>/shots/` holds `<step id>__<file name>`, and `report` lists it under the step (see issue 95).
 13. **The run names the version under test.** Setup: KeepThat is installed and enabled, and its plan is imported. Start a run for KeepThat, then type `/reload`.
     Check: the run starts and the card opens as usual.
-    Log: the run in `CheckThatDB.global.runs` holds `formatRev = 3` and `targetVersion` equal to the `## Version:` line of `KeepThat.toc`. After disabling KeepThat and starting another run, the new run has no `targetVersion` key.
-
+    Log: the run in `CheckThatDB.global.runs` holds `formatRev = 3` and `targetVersion` equal to the `## Version:` line of `KeepThat.toc`.
 ## 5. Categories and unit-test checks
 
 Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
