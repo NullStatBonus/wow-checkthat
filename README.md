@@ -105,6 +105,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 make test      # build, luajit tests, python tests
 make check     # packaging and version checks
 luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fake client
+.venv/bin/python tools/ct.py replay plans/<plan>.yaml --sv <fixture dir>   # judge log checks against saved variables, no game
 ```
 
 Requirements live in `openspec/`. The release steps are in [docs/publishing.md](docs/publishing.md).

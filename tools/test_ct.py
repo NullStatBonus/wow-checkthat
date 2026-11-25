@@ -1,4 +1,4 @@
-import contextlib, io, json, os, re, subprocess, sys, tempfile, unittest, zlib
+import contextlib, io, json, os, re, shutil, subprocess, sys, tempfile, unittest, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ct
 
@@ -227,6 +227,69 @@ class SamplePlans(unittest.TestCase):
             self.assertEqual(ct.warnings(plan), [], path)
 
 
+class ReplayFixture(unittest.TestCase):
+    FIXTURE = os.path.join(ROOT, "tests", "fixtures", "replay-sv")
+
+    @staticmethod
+    def plan(*assertions):
+        steps = [{"id": "r.%d" % i, "title": "T", "action": {"kind": "manual", "text": "Check the version."}, "expect": "e",
+                  "verify": ["player", "assertions"], "assertions": [a]} for i, a in enumerate(assertions, 1)]
+        return {"ct": 1, "addon": "KeepThat", "title": "Replay",
+                "logs": {"debug": {"global": "KeepThatDB", "path": "global.log", "format": "strings"}},
+                "sections": [{"id": "s", "title": "S", "steps": steps}]}
+
+    @staticmethod
+    def log(**kw):
+        return dict({"kind": "log", "source": "debug"}, **kw)
+
+    def results(self, *assertions, **kw):
+        items, notes = ct.replay_plan(self.plan(*assertions), self.FIXTURE, **kw)
+        return [i["result"] for i in items], notes
+
+    def test_a_typo_in_a_check_fails_and_the_corrected_plan_passes(self):
+        self.assertEqual(self.results(self.log(contains="second thng done"))[0], ["fail"])
+        self.assertEqual(self.results(self.log(contains="second thing done"))[0], ["pass"])
+        self.assertEqual(self.results(self.log(pattern="^second .* done$"), self.log(equals="[kt] loaded"))[0], ["pass", "pass"])
+
+    def test_a_forbidden_line_in_the_log_fails(self):
+        self.assertEqual(self.results(self.log(contains="second thing done", absent=True))[0], ["fail"])
+
+    def test_a_check_that_needs_the_step_window_never_passes(self):
+        res = self.results(self.log(contains="game call failed", absent=True), self.log(contains="loaded", count={"max": 5}),
+                           self.log(contains="loaded", count={"exactly": 1}))[0]
+        self.assertEqual(res, ["skipped"] * 3)
+
+    def test_a_fact_is_judged_and_a_diagnostic_or_state_check_is_not_a_pass(self):
+        fact = lambda **kw: dict({"kind": "fact", "source": "debug", "addon": "kt", "key": "bag", "op": "eq", "value": 4}, **kw)
+        self.assertEqual(self.results(fact())[0], ["pass"])
+        self.assertEqual(self.results(fact(value=5))[0], ["fail"])
+        state = {"kind": "state", "probe": "addon-loaded", "name": "KeepThat", "op": "eq", "value": True}
+        self.assertEqual(self.results(state, self.log(contains="never written", diagnostic=True))[0], ["skipped"])
+        item = ct.replay_plan(self.plan(state), self.FIXTURE)[0][0]
+        self.assertEqual(item["why"], "a state probe needs the game")
+
+    def test_the_report_names_the_fixture_age_and_a_stale_digest(self):
+        import datetime
+        _, notes = self.results(self.log(contains="loaded"), today=datetime.date(2026, 11, 24))
+        self.assertIn("fixture recorded 2026-11-20 (4 days ago)", notes)
+        self.assertTrue(any(n.startswith("stale fixture: it was recorded with plan digest 00000000") for n in notes), notes)
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copy(os.path.join(self.FIXTURE, "KeepThatDB.lua"), d)
+            self.assertTrue(any("fixture.json is missing" in n for n in ct.replay_plan(self.plan(self.log(contains="loaded")), d)[1]))
+
+    def test_the_command_prints_junit_and_exits_non_zero_on_a_failed_check(self):
+        import yaml
+        with tempfile.TemporaryDirectory() as d:
+            for text, rc in (("second thng done", 1), ("second thing done", 0)):
+                p = os.path.join(d, "p.yaml")
+                with open(p, "w") as f:
+                    yaml.safe_dump(self.plan(self.log(contains=text)), f)
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(ct.main(["replay", p, "--sv", self.FIXTURE]), rc, text)
+                self.assertIn('failures="%d"' % rc, out.getvalue())
+
+
 class LogCaps(unittest.TestCase):
     """Every plan for an addon declares the cap of the addon's own debug log (docs/contracts.md names the source line)."""
     def test_plans_declare_the_cap_the_tool_knows(self):
@@ -287,6 +350,30 @@ class PlanSkill(unittest.TestCase):
                 rc = ct.main(["validate", p])
         self.assertEqual(rc, 0)
         self.assertIn("warning: a.2: command named in text but not in commands: /kt debug on", out.getvalue())
+
+    def test_skill_states_the_new_draft_review_and_bundle_rules(self):
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
+            text = f.read()
+        for needle in ("auto or manual", "end its `expect` text with the press it needs", "`timeout` to 120",
+                       "own result press writes", "tests/replay_plan.lua", "stale", "make install-skill"):
+            self.assertIn(needle, text)
+
+    def test_step_cannot_assert_its_own_result_line(self):
+        for key, text in (("contains", "[ct] step a.1 pass"), ("equals", "[ct] step a.1 pass")):
+            p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", key: text}]
+            self.assertTrue(any("asserts its own result line" in e for e in ct.validate(p)), key)
+        p = good()   # another step's line, and a longer id that only shares the prefix, are fine
+        p["sections"][0]["steps"][1].update({"verify": ["player", "assertions"], "assertions": [{"kind": "log", "source": "debug", "contains": "[ct] step a.1 pass", "scope": "session"}]})
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "[ct] step a.10 pass"}]
+        self.assertEqual(ct.validate(p), [])
+
+    def test_first_step_without_a_version_check_warns(self):
+        p = good()
+        self.assertIn("a.1: the first step does not check the version", ct.version_warning(p))
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "fact", "source": "debug", "addon": "KeepThat", "key": "version", "op": "ge", "value": "0.17.0"}]
+        self.assertIsNone(ct.version_warning(p))
+        p = good(); p["sections"][0]["steps"][0]["title"] = "Check the version"
+        self.assertIsNone(ct.version_warning(p))
 
     @staticmethod
     def partner_problems(paths):
@@ -371,7 +458,7 @@ class PlanSkill(unittest.TestCase):
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
-              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "tools/sv2json.lua",
+              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "tools/sv2json.lua", "tools/replay_sv.lua",
               "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
 
@@ -449,6 +536,12 @@ class InstallSkill(unittest.TestCase):
                                 os.path.join(dest, "example.yaml")], capture_output=True, text=True, cwd=d)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("ok", r.stdout)
+            fx = os.path.join(d, "fx"); os.makedirs(fx)
+            shutil.copy(os.path.join(ROOT, "tests", "fixtures", "replay-sv", "KeepThatDB.lua"), fx)
+            rp = subprocess.run([sys.executable, os.path.join(dest, "ct", "tools", "ct.py"), "replay", os.path.join(dest, "example.yaml"), "--sv", fx],
+                                capture_output=True, text=True, cwd=d)   # the bundle holds the luajit driver and Evidence.lua
+            self.assertIn(rp.returncode, (0, 1), rp.stdout + rp.stderr)
+            self.assertIn("<testsuite ", rp.stdout)
             v = subprocess.run([sys.executable, os.path.join(dest, "ct", "tools", "ct_tui.py")], capture_output=True, text=True, cwd=d)   # no terminal, no Textual needed
             self.assertEqual(v.returncode, 2, v.stdout + v.stderr)
             self.assertIn("needs a terminal", v.stderr)

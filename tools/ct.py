@@ -220,6 +220,9 @@ def validate(plan):
                     c = a.get("count") or {}
                 if a["kind"] == "log" and sum(k in a for k in ("equals", "contains", "pattern")) != 1:
                     errs.append("%s: log assertion needs exactly one of equals, contains, pattern" % sid)
+                own = "[ct] step %s " % sid   # the game judges a result before it writes this line
+                if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
+                    errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope session" % (sid, own))
     return errs
 
 
@@ -239,9 +242,19 @@ def warnings(plan):
                     out.append((st["id"], m.group(1)))
     return out
 
+def version_warning(plan):
+    """A message when the first step of the plan does not check the version under test, else None."""
+    st = plan["sections"][0]["steps"][0]
+    text = " ".join([st.get("title", ""), st.get("expect", ""), st["action"].get("text", "")] + [a.get("key", "") for a in st.get("assertions", [])])
+    if "version" not in text.lower():
+        return "%s: the first step does not check the version under test (a run on another build wastes the tester's time)" % st["id"]
+
 def print_warnings(plan):
     for sid, cmd in warnings(plan):
         print("warning: %s: command named in text but not in commands: %s" % (sid, cmd))
+    w = version_warning(plan)
+    if w:
+        print("warning: " + w)
 
 def merge_sections(plan):
     """Compile section requirements, setup and clients into each step."""
@@ -510,6 +523,55 @@ def from_md(path, addon):
                 sec["intro"] = " ".join(intro)
             plan["sections"].append(sec)
     return nativize(plan)
+
+
+# ---------------------------------------------------------------- offline replay
+
+def replay_plan(plan, fixture, today=None):
+    """Judge each required log and fact check of a plan against the SavedVariables files in a fixture folder.
+    Returns (items, notes): items are {step, label, result: pass|fail|skipped, why}; notes are warnings about the fixture.
+    Needs luajit. The fixture folder holds the *.lua files and may hold fixture.json: {"recorded": "YYYY-MM-DD", "digest": "<plan digest>"}."""
+    import datetime, tempfile
+    errs = validate(plan)
+    if errs:
+        raise ValueError("the plan is not valid: " + "; ".join(errs))
+    merged = merge_sections(plan)
+    digest = encode(merged)[len(PREFIX):len(PREFIX) + 8]
+    files = sorted(glob.glob(os.path.join(fixture, "*.lua")))
+    if not files:
+        raise ValueError("no SavedVariables *.lua file in " + fixture)
+    notes, meta = [], {}
+    try:
+        with open(os.path.join(fixture, "fixture.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        notes.append("fixture.json is missing or unreadable: the fixture's age and plan digest are unknown")
+    if meta.get("recorded"):
+        days = ((today or datetime.date.today()) - datetime.date.fromisoformat(meta["recorded"])).days
+        notes.append("fixture recorded %s (%d days ago)" % (meta["recorded"], days))
+    if meta.get("digest") and meta["digest"] != digest:
+        notes.append("stale fixture: it was recorded with plan digest %s, this plan is %s" % (meta["digest"], digest))
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "plan.json")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(canonical(merged))
+        r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "replay_sv.lua"), path] + files, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip())
+    return json.loads(r.stdout), notes
+
+
+def replay_junit(plan, items):
+    from xml.etree import ElementTree as ET
+    count = lambda k: str(sum(i["result"] == k for i in items))
+    suite = ET.Element("testsuite", name=plan["title"], tests=str(len(items)), failures=count("fail"), skipped=count("skipped"))
+    for i in items:
+        case = ET.SubElement(suite, "testcase", classname=i["step"], name=i["label"])
+        if i["result"] == "fail":
+            ET.SubElement(case, "failure", message=i["why"] or "")
+        elif i["result"] == "skipped":
+            ET.SubElement(case, "skipped", message=i["why"] or "")
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode") + "\n"
 
 
 # ---------------------------------------------------------------- evidence harvest
@@ -1285,6 +1347,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("validate"); p.add_argument("plan")
     p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o")
+    p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
@@ -1328,6 +1391,22 @@ def main(argv=None):
         else:
             print(s)
         return 0
+    if a.cmd == "replay":
+        plan = load_yaml(a.plan)
+        try:
+            items, notes = replay_plan(plan, a.sv)
+        except (ValueError, RuntimeError) as e:
+            print("error:", e, file=sys.stderr); return 2
+        for n in notes:
+            print("replay:", n, file=sys.stderr)
+        n = lambda k: sum(i["result"] == k for i in items)
+        print("replay: %d passed, %d failed, %d not judged offline" % (n("pass"), n("fail"), n("skipped")), file=sys.stderr)
+        xml = replay_junit(plan, items)
+        if a.o:
+            open(a.o, "w").write(xml)
+        else:
+            print(xml, end="")
+        return 1 if n("fail") else 0
     if a.cmd == "decode":
         s = a.string_or_file
         if os.path.exists(s):
