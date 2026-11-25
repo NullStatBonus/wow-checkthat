@@ -26,10 +26,10 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)
 - **Past runs.** Home lists stored runs. Open, export or delete one. [Details](docs/features.md#past-runs)
 - **Categories.** A plan groups its steps into categories. Pick them when you start a run, add one later, jump to one, or run one again. [Details](docs/features.md#categories-and-the-tracker)
-- **Progress tracker.** One bar segment for each category in blue, yellow, red or green (grey when skipped), and a caption that says the result in words. The Categories window (`/ct tracker`) lists every category, also with a dozen or more. A row can also take a category out of the run while it has no result. [Details](docs/features.md#categories-and-the-tracker)
+- **Progress tracker.** One bar segment for each category in blue, yellow, red or green (grey when skipped), and a caption that says the result in words. The Categories window (`/ct tracker`) lists every category, also with a dozen or more. A row can also take a category out of the run while it has no result. The plus button on a row lists its steps with their results. A click on a step shows it on the card. [Details](docs/features.md#categories-and-the-tracker)
 - **Unit-test checks.** A step can check a fact's value (range, tolerance, type, list, pattern), count how many times something happened, and check that no Lua error appeared. [Details](docs/features.md#unit-test-checks)
 - **Reload safe.** The run and its place survive `/reload`.
-- **Screenshots.** A step can ask for Print Screen. CheckThat never captures. [Details](docs/harvesting.md#screenshots)
+- **Screenshots.** A step can ask for Print Screen. CheckThat never captures. `ct.py collect` counts screenshots that fit no step. [Details](docs/harvesting.md#screenshots)
 
 ## Commands
 
@@ -53,7 +53,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct export` | Show the results string. |
 | `/ct macro` | Create a macro for the current step. |
 | `/ct categories` | List each category of the run with its state (failed, partial or unverified, passed, untested, in progress, all skipped, not picked) and its passed, failed and open counts. |
-| `/ct tracker` | Open or close the Categories window: one row for each category with its color, state in words and passed, failed and open counts. Click a row to add it, go to its first open step or rerun it. |
+| `/ct tracker` | Open or close the Categories window: one row for each category with its color, state in words and passed, failed and open counts. Click a row to add it, go to its first open step or rerun it. The plus button on a row lists its steps. |
 | `/ct run <category or step id>` | Show the first open step of a category, adding the category to the run if it was not picked. Or show one step. |
 | `/ct rerun <category or failed>` | Reopen the steps of a category, or every failed or unverified step with `failed`. Earlier attempts stay in the export. |
 | `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |

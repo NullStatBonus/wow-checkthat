@@ -123,6 +123,10 @@
     "evidence": {
      "type": "string"
     },
+    "reopened": {
+     "type": "boolean",
+     "description": "True on a pending step that Undo or a rerun reopened after it had a result. Cleared by the next result or when the step leaves the run. Absent means unknown (formatRev 1 or older), not false. Read it only on a pending step."
+    },
     "attempts": {
      "type": "array",
      "items": {

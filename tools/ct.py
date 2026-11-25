@@ -555,8 +555,17 @@ def cmd_collect(a):
     for src, base in sources:
         n_sv, n_runs, n_failed = collect_src(src, base, dest)
         new_sv += n_sv; new_runs += n_runs; failed += n_failed
-    new_shots = sum(collect_shots(dest, d) for d in shot_dirs)
+    new_shots, loose = 0, []
+    for d in shot_dirs:
+        n, un = collect_shots(dest, d, all_shots=getattr(a, "all_shots", False))
+        new_shots += n; loose += un
     print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
+    if loose:
+        print("%d screenshot%s matched no attempt (taken outside every step, within an hour of one)%s" % (
+            len(loose), "" if len(loose) == 1 else "s", "" if getattr(a, "verbose", False) else ": --verbose names them, --all-shots keeps them"))
+        if getattr(a, "verbose", False):
+            for name, rid, sid, gap in loose:
+                print("  %s: %d s from step %s of run %s" % (name, gap, sid, rid))
     if failed:
         print("error: %d saved-variables file(s) could not be decoded (is luajit installed?)" % failed, file=sys.stderr)
         return 1
@@ -646,30 +655,54 @@ def collect_src(src, base, dest):
 SHOT_EXT = (".jpg", ".jpeg", ".png", ".tga")
 
 
-def collect_shots(dest, shots_dir):
-    """Copy screenshots whose mtime falls inside a step attempt window into runs/<id>/shots/."""
+SHOT_NEAR = 3600   # a screenshot this many seconds from an attempt, outside its window, is reported; older files are not ours to count
+SHOT_CLIENT = {"_classic_era_": "classic-era", "_forever_": "forever-camelot"}
+
+
+def collect_shots(dest, shots_dir, all_shots=False):
+    """Copy screenshots whose mtime falls inside a step attempt window into runs/<id>/shots/.
+    Returns (copied, loose): loose lists (file, run, step, gap in seconds) for each file that fits no window but lies within SHOT_NEAR of one.
+    A file inside a window is matched whether or not an earlier collect copied it. all_shots copies loose files to runs/<id>/unassigned-shots/."""
     if not shots_dir or not os.path.isdir(shots_dir):
-        return 0
+        return 0, []
     files = []
     for name in os.listdir(shots_dir):
         if name.lower().endswith(SHOT_EXT):
             p = os.path.join(shots_dir, name)
             files.append((os.path.getmtime(p), name, p))
-    copied = 0
-    for rid, run in latest_runs(dest).items():
+    client = next((v for k, v in SHOT_CLIENT.items() if k in shots_dir.replace("\\", "/")), None)
+    wins = []   # (run id, plan position, step, start, end)
+    for rid, run in sorted(latest_runs(dest).items()):
+        pos = {s: i for i, s in enumerate(step_ids(run))}
         for sid, rec in (run.get("steps") or {}).items():
             for at in rec.get("attempts", []):
                 start = at.get("started")
-                if not isinstance(start, (int, float)):
-                    continue
-                end = at.get("finished") or start + 900
-                for mt, name, p in files:
-                    if start - 2 <= mt <= end + 2:
-                        out = os.path.join(dest, "runs", safe_name(rid), "shots", "%s__%s" % (safe_name(sid), safe_name(name)))
-                        if not os.path.exists(out):
-                            os.makedirs(os.path.dirname(out), exist_ok=True)
-                            shutil.copyfile(p, out); copied += 1
-    return copied
+                if isinstance(start, (int, float)):
+                    wins.append((rid, pos.get(sid, 0), sid, start, at.get("finished") or start + 900, run.get("client")))
+    copied, loose = 0, []
+    for mt, name, p in sorted(files):
+        inside = [w for w in wins if w[3] - 2 <= mt <= w[4] + 2]
+        for rid, _, sid, _, _, _ in inside:
+            out = os.path.join(dest, "runs", safe_name(rid), "shots", "%s__%s" % (safe_name(sid), safe_name(name)))
+            if not os.path.exists(out):
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                shutil.copyfile(p, out); copied += 1
+        if inside:
+            continue
+        pool = [w for w in wins if client and w[5] == client] or wins   # prefer a run of this folder's client
+        if not pool:
+            continue
+        near = min(pool, key=lambda w: (max(w[3] - mt, mt - w[4], 0), w[0], w[1]))
+        gap = int(max(near[3] - mt, mt - near[4], 0))
+        if gap > SHOT_NEAR:
+            continue
+        loose.append((name, near[0], near[2], gap))
+        if all_shots:
+            out = os.path.join(dest, "runs", safe_name(near[0]), "unassigned-shots", safe_name(name))
+            if not os.path.exists(out):
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                shutil.copyfile(p, out)
+    return copied, loose
 
 
 def run_shots(dest, rid):
@@ -842,6 +875,12 @@ def step_ids(r):
     return order + sorted(s for s in (r.get("steps") or {}) if s not in order)
 
 
+def awaiting_retry(rec):
+    """A pending step that Undo or a rerun reopened. The flag is trusted only on a pending step (an older CheckThat can finish it without clearing it);
+    a run saved before the flag has none, so a pending step with a finished attempt counts too."""
+    return rec.get("verdict") == "pending" and (rec.get("reopened") is True or any(a.get("verdict") for a in rec.get("attempts") or []))
+
+
 def step_table(r, only=None):
     """One row per step in plan order: step, verdict, evidence, attempts, note. only limits it to some step ids."""
     rows = [("step", "verdict", "evidence", "attempts", "note")]
@@ -850,7 +889,7 @@ def step_table(r, only=None):
             continue
         rec = (r.get("steps") or {}).get(sid, {})
         done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
-        reopened = bool(done) and rec.get("verdict") == "pending"   # Undo or a rerun: the older attempt no longer speaks for the step
+        reopened = awaiting_retry(rec)   # Undo or a rerun: the older attempt no longer speaks for the step
         note = "awaiting retry" if reopened else " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
         if len(note) > 40:
             note = note[:37] + "..."
@@ -1019,6 +1058,8 @@ def classify(rec):
         return "fail", why or "failed"
     if v == "unverified":
         return "unverified", why or "no evidence"
+    if awaiting_retry(rec):
+        return "skipped", "awaiting retry"
     return "skipped", SKIP_WHY.get(v, "no result")
 
 def run_model(rid, r, stacks=None, lines=False):
@@ -1032,7 +1073,7 @@ def run_model(rid, r, stacks=None, lines=False):
         counts[result] = counts.get(result, 0) + 1
         done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
         s = {"id": sid, "category": (r.get("cat") or {}).get(sid), "attempt": done[-1].get("n") if done else None, "result": result, "verdict": rec.get("verdict"), "reason": why,
-             "attempts": len(rec.get("attempts") or []), "recordedByCheckThat": by_checkthat(rec)}
+             "attempts": len(rec.get("attempts") or []), "awaitingRetry": awaiting_retry(rec), "recordedByCheckThat": by_checkthat(rec)}
         checks = []
         for at in rec.get("attempts") or []:
             outs = [outcome_view(i, o, lines) for i, o in enumerate(at.get("outcomes") or [], 1) if o.get("result") != "pass"]
@@ -1249,6 +1290,8 @@ def main(argv=None):
     p = sub.add_parser("sv2json"); p.add_argument("file")
     p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; collects _classic_era_ and _forever_ (WTF and Screenshots)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
+    p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
+    p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, there are no runs, or a revision could not be read")

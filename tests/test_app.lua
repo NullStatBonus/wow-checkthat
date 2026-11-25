@@ -349,6 +349,32 @@ test("app end with no run", function()
     local run, err = App.CanEnd(); T.ok(run == nil and err:find("no run"))
     local r2, e2 = App.End(); T.ok(r2 == nil and e2:find("no run"))
 end)
+test("CategorySteps lists a category's steps in plan order with words, and ShowStep only shows a step in the run", function()
+    boot()
+    T.eq(#App.CategorySteps("s"), 0, "no run, no steps")
+    T.eq(App.ShowStep("kt.1"), nil)
+    App.ImportPlan(assert(ns.Codec.Encode(plan()))); App.Start("KeepThat")
+    local run = App.Current()
+    T.ok(run, "a run is on the card")
+    local cat = run.categories[1].id
+    local steps = App.CategorySteps(cat)
+    T.eq(#steps, 2); T.eq(steps[1].id, "kt.1"); T.eq(steps[1].title, "Hover"); T.eq(steps[1].word, "open"); T.eq(steps[2].id, "kt.2")
+    for _, s in ipairs(steps) do T.eq(run.cat[s.id], cat); T.eq(s.offered, true) end
+    T.eq(#App.CategorySteps("nothing"), 0)
+    local ok, err = App.ShowStep("no-such-step")
+    T.eq(ok, nil); T.eq(err, "That step is not in this run.")
+    run.steps["kt.2"].verdict = "inapplicable"   -- what a step for another client reads
+    local s2 = App.CategorySteps(cat)[2]
+    T.eq(s2.word, "not for this client"); T.eq(s2.offered, false)
+    local ok2, err2 = App.ShowStep("kt.2"); T.eq(ok2, nil); T.eq(err2, "That step is not in this run.")
+    run.steps["kt.2"].verdict = "pending"
+    T.eq(App.ShowStep(steps[#steps].id), true); T.eq(ns.Run.CurrentId(run), steps[#steps].id)
+    local rev = run.revision
+    run.endedAt = 1
+    T.eq(App.ShowStep(steps[1].id), true, "an ended run still shows it"); T.eq(run.revision, rev, "and keeps its revision")
+    run.endedAt = nil
+end)
+
 test("context menu: MenuUtil, then UIDropDownMenu, then false", function()
     local Ad = ns.Adapter
     local clicked
@@ -362,6 +388,17 @@ test("context menu: MenuUtil, then UIDropDownMenu, then false", function()
     T.eq(Ad.ContextMenu({}, items), true); T.eq(made[1], "End run..."); made[2](); T.ok(clicked)
     _G.MenuUtil = { CreateContextMenu = function() error("boom") end }
     T.eq(Ad.ContextMenu({}, items), false, "a failing menu falls back")
+    local added = {}
+    _G.UIDropDownMenu_Initialize = function(_, init) init() end
+    _G.ToggleDropDownMenu = function() end
+    _G.UIDropDownMenu_CreateInfo = function() return {} end
+    _G.UIDropDownMenu_AddButton = function(info) added[#added + 1] = info end
+    local cf, up = _G.CreateFrame, _G.UIParent
+    _G.CreateFrame, _G.UIParent = function() return {} end, {}
+    T.eq(Ad.ContextMenu({}, items), true, "a failing MenuUtil falls through to the dropdown")
+    T.eq(#added, #items)
+    _G.CreateFrame, _G.UIParent, _G.CheckThatMenu = cf, up, nil
+    _G.UIDropDownMenu_Initialize, _G.ToggleDropDownMenu, _G.UIDropDownMenu_CreateInfo, _G.UIDropDownMenu_AddButton = nil, nil, nil, nil
     _G.MenuUtil, _G.UIDropDownMenu_Initialize = saved.MenuUtil, saved.UDM_I
 end)
 -- Run history, run limit and plan pruning

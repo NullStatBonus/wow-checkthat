@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.0
+
+New: **See the steps of a category.** Each row in the Categories window has a plus button. It lists the steps with their results. A click on a step shows it on the card.
+New: **Screenshots outside a step.** The collect tool now counts screenshots that fit no step. It names the nearest step with the option `--verbose`.
+Fixed: **Reopened steps.** After Undo or a rerun, a step looked untouched in reports. It now carries a marker and shows as awaiting retry.
+Fixed: **Row click without a menu.** On some clients a click on a category row did only the first menu item. It now falls back to a button list.
+
 ## 0.16.0
 
 New: **Choose categories on the card.** A plan with more than eight categories has a Choose categories button. It opens a list you can page. Home pages its list too.

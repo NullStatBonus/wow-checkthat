@@ -130,9 +130,10 @@ end
 -- so the caller can fall back to a plain action. Newer clients have MenuUtil; older ones have UIDropDownMenu.
 function Adapter.ContextMenu(owner, items)
     if _G.MenuUtil and _G.MenuUtil.CreateContextMenu then
-        return (pcall(_G.MenuUtil.CreateContextMenu, owner, function(_, root)
+        -- A menu that raises is not the end: the older dropdown may still work.
+        if pcall(_G.MenuUtil.CreateContextMenu, owner, function(_, root)
             for _, it in ipairs(items) do root:CreateButton(it[1], it[2]) end
-        end))
+        end) then return true end
     end
     local g = _G
     if g.UIDropDownMenu_Initialize and g.ToggleDropDownMenu and g.UIDropDownMenu_CreateInfo and g.CreateFrame and g.UIParent then
