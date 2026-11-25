@@ -3,7 +3,7 @@ local ns, test, T, finish = dofile("tests/harness.lua")()
 local Runner = dofile("tools/entry_runner.lua")
 
 local function same(a, b) T.ok(T.deepEq(a, b), "lists differ") end
-local TOC = "tests/fixtures/mockaddon/MockAddon.toc"
+local TOC = "tests/fixtures/MockAddon/MockAddon_Vanilla.toc"
 local function real(H, st) _G.GetItemInfo = function() return "Real Item" end end
 local function run(spec, prepare) return (Runner.run(spec, { prepare = prepare or real })) end
 local function names(r) local t = {}; for _, s in ipairs(r.steps) do t[#t + 1] = s.ok end; return t end
@@ -78,7 +78,7 @@ test("a mock for a name off the allow list stops the run before load", function(
 end)
 
 test("a TOC line that leaves the addon folder stops the run before any file loads", function()
-    local r = run({ toc = "tests/fixtures/mockaddon/Escape.toc", steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    local r = run({ toc = "tests/fixtures/MockAddon/Escape.toc", steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
     T.eq(r.ok, false); T.eq(r.steps[1].step, 0)
     T.ok(r.steps[1].detail:find("leaves the addon folder", 1, true), r.steps[1].detail)
 end)
