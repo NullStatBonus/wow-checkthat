@@ -10,6 +10,7 @@ function addon:OnInitialize()
     ns.App.Init(self.db.global, ns.Adapter.Env(), { debug = function() return self.db.profile.debug end })
     ns.Adapter.Export("CheckThat", ns.Facts.API())
     ns.Errors.Hook()
+    ns.Census.Init(self.db.global, ns.Adapter.Env())
     ns.Slash.Register(self)
     -- Feature modules register a starter in ns.starters (UI/Card.lua, Options/Options.lua).
     for _, start in ipairs(ns.starters or {}) do
@@ -56,7 +57,7 @@ function addon:OnEnable()
             end
         end)
     end
-    ns.Listen(self, "PLAYER_REGEN_ENABLED", function() if ns.Card then ns.Card.Refresh() end end)
+    ns.Listen(self, "PLAYER_REGEN_ENABLED", function() ns.Census.Resume(); if ns.Card then ns.Card.Refresh() end end)
     ns.Listen(self, "PLAYER_LOGOUT", function() ns.App.Log("logout"); if ns.Tracker then ns.Tracker.Leaving() end end)
 end
 

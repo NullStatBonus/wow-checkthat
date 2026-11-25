@@ -204,3 +204,17 @@ These checks run in a coding agent, not in the game. Run `make install-skill` fi
 7. **Offer at apply.** Finish the tasks of an OpenSpec change that alters a setting. Run `/opsx:apply` on it.
    Check: the agent offers the plan skill once and waits. It starts nothing if you decline.
    Log: none; read the transcript.
+
+## 7. Client census
+
+Turn debug on with `/ct debug on` before step 1.
+
+1. **Start a census.** Stand out of combat and type `/ct census`.
+   Check: chat says the census started and tells you to wait.
+   Log: `[census] started <build>`.
+2. **Let it finish.** Wait for the next chat line.
+   Check: chat says the census is complete and tells you to type /reload. No Lua error window shows.
+   Log: `[census] done <build> <n> globals <m> tables <k> widget types <a> addon`, with `<a>` above 0 (CheckThat's own globals count there).
+3. **Save it.** Type `/reload`.
+   Check: the game reloads with no Lua error window.
+   Log: `CheckThatDB.global.census` holds this build and has no CheckThat global (for example `CheckThatDB`) in `globals`. `ct.py census` writes a manifest for it.

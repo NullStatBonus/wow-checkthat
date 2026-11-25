@@ -109,7 +109,14 @@ function st.click(f)
     if not f.shown or f.attrs.type ~= "macro" then return nil end
     return f.attrs.macrotext
 end
-_G.issecurevariable = function() return false end
+-- The game's own names are secure: here, every global the fake client set up before addon code ran (st.secure, taken at
+-- the end of stubClient). A member of any other table counts as secure.
+_G.issecurevariable = function(t, k)
+    local name = t
+    if type(t) == "table" then if t ~= _G then return true end; name = k end
+    if st.secure and st.secure[name] then return true end
+    return false, "Addon"
+end
     _G.securecallfunction = function(f, ...) return f(...) end
     _G.print = function(...) st.said[#st.said + 1] = table.concat({ ... }, " ") end
     _G.strsplit = _G.strsplit or function(d, s, n) local out = {}; for part in (s .. d):gmatch("(.-)" .. d:gsub("%p", "%%%0")) do out[#out + 1] = part end; return unpack(out) end
@@ -127,6 +134,8 @@ _G.issecurevariable = function() return false end
     _G.tinsert, _G.tremove = table.insert, table.remove
     _G.format = string.format
     _G.max, _G.min, _G.floor = math.max, math.min, math.floor
+    st.secure = {}
+    for k in pairs(_G) do st.secure[k] = true end
     return st
 end
 
@@ -185,6 +194,44 @@ function H.tocFiles(toc)
 end
 
 -- Loads every file a TOC lists, in order, following embeds.xml Script/Include entries.
+-- Records the global names that code read as nil. prefixes lists debug source prefixes ("@path/to/folder/") of the
+-- code to watch; excludes lists lower-case path pieces to leave out (such as "/libs/"), matched without regard to case. Only string keys count. Returns stop(): it
+-- removes the hook, gives back _G's earlier metatable and returns the sorted list of names.
+function H.recordNilReads(prefixes, excludes)
+    local seen, old = {}, getmetatable(_G)
+    local function watched(src) -- excludes are matched in the path below the watched folder, not above it
+        for _, p in ipairs(prefixes) do
+            if src:sub(1, #p) == p then
+                local rest = "/" .. src:sub(#p + 1):lower()
+                for _, x in ipairs(excludes or {}) do if rest:find(x, 1, true) then return false end end
+                return true
+            end
+        end
+        return false
+    end
+    local mt = {}
+    for k, v in pairs(old or {}) do mt[k] = v end -- keep __newindex and any other field
+    mt.__index = function(t, k)
+        local oi = old and old.__index
+        local v
+        if type(oi) == "function" then v = oi(t, k) elseif type(oi) == "table" then v = oi[k] end
+        if v ~= nil then return v end -- false counts: only nil falls through
+        if type(k) == "string" then
+            local info = debug.getinfo(2, "S")
+            if info and watched(info.source or "") then seen[k] = true end
+        end
+        return nil
+    end
+    setmetatable(_G, mt)
+    return function()
+        setmetatable(_G, old)
+        local list = {}
+        for k in pairs(seen) do list[#list + 1] = k end
+        table.sort(list)
+        return list
+    end
+end
+
 function H.loadToc(ns, toc)
     for _, path in ipairs(assert(H.tocFiles(toc))) do assert(loadfile(path))("CheckThat", ns) end
 end

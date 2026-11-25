@@ -217,6 +217,23 @@ A step can check more than a log line. Every check is data. Nothing in a plan ru
 
 Debug log: `errors recorded an error`, `errors dropped errors: over 30 a second` and `errors another addon took the error handler: set ours again` (the first five times a run). The report adds `Errors: <count> recorded, handler: current|replaced|blocked|off`.
 
+## Client census
+
+`/ct census` records what the running client provides, so the author tools know which names the game has (`ct.py census` turns it into a manifest: [Collect evidence](harvesting.md#client-census)). It changes no setting and calls no game action. It creates a few hidden sample frames, which disappear at reload. It records:
+
+- every global name the game itself defines, with its Lua type, read with `rawget`, so no game metatable runs. A global last written by addon code (the game's `issecurevariable` says it is not secure) goes to a separate `insecure` list with its type and no members, so another addon's saved variables never add members, and a game name that an addon replaced is not lost. The log line counts these as addon names;
+- the members (name and type) of each API namespace and public table, one level deep, read with `next`, so no game metatable runs. A table counts when its name starts with a capital letter (`C_AddOns`, `Enum`, `MenuUtil`) and it is not a frame (a frame has a userdata in slot 0). A member another addon added is left out. A table with more than 2000 members is cut there and its name goes to `truncated`. A member key that is not a plain identifier is left out, so a character name used as a key never lands in the list. A table with no such member is not listed;
+- the method names of sample widgets (not sorted in the game; `ct.py` sorts them) (Frame, Button, EditBox, Cooldown, FontString, Texture and others), read from the metatable of one hidden frame with no name for each type. A type the game refuses to create goes to `unavailable`. The sample frames stay until you reload, because the game cannot free a frame;
+- the folder names of the loaded addons (`addons`).
+
+When the client has no `issecurevariable`, or it does not accept a table, the census cannot tell the game's names from an addon's. It then keeps every name, marks itself `unfiltered`, and ends its log line with "unfiltered". A table whose member check gives no answer for a real key is marked the same way (the member is kept). `ct.py census` then drops the global names that start with a loaded addon's folder name.
+
+The walk takes small steps. Each step is one read of the game: a global name, a type, or one member of a table. A frame takes about 8 ms of reads when the client has a clock, otherwise 250 reads, so a large table is read over several frames (2000 members at most for each table). A client with no timers (or one that refuses them) does the whole walk in one pass and stops at combat; it is never left busy. If the game's names cannot be read (the global table changed during the walk), the walk stops, the saved census stays as it was, and the chat says "The client census could not read the game's names. The saved census is unchanged." It does not start in combat ("Run /ct census after combat ends."). When combat starts during the walk it waits, and carries on when combat ends. A second `/ct census` while one runs says "A client census is already running." The start says "Client census started. Wait for the completion message before you reload or log out." The end says "Client census complete. Type /reload or log out to save it."
+
+The result goes to `CheckThatDB.global.census`, one census for each client (the newest, with its `build`, for example `1.15.9.70576`), only when the walk is complete. A run that stops early (reload, logout) stores nothing and leaves the older census as it was. A new complete census replaces it, whatever its build. A census saved in the older one-for-each-build shape is dropped when the addon loads.
+
+Debug log: `[census] started <build>`, `[census] paused for combat` (once for each pause), `[census] resumed`, `[census] failed names unreadable` (the walk stopped and kept the older census) and `[census] done <build> <n> globals <m> tables <k> widget types <a> addon` (`<a>` counts the globals other addons defined; " unfiltered" follows when the client could not tell).
+
 ## Long titles
 
 A title that does not fit stays inside the card and ends with "...". The minimized card shows it on one line and shows the whole title when you point at it. The expanded card allows two lines. A single word that is wider than the card is cut too.

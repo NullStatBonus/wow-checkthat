@@ -195,5 +195,34 @@ test("help runs names the category commands", function()
     local h = run("help runs")[1]
     T.ok(h:find("/ct categories", 1, true) and h:find("/ct rerun", 1, true), h)
 end)
+test("census starts, refuses in combat, says when busy, and rejects arguments", function()
+    deps.census = function() return "started" end
+    T.eq(run("census")[1], "Client census started. Wait for the completion message before you reload or log out.")
+    deps.census = function() return "busy" end
+    T.eq(run("census")[1], "A client census is already running.")
+    deps.census = function() return "combat" end
+    T.eq(run("census")[1], "Run /ct census after combat ends.")
+    called.census = nil
+    deps.census = function() called.census = true; return "started" end
+    T.ok(run("census now")[1]:find("takes no arguments"), "an argument is refused")
+    T.ok(not called.census, "and nothing starts")
+    local h = run("help diagnostics")[1]
+    T.ok(h:find("/ct census (record the names available in this game session)", 1, true), h)
+    deps.census = nil
+end)
+
+test("a failed census tells the player in chat and the saved census stays", function()
+    local handler
+    ns.Slash.Register({ RegisterChatCommand = function(_, name, fn) if name == "ct" then handler = fn end end })
+    local census0, print0, said = ns.Census, ns.Slash.Print, {}
+    local onDone, onFail
+    ns.Census = { Start = function(d, f) onDone, onFail = d, f; return "started" end }
+    ns.Slash.Print = function(s) said[#said + 1] = s end
+    handler("census")
+    T.ok(onFail, "the failure callback is passed")
+    onFail()
+    ns.Census, ns.Slash.Print = census0, print0
+    T.eq(said[#said], "The client census could not read the game's names. The saved census is unchanged.")
+end)
 
 finish()

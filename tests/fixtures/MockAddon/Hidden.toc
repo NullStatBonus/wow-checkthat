@@ -1,0 +1,5 @@
+## Notes: Fixture: code that touches io and nil globals. Not shipped. ## Interface: 11509
+## Interface: 16001
+## Title: MockAddon hidden
+embeds.xml
+Hidden.lua

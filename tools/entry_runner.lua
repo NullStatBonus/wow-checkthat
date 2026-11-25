@@ -89,16 +89,51 @@ local function restoreMocks(saved)
 end
 
 -- Loads every file a TOC lists (following its XML files, see H.tocFiles), with the addon's own (name, ns) arguments.
-local function loadToc(H, path, name, ns)
+-- The Lua 5.1 scanner (tools/lua51_check.lua) runs over every file first: LuaJIT accepts syntax the game rejects.
+local function compileToc(Lua51, H, path)
     local files, err = H.tocFiles(path)
     if not files then return false, err end
+    local found = {}
+    for _, file in ipairs(files) do
+        for _, m in ipairs(Lua51.check(file)) do found[#found + 1] = m end
+    end
+    if #found > 0 then return false, table.concat(found, "; ") end
+    local chunks = {}
     for _, file in ipairs(files) do
         local chunk, lerr = loadfile(file)
         if not chunk then return false, lerr end
+        chunks[#chunks + 1] = chunk
+    end
+    return chunks
+end
+
+local function runChunks(chunks, name, ns)
+    for _, chunk in ipairs(chunks) do
         local ok, e = pcall(chunk, name, ns)
         if not ok then return false, tostring(e) end
     end
     return true
+end
+
+-- What the game gives no addon: file, process and JIT access. Hidden while the addon's code runs; a guard such as
+-- "if io then" sees nil and a call fails with Lua's own message.
+Runner.HIDDEN = { "io", "os", "jit", "ffi", "require", "package", "loadfile", "dofile" }
+local function hideGlobals()
+    local saved = {}
+    for _, n in ipairs(Runner.HIDDEN) do saved[n] = rawget(_G, n); rawset(_G, n, nil) end
+    -- every name goes back, nil included: an addon that assigned one (such as ffi) must not leak it to the host
+    return function() for _, n in ipairs(Runner.HIDDEN) do rawset(_G, n, saved[n]) end end
+end
+
+local function tocInterface(path)
+    local f = io.open(path, "r")
+    if not f then return nil end
+    local text = f:read("*a"); f:close()
+    for l in (text .. "\n"):gmatch("([^\r\n]*)[\r\n]") do -- the key counts only at the start of a line
+        local n = l:match("^%s*##%s*Interface%s*:%s*(%d+)")
+        if n then return tonumber(n) end
+    end
+    return nil
 end
 
 -- spec is a decoded table. opts.root is the repository root (default "."); opts.prepare(H, st) runs after the
@@ -109,7 +144,10 @@ function Runner.run(spec, opts)
     local jns = {}
     assert(loadfile(root .. "/CheckThat/Model/Json.lua"))("CheckThat", jns)
     local _, _, _, _, H = dofile(root .. "/tests/harness.lua")()
-    local st = H.stubClient()
+    local Lua51 = dofile(root .. "/tools/lua51_check.lua")
+    local tocPath = pathJoin(root, spec.toc)
+    local interface = tocInterface(tocPath)
+    local st = H.stubClient({ toc = interface })
     -- What the shared fake client lacked: a record of the events a frame registered.
     local plainCreate = _G.CreateFrame
     _G.CreateFrame = function(...)
@@ -146,15 +184,29 @@ function Runner.run(spec, opts)
     local ns = {}
     local loaded, loadErr
     local unlisted
+    local folder = tocPath:match("^(.*)/[^/]+$") or "."
+    local stopNil, unhide
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
     if unlisted then
         loaded, loadErr = false, ("mock %s is not on the allow list"):format(unlisted)
-    elseif spec.mockAfterLoad then
-        loaded, loadErr = loadToc(H, pathJoin(root, spec.toc), name, ns)
-        applyMocks(spec.mocks, counts, saved)
     else
-        applyMocks(spec.mocks, counts, saved)
-        loaded, loadErr = loadToc(H, pathJoin(root, spec.toc), name, ns)
+        local chunks, cerr = compileToc(Lua51, H, tocPath)
+        if not chunks then
+            loaded, loadErr = false, cerr
+        else
+            stopNil = H.recordNilReads({ "@" .. folder .. "/" }, { "/libs/", "/libraries/" })
+            unhide = hideGlobals()
+            local lok, lerr = xpcall(function()
+                if spec.mockAfterLoad then
+                    loaded, loadErr = runChunks(chunks, name, ns)
+                    applyMocks(spec.mocks, counts, saved)
+                else
+                    applyMocks(spec.mocks, counts, saved)
+                    loaded, loadErr = runChunks(chunks, name, ns)
+                end
+            end, tostring)
+            if not lok then loaded, loadErr = false, "the runner failed while loading: " .. lerr end
+        end
     end
 
     local function add(i, kind, ok, detail)
@@ -164,7 +216,10 @@ function Runner.run(spec, opts)
     if not loaded then
         add(0, "load", false, loadErr)
     else
+        local cur = 0
+        local sok, serr = xpcall(function()
         for i, step in ipairs(spec.steps or {}) do
+            cur = i
             if step.call then
                 local fn = entries[step.call.addon] and entries[step.call.addon][step.call.entry]
                 if not fn then
@@ -205,8 +260,12 @@ function Runner.run(spec, opts)
                 add(i, "unknown", false, "step has no call, event or mockCalls")
             end
         end
+        end, tostring)
+        if not sok then add(cur, "error", false, "the runner failed: " .. serr) end
     end
 
+    if unhide then unhide() end
+    local nilReads = stopNil and stopNil() or {}
     restoreMocks(saved)
     _G.CheckThat = oldCT
     _G.CreateFrame = plainCreate
@@ -214,7 +273,7 @@ function Runner.run(spec, opts)
     for _, r in ipairs(results) do if not r.ok then ok = false end end
     local nsteps = #(spec.steps or {})
     if loaded and #results ~= nsteps then ok = false end
-    return { ok = ok, mocks = mockNames, mockCalls = counts, reports = reports, steps = results }, jns.Json
+    return { ok = ok, interface = interface, nilReads = nilReads, mocks = mockNames, mockCalls = counts, reports = reports, steps = results }, jns.Json
 end
 
 local function main()

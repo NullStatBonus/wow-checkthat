@@ -24,6 +24,7 @@ ns.defaults = {
         runLimit = 20,           -- most runs kept, 5-100; the oldest go first, never a character's current run
         currentByChar = {},      -- ["Name-Realm"] = runId
         log = { entries = {} },  -- Debug/Log.lua: { t = time, msg = "[area] text" }
+        census = {},             -- the newest client census: build, globals, insecure, tables, widgets (Model/Census.lua)
         ui = {},                 -- small flags: macro name/body, reload prompt
     },
 }

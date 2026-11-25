@@ -29,6 +29,20 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 - **Results string.** Paste one from `/ct export` with `.venv/bin/python tools/ct.py import-results "<string>"`. A file path works too.
 - Keep `evidence/` out of Git.
 
+## Client census
+
+`/ct census` in the game saves the names of that client (see [Client census](features.md#client-census)). Wait for "Client census complete", type `/reload`, then export it:
+
+```
+.venv/bin/python tools/ct.py census [--wow <game dir> | --src <WTF dir>] [-o <folder>]
+.venv/bin/python tools/ct.py census --diff tests/manifests/era-1.15.8.json tests/manifests/era-1.15.9.json
+```
+
+- `census` reads CheckThat's saved variables, the same way `collect` finds them, and writes `tests/manifests/<client>-<build>.json` for the census each file holds (`era` below interface 16000, `forever` from 16000). Each file keeps only the newest census of its client. It prints each path. `-o` picks another folder. The census holds only names the game defines. Only when the census says `unfiltered` does the command drop the globals that start with a loaded addon's folder name (a guess).
+- A manifest has `format`, `client`, `build`, `interface`, `date`, `addons`, `globals` (name to type), `tables` (member name to type), `widgets` (method names, sorted by this command), `unavailable` and `truncated` (tables cut at 2000 members).
+- `--diff OLD NEW` prints `+` for names only in the new manifest, `-` for names only in the old one and `~ name: old -> new` for a changed type, for globals, table members (`member C_X.Y`) and widget methods (`method Frame:SetPoint`), then a count line.
+- With no census in the files it exits 1 and says: Run /ct census, wait for completion, type /reload, then copy SavedVariables again. A damaged file or an unreadable manifest also exits 1.
+
 ## Coverage of the evidence
 
 `ct.py coverage <plan...> --addon-src <folder> --evidence` joins the newest finished run of each plan to the addon's subcommands, settings and spec requirements: `passed`, `failed` (failed or unverified) or `never-run`. See [Check what the plans cover](authoring-plans.md#check-what-the-plans-cover).

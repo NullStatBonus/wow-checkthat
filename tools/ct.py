@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CT plan tooling: validate, compile, decode, from-md, collect, report.
+"""CT plan tooling: validate, compile, decode, from-md, collect, census, report.
 
 Needs PyYAML and jsonschema (see requirements.txt). Run via .venv/bin/python tools/ct.py.
 """
@@ -643,16 +643,23 @@ def replay_plan(plan, fixture, today=None):
     return json.loads(r.stdout), notes
 
 
-def replay_junit(plan, items):
+def replay_junit(plan, items, properties=None, system_out=None):
+    """properties is a dict for suite-level <properties>; system_out is suite-level text (offline: the nil-read report)."""
     from xml.etree import ElementTree as ET
     count = lambda k: str(sum(i["result"] == k for i in items))
     suite = ET.Element("testsuite", name=plan["title"], tests=str(len(items)), failures=count("fail"), skipped=count("skipped"))
+    if properties:
+        props = ET.SubElement(suite, "properties")
+        for k, v in properties.items():
+            ET.SubElement(props, "property", name=k, value=str(v))
     for i in items:
         case = ET.SubElement(suite, "testcase", classname=i["step"], name=i["label"])
         if i["result"] == "fail":
             ET.SubElement(case, "failure", message=i["why"] or "")
         elif i["result"] == "skipped":
             ET.SubElement(case, "skipped", message=i["why"] or "")
+    if system_out:
+        ET.SubElement(suite, "system-out").text = system_out
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode") + "\n"
 
 
@@ -822,11 +829,60 @@ def lines_check(plan, src):
 
 # ---------------------------------------------------------------- offline entry runner
 
-def offline_plan(plan, addons, requirements=None):
+def census_manifests(folder=None):
+    """The census manifests (tests/manifests/*.json, see docs/contracts.md): a list of dicts. A file that does not parse is skipped."""
+    import glob
+    out = []
+    folder = folder or os.environ.get("CT_TEST_MANIFESTS") or os.path.join(ROOT, "tests", "manifests")
+    for p in sorted(glob.glob(os.path.join(folder, "*.json"))):
+        try:
+            with open(p, encoding="utf-8") as f:
+                m = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if isinstance(m, dict) and isinstance(m.get("globals"), dict):
+            out.append(m)
+    return out
+
+
+def nil_read_report(interface, names, manifests, build=None):
+    """The text of the nil-read report. Returns (text, build or None). With no manifest for the interface it is one sorted list;
+    with one (or --build) it splits the names by that build's census; with several and no build it says so and stays unclassified."""
+    names = sorted(set(names))
+    head = "Globals read as nil in this run (interface %s):" % interface
+    pool = [m for m in manifests if m.get("interface") == interface]
+    if build is not None:
+        pool = [m for m in pool if str(m.get("build")) == str(build)]
+        if not pool:
+            raise ValueError("no census manifest for build %s with interface %s" % (build, interface))
+    notes = []
+    if len(pool) > 1:
+        notes.append("Interface %s matches multiple builds. Showing unclassified names." % interface)
+        pool = []
+    m = pool[0] if pool else None
+    if not names:
+        return "\n".join([head + " none"] + notes) + "\n", m["build"] if m else None
+    if not m:
+        return "\n".join([head, "  " + " ".join(names)] + notes) + "\n", None
+    insecure = m.get("insecure") or {}
+    present = [n for n in names if n in m["globals"]]
+    byaddon = [n for n in names if n not in m["globals"] and n in insecure]
+    absent = [n for n in names if n not in m["globals"] and n not in insecure]
+    lines = [head]
+    if present:
+        lines.append("  Present in census for build %s: %s" % (m["build"], " ".join(present)))
+    if byaddon:
+        lines.append("  Set by addon code in census for build %s: %s" % (m["build"], " ".join(byaddon)))
+    if absent:
+        lines.append("  Absent from census for build %s: %s" % (m["build"], " ".join(absent)))
+    return "\n".join(lines) + "\n", m["build"]
+
+
+def offline_plan(plan, addons, requirements=None, info=None):
     """Run a plan's offline block in tools/entry_runner.lua. addons is the folder that holds the addon checkouts; the plan's
     toc resolves inside it and may not leave it, so a shared plan cannot pick Lua from elsewhere. It still runs that addon's
     Lua with your permissions: run only addons you trust. requirements is what plan_requirements gives, for covers.
-    Returns items {step, label, result: pass|fail, why}. Needs luajit."""
+    Returns items {step, label, result: pass|fail, why}. Needs luajit. A dict passed as info gets the run's interface and nilReads."""
     import tempfile
     if not os.path.exists(os.path.join(ROOT, "tests", "harness.lua")):
         raise ValueError("offline needs tests/harness.lua (missing): reinstall the skill with make install-skill")
@@ -850,6 +906,9 @@ def offline_plan(plan, addons, requirements=None):
         res = json.loads(r.stdout)
     except ValueError:
         raise RuntimeError((r.stderr or r.stdout).strip() or "the runner printed nothing")
+    if info is not None:
+        info["interface"] = res.get("interface")
+        info["nilReads"] = list((res.get("nilReads") or {}).values()) if isinstance(res.get("nilReads"), dict) else list(res.get("nilReads") or [])
     items = []
     for s in res["steps"]:
         given = block["steps"][s["step"] - 1].get("label") if s["step"] else None
@@ -1251,6 +1310,96 @@ def cmd_collect(a):
 
 def default_src():
     return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
+
+
+CENSUS_MISSING = "no census in the saved variables. Run /ct census, wait for completion, type /reload, then copy SavedVariables again."
+
+def census_manifest(rec):
+    """The manifest dict (docs/harvesting.md) for one census record of CheckThatDB.global.census, or None when it is not one.
+    The game recorded only the names it defines itself. When the client could not tell (the record says "unfiltered"), globals
+    that a loaded addon owns (names that start with its folder name) are dropped as the best guess."""
+    if not isinstance(rec, dict) or not isinstance(rec.get("globals"), dict) or not isinstance(rec.get("interface"), (int, float)):
+        return None
+    addons = [x for x in (rec.get("addons") if isinstance(rec.get("addons"), list) else []) if isinstance(x, str) and len(x) > 2 and not x.startswith("Blizzard_")]
+    own = (lambda name: any(name.startswith(x) for x in addons)) if rec.get("unfiltered") else (lambda name: False)
+    def dict_of(v):   # an empty Lua table decodes to a list
+        return v if isinstance(v, dict) else {}
+    interface = int(rec["interface"])
+    return {"format": 1, "client": "forever" if interface >= 16000 else "era", "build": str(rec.get("build")), "interface": interface,
+            "date": rec.get("date"), "addons": sorted(addons),
+            "globals": {k: v for k, v in rec["globals"].items() if not own(k)},
+            "insecure": {k: v for k, v in dict_of(rec.get("insecure")).items() if isinstance(v, str)},
+            "tables": {k: dict_of(v) for k, v in dict_of(rec.get("tables")).items() if not own(k)},
+            "widgets": {k: sorted(v) for k, v in dict_of(rec.get("widgets")).items() if isinstance(v, list)},
+            "unavailable": sorted(rec["unavailable"]) if isinstance(rec.get("unavailable"), list) else [],
+            "truncated": sorted(x for x in rec["truncated"] if isinstance(x, str)) if isinstance(rec.get("truncated"), list) else []}
+
+def census_records(files):
+    """{build: record} from the CheckThat saved-variables files, each holding one census (the newest of its client).
+    The newer date wins when a build is in several files."""
+    found = {}
+    for f in files:
+        db = sv_json(f).get("CheckThatDB")
+        glob_db = db.get("global") if isinstance(db, dict) else None
+        rec = glob_db.get("census") if isinstance(glob_db, dict) else None
+        if isinstance(rec, dict) and rec.get("build") is not None and isinstance(rec.get("globals"), dict):
+            build = str(rec["build"])
+            if str(rec.get("date") or "") >= str((found.get(build) or {}).get("date") or ""):
+                found[build] = rec
+    return found
+
+def cmd_census(a):
+    if a.diff:
+        return census_diff(a.diff[0], a.diff[1])
+    wow = a.wow
+    if not a.src and not wow and not os.path.isdir(default_src()):
+        wow = find_wow()
+        if not wow:
+            print("error: no saved variables found: pass --wow <game folder> or --src <WTF folder>; CT_WOW and CT_WTF work too (docs/harvesting.md)", file=sys.stderr)
+            return 1
+    sources = [(a.src or default_src(), None)] if a.src or not wow else wow_sources(wow)[0]
+    files = sorted({f for src, _ in sources for f in find_sv(src, ("CheckThat",))})
+    try:
+        records = census_records(files)
+    except Exception as e:
+        print("error: could not decode the saved variables: %s" % e, file=sys.stderr)
+        return 1
+    manifests = [m for m in map(census_manifest, records.values()) if m]
+    if not manifests:
+        print("error: " + CENSUS_MISSING, file=sys.stderr)
+        return 1
+    out = a.o or os.path.join(ROOT, "tests", "manifests")
+    os.makedirs(out, exist_ok=True)
+    for m in sorted(manifests, key=lambda m: (m["client"], m["build"])):
+        path = os.path.join(out, "%s-%s.json" % (m["client"], re.sub(r"[^\w.-]", "_", m["build"])))
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(m, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
+        print(path)
+    return 0
+
+def census_diff(old_path, new_path):
+    """Print the names added, removed and changed in type between two manifests."""
+    try:
+        old, new = (json.load(open(p, encoding="utf-8")) for p in (old_path, new_path))
+    except (OSError, ValueError) as e:
+        print("error: cannot read a manifest: %s" % e, file=sys.stderr)
+        return 1
+    def names(m):   # "kind name" -> type, for globals, table members and widget methods
+        d = {"global " + k: v for k, v in (m.get("globals") or {}).items()}
+        for t, members in (m.get("tables") or {}).items():
+            d.update({"member %s.%s" % (t, k): v for k, v in members.items()})
+        for w, methods in (m.get("widgets") or {}).items():
+            d.update({"method %s:%s" % (w, k): "function" for k in methods})
+        return d
+    a, b = names(old), names(new)
+    lines = ["+ %s (%s)" % (k, b[k]) for k in sorted(b.keys() - a.keys())]
+    lines += ["- %s (%s)" % (k, a[k]) for k in sorted(a.keys() - b.keys())]
+    lines += ["~ %s: %s -> %s" % (k, a[k], b[k]) for k in sorted(a.keys() & b.keys()) if a[k] != b[k]]
+    for l in lines:
+        print(l)
+    added = sum(l[0] == "+" for l in lines); removed = sum(l[0] == "-" for l in lines)
+    print("%d added, %d removed, %d changed type" % (added, removed, len(lines) - added - removed))
+    return 0
 
 
 def save_errors(dest, glob_db, h, rids=()):
@@ -2324,7 +2473,7 @@ def main(argv=None):
     p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
-    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository, or above the current folder when ct.py runs from an installed skill)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help)
+    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository, or above the current folder when ct.py runs from an installed skill)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help); p.add_argument("--build", help="split the nil-read report with the census of this build (tests/manifests/*.json); needed when the interface matches several builds")
     p = sub.add_parser("replay-flow", help="play a plan's steps in the fake client and report plan mistakes (needs luajit). Log lines the plan expects are written by the replay: it checks the plan, not the addon"); p.add_argument("plan"); p.add_argument("--hooks", help="Lua hooks file for steps that need more than a Pass (see docs/authoring-plans.md)"); p.add_argument("--specs", help=specs_help)
     p = sub.add_parser("lines", help="check that each log line and fact key a plan asserts appears in the addon's Lua source"); p.add_argument("plan"); p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC)"); p.add_argument("--strict", action="store_true", help="exit 1 when a line is missing")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
@@ -2336,6 +2485,7 @@ def main(argv=None):
     p.add_argument("--shot-slack", dest="shot_slack", type=float, default=2, help="seconds a screenshot may lie outside an attempt's window and still match it (default 2)")
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
+    p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, there are no runs, or a revision could not be read")
@@ -2428,12 +2578,18 @@ def main(argv=None):
     if a.cmd == "offline":
         plan = load_yaml(a.plan)
         try:
-            items = offline_plan(plan, a.addons, plan_requirements(plan, a.plan, a.specs))
+            info = {}
+            items = offline_plan(plan, a.addons, plan_requirements(plan, a.plan, a.specs), info)
+            report, build = nil_read_report(info.get("interface"), info.get("nilReads") or [], census_manifests(), a.build)
         except (ValueError, RuntimeError) as e:
             print("error:", e, file=sys.stderr); return 2
         bad = sum(i["result"] == "fail" for i in items)
         print("offline: %d passed, %d failed" % (len(items) - bad, bad), file=sys.stderr)
-        xml = replay_junit(plan, items)
+        print(report, end="", file=sys.stderr)
+        props = {"interface": info["interface"]} if info.get("interface") else {}
+        if build:
+            props["build"] = build
+        xml = replay_junit(plan, items, props, report)
         if a.o:
             open(a.o, "w", encoding="utf-8").write(xml)
         else:
@@ -2466,6 +2622,8 @@ def main(argv=None):
             guess = os.path.join(os.path.dirname(os.path.abspath(a.src or default_src())), "Screenshots")
             a.shots = guess if os.path.isdir(guess) else None
         return cmd_collect(a)
+    if a.cmd == "census":
+        return cmd_census(a)
     if a.cmd == "import-results":
         s = a.string_or_file
         if os.path.exists(s):

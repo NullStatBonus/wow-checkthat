@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.0
+
+New: **Client census.** Type `/ct census` to record the names this game client gives addons. Wait for the completion message, then type /reload to save it. The census changes no setting and does no game action.
+New: **Offline checks match the game client.** An offline run now uses the client version from the addon's TOC file. It reports each name the addon read that the test client did not have.
+New: **Lua 5.1 check.** Offline runs and the package check now find code that the game's Lua cannot load or reads differently.
+
 ## 0.20.1
 
 Changed: **Undo and stale macro presses show in the run.** The report and diff now count presses of an out-of-date CT macro. Undo writes a line to the debug log.
