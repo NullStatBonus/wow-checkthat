@@ -82,7 +82,7 @@ sections:
       text: Type |cff99ccff/ct tracker|r.
       commands:
       - /ct tracker
-    expect: A window lists four categories. Each row has a plus button on its left. No step shows under a row.
+    expect: A window lists four categories. Each row has a plus button on its left. No step shows under a row. Then press Pass on the card.
     verify:
     - player
   - id: ct17.expand
@@ -91,7 +91,7 @@ sections:
     action:
       kind: manual
       text: In the Categories window click the plus button of the row |cffffd100Step list|r.
-    expect: The button turns into a minus. The steps of the category show under the row, in the order of this plan.
+    expect: The button turns into a minus. The steps of the category show under the row, in the order of this plan. Then press Pass on the card.
     verify:
     - player
     - assertions
@@ -107,7 +107,7 @@ sections:
     action:
       kind: manual
       text: In the Categories window click the minus button of the row |cffffd100Step list|r.
-    expect: The steps leave the window and the button is a plus again.
+    expect: The steps leave the window and the button is a plus again. Then press Pass on the card.
     verify:
     - player
     - assertions
@@ -123,7 +123,7 @@ sections:
     action:
       kind: manual
       text: In the Categories window click the row name |cffffd100Expand steps|r. Do not click the plus button.
-    expect: A menu opens. It offers Go to first open step and Rerun category. The steps of the category stay hidden.
+    expect: A menu opens. It offers Go to first open step and Rerun category. The steps of the category stay hidden. Then press Pass on the card.
     verify:
     - player
 - id: s2
@@ -217,7 +217,7 @@ sections:
     action:
       kind: manual
       text: Look at the list of Step list in the Categories window. Find the step |cffffd100Only on Classic Era|r.
-    expect: The step shows with the words "not for this client". The card never shows it as a step to do.
+    expect: The step shows with the words "not for this client". The card never shows it as a step to do. Then press Pass on the card.
     verify:
     - player
   - id: ct17.click
@@ -307,7 +307,7 @@ sections:
     action:
       kind: manual
       text: 'Press |cffffd100Pass|r on Reopen me, then on Undo the result. Then click the plus button of the row |cffffd100Reopened step|r in the Categories window.'
-    expect: The list reads Reopen me passed and Undo the result passed.
+    expect: The list reads Reopen me passed and Undo the result passed. Then press Pass on the card.
     verify:
     - player
     notes: Reviewer. The reopened flag on ct17.reopen is gone after the second result.
@@ -324,7 +324,7 @@ sections:
     action:
       kind: manual
       text: 'In the Categories window click the row |cffffd100Spare category|r. Choose |cffffd100Remove from run: Spare category|r.'
-    expect: The row reads "not picked".
+    expect: The row reads "not picked". Then press Pass on the card.
     verify:
     - player
     - assertions
@@ -340,7 +340,7 @@ sections:
     action:
       kind: manual
       text: 'In the Categories window click the plus button of the row |cffffd100Spare category|r. Then click the step row |cffffd100Never shown|r.'
-    expect: The step reads "not picked". Clicking it does nothing, and the card keeps its step.
+    expect: The step reads "not picked". Clicking it does nothing, and the card keeps its step. Then press Pass on the card.
     verify:
     - player
     - assertions
