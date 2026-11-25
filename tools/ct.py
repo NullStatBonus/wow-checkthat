@@ -789,7 +789,7 @@ def addon_source(src):
 
 def lines_check(plan, src):
     """Which asserted log lines and fact keys no Lua file of the addon contains. The whole line is tried first. A line built from a
-    format string or two strings (a log tag and its message) matches when the tag sits in quotes in a file that holds most of the
+    format string, a concatenation or two strings (a log tag and its message) matches when the tag sits in quotes in a file that holds most of the
     message's words, so a miss is a warning to check by hand, not proof. Returns (found, missing)."""
     files = addon_source(src)
     found, missing = [], []
@@ -801,6 +801,12 @@ def lines_check(plan, src):
             return True
         m = re.match(r"^\[([^\]]+)\] ?(.*)$", text, re.S)
         if not m:
+            # built at run time, such as "test command: " .. kind: drop trailing words down to a prefix of 8 characters
+            words = text.split(" ")
+            for n in range(len(words) - 1, 0, -1):
+                prefix = " ".join(words[:n]).rstrip(" :=,")
+                if len(prefix) >= 8 and any(prefix in f for f in files):
+                    return True
             return False
         tag, rest = m.group(1), m.group(2).strip()
         words = re.findall(r"[A-Za-z]{4,}", rest)
