@@ -4,7 +4,7 @@ Thanks for helping. CheckThat is a WoW Classic addon (Lua) that walks a tester t
 
 ## Getting set up
 
-1. Install LuaJIT and Python 3.
+1. Install LuaJIT and Python 3. Windows has no `make` or LuaJIT: use WSL, or only the Python tools ([Set up the tools](docs/setup.md)).
 2. Set up and run the tests:
 
    ```

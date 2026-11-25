@@ -371,7 +371,7 @@ def export_report(dest, runs, fmt, stacks=False, rid=None):
     os.makedirs(dest, exist_ok=True)
     tmp = path + ".tmp"
     try:
-        with open(tmp, "w") as fh:
+        with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(txt)
         os.replace(tmp, path)   # an old report stays whole if the write fails
     finally:

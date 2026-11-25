@@ -17,3 +17,7 @@ screenshots/
 .ct.env
 
 .claude/
+
+# Personal copy scripts (not part of the project; ct.py collect --wow does the job)
+tools/Copy-CheckThatEvidence.bat
+tools/Copy-CheckThatEvidence.ps1

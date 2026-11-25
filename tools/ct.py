@@ -353,9 +353,9 @@ def export_form(run):
 def note_problem(dest, text):
     """Keep what collect could not store, so a later status still shows it."""
     p = os.path.join(dest, "problems.log")
-    old = open(p).read().splitlines() if os.path.exists(p) else []
+    old = open(p, encoding="utf-8").read().splitlines() if os.path.exists(p) else []
     if text not in old:
-        with open(p, "a") as fh:
+        with open(p, "a", encoding="utf-8") as fh:
             fh.write(text + "\n")
 
 def write_revision(dest, run):
@@ -374,7 +374,7 @@ def write_revision(dest, run):
     text = json.dumps(run, indent=1, sort_keys=True)
     if os.path.exists(rj):
         try:
-            with open(rj) as fh:
+            with open(rj, encoding="utf-8") as fh:
                 stored = json.load(fh)
         except (ValueError, OSError):
             return "conflict"   # a damaged stored file is not the same run
@@ -387,7 +387,7 @@ def write_revision(dest, run):
         except (AttributeError, TypeError, ValueError):
             same = False
         return "same" if same else "conflict"
-    with open(rj, "w") as fh:
+    with open(rj, "w", encoding="utf-8") as fh:
         fh.write(text)
     return "new"
 
@@ -986,9 +986,26 @@ def wow_sources(wow):
     return [(os.path.join(wow, c, "WTF"), wow) for c in found], [os.path.join(wow, c, "Screenshots") for c in found]
 
 
+def find_wow():
+    """The game folder in a usual install place for this OS, or None. It holds _classic_era_ or _forever_ with a WTF folder."""
+    pf = [os.environ.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles")]
+    drives = ["C:/Program Files (x86)", "C:/Program Files", "D:/Program Files (x86)", "D:/Program Files"] if os.name == "nt" else []
+    wine = ["~/.wine/drive_c/Program Files (x86)", "~/Games/world-of-warcraft/drive_c/Program Files (x86)"] if sys.platform.startswith("linux") else []
+    bases = [p for p in pf + drives] + [os.path.expanduser(p) for p in wine] + (["/Applications"] if sys.platform == "darwin" else [])
+    for base in bases:
+        w = os.path.join(base, "World of Warcraft") if base else None
+        if w and wow_sources(w)[0]:
+            return w
+    return None
+
 def cmd_collect(a):
     dest = a.dest
     wow = getattr(a, "wow", None)
+    if not a.src and not wow and not os.path.isdir(default_src()):
+        wow = find_wow()
+        if not wow:
+            sys.exit("no saved variables found: pass --wow <game folder> (holds _classic_era_ or _forever_), or --src <WTF folder>; CT_WOW and CT_WTF work too (docs/harvesting.md)")
+        print("using the game folder %s" % wow)
     if a.src or not wow:
         sources, shot_dirs = [(a.src or default_src(), a.src or default_src())], [getattr(a, "shots", None)]
     else:
@@ -1035,7 +1052,7 @@ def save_errors(dest, glob_db, h, rids=()):
     errs, stacks = errs if isinstance(errs, list) else [], stacks if isinstance(stacks, list) else []
     if errs or stacks:
         os.makedirs(os.path.join(dest, "errors"), exist_ok=True)
-        with open(os.path.join(dest, "errors", h + ".json"), "w") as fh:
+        with open(os.path.join(dest, "errors", h + ".json"), "w", encoding="utf-8") as fh:
             json.dump({"runs": list(rids), "errors": errs, "errorStacks": stacks}, fh, indent=1)
 
 def load_errors(dest, rid=None):
@@ -1044,7 +1061,7 @@ def load_errors(dest, rid=None):
     errs, stacks = {}, {}
     for p in sorted(glob.glob(os.path.join(dest or "", "errors", "*.json"))):
         try:
-            with open(p) as fh:
+            with open(p, encoding="utf-8") as fh:
                 d = json.load(fh)
         except (ValueError, OSError):
             continue
@@ -1231,7 +1248,7 @@ def refused_path(dest):
 
 def load_refused(dest):
     try:
-        with open(refused_path(dest)) as fh:
+        with open(refused_path(dest), encoding="utf-8") as fh:
             d = json.load(fh)
         return d if isinstance(d, dict) else {}
     except (OSError, ValueError):
@@ -1241,7 +1258,7 @@ def set_refused(dest, rid, revision, reason):
     """A run collect could not store because of its format. report and status keep saying so until a later collect stores it."""
     d = load_refused(dest)
     d[rid] = {"revision": revision, "reason": reason}
-    with open(refused_path(dest), "w") as fh:
+    with open(refused_path(dest), "w", encoding="utf-8") as fh:
         json.dump(d, fh, indent=1, sort_keys=True)
 
 def clear_refused(dest, rid, stored_revision=None):
@@ -1250,12 +1267,12 @@ def clear_refused(dest, rid, stored_revision=None):
     refused = (d.get(rid) or {}).get("revision")
     if rid in d and not (isinstance(refused, int) and isinstance(stored_revision, int) and stored_revision < refused):
         d.pop(rid)
-        with open(refused_path(dest), "w") as fh:
+        with open(refused_path(dest), "w", encoding="utf-8") as fh:
             json.dump(d, fh, indent=1, sort_keys=True)
 
 def read_run(path):
     """One stored revision. Raises ValueError (or OSError) when it is not a run record."""
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         run = json.load(fh)
     check_major(run)   # before the shape: a newer format may have changed it
     if isinstance(run, dict) and run.get("steps") == []:
@@ -1659,7 +1676,7 @@ def status_data(dest, now=None):
         problems.append("run %s: not stored, %s" % (rid, info.get("reason", "format not readable")))
     log = os.path.join(dest, "problems.log")
     if os.path.exists(log):
-        with open(log) as fh:
+        with open(log, encoding="utf-8") as fh:
             problems += ["collect: " + ln for ln in fh.read().splitlines() if ln]
     extra = {"savedVariables": len(glob.glob(os.path.join(dest, "sv", "*.lua"))), "errorFiles": len(glob.glob(os.path.join(dest, "errors", "*.json")))}
     return rows, problems, extra
@@ -2028,6 +2045,9 @@ def load_env(paths=None):
 
 
 def main(argv=None):
+    for st in (sys.stdout, sys.stderr):   # a Windows console may use a legacy code page
+        if hasattr(st, "reconfigure"):
+            st.reconfigure(encoding="utf-8", errors="replace")
     load_env()
     ap = argparse.ArgumentParser(prog="ct")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -2104,7 +2124,7 @@ def main(argv=None):
             return 1
         s = encode(merge_sections(plan))
         if a.o:
-            open(a.o, "w").write(s + "\n")
+            open(a.o, "w", encoding="utf-8").write(s + "\n")
         else:
             print(s)
         return 0
@@ -2120,7 +2140,7 @@ def main(argv=None):
         print("replay: %d passed, %d failed, %d not judged offline" % (n("pass"), n("fail"), n("skipped")), file=sys.stderr)
         xml = replay_junit(plan, items)
         if a.o:
-            open(a.o, "w").write(xml)
+            open(a.o, "w", encoding="utf-8").write(xml)
         else:
             print(xml, end="")
         return 1 if n("fail") else 0
@@ -2134,14 +2154,14 @@ def main(argv=None):
         print("offline: %d passed, %d failed" % (len(items) - bad, bad), file=sys.stderr)
         xml = replay_junit(plan, items)
         if a.o:
-            open(a.o, "w").write(xml)
+            open(a.o, "w", encoding="utf-8").write(xml)
         else:
             print(xml, end="")
         return 1 if bad else 0
     if a.cmd == "decode":
         s = a.string_or_file
         if os.path.exists(s):
-            s = open(s).read()
+            s = open(s, encoding="utf-8").read()
         print(json.dumps(decode(s), indent=1, sort_keys=True))
         return 0
     if a.cmd == "from-md":
@@ -2168,7 +2188,7 @@ def main(argv=None):
     if a.cmd == "import-results":
         s = a.string_or_file
         if os.path.exists(s):
-            s = open(s).read()
+            s = open(s, encoding="utf-8").read()
         run = decode(s)
         try:
             check_major(run)   # before kind or anything else: a newer major may have renamed them
@@ -2192,11 +2212,11 @@ def main(argv=None):
         if a.format == "md":
             txt = report_text(runs, a.dest, failed_only=a.failed_only)
             os.makedirs(a.dest, exist_ok=True)
-            open(os.path.join(a.dest, "REPORT.md"), "w").write(txt)
+            open(os.path.join(a.dest, "REPORT.md"), "w", encoding="utf-8").write(txt)
         else:
             txt = (report_json if a.format == "json" else report_junit)(runs, a.dest, a.stacks, a.lines)
         if a.out and a.format != "md":
-            open(a.out, "w").write(txt)
+            open(a.out, "w", encoding="utf-8").write(txt)
         else:
             print(txt)
         if a.strict and skipped:
