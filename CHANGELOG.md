@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.0
+
+New: **CT macro follows the step.** A new setting, off by default, keeps the CT macro on the commands of the current step. Bind a key to it and play a plan with it and the result keys. The macro never gives a result. It changes only out of combat, and never replaces a macro you changed.
+
 ## 0.19.0
 
 New: **Version of the tested addon.** Each run now saves the version of the addon you test. Reports can tell which addon version a result belongs to.

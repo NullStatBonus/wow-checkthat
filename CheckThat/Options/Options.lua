@@ -277,6 +277,18 @@ function Options.Advanced(order)
             ns.App.db.runLimit = v -- the slider fires while it is dragged: nothing is deleted until a run starts
             Options.Notify()
         end })
+    gap(g, "g1b")
+    add(g, "h_macro", { type = "header", name = L["Macro"] })
+    add(g, "macroFollow", {
+        type = "toggle", width = "full", name = L["Keep the CT macro on the current step"],
+        get = function() return profile().macroFollow end,
+        set = function(_, value)
+            profile().macroFollow = value and true or false
+            ns.App.Log("macroFollow " .. (value and "on" or "off"))
+            if ns.Card then ns.Card.FollowMacro(true); ns.Card.Refresh() end
+        end,
+    })
+    note(g, "macroFollowHelp", grey(L["CheckThat rewrites the CT macro with the commands of the current step. Put the macro on a bar and bind a key to it. The macro never records a result. You still press a result key. It changes only out of combat."]))
     gap(g, "g2")
     add(g, "h_selfcheck", { type = "header", name = L["Self-check"] })
     add(g, "loginCheck", {

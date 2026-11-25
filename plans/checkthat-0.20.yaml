@@ -1,0 +1,389 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.20 CT macro follows the step
+preamble: |-
+  Do not click Run on a step that tells you to press the macro key. Run does the same commands, and the plan cannot tell the two apart. Start with Keep the CT macro on the current step cleared, one free action bar slot and one free macro slot. This plan runs in forever-camelot and tests CheckThat on its own run, so do not press End run before the last step. The first step checks the version, because an older copy gives results that mean nothing. Stop there if it fails. Turn debug recording on first, and turn it off when you finish. Combat is tested in the unit tests, not here. At the end, delete the test macros in the macro window.
+handoff: "Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report. Delete the test macros and clear the action bar slot."
+categories:
+- id: setup
+  title: Set up the macro
+- id: follow
+  title: The macro follows the step
+- id: toggle
+  title: Setting off and on
+- id: edit
+  title: A macro you changed
+logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+    cap: 300
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s1
+  title: "Turn it on and bind it"
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct20.version
+    category: setup
+    title: Check the CheckThat version
+    action:
+      kind: copy-slash
+      text: /ct version
+    expect: Chat says "CheckThat 0.20.0" or a newer version. The card records the result by itself. If the step fails, stop and copy CheckThat 0.20.0 into the game again.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: version
+      op: ge
+      value: 2000
+      label: CheckThat is 0.20.0 or newer
+    notes: The fact is major*10000 + minor*100 + patch, so 0.20.0 is 2000.
+  - id: ct20.debug
+    category: setup
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.". The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+  - id: ct20.on
+    category: setup
+    title: "Turn the setting on"
+    action:
+      kind: manual
+      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Tick |cffffd100Keep the CT macro on the current step|r. Then press Pass on the card."
+    expect: "Chat says \"Macro CT is set. Drag it to a bar and click it.\" and names the macro. The name is CT, or the next free name up to CT9 when you own a macro called CT. Note the name. The setting stays ticked."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] macroFollow on"
+      scope: attempt
+      label: "The setting turned on"
+    notes: "The setting must start cleared. CheckThat makes a macro of its own when the setting turns on. A rewrite when a step arrives is logged before the attempt starts, so no step reads that line. The unit tests cover it."
+  - id: ct20.bind
+    category: setup
+    title: "Put the macro on a bar"
+    action:
+      kind: manual
+      text: "Press Esc, then Macros. Select the macro CheckThat named, drag its icon to a free action bar slot and close the window. Point at the slot with Key Bindings mode on (Esc, Key Bindings, Quick Keybind Mode) and press a key. Press Pass on the card."
+    expect: "The macro window shows the macro with the body /ct status. This step has no commands, so the macro holds only that line. The macro sits on a bar and has a key."
+    verify:
+    - player
+- id: s2
+  title: "The macro follows each step"
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct20.a
+    category: follow
+    title: "Debug command"
+    action:
+      kind: manual
+      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      commands:
+      - "/ct debug on"
+    expect: "Chat says \"Debug recording is on.\". The card stays on this step until you press Pass. The macro never gives a result."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      scope: attempt
+      label: "The key ran the commands of this step"
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      absent: true
+      scope: attempt
+      label: "The key did not run the old step"
+    notes: "The macro held /ct status on the step before. A macro that did not follow runs /ct status."
+  - id: ct20.none
+    category: follow
+    title: "A step with no commands"
+    action:
+      kind: manual
+      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+    expect: "Chat shows a status line. A step with no commands gives the macro the body /ct status. The card shows no line about a missing macro."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      scope: attempt
+      label: "The key ran /ct status"
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      absent: true
+      scope: attempt
+      label: "The key did not run the old step"
+    notes: "The macro held the debug command on the step before."
+  - id: ct20.b
+    category: follow
+    title: "Debug command again"
+    action:
+      kind: manual
+      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      commands:
+      - "/ct debug on"
+    expect: "Chat says \"Debug recording is on.\". The card stays on this step until you press Pass."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      scope: attempt
+      label: "The key ran the commands of this step"
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      absent: true
+      scope: attempt
+      label: "The key did not run the old step"
+  - id: ct20.long
+    category: follow
+    title: "Too many commands for one macro"
+    action:
+      kind: manual
+      text: "Look at the card. There is no Run button. Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      commands:
+      - "/ct debug on"
+      - "/ct status"
+      - "/ct debug on"
+      - "/ct status"
+      - "/ct debug on"
+    expect: "The card says \"This step has no macro: its commands do not fit in one.\" The macro key shows a status line only."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      scope: attempt
+      label: "The key ran /ct status"
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      absent: true
+      scope: attempt
+      label: "The key ran none of the commands of this step"
+    notes: "Five commands are an exception to the four-line limit on purpose. The first line is the debug command, so a macro that held a part of the commands would log it."
+  - id: ct20.result
+    category: follow
+    title: "A result command stays out of the macro"
+    action:
+      kind: manual
+      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      commands:
+      - "/ct debug on"
+      - "/ct pass"
+    expect: "Chat shows a status line. The card stays on this step. The macro never records a result, so you press Pass yourself."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      scope: attempt
+      label: "The key ran /ct status"
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      absent: true
+      scope: attempt
+      label: "The key ran none of the commands of this step"
+    notes: "The commands hold a result command on purpose. A tester who clicks Run records Pass at once, so use the macro key."
+- id: s3
+  title: "Setting off and on"
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct20.off
+    category: toggle
+    title: "Turn the setting off"
+    action:
+      kind: manual
+      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Clear |cffffd100Keep the CT macro on the current step|r. Then press Pass on the card."
+      commands:
+      - "/ct debug on"
+    expect: "The setting is clear."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] macroFollow off"
+      scope: attempt
+      label: "The setting turned off"
+    notes: "The commands give this step a macro of its own while the setting is still on. Clearing the setting leaves that macro as it is."
+  - id: ct20.afteroff
+    category: toggle
+    title: "The macro stays as it was"
+    action:
+      kind: manual
+      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      commands:
+      - "/ct status"
+    expect: "Chat says \"Debug recording is on.\", not a status line. With the setting off the macro keeps the text of the step where you cleared it."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      scope: attempt
+      label: "The macro kept its old text"
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      absent: true
+      scope: attempt
+      label: "CheckThat did not rewrite the macro"
+  - id: ct20.on2
+    category: toggle
+    title: "Turn the setting on again"
+    action:
+      kind: manual
+      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Tick |cffffd100Keep the CT macro on the current step|r. Press your |cffffd100macro key|r once, do not click Run, then press Pass on the card."
+      commands:
+      - "/ct status"
+    expect: "Chat shows a status line, not the debug message. Turning the setting on rewrites the macro with the commands of this step."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] macroFollow on"
+      scope: attempt
+      label: "The setting turned on"
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      scope: attempt
+      label: "The key ran the commands of this step"
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      absent: true
+      scope: attempt
+      label: "The key did not run the old text"
+- id: s4
+  title: "A macro you changed"
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct20.edit
+    category: edit
+    title: "Change the macro yourself"
+    action:
+      kind: manual
+      text: "Press Esc, then Macros. Open the macro CheckThat named. Put the line /ct tracker first and the line /ct status second. Save it and close the window. Press Pass on the card."
+      commands:
+      - "/ct status"
+      - "/ct tracker"
+    expect: "The macro holds the two lines in the new order."
+    verify:
+    - player
+  - id: ct20.kept
+    category: edit
+    title: "CheckThat leaves your macro alone"
+    action:
+      kind: manual
+      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      commands:
+      - "/ct debug on"
+    expect: "The Categories window opens and chat shows a status line, not the debug message. CheckThat did not replace your lines."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] tracker open"
+      scope: attempt
+      label: "The key ran your first line"
+    - kind: log
+      source: debug
+      equals: "[ct] status requested"
+      scope: attempt
+      label: "The key ran your second line"
+    - kind: log
+      source: debug
+      equals: "[ct] debug on"
+      absent: true
+      scope: attempt
+      label: "CheckThat did not rewrite the macro"
+    notes: "Close the Categories window before you press Pass."
+  - id: ct20.new
+    category: edit
+    title: "Make a new macro"
+    action:
+      kind: copy-slash
+      text: "/ct macro"
+    expect: "Chat says \"Macro ... is set. Drag it to a bar and click it.\" with a new name, the next free one up to CT9. Your edited macro stays as it was. This needs one more free macro slot. Then press Pass on the card."
+    verify:
+    - player
+  - id: ct20.reset
+    category: edit
+    title: "Turn the setting off and finish"
+    action:
+      kind: manual
+      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Clear |cffffd100Keep the CT macro on the current step|r and turn debug recording off. Close the Categories window. Press Pass on the card."
+    expect: "The setting is clear. The card shows the results screen after this result."
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: "[ct] macroFollow off"
+      scope: attempt
+      label: "The setting turned off"

@@ -52,7 +52,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct undo` | Undo the last result. |
 | `/ct back`, `/ct next` | Move to the previous or next step. The card has < and > buttons too. |
 | `/ct export` | Show the results string. |
-| `/ct macro` | Create a macro for the current step. |
+| `/ct macro` | Create a macro for the current step. With **Keep the CT macro on the current step** on, the macro follows each step. |
 | `/ct categories` | List each category of the run with its state (failed, partial or unverified, passed, untested, in progress, all skipped, not picked) and its passed, failed and open counts. |
 | `/ct tracker` | Open or close the Categories window: one row for each category with its color, state in words and passed, failed and open counts. Click a row to add it, go to its first open step or rerun it. The plus button on a row lists its steps. |
 | `/ct run <category or step id>` | Show the first open step of a category, adding the category to the run if it was not picked. Or show one step. |
@@ -71,7 +71,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 | Home | Current run (the categories with their state, open the checklist, export results), Start a run (import a plan, pick a plan, pick the categories, Start run) and Past runs. |
 | Plans | Remove a plan. |
 | Appearance | Size and opacity, position, Lock position and Reset position. |
-| Advanced | Profile (separate settings for this character), **Runs to keep**, **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
+| Advanced | Profile (separate settings for this character), **Runs to keep**, **Keep the CT macro on the current step** (off by default; see [Macro that follows the step](docs/features.md#macro-that-follows-the-step)), **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
 | About | The command list and help. |
 
 **Runs to keep** is 5 to 100, default 20, for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run. The debug report prints every setting and `Stored: <n> runs (limit <n>), <n> plan copies`.
@@ -84,6 +84,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - Blue on the tracker means untested, also while some steps of the category have results. Yellow means partial or unverified. Red means fail, green means pass, and grey means all skipped. [Details](docs/features.md#categories-and-the-tracker)
 - CheckThat records Lua errors only while a run is open. With BugGrabber loaded, CheckThat reads BugGrabber's error counts instead of setting its own handler. When an addon takes the handler later, CheckThat sets its own again within a second while the card is shown, or when a result is judged. Each error line names the addon from its file path (`[KeepThat]`), and the first error of a step keeps a short call stack for `/ct log`. BugGrabber and BugSack are optional: CheckThat works without them and reads BugGrabber's list when it holds the handler.
 - Run is not available in combat. It comes back when combat ends.
+- With **Keep the CT macro on the current step** on, bind a key to the macro CheckThat names (`CT` unless you own one) and play a plan with it and the result keys. The macro holds commands only, never a result. It changes out of combat only, and only while you have not edited it. A step whose commands do not fit in a macro (over four lines or 255 characters) gets `/ct status`. The debug report shows `macroFollow`.
 - A step with more commands than the card has copy boxes (four) gets no Run button, so no command runs unseen. `/script` and `/dump` are not allowed.
 - A long plan or step title ends with "..." and shows in full when you point at it.
 - Each run saves the version of the addon you test (the plan's addon), when the game can tell it. `ct.py diff` and `ct.py trend --by target` show it. A run from an older CheckThat has none.

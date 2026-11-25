@@ -271,6 +271,17 @@ test("a macro with more lines than copy boxes is not offered as one button", fun
     step.action.commands[5] = "/kt log"
     T.ok(App.MacroText(step, p) == nil, "five lines hide commands the tester cannot see")
 end)
+test("a macro body over the game's 255 characters is not offered", function()
+    boot()
+    local p = plan()
+    local step = p.sections[1].steps[2]
+    local long = "/kt log " .. ("x"):rep(255 - 8)
+    step.action = { kind = "manual", text = "do", commands = { long } }
+    T.eq(#long, 255)
+    T.ok(App.MacroText(step, p) ~= nil, "255 characters fit")
+    step.action.commands[1] = long .. "x"
+    T.ok(App.MacroText(step, p) == nil, "256 characters do not")
+end)
 test("a different plan with the same checksum does not replace a stored plan", function()
     local db = boot()
     local a = plan(); local sa = assert(ns.Codec.Encode(a))

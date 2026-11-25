@@ -105,4 +105,149 @@ test("combat: category commands in combat raise nothing and the Run button follo
     T.eq(card.secure.attrs.macrotext or "", macroOf() or "", "the Run button holds the macro of the step now shown")
 end)
 
+-- The CT macro follows the current step (setting macroFollow).
+local function logHas(pat)
+    local n = 0
+    for _, e in ipairs(ns.Log.Entries()) do if e.msg:find(pat) then n = n + 1 end end
+    return n
+end
+local function resetFollow(on)
+    st.setCombat(false)
+    st.macros, st.macroBody = {}, nil
+    ns.App.db.ui.macroName, ns.App.db.ui.macroBody = nil, nil
+    addon.db.profile.debug = true
+    addon.db.profile.macroFollow = on
+    ns.Log.Clear()
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    slash("start KeepThat")
+end
+
+test("follow: the CT macro takes the current step's commands on each step change", function()
+    resetFollow(true)
+    local seen, prev = 0, nil
+    for _ = 1, 6 do
+        local want = macroOf() or "/ct status"
+        T.eq(st.macroBody, want, "the macro holds the shown step")
+        T.ok(not st.macroBody:find("/ct pass") and not st.macroBody:find("/ct fail")
+            and not st.macroBody:find("/ct partial") and not st.macroBody:find("/ct skip"), "no result command")
+        local _, _, step = ns.App.Current()
+        T.ok(want == prev or logHas("macro set " .. step.id) >= 1, "a new body is logged for " .. step.id)
+        seen, prev = seen + 1, want
+        slash("skip")
+    end
+    T.eq(seen, 6)
+end)
+
+test("follow: a refresh with no step change writes and logs nothing", function()
+    resetFollow(true)
+    local n = logHas("macro set")
+    ns.Card.Refresh(); ns.Card.Refresh()
+    T.eq(logHas("macro set"), n)
+end)
+
+test("follow: the setting off leaves the macro alone", function()
+    resetFollow(false)
+    T.eq(st.macroBody, nil, "no macro made")
+    slash("skip")
+    T.eq(logHas("macro set"), 0)
+end)
+
+test("follow: turning the setting on sets the macro at once", function()
+    resetFollow(false)
+    addon.db.profile.macroFollow = true
+    ns.Card.FollowMacro(true)
+    T.eq(st.macroBody, macroOf() or "/ct status")
+end)
+
+test("follow: steps changed in combat wait; one rewrite after combat", function()
+    resetFollow(true)
+    local before = st.macroBody
+    local n = logHas("macro set")
+    st.setCombat(true)
+    slash("skip"); slash("skip")
+    T.eq(st.macroBody, before, "no macro edit in combat")
+    T.eq(logHas("macro set"), n, "no log line in combat")
+    combatEnds()
+    T.eq(st.macroBody, macroOf() or "/ct status", "the latest step after combat")
+    T.eq(logHas("macro set"), n + 1, "one rewrite")
+end)
+
+test("follow: a macro the player changed is left alone", function()
+    resetFollow(true)
+    st.macroBody = "/dance"
+    local n = logHas("macro set")
+    slash("skip")
+    T.eq(st.macroBody, "/dance", "not edited")
+    T.eq(logHas("macro set"), n)
+    local created = 0
+    for _ in pairs(st.macros) do created = created + 1 end
+    T.eq(created, 1, "no second macro")
+end)
+
+test("follow: a step whose commands do not fit gets /ct status and a card line", function()
+    resetFollow(true)
+    local _, ctx, step = ns.App.Current()
+    step.action = { kind = "manual", text = "x", commands = { "/ct status", "/ct status", "/ct status", "/ct status", "/ct status" } }
+    ns.Card.Refresh()
+    T.eq(st.macroBody, "/ct status")
+    T.ok(_G.CheckThatCard.hint:GetText():find("no macro"), "card line says so")
+    step.action = { kind = "manual", text = "x" }
+    ns.Card.Refresh()
+    local h = _G.CheckThatCard.hint
+    T.ok(not (h:IsShown() and (h:GetText() or ""):find("no macro")), "no line for a step without commands")
+end)
+
+test("follow: a result command in a step never reaches the macro", function()
+    resetFollow(true)
+    local _, _, step = ns.App.Current()
+    local allow = ns.Plan.SLASH.KeepThat
+    local had = allow["/checkthat"]; allow["/checkthat"] = true; allow["/ct"] = true
+    for _, cmd in ipairs({ "/checkthat pass", "/ct Fail note", "/ct skip" }) do
+        step.action = { kind = "manual", text = "x", commands = { "/ct status", cmd } }
+        ns.Card.Refresh()
+        T.eq(st.macroBody, "/ct status", cmd)
+    end
+    allow["/checkthat"], allow["/ct"] = had, nil
+end)
+
+test("follow: a collapsed card and the end of combat still move the macro", function()
+    resetFollow(true)
+    local _, _, step = ns.App.Current()
+    addon.db.profile.card.collapsed = true
+    step.action = { kind = "manual", text = "x", commands = { "/kt log" } }
+    ns.Card.Refresh()
+    T.eq(st.macroBody, "/kt log", "collapsed")
+    st.setCombat(true)
+    step.action = { kind = "manual", text = "x", commands = { "/kt log", "/reload" } }
+    combatEnds()
+    T.eq(st.macroBody, "/kt log\n/reload", "after combat while collapsed")
+    addon.db.profile.card.collapsed = false
+end)
+
+test("follow: /ct macro after a player edit makes a second macro even in a run", function()
+    resetFollow(false)
+    slash("macro")
+    st.macroBody = "/dance"
+    slash("macro")
+    T.ok(st.macros.CT2, "CT2 made")
+end)
+
+test("follow: a refused edit keeps following", function()
+    resetFollow(true)
+    local _, _, step = ns.App.Current()
+    local real = _G.EditMacro
+    _G.EditMacro = function() end
+    step.action = { kind = "manual", text = "x", commands = { "/kt log" } }
+    local n = logHas("macro set")
+    ns.Card.Refresh()
+    T.eq(logHas("macro set"), n, "no false log line")
+    _G.EditMacro = real
+    ns.Card.Refresh()
+    T.eq(st.macroBody, "/kt log", "the next refresh writes it")
+end)
+
+test("follow: the setting is in the debug report", function()
+    T.ok(ns.Log.Report():find("macroFollow = true", 1, true))
+end)
+
 finish()

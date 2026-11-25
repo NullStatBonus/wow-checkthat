@@ -10,6 +10,20 @@ A step that lists commands, and only allowed ones, gets a Run button that runs t
 - `/script` and `/dump` are not allowed.
 - There is no separate Reload button. A step that asks for a reload shows Run beside its `/reload` command. A step without that command, and a plan that asks to share the log after a reload, tell you to type `/reload`.
 
+## Macro that follows the step
+
+With **Keep the CT macro on the current step** on (Advanced, off by default), CheckThat rewrites the `CT` macro each time the card shows a different step. A player drags `CT` to a bar, binds a key to it and plays a plan with a macro key and the result keys.
+
+- The macro holds the step's commands only. It never holds `/ct pass` or another result command, so every result is still the player's own key.
+- A step with no usable commands gets `/ct status`. A step with commands that no macro can hold (more than four lines, over 255 characters, or not allowed) gets `/ct status` too, and the card says "This step has no macro: its commands do not fit in one."
+- CheckThat never changes a macro in combat. After combat the first card refresh writes the macro for the step then shown.
+- CheckThat writes only a macro it made and the player has not changed. If you edit `CT`, it leaves that macro alone and makes no second one. `/ct macro` makes a new one.
+- CheckThat makes a macro when you turn the setting on and it has none of its own, and prints its name. The name is `CT`, or `CT2` to `CT9` when you already own `CT`. It prints one chat line if no slot is free.
+- A result command in a step (`/ct pass`, `/checkthat fail`) never goes in the macro. The macro holds `/ct status` instead.
+- The setting is in the debug report as `macroFollow`.
+
+Debug log: `macroFollow on` and `off`, and `macro set <step id>` each time the macro text changes.
+
 ## Run menu
 
 While a run is active, the card header shows a Run control with a small arrow, next to the "CheckThat" title. It highlights when you point at it. Click it for three items:
