@@ -22,6 +22,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Run button.** Runs the step's allowed commands in order. It is hidden during combat. [Details](docs/features.md#run-button)
 - **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. A failed or unverified step keeps the first new log lines for the report. [Details](docs/features.md#saved-log-positions)
 - **Automatic steps.** A step marked `auto` records its own result when the checks are met. Your click still wins. [Details](docs/features.md#automatic-steps)
+- **Entry points.** An addon can register a function with `CheckThat.Entry`, and an auto step calls it and checks the result. [Details](docs/features.md#entry-points)
 - **Facts from other addons.** An addon can publish a named fact with `CheckThat.Report`, and a plan checks it like a log line. [Details](docs/features.md#facts-from-other-addons)
 - **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)
 - **Past runs.** Home lists stored runs. Open, export or delete one. [Details](docs/features.md#past-runs)
@@ -70,7 +71,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 | Home | Current run (the categories with their state, open the checklist, export results), Start a run (import a plan, pick a plan, pick the categories, Start run) and Past runs. |
 | Plans | Remove a plan. |
 | Appearance | Size and opacity, position, Lock position and Reset position. |
-| Advanced | Profile (separate settings for this character), **Runs to keep** and Debug (record debug information, show the debug report). |
+| Advanced | Profile (separate settings for this character), **Runs to keep**, **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
 | About | The command list and help. |
 
 **Runs to keep** is 5 to 100, default 20, for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run. The debug report prints every setting and `Stored: <n> runs (limit <n>), <n> plan copies`.
@@ -106,6 +107,7 @@ make test      # build, luajit tests, python tests
 make check     # packaging and version checks
 luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fake client
 .venv/bin/python tools/ct.py replay plans/<plan>.yaml --sv <fixture dir>   # judge log checks against saved variables, no game
+.venv/bin/python tools/ct.py offline plans/<plan>.yaml   # run the plan's offline block (mocks, entry calls, fake events), no game
 ```
 
 Requirements live in `openspec/`. The release steps are in [docs/publishing.md](docs/publishing.md).

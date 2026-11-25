@@ -121,6 +121,31 @@ function Plan.CheckAuto(st, w, errs)
     local isAuto = st.auto == true
     local act = st.action
     if type(act) == "table" and act.kind == "wait-event" and not isAuto then errs[#errs + 1] = w .. ": wait-event needs an auto step" end
+    if st.call ~= nil then
+        local c = st.call
+        if not isAuto then errs[#errs + 1] = w .. ": call needs auto"
+        elseif type(c) ~= "table" or not (type(c.addon) == "string" and type(c.entry) == "string") then
+            errs[#errs + 1] = w .. ": call needs addon and entry text"
+        elseif #c.addon < 1 or #c.addon > 32 or c.addon:find("[^%w_%-]") or #c.entry < 1 or #c.entry > 42 or c.entry:find("[^%w_%.%-]") then
+            errs[#errs + 1] = w .. ": call addon is 1 to 32 letters, digits, _ or -, and entry is 1 to 42 of the same plus ."
+        else
+            for k in pairs(c) do
+                if k ~= "addon" and k ~= "entry" and k ~= "args" then errs[#errs + 1] = w .. ": call has unknown field " .. tostring(k) end
+            end
+            local nargs = 0
+            if c.args ~= nil and type(c.args) ~= "table" then errs[#errs + 1] = w .. ": call args must be a list of at most 8"
+            elseif c.args ~= nil then
+                for _ in pairs(c.args) do nargs = nargs + 1 end
+                if nargs ~= #c.args or nargs > 8 then errs[#errs + 1] = w .. ": call args must be a list of at most 8"
+                else
+                    for i, v in ipairs(c.args) do
+                        local tv = type(v)
+                        if tv ~= "string" and tv ~= "number" and tv ~= "boolean" then errs[#errs + 1] = w .. ": call arg " .. i .. " must be text, a number or true or false" end
+                    end
+                end
+            end
+        end
+    end
     local t = st.timeout
     if t ~= nil then
         if not isAuto then errs[#errs + 1] = w .. ": timeout needs auto"

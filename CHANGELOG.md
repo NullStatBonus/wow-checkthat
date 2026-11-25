@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0
+
+New: **Entry points for tests.** An addon can register a function with `CheckThat.Entry`. An automatic step can call it and check the result. The call never runs in combat.
+New: **Check entry points after login.** A new setting, off by default, calls the entries your plans name after login. It prints one chat line.
+Changed: **API version.** `CheckThat.API_VERSION` is now 2. Calls that worked before still work.
+
 ## 0.17.0
 
 New: **See the steps of a category.** Each row in the Categories window has a plus button. It lists the steps with their results. A click on a step shows it on the card.

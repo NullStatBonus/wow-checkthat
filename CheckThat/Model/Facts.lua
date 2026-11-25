@@ -64,7 +64,12 @@ end
 -- line format stay as they are, and API_VERSION rises only when something is added.
 function Facts.API()
     return {
-        API_VERSION = 1,
+        API_VERSION = 2,
+        Entry = function(addon, name, fn)
+            if not ns.Entries then return false end
+            local ok, stored = pcall(ns.Entries.Register, addon, name, fn)
+            return ok and stored == true
+        end,
         Report = function(addon, key, value)
             local ok, recorded = pcall(Facts.Report, addon, key, value)
             return ok and recorded == true

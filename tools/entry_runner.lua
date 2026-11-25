@@ -15,6 +15,12 @@
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
 
+-- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
+Runner.MOCKABLE = {}
+for _, n in ipairs({ "GetItemInfo", "GetItemCount", "C_Item.GetItemInfo", "C_Item.GetItemCount", "GetMoney", "GetTime",
+    "UnitName", "IsInGuild", "GetNumGroupMembers", "GetContainerNumFreeSlots", "C_Container.GetContainerNumFreeSlots",
+    "C_Container.GetContainerItemInfo" }) do Runner.MOCKABLE[n] = true end
+
 local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
 
 local function deepEq(a, b)
@@ -88,6 +94,9 @@ local function loadToc(path, name, ns)
     for line in io.lines(path) do
         line = line:gsub("\r", "")
         if line:match("%S") and not line:match("^%s*#") and line:match("%.lua%s*$") then
+            if line:find("..", 1, true) or line:match("^%s*[/\\]") or line:match("^%s*%a:") then
+                return false, "a TOC file path leaves the addon folder: " .. line
+            end
             local chunk, err = loadfile(dir .. "/" .. line:gsub("\\", "/"):gsub("%s+$", ""))
             if not chunk then return false, err end
             local ok, e = pcall(chunk, name, ns)
@@ -121,11 +130,14 @@ function Runner.run(spec, opts)
     _G.CheckThat = {
         PROTOTYPE = true,
         Entry = function(addon, name, fn)
-            if type(addon) ~= "string" or type(name) ~= "string" or type(fn) ~= "function" then return false end
+            -- The same rules as CheckThat.Entry in the game (CheckThat/Model/Entries.lua).
+            if type(addon) ~= "string" or #addon < 1 or #addon > 32 or addon:find("[^%w_%-]")
+                or type(name) ~= "string" or #name < 1 or #name > 42 or name:find("[^%w_%.%-]") or type(fn) ~= "function" then return false end
             entries[addon] = entries[addon] or {}
             entries[addon][name] = fn
             return true
         end,
+        API_VERSION = 2,
         Report = function(addon, key, value) reports[#reports + 1] = ("[%s] %s=%s"):format(addon, key, tostring(value)); return true end,
     }
 
@@ -138,7 +150,11 @@ function Runner.run(spec, opts)
     local name = spec.toc:match("([^/]+)%.toc$") or "Addon"
     local ns = {}
     local loaded, loadErr
-    if spec.mockAfterLoad then
+    local unlisted
+    for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
+    if unlisted then
+        loaded, loadErr = false, ("mock %s is not on the allow list"):format(unlisted)
+    elseif spec.mockAfterLoad then
         loaded, loadErr = loadToc(pathJoin(root, spec.toc), name, ns)
         applyMocks(spec.mocks, counts, saved)
     else

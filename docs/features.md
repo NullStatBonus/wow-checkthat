@@ -137,11 +137,32 @@ if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "bagFull", t
 - One addon can record 30 facts a second. Facts over that are dropped. The list keeps the newest 300 lines.
 - `/ct version` prints the CheckThat version. With a run open it also reports the fact `[CheckThat] version=<major*10000 + minor*100 + patch>`, so 0.17.0 is `version=1700`. A plan starts with a step that runs it and checks `op: ge` against its own version, because a game that loads an older copy of the addon gives results that mean nothing. With no run open it only prints.
 - `/ct fact` reports the fact `[CheckThat] selftest=1` through the same call. The self-test step "Report a fact" runs it with the Run button, so a plan can test the API with one click. With no run open it says so and records nothing.
-- `CheckThat.API_VERSION` is 1. Later versions only add to the API. A call that works now keeps working.
+- `CheckThat.Entry(addon, name, fn)` registers a function a plan step can call (see [Entry points](#entry-points)). It returns true when it stores the entry.
+- `CheckThat.API_VERSION` is 2. Later versions only add to the API. A call that works now keeps working.
 - CheckThat keeps the lines in `CheckThatDB.global.facts`. A plan reads them as a log: `global: CheckThatDB`, `path: global.facts`, `format: strings`. See [Write a plan](authoring-plans.md#facts-from-the-addon-under-test).
 - A step counts only the facts reported after it opened. A fact is data and CheckThat never runs it.
 
 Debug log: `facts recorded <addon> <key>` and `facts dropped ...` with the reason. The report adds `Facts: <count>, last: <line>`.
+
+### Entry points
+
+An addon can expose a function for a test to call:
+
+```lua
+local f = CreateFrame("Frame")
+f:RegisterEvent("PLAYER_LOGIN")
+f:SetScript("OnEvent", function()
+    if CheckThat and CheckThat.Entry then CheckThat.Entry("KeepThat", "add", function(a, b) return a + b end) end
+end)
+```
+
+- Register when the player logs in, not at file scope: an addon that CheckThat lists as optional loads before CheckThat, so `CheckThat.Entry` does not exist yet at file scope. Use `PLAYER_LOGIN`. CheckThat refuses a bad name (up to 32 letters, digits, `_` or `-` for the addon and up to 42 for the entry) or a value that is not a function. A registration while a run is open is fine: a run survives `/reload`.
+- An auto step names the entry in `call: {addon: KeepThat, entry: add, args: [2, 3]}`. Arguments are text, numbers or booleans. CheckThat calls it when the step opens, outside combat, and never calls anything the addon did not register.
+- The outcome is the fact `[KeepThat] entry.add=5`. Several returns join with commas. Other outcomes: `(none)`, `threw: <text>`, `not registered`, `refused: in combat`. The step checks it as any fact line.
+- A step that stays open across a reload does not call again.
+- **Check entry points after login** (settings page, off by default) calls the entries that your imported plans name, about 3 seconds after login and never in combat. It records no fact and opens no run. It prints one chat line, such as `Self-check: 2 of 3 entry checks matched. First miss: <step>: <line>`. A step matches when it has a required `equals` or `contains` log check and all of them hold. It runs code that other addons registered, so leave it off unless you test them. The setting is in the debug report as `loginCheck`.
+
+Debug log: `self-check: <matched> of <total> entry checks matched`, `self-check skipped: in combat`, `loginCheck on` and `off`, `entries registered <addon>.<name>`, `entries called <addon>.<name>: <result>` and `entries refused ...`.
 
 ## Categories and the tracker
 

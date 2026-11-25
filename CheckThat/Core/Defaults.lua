@@ -6,6 +6,7 @@ local _, ns = ...
 ns.defaults = {
     profile = {
         debug = false,           -- record the debug log (Debug/Log.lua)
+        loginCheck = false,      -- after login, call the entries that imported plans name and say how many matched (App.SelfCheck)
         card = {
             scale = 100,            -- percent, 50-200
             backgroundOpacity = 90, -- percent, 0-100; the fill is pure black

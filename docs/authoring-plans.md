@@ -19,7 +19,7 @@ The plan format is specified in `openspec/specs/test-plan-format/`. Rules for au
 
 ## Plans in this repository
 
-- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 14 steps (15 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`.
+- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 15 steps (16 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`.
 - `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-0.16.yaml` tests Remove from run and the result keys on its own run, in forever-camelot only.
 - `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen.
@@ -55,6 +55,51 @@ It warns when the card shows a step a second time, because the step's text must 
 - Diagnostic checks are left out.
 - It prints the fixture's age and warns when `fixture.json` is missing or its digest differs from the plan's. Record the fixture again after a plan or log text change.
 - It tests the plan's text against the log. It does not run the addon, and it does not replace a run in the game.
+
+## Check addon code offline
+
+A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offline plans/<addon>.yaml` loads the addon's TOC files in the fake client and runs the block. It needs `luajit` and a CheckThat checkout. It prints JUnit and exits 1 when a step fails, and 2 when the plan has no block or the run cannot start. Compile removes the block, so the game never receives it and the plan digest ignores it.
+
+**It runs the addon's Lua with your permissions.** The plan's `toc` is read from inside the folder you pass with `--addons` (default: the folder above this repository), and a path that leaves that folder is refused. Pass only addons you trust, and treat a plan from someone else like code.
+
+```yaml
+offline:
+  toc: wow-keepthat/KeepThat/KeepThat_Vanilla.toc   # inside the folder you pass as --addons
+  mocks:                                          # set before the addon loads
+    GetItemInfo:
+    - { args: [7], returns: [Mocked Seven] }
+    - { returns: [Mocked Other] }
+  steps:
+  - label: Name comes from the mock
+    call: { addon: KeepThat, entry: name, args: [7] }
+    returns: [Mocked Seven]
+  - { event: { name: MERCHANT_SHOW } }
+  - { mockCalls: { api: GetItemInfo, count: 1 } }
+```
+
+- A `call` runs only an entry the addon registered with `CheckThat.Entry`. In the fake client `CheckThat.Entry` is a stub that applies the same name rules as the game. A name that is not registered fails the step. An addon should register at `PLAYER_LOGIN`, not at file scope, because the addons CheckThat lists as optional load first and `CheckThat.Entry` does not exist yet (see [Entry points](features.md#entry-points)).
+- Add `returns` (a list) or `throws` (text the error contains) to a call.
+- Only APIs on the runner's list can be mocked (`Runner.MOCKABLE` in `tools/entry_runner.lua`). A plan cannot add to it.
+- Set `mockAfterLoad: true` to mock after the addon loads. A file-scope `local f = f` then keeps the real function.
+- An offline pass does not prove the game agrees. Whether a replaced global taints a protected action is not measured (#98).
+
+## Call an entry from a step
+
+An auto step can call a function the addon registered with `CheckThat.Entry` (see [Entry points](features.md#entry-points)). The outcome is a fact line, so assert on it:
+
+```yaml
+- id: kt.add
+  title: Add two numbers
+  auto: true
+  action: { kind: manual, text: CheckThat calls the entry. }
+  expect: The entry returns 5.
+  verify: [assertions]
+  call: { addon: KeepThat, entry: add, args: [2, 3] }
+  assertions:
+  - { kind: log, source: facts, equals: '[KeepThat] entry.add=5' }
+```
+
+The step needs the `facts` log source. `call` works only on an auto step. The same entry can be called offline with the [offline block](#check-addon-code-offline).
 
 ## Good logs make good plans
 

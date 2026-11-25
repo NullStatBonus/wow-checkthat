@@ -396,9 +396,9 @@ sections:
       name: CheckThat
       path: API_VERSION
       op: approx
-      value: 1
+      value: 2
       tolerance: 0.5
-      label: API version is 1, give or take 0.5
+      label: API version is 2, give or take 0.5
     - kind: state
       probe: global-value
       name: CheckThat
@@ -445,6 +445,27 @@ sections:
     - id: report
       vars:
         path: Report
+  - id: self.entry
+    category: units
+    title: CheckThat calls an entry point
+    action:
+      kind: manual
+      text: Wait. CheckThat calls its own test entry by itself.
+    expect: The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    call:
+      addon: CheckThat
+      entry: selftest.add
+      args:
+      - 2
+      - 3
+    assertions:
+    - kind: log
+      source: facts
+      equals: '[CheckThat] entry.selftest.add=5'
+      label: The entry returned 5
   - id: self.noerror
     category: errors
     title: No Lua error

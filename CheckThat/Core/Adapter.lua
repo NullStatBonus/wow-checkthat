@@ -18,6 +18,14 @@ function Adapter.Env()
     for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time", "date" }) do
         env[name] = function(...) return call(name, ...) end
     end
+    -- Missing or failing reads as in combat: nothing may run when the game cannot say.
+    env.InCombatLockdown = function()
+        local f = _G.InCombatLockdown
+        if type(f) ~= "function" then return true end
+        local ok, r = pcall(f)
+        if not ok then return true end
+        return r and true or false
+    end
     env.IsAddOnLoaded = function(addon)
         local f = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
         if type(f) ~= "function" then return nil end

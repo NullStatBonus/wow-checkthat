@@ -114,7 +114,7 @@ end)
 test("the public table has a version and a Report that never raises", function()
     local list = bind()
     local api = ns.Facts.API()
-    T.eq(api.API_VERSION, 1)
+    T.eq(api.API_VERSION, 2)
     T.eq(api.Report("KeepThat", "k", 1), true); T.eq(#list, 1)
     T.eq(api.Report({}, nil, print), false)
     ns.Facts.Report = function() error("boom") end

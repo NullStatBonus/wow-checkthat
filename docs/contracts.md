@@ -17,7 +17,8 @@ What an addon that reports facts can rely on. It only grows: a released name, ar
 
 | Name | Contract | Since |
 | --- | --- | --- |
-| `CheckThat.API_VERSION` | Number, 1. Rises only when something is added. | 0.9.0 |
+| `CheckThat.API_VERSION` | Number, 2. Rises only when something is added. | 0.9.0 |
+| `CheckThat.Entry(addon, name, fn)` | Returns true when it stores the entry, false otherwise. Never raises. An auto step with `call` runs it at step open, outside combat, and records `[addon] entry.<name>=<result>`. | 0.18.0 |
 | `CheckThat.Report(addon, key, value)` | Returns true when it records `[addon] key=value`, false otherwise. Never raises. Records only while a run is open. Limits: addon 32, key 48, string value 120 characters, 30 facts per addon per second, 300 lines kept. | 0.9.0 |
 | `CheckThatDB.global.facts` | Array of the recorded lines, readable as a `strings` log. | 0.9.0 |
 | `CheckThatDB.global.errors` | Array of Lua error lines recorded while a run is open, each `<time>.<counter> [<addon>] <message>` with the message cut to 200 characters, 100 kept, 30 a second. `<addon>` is read from `AddOns\<Name>\` in the message, else `?` (lines CheckThat adds itself say `CheckThat`). Readable as a quiet `strings` log. | 0.10.0, tag 0.12.0 |
@@ -81,20 +82,22 @@ Prototype: `tools/entry_runner.lua` with `tests/fixtures/mockaddon/` and `tests/
 | Are mocks restored? | Yes, also for a dotted name such as `C_Item.GetItemCount`. | `test_entries` |
 | What did the shared fake client lack? | A record of which events a frame registered (`RegisterEvent` was a no-op), a global `CheckThat` with `Entry`, and a hook that sets the "real" values a mock replaces. Nothing else: `H.stubClient()` loaded the fixture addon unchanged. | Runner source |
 | Do sibling addons have their own harness? | Yes, each has `tests/harness.lua` (KeepThat, DontDoThat, ClosestVendor). A shared runner must take the addon's harness as an option or accept the CheckThat one. Not compared line by line. | `ls` of each `tests/` |
-| Does replacing a global in game taint secure code? | **Not measured.** It needs Era and Forever clients and an addon that calls a protected frame in the same session. | Pending in game |
-| Does calling an addon entry from CheckThat taint? | **Not measured**, same reason. | Pending in game |
+| Does replacing a global in game taint secure code? (Era 11509) | **Yes, by the documented rules (source-reviewed, not measured in game).** Blizzard code reads `GetMoney` as a global: `Blizzard_MoneyFrame/Shared/MoneyFrame.lua:242` and `Blizzard_UIPanels_Game/Vanilla/MerchantFrame.lua:590`. A value that addon code writes to a global carries the addon's taint, also when the code writes the original function back, and taint lasts until `/reload`. | Blizzard source (wow-api, `classic_era`), warcraft.wiki.gg "Secure Execution and Tainting" |
+| Does replacing a global in game taint secure code? (Forever) | **Same, source-reviewed.** The same two files read `GetMoney` in `forever`. | Blizzard source (wow-api, `forever`) |
+| Does calling an addon entry from CheckThat taint? | **No new taint from the dispatcher itself (source-reviewed).** CheckThat is addon code, so its handler already runs tainted, and the dispatcher calls the entry outside combat in `pcall`. What an entry does is the entry's own risk and is **not** covered: a third-party entry that changes shared state Blizzard code reads later can taint it, with or without a protected call. The built-in `CheckThat selftest.add` only adds two numbers. An in-game confirmation with `/ctp taint entry` is still welcome. | warcraft.wiki.gg "Secure Execution and Tainting" |
 
 Decisions, by part (the follow-up issues carry the build work):
 - **Mocks offline: build.** Proven, no client needed. Next step is the plan format (mocks, entry calls, expectations) with schema, `Plan.lua`, `ct.py` and the format spec together.
-- **Entry points and throws: build.** Needs `CheckThat.Entry` in the public API (`API_VERSION` 2, a version bump) and an `auto` step that calls entries.
+- **Entry points and throws: built in 0.18.0 (#97).** Needed `CheckThat.Entry` in the public API (`API_VERSION` 2, a version bump) and an `auto` step that calls entries.
 - **Fake events: build, offline only.** The real client cannot be made to fire arbitrary events.
-- **Mocks in game: defer until the taint probe.** Local capture is not the blocker (0 captures), taint is.
+- **Mocks in game: drop.** Local capture is not the blocker (0 captures), taint is. A global that addon code replaces stays tainted after the original goes back, until `/reload`, and Blizzard money and vendor code reads those globals. Mocks stay offline. Reopen this only if a probe shows the contrary (#98).
+- **Entry calls in game: allow with limits.** Registered entries only, outside combat, in `pcall`, with literal arguments. An entry must not call a protected function.
 - **Setup and teardown: build with the plan format.** Mocks restore after the run today; per-step and per-category setup needs plan fields.
 - **Login self-check: defer.** A separate, opt-in setting.
 
 ## Pending in-game
 
-- **Taint from mocks and entry calls (#98).** Whether replacing a read-only global, or calling an addon function from CheckThat, blocks a protected action on Era and Forever. Not measured; see "Offline mocks and entry points".
+- **Taint from mocks and entry calls (#98).** The probe is in the CTProbe addon: `/ctp taint on`, open the vendor or click the Probe button, `/ctp taint off`, then `/ctp taint entry` and the same protected actions. Read `CTProbeDB.log` for `ADDON_ACTION_BLOCKED` lines and the `issecurevariable` answers, once on Era and once on Forever, and add a row per client above. The decision above rests on source review and the wiki's rules. A run of the probe would confirm it with `issecurevariable` answers and any `ADDON_ACTION_BLOCKED` lines, and would not change the decision unless it shows that an entry call blocks an action.
 
 - **Error capture on a real client.** That the handler is set on Era and Forever without BugGrabber (`handler: current`), that an error raised by another addon is recorded in both cases, and what `geterrorhandler()` returns before any addon sets one. With BugGrabber, `handler: blocked`, a recorded self-test error and its kept stack are measured on Forever (above). `debugstack(4, 20, 0)` inside our own handler works on Forever with BugGrabber disabled (2026-11-24). The first frames it returned were our own handler frames, so `Errors.lua` drops them (unit-tested, not yet confirmed in the game). No slowdown was reported. With BugGrabber disabled and `seterrorhandler` replaced by a no-op, the amber warning showed on a step that reads the error list. Era is unmeasured. Check with section 5 of `docs/test-plan.md`, check 3.
 - **Tracker on a real client.** The card draws the tracker with plain textures and the start screen with `CheckButton` and `UICheckButtonTemplate`. How they look at the card's scale and opacity, and whether the Categories list opens through `MenuUtil` on Era. Check with section 5, checks 1, 4 and 5.

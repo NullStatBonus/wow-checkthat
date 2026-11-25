@@ -40,6 +40,22 @@ function addon:OnEnable()
         ns.Slash.Print(newer == 1 and L["One saved run needs a newer CheckThat. It is kept as it is."]
             or L["%d saved runs need a newer CheckThat. They are kept as they are."]:format(newer))
     end
+    -- Off by default. A few seconds after login, outside combat, call the entries imported plans name and say how many matched.
+    if self.db.profile.loginCheck then
+        ns.Adapter.After(3, function()
+            -- The timer fires later: look again at the setting, a run and combat.
+            if not self.db.profile.loginCheck then return end
+            if ns.App.RunOpen() then ns.App.Log("self-check skipped: a run is open"); return end
+            if ns.Adapter.InCombat() then ns.App.Log("self-check skipped: in combat"); return end
+            local total, matched, miss = ns.App.SelfCheck()
+            if total == 0 then return end
+            if miss then
+                ns.Slash.Print(L["Self-check: %d of %d entry checks matched. First miss: %s"]:format(matched, total, (miss:gsub("|", "||"))))
+            else
+                ns.Slash.Print(L["Self-check: %d of %d entry checks matched."]:format(matched, total))
+            end
+        end)
+    end
     ns.Listen(self, "PLAYER_REGEN_ENABLED", function() if ns.Card then ns.Card.Refresh() end end)
     ns.Listen(self, "PLAYER_LOGOUT", function() ns.App.Log("logout"); if ns.Tracker then ns.Tracker.Leaving() end end)
 end
