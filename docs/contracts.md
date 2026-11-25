@@ -68,7 +68,33 @@ Not measured yet: the handler path with BugGrabber disabled (`handler current`),
 
 What follows for CheckThat: when BugGrabber is loaded, CheckThat cannot set its own handler and cannot see its errors through one. CheckThat reads BugGrabber's counters instead and records an error for each rise (`Errors.Sample`). The debug report shows `handler: blocked`. Without BugGrabber, CheckThat sets its handler and chains to the one before it.
 
+## Offline mocks and entry points (issue 94, 2026-11-24)
+
+Prototype: `tools/entry_runner.lua` with `tests/fixtures/mockaddon/` and `tests/test_entries.lua`. It reads its own spec file, not a plan field, and changes nothing under `CheckThat/`.
+
+| Question | Result | How measured |
+| --- | --- | --- |
+| Does a mock reach a game function an addon captured in a file-scope local? | Yes when the mock is set before the addon loads. No when it is set after load: the local keeps the earlier function, and a call-time lookup (`_G.Name`) sees the mock. | `test_entries`: "a mock set before load…" and "…after load misses the capture" |
+| How often do our addons capture game functions in file-scope locals? | 0 in all four (KeepThat, DontDoThat, ClosestVendor, CheckThat). The only file-scope `local x = Capital…` lines name Ace libraries and the addon's own tables. Game calls happen inside functions, and KeepThat and CheckThat route them through an adapter that looks the name up at call time. | Static search for top-level `local a = <Name>`, `C_x.y` and `_G.x` over each addon folder without `Libs/` (2026-11-24). It does not see captures inside `do` blocks or another addon's code |
+| Can an entry be called with literal arguments and checked for returns, throws and mock call counts? | Yes. An unregistered name fails the step. A step result says whether mocks were set. | `test_entries` |
+| Can a fake event reach the addon's handlers? | Yes, at every frame that registered it and has an `OnEvent` script. A name nobody registered fails the step. | `test_entries` |
+| Are mocks restored? | Yes, also for a dotted name such as `C_Item.GetItemCount`. | `test_entries` |
+| What did the shared fake client lack? | A record of which events a frame registered (`RegisterEvent` was a no-op), a global `CheckThat` with `Entry`, and a hook that sets the "real" values a mock replaces. Nothing else: `H.stubClient()` loaded the fixture addon unchanged. | Runner source |
+| Do sibling addons have their own harness? | Yes, each has `tests/harness.lua` (KeepThat, DontDoThat, ClosestVendor). A shared runner must take the addon's harness as an option or accept the CheckThat one. Not compared line by line. | `ls` of each `tests/` |
+| Does replacing a global in game taint secure code? | **Not measured.** It needs Era and Forever clients and an addon that calls a protected frame in the same session. | Pending in game |
+| Does calling an addon entry from CheckThat taint? | **Not measured**, same reason. | Pending in game |
+
+Decisions, by part (the follow-up issues carry the build work):
+- **Mocks offline: build.** Proven, no client needed. Next step is the plan format (mocks, entry calls, expectations) with schema, `Plan.lua`, `ct.py` and the format spec together.
+- **Entry points and throws: build.** Needs `CheckThat.Entry` in the public API (`API_VERSION` 2, a version bump) and an `auto` step that calls entries.
+- **Fake events: build, offline only.** The real client cannot be made to fire arbitrary events.
+- **Mocks in game: defer until the taint probe.** Local capture is not the blocker (0 captures), taint is.
+- **Setup and teardown: build with the plan format.** Mocks restore after the run today; per-step and per-category setup needs plan fields.
+- **Login self-check: defer.** A separate, opt-in setting.
+
 ## Pending in-game
+
+- **Taint from mocks and entry calls (#98).** Whether replacing a read-only global, or calling an addon function from CheckThat, blocks a protected action on Era and Forever. Not measured; see "Offline mocks and entry points".
 
 - **Error capture on a real client.** That the handler is set on Era and Forever without BugGrabber (`handler: current`), that an error raised by another addon is recorded in both cases, and what `geterrorhandler()` returns before any addon sets one. With BugGrabber, `handler: blocked`, a recorded self-test error and its kept stack are measured on Forever (above). `debugstack(4, 20, 0)` inside our own handler works on Forever with BugGrabber disabled (2026-11-24). The first frames it returned were our own handler frames, so `Errors.lua` drops them (unit-tested, not yet confirmed in the game). No slowdown was reported. With BugGrabber disabled and `seterrorhandler` replaced by a no-op, the amber warning showed on a step that reads the error list. Era is unmeasured. Check with section 5 of `docs/test-plan.md`, check 3.
 - **Tracker on a real client.** The card draws the tracker with plain textures and the start screen with `CheckButton` and `UICheckButtonTemplate`. How they look at the card's scale and opacity, and whether the Categories list opens through `MenuUtil` on Era. Check with section 5, checks 1, 4 and 5.

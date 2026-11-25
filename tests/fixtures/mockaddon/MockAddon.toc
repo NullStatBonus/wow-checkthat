@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon
+## Notes: Fixture for tests/test_entries.lua. Not shipped.
+Core.lua
