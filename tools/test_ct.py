@@ -1768,7 +1768,7 @@ class Results(unittest.TestCase):
         steps = {"a": {"attempts": [{"n": 1, "formatRev": 1}]}}
         self.assertTrue(ok({"ct": 1, "formatRev": 3, "writerVersion": "1.2.3", "steps": steps}))
         self.assertTrue(ok({"steps": steps}), "an older run has no stamp")
-        for bad in ({"ct": 2}, {"formatRev": 0}, {"formatRev": "1"}, {"writerVersion": 3}):
+        for bad in ({"ct": 2}, {"formatRev": 0}, {"formatRev": "1"}, {"writerVersion": 3}, {"targetVersion": 3}, {"targetVersion": ""}):
             self.assertFalse(ok(dict({"steps": steps}, **bad)), bad)
         self.assertFalse(ok({"steps": {"a": {"attempts": [{"n": 1, "formatRev": 0}]}}}))
 
@@ -1906,6 +1906,25 @@ class CompareRuns(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(self.labels(d), {"s1": "regressed", "s2": "fixed", "s3": "newly-unverified", "s4": "still-failing", "s5": "unchanged", "s6": "not-comparable"})
         self.assertFalse(d["planChanged"])
+
+    def test_the_header_names_the_version_of_the_tested_addon(self):
+        a = self.mk({"s1": self.st("pass")}, targetVersion="1.2.0")
+        b = self.mk({"s1": self.st("fail")})
+        d = self.diff(a, b)[1]
+        self.assertEqual((d["a"]["targetVersion"], d["b"]["targetVersion"]), ("1.2.0", None))
+        text = ct.diff_text(d)
+        self.assertIn("tested addon 1.2.0", text)
+        self.assertIn("tested addon ?", text, "a run that did not record it says so, it does not guess")
+
+    def test_trend_names_columns_by_the_version_of_the_tested_addon(self):
+        runs = {"R-%d" % i: self.mk({"s1": self.st(v)}, started=i, targetVersion=tv) for i, v, tv in ((1, "pass", "1.0.0"), (2, "fail", "1.1.0"), (3, "pass", None))}
+        runs["R-3"].pop("targetVersion")
+        d = self.dest(runs)
+        t = json.loads(self.cli("trend", "--dest", d, "--format", "json", "--by", "target")[1])
+        self.assertEqual([r["label"] for r in t["groups"][0]["runs"]], ["1.0.0", "1.1.0", None])
+        self.assertIn("R-2  1.1.0", self.cli("trend", "--dest", d, "--by", "target")[1])
+        self.assertEqual(json.loads(self.cli("trend", "--dest", d, "--format", "json", "--by", "version")[1])["groups"][0]["runs"][1]["label"], None,
+                         "version is still the CheckThat version")
 
     def test_a_pass_with_contradicting_evidence_counts_as_fail(self):
         a = self.mk({"s1": self.st("pass", "pass")})

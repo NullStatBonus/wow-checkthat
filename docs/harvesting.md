@@ -37,17 +37,17 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 
 ```
 .venv/bin/python tools/ct.py diff <run A> <run B> [--format md|json] [--strict] [--include-open]
-.venv/bin/python tools/ct.py trend [--addon X] [--title T] [--by client|character|build|version] [--last N] [--format md|json] [--include-open]
+.venv/bin/python tools/ct.py trend [--addon X] [--title T] [--by client|character|build|version|target] [--last N] [--format md|json] [--include-open]
 ```
 
 Both read the newest readable revision of each collected run. Each step is judged as `report` judges it, so a pass with a contradicted check counts as a fail. A run id can be a part of the id that names one run.
 
-- **Diff labels.** `regressed` (pass or partial, then fail), `fixed` (fail or unverified, then pass or partial), `newly-unverified` (pass, then unverified), `still-failing`, `not-comparable` (one side is pending, skipped, deselected, not for that client or reopened), `added` and `removed` (a step id only one run has). Unchanged steps are counted, not listed. The header names each run's client, build, character, plan digest and CheckThat version, and says "plan changed" when the digests differ.
+- **Diff labels.** `regressed` (pass or partial, then fail), `fixed` (fail or unverified, then pass or partial), `newly-unverified` (pass, then unverified), `still-failing`, `not-comparable` (one side is pending, skipped, deselected, not for that client or reopened), `added` and `removed` (a step id only one run has). Unchanged steps are counted, not listed. The header names each run's client, build, character, plan digest, CheckThat version and tested addon version, and says "plan changed" when the digests differ.
 - **Exit codes.** `diff` exits 0 and, with `--strict`, 1 when a step regressed. It exits 2 for an unknown run, a run that was left out, or a run that has not ended.
 - **Unfinished and newer runs.** A run that has not ended is left out unless you add `--include-open`. A run in a newer format is never read: `diff` refuses it by name, and `trend` leaves it out and lists it as a warning.
 - **Same plan, same step?** Equal plan digests mean equal steps. Otherwise the tool compares a fingerprint (a hash of the whole step) from the plan the run stored. The plans come from the collected CheckThat saved variables (`planStore`). A changed step is `not-comparable` (`~` in a trend). When a plan is not stored, the step is `not-comparable` (`?` in a trend) and a warning names the digest. The tool never guesses.
-- **Trend.** One table for each addon and plan title, so plan edits stay in one table. Columns are runs, oldest first, named 1, 2, 3 and listed above the table; `--by` adds that value of each run to its line (`version` is the CheckThat version that wrote the run). `--last` keeps the newest runs. Cells are `P` pass, `p` partial, `F` fail, `U` unverified, `-` not run, blank for no such step. A step that passed in one run and failed or went unverified in another is marked `flaky`. It exits 2 when no run matches.
-- **Limits.** Runs that CheckThat pruned before `collect` are not there. The version of the addon under test is not recorded yet, so a trend cannot name it.
+- **Trend.** One table for each addon and plan title, so plan edits stay in one table. Columns are runs, oldest first, named 1, 2, 3 and listed above the table; `--by` adds that value of each run to its line (`version` is the CheckThat version that wrote the run, `target` is the version of the addon under test). `--last` keeps the newest runs. Cells are `P` pass, `p` partial, `F` fail, `U` unverified, `-` not run, blank for no such step. A step that passed in one run and failed or went unverified in another is marked `flaky`. It exits 2 when no run matches.
+- **Limits.** Runs that CheckThat pruned before `collect` are not there. A run saved before 0.19.0 does not record the version of the addon under test: it shows as `?` in a diff and has no label in a `--by target` trend.
 
 ## Browse the evidence
 

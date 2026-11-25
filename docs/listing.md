@@ -27,6 +27,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 
 - Plans are made for KeepThat, DontDoThat and ClosestVendor. Other plans need the plan format in the project repository.
 - Results are saved when the game reloads or logs out.
+- Each run saves the version of the addon you test, so reports can compare runs across addon versions.
 - CheckThat keeps the newest 20 runs by default and deletes the oldest ones first. The run on your card always stays. Change the number in Advanced.
 - Works on WoW Classic Era and WoW Forever. Install it like any addon: put the `CheckThat` folder in `Interface/AddOns/`.
 - Run is not available in combat. CheckThat shows it again when combat ends.

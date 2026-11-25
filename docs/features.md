@@ -82,6 +82,10 @@ When a step opens, CheckThat saves where each log that the step checks stands: i
 - Runs saved by an earlier version keep working.
 - **Excerpt.** When an attempt records fail or unverified, CheckThat keeps the first 20 new lines (each cut to 200 characters) of every log the step checks, as `excerpt` on the attempt. A log that cannot be read, or whose start is lost, adds none. A pass keeps none. A run keeps at most about 60 000 bytes of them and of the check hit text below: the oldest attempts lose theirs first, so an export stays under its 2 MB limit. The results string stays version 1: the field is added, and older readers ignore it. `tools/ct.py report` prints the lines under the attempt. Debug lines can hold private data, so check an excerpt before you share a results string.
 
+## Version of the addon under test
+
+When a run starts, CheckThat reads the `Version` line of the TOC file of the plan's addon (not its own) and saves it as `targetVersion` on the run. It lets a tool name the addon version a result belongs to: `ct.py diff` shows it in its header and `ct.py trend --by target` names each column by it. The key is missing when the addon is not installed, has no version or the client cannot say. It is never the text "unknown", and a tool reads a missing key as unknown. A run that is reopened or continued keeps the version it started with. `writerVersion` is the version of CheckThat and is a different key (see [Results format](results-format.md)).
+
 ## Which lines decided a check
 
 A check that did not pass says what it looked at, so a reviewer or another tool can name the log lines that decided it. CheckThat saves this on the outcome of the attempt (the same read the check judged, so the lines cannot differ from the result). The results string stays version 1 and every key is optional (see [Results format](results-format.md) for the version numbers and the rules for a tool that reads a run): a run saved by an earlier version has none of them, and a tool reads that as unknown, never as zero.

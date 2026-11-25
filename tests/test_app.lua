@@ -32,6 +32,26 @@ test("app import stores plan, rejects bad ones without state change", function()
     local r, e2 = App.ImportPlan(assert(ns.Codec.Encode({ kind = "results", ct = 1 })))
     T.ok(r == nil and e2:find("results"))
 end)
+test("a started run records the tested addon's version from the client, and none when the client cannot say", function()
+    local saved = { C = _G.C_AddOns, G = _G.GetAddOnMetadata }
+    local asked
+    _G.C_AddOns = { GetAddOnMetadata = function(name, field) asked = { name, field }; if name == "KeepThat" then return "2.5.1" end end }
+    local ok, err = pcall(function()
+        boot(); App.ImportPlan(assert(ns.Codec.Encode(plan())))
+        T.eq(App.Start("KeepThat").targetVersion, "2.5.1"); T.eq(asked[1], "KeepThat"); T.eq(asked[2], "Version", "the plan's addon, not CheckThat")
+        T.eq(ns.Adapter.AddonVersion("Missing"), nil, "an addon the client does not know")
+        _G.C_AddOns.GetAddOnMetadata = function() error("boom") end
+        T.eq(ns.Adapter.AddonVersion("KeepThat"), nil, "a failing call is caught")
+        _G.C_AddOns.GetAddOnMetadata = function() return "" end
+        T.eq(ns.Adapter.AddonVersion("KeepThat"), nil, "an empty version is unknown")
+        _G.C_AddOns, _G.GetAddOnMetadata = nil, nil
+        T.eq(ns.Adapter.AddonVersion("KeepThat"), nil, "a client with no metadata call")
+        boot(); App.ImportPlan(assert(ns.Codec.Encode(plan())))
+        T.eq(App.Start("KeepThat").targetVersion, nil, "the key is absent, never 'unknown'")
+    end)
+    _G.C_AddOns, _G.GetAddOnMetadata = saved.C, saved.G
+    assert(ok, err)
+end)
 test("a step that is already open keeps one error stack, a new attempt wants another", function()
     local db = boot()
     App.ImportPlan(assert(ns.Codec.Encode(plan())))

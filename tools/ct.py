@@ -1545,7 +1545,7 @@ def run_model(rid, r, stacks=None, lines=False):
                 s["stacks"] = [t for p in per for t in p["stacks"]]
         steps.append(s)
     return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "revision": r.get("revision"), "formatRev": r.get("formatRev"),
-            "writerVersion": r.get("writerVersion"), "client": r.get("client"),
+            "writerVersion": r.get("writerVersion"), "targetVersion": r.get("targetVersion"), "client": r.get("client"),
             "build": r.get("build"), "character": r.get("character"), "counts": counts,
             "categories": [{"id": c, "title": t, "state": st, "resolved": a, "total": b} for c, t, st, a, b in category_states(r)],
             "steps": steps}
@@ -1734,7 +1734,8 @@ DIFF_ORDER = ("regressed", "newly-unverified", "still-failing", "fixed", "not-co
 
 def run_head(rid, r):
     return {"runId": rid, "addon": r.get("addon"), "plan": r.get("planTitle"), "planDigest": r.get("planDigest"), "client": r.get("client"),
-            "build": r.get("build"), "character": r.get("character"), "writerVersion": r.get("writerVersion")}
+            "build": r.get("build"), "character": r.get("character"), "writerVersion": r.get("writerVersion"),
+            "targetVersion": r.get("targetVersion")}
 
 def diff_data(ida, ra, idb, rb, store):
     """Both runs through run_model (a pass with contradicting evidence is a fail), then one label for each step id."""
@@ -1769,8 +1770,8 @@ def diff_data(ida, ra, idb, rb, store):
             "counts": counts, "steps": rows, "warnings": warnings}
 
 def head_text(tag, h):
-    return "%s: %s  client %s, build %s, character %s, plan %s, writer %s" % (tag, h["runId"], h["client"] or "?", h["build"] or "?", h["character"] or "?",
-                                                                       h["planDigest"] or "?", h["writerVersion"] or "?")
+    return "%s: %s  client %s, build %s, character %s, plan %s, writer %s, tested addon %s" % (tag, h["runId"], h["client"] or "?", h["build"] or "?", h["character"] or "?",
+                                                                       h["planDigest"] or "?", h["writerVersion"] or "?", h["targetVersion"] or "?")
 
 def diff_text(d):
     lines = ["# Diff", head_text("A", d["a"]), head_text("B", d["b"])]
@@ -1824,7 +1825,7 @@ def trend_data(runs, store, addon=None, title=None, by=None, last=None, include_
     return {"groups": out, "warnings": warnings}
 
 def by_key(by):
-    return {"client": "client", "character": "character", "build": "build", "version": "writerVersion"}[by]
+    return {"client": "client", "character": "character", "build": "build", "version": "writerVersion", "target": "targetVersion"}[by]
 
 def trend_text(t):
     lines = []
@@ -2064,7 +2065,7 @@ def main(argv=None):
     p = sub.add_parser("diff", help="compare two finished runs step by step: regressed, fixed, newly-unverified, still-failing, not-comparable, added, removed"); p.add_argument("a", help="run id (or part of it) to compare from"); p.add_argument("b", help="run id (or part of it) to compare to"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md"); p.add_argument("--strict", action="store_true", help="exit 1 when a step regressed"); p.add_argument("--include-open", dest="include_open", action="store_true", help="allow a run that has not ended")
     p = sub.add_parser("trend", help="one row for each step, one column for each finished run of a plan, with flaky steps marked"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--addon"); p.add_argument("--title", help="plan title")
-    p.add_argument("--by", choices=("client", "character", "build", "version"), help="name each column by this value of its run (version is the CheckThat version that wrote it)"); p.add_argument("--last", type=int, help="only the newest N runs of each plan")
+    p.add_argument("--by", choices=("client", "character", "build", "version", "target"), help="name each column by this value of its run (version is the CheckThat version that wrote it, target is the version of the addon under test)"); p.add_argument("--last", type=int, help="only the newest N runs of each plan")
     p.add_argument("--format", choices=("md", "json"), default="md"); p.add_argument("--include-open", dest="include_open", action="store_true", help="add runs that have not ended")
     a = ap.parse_args(argv)
 

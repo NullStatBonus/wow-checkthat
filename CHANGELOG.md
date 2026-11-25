@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0
+
+New: **Version of the tested addon.** Each run now saves the version of the addon you test. Reports can tell which addon version a result belongs to.
+
 ## 0.18.0
 
 New: **Entry points for tests.** An addon can register a function with `CheckThat.Entry`. An automatic step can call it and check the result. The call never runs in combat.

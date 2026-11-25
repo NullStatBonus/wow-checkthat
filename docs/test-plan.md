@@ -117,7 +117,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 12. **A screenshot inside a step reaches the report.** Setup: a plan with a step that has `screenshot: true`, a run on the Windows PC with the game folder mounted on the Mac. Open that step, press Print Screen once, then press Pass. On the Mac, type `tools/ct.py collect --wow <game folder> --verbose`.
     Check: `collect` says "1 new screenshots". It does not say a screenshot matched no attempt. If it does, it names the gap in seconds: that gap is the time difference between the two computers.
     Log: `evidence/runs/<run id>/shots/` holds `<step id>__<file name>`, and `report` lists it under the step (see issue 95).
-
+13. **The run names the version under test.** Setup: KeepThat is installed and enabled, and its plan is imported. Start a run for KeepThat, then type `/reload`.
+    Check: the run starts and the card opens as usual.
+    Log: the run in `CheckThatDB.global.runs` holds `formatRev = 3` and `targetVersion` equal to the `## Version:` line of `KeepThat.toc`.
 ## 5. Categories and unit-test checks
 
 Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
