@@ -92,7 +92,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 
 - [Write a plan](docs/authoring-plans.md): the plan format, compile, and the sample and full plans.
 - [Results format](docs/results-format.md): the saved run record, its version numbers and the rules for a tool that reads it.
-- [Collect evidence](docs/harvesting.md): `collect`, `status`, `show`, `browse` (a terminal viewer), `report` (Markdown, JSON or JUnit), per-character data on Classic Era, and Windows. `collect` needs no LuaJIT, takes `--plan` to collect any addon's saved variables and `--shot-slack` for screenshot timing.
+- [Collect evidence](docs/harvesting.md): `collect`, `status`, `show`, `browse` (a terminal viewer), `report` (Markdown, JSON or JUnit), per-character data on Classic Era, and Windows. `collect` needs no LuaJIT, takes `--plan` to collect any addon's saved variables and `--shot-slack` for screenshot timing. `diff` compares two finished runs and `trend` lines up many.
 - [Plan skills](docs/skills.md): `ct-test-plan` and `ct-verify` for Claude Code, Codex and other agents, and the Claude Code plugin.
 - [Debug logging](docs/debug-logging.md): what a good addon debug log looks like.
 - [Which tool to use](docs/tools-guide.md): what CheckThat does not do, and the optional addons that make it better.
