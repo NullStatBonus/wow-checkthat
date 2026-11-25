@@ -205,13 +205,22 @@ sections:
     expect: The step shows with the words "not for this client". The card never shows it as a step to do. Then press Pass on the card.
     verify:
     - player
+  - id: ct17.land
+    category: list
+    title: Land here
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card moves on to the next step, Click a step in the list.
+    verify:
+    - player
   - id: ct17.click
     category: list
     title: Click a step in the list
     action:
       kind: manual
-      text: 'Do not press a result. In the Categories window click the step row |cffffd100Land here|r under Step list.'
-    expect: The card shows the step Land here at once. Nothing records a result on the way. The row Partial me still reads partial.
+      text: 'In the Categories window click the step row |cffffd100Land here|r under Step list. Then press |cffffd100>|r on the card to come back to this step.'
+    expect: The card shows the step Land here at once. It reads passed, and its result does not change. The row Partial me still reads partial. After >, the card shows this step again. Then press Pass on the card.
     verify:
     - player
     - assertions
@@ -221,16 +230,7 @@ sections:
       equals: '[ct] show step ct17.land'
       scope: attempt
       label: The card showed the clicked step
-    notes: This step stays open until you press its result. The step Land here proves the click.
-  - id: ct17.land
-    category: list
-    title: Land here
-    action:
-      kind: manual
-      text: Press |cffffd100Pass|r on the card.
-    expect: The card moves on. It shows this plan's next open step, not a step you finished.
-    verify:
-    - player
+    notes: Land here comes first and has its result. The click only shows it.
 - id: s3
   title: Only on Classic Era
   clients:
