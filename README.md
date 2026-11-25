@@ -57,6 +57,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct run <category or step id>` | Show the first open step of a category, adding the category to the run if it was not picked. Or show one step. |
 | `/ct rerun <category or failed>` | Reopen the steps of a category, or every failed or unverified step with `failed`. Earlier attempts stay in the export. |
 | `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
+| `/ct version` | Show the CheckThat version. During a run it also reports the version as the test fact `version` (0.17.0 is 1700), so a plan can check for a version or newer. |
 | `/ct fact` | Report a test fact during a run. The self-test uses it. |
 | `/ct reload` | Reload the interface so saved variables are written. |
 

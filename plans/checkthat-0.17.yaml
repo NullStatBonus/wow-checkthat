@@ -3,7 +3,7 @@ kind: plan
 addon: CheckThat
 title: CheckThat 0.17 Expand steps and reopened marker
 preamble: |-
-  This plan runs in forever-camelot. It tests CheckThat on its own run, so do not press End run before the last step. Type |cff99ccff/ct debug on|r in the first step. Some results are pressed on purpose (Pass, Partial, Skip and Fail), so the run ends with one failed step. The menu fallback, the Esc key on the item list and the screenshot count of the collect tool are tested elsewhere.
+  This plan runs in forever-camelot. It tests CheckThat on its own run, so do not press End run before the last step. The first step checks the CheckThat version, because a game that loads an older copy gives results that mean nothing. Stop there if it fails. Some results are pressed on purpose (Pass, Partial, Skip and Fail), so the run ends with one failed step. The menu fallback, the Esc key on the item list and the screenshot count of the collect tool are tested elsewhere.
 handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report. The step |cffffd100Reopen me|r must show as awaiting retry in it.
 categories:
 - id: expand
@@ -15,6 +15,11 @@ categories:
 - id: spare
   title: Spare category
 logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+    cap: 300
   debug:
     global: CheckThatDB
     path: global.log.entries
@@ -33,6 +38,26 @@ sections:
   requires:
   - loaded
   steps:
+  - id: ct17.version
+    category: expand
+    title: Check the CheckThat version
+    action:
+      kind: copy-slash
+      text: /ct version
+    expect: Chat says "CheckThat 0.17.0" or a newer version. The card records the result by itself. If the step fails, stop and copy CheckThat 0.17.0 into the game again.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: version
+      op: ge
+      value: 1700
+      label: CheckThat is 0.17.0 or newer
+    notes: The fact is major*10000 + minor*100 + patch, so 0.17.0 is 1700. A run written by 0.16.0 has no such fact, so this step stays unverified.
   - id: ct17.debug
     category: expand
     title: Turn debug recording on

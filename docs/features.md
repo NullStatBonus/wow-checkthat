@@ -135,6 +135,7 @@ if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "bagFull", t
 - `CheckThat.Report(addon, key, value)` records `[addon] key=value` and returns true. It records nothing and returns false when no run is open or an argument is not valid. It never raises an error.
 - `addon` is 1 to 32 letters, digits, `_` or `-`. `key` is 1 to 48 of the same plus `.`. `value` is a string of up to 120 characters with no control characters, a finite number or a boolean. Tables and functions are refused.
 - One addon can record 30 facts a second. Facts over that are dropped. The list keeps the newest 300 lines.
+- `/ct version` prints the CheckThat version. With a run open it also reports the fact `[CheckThat] version=<major*10000 + minor*100 + patch>`, so 0.17.0 is `version=1700`. A plan starts with a step that runs it and checks `op: ge` against its own version, because a game that loads an older copy of the addon gives results that mean nothing. With no run open it only prints.
 - `/ct fact` reports the fact `[CheckThat] selftest=1` through the same call. The self-test step "Report a fact" runs it with the Run button, so a plan can test the API with one click. With no run open it says so and records nothing.
 - `CheckThat.API_VERSION` is 1. Later versions only add to the API. A call that works now keeps working.
 - CheckThat keeps the lines in `CheckThatDB.global.facts`. A plan reads them as a log: `global: CheckThatDB`, `path: global.facts`, `format: strings`. See [Write a plan](authoring-plans.md#facts-from-the-addon-under-test).
