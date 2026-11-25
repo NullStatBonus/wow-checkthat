@@ -314,6 +314,7 @@ class EntryCall(unittest.TestCase):
         self.assertTrue(ct.validate(self.plan({"addon": "bad name", "entry": "add"})))
 
 
+@unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
 class ReplayFixture(unittest.TestCase):
     FIXTURE = os.path.join(ROOT, "tests", "fixtures", "replay-sv")
 
@@ -615,6 +616,7 @@ class InstallSkill(unittest.TestCase):
             self.assertEqual(r.returncode, 1)
             self.assertIn("could not decode", r.stderr)
 
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_installed_tools_run_without_the_checkout(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
