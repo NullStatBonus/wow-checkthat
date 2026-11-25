@@ -1046,6 +1046,31 @@ class ReviseMode(unittest.TestCase):
             self.assertIn("Revise after a run", f.read())
 
 
+class SkillFlags(unittest.TestCase):
+    DOCS = ("skills/ct-test-plan/SKILL.md", "skills/ct-verify/SKILL.md", "docs/skills.md", "docs/adopting.md", "docs/authoring-plans.md", "README.md")
+
+    def flags(self):
+        with open(os.path.join(ROOT, "tools", "ct.py"), encoding="utf-8") as f:
+            parts = f.read().split("sub.add_parser(")[1:]
+        out = {}
+        for part in parts:
+            name = re.match(r'"([\w-]+)"', part).group(1)
+            out[name] = set(re.findall(r'add_argument\("(--[\w-]+)"', part))
+        return out
+
+    def test_every_flag_the_docs_name_exists_for_that_command(self):
+        real = self.flags()
+        self.assertIn("--expect-version", real["report"])
+        for path in self.DOCS:
+            with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+                text = f.read()
+            for cmd, rest in re.findall(r"ct\.py `?([a-z][\w-]+)([^`\n]*)", text):
+                if cmd not in real:
+                    continue
+                for flag in re.findall(r"(--[a-z][\w-]*)", rest):
+                    self.assertIn(flag, real[cmd], "%s: ct.py %s names %s" % (path, cmd, flag))
+
+
 class CardMoveWarning(unittest.TestCase):
     def plan(self, cmds, **extra):
         st = {"id": "a.1", "action": {"kind": "manual", "text": "t", "commands": cmds}}
