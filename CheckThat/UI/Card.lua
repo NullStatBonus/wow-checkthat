@@ -210,7 +210,6 @@ local function build()
     card.headBtn.arrow:SetRotation(-math.pi / 2)
     card.headBtn.arrow:SetPoint("LEFT", card.headBtn.label, "RIGHT", 3, 0)
     card.headBtn:SetScript("OnClick", function(self) Card.RunMenu(self) end)
-    card.step = fs("GameFontHighlightSmall", GREY, 70, "RIGHT"); card.step:SetPoint("TOPRIGHT", -126, -9)
     local close = CreateFrame("Button", nil, card, "UIPanelCloseButton"); close:SetPoint("TOPRIGHT", 3, 3)
     local collapse = makeButton(card, "-", 22); collapse:SetPoint("RIGHT", close, "LEFT", 2, 0)
     collapse:SetScript("OnClick", function() cfg().collapsed = not cfg().collapsed; Card.Refresh() end)
@@ -634,11 +633,8 @@ function refreshCard()
     local inner = mini and 256 or INNER
     card.title:SetWidth(inner); card.barBack:SetWidth(inner)
     fit(card.title, mini and 1 or 2)
-    -- The counter sits just left of the buttons that are showing (the step buttons are hidden in the collapsed card).
-    card.step:ClearAllPoints(); card.step:SetPoint("RIGHT", mini and card.collapse or card.prevBtn, "LEFT", -6, 0)
     card.collapse:SetText(collapsed and "+" or "-")
     card.head:SetText(L["CheckThat"])
-    card.step:SetText("")
     if run and not run.endedAt and not starting then
         card.headBtn:ClearAllPoints(); card.headBtn:SetPoint("LEFT", card.head, "LEFT", card.head:GetStringWidth() + 4, 0) -- same line centre as the title
         card.headBtn:Show()
@@ -712,13 +708,11 @@ function refreshCard()
     local tracker = Card.Tracker(rows, overall, sum, inner)
     local top = Card.DrawTracker(tracker, rows, overall, sum, inner, mini, resolved, total)
     if collapsed then
-        card.step:SetText(("%d/%d"):format(step and run.current or (run.endedAt and resolved or total), total))
         local shownTitle = step and step.title or (run.endedAt and L["Run ended"] or L["Run complete"])
         place(card.title, 12, 32 + top); setText(card.title, shownTitle)
         card.titleHit.full = shownTitle; card.titleHit:Show()
         card:SetHeight(40 + top + math.min(card.title:GetStringHeight(), 36)); return
     end
-    card.step:SetText(step and L["Step %d/%d"]:format(run.current, total) or ("%d/%d"):format(run.endedAt and resolved or total, total))
     if not step then
         -- Results and handoff. An ended run shows the same screen, with nothing to undo or step through.
         local ended = run.endedAt

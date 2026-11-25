@@ -2,7 +2,7 @@
 
 The saved run record is the contract between CheckThat and every tool that reads a run: `tools/ct.py`, the viewer, the `ct-verify` skill and your own scripts. It lives in three places with the same layout: `CheckThatDB.global.runs` in the saved variables, the string `/ct export` makes, and `evidence/runs/<id>/r<revision>.json` after `ct.py collect`. `schema/run-results.schema.json` describes it. How the keys behave is in [Features](features.md).
 
-Current: **ct 1, formatRev 1.**
+Current: **ct 1, formatRev 2.**
 
 ## Two version numbers
 
@@ -43,6 +43,7 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 | formatRev | Since | Adds |
 | --- | --- | --- |
+| 2 | 0.17.0 | `reopened` on a step record: true after Undo or a rerun reopened a step that had a result. |
 | 1 | 0.15.0 | `formatRev` and `writerVersion` on a run, `formatRev` on a finished attempt. |
 | (no stamp) | 0.14.0 | On a check that did not pass: `kind`, `scope`, `source`, `label`, `rule`, `shape`, `window`, `matched`, `hits`, `stoppedAt`, `observed`, `trimmed`. |
 | (no stamp) | 0.13.0 | `excerpt` on a failed or unverified attempt. |

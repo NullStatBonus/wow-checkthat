@@ -52,7 +52,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: after No the run goes on unchanged. After Yes the card shows "Run ended" with Export results and Main window, and has no Undo or Resume. Starting the plan again opens a new run.
    Log: `[ct] run ended`, and `/ct status run` ends with "(run ended)".
 9. **Long step title.** Start a run. Open the plan file and give the current step a title of more than 100 characters, or use a plan with one. Click the card's - button to minimize the card, then point at the title.
-   Check: the title stays on one line inside the card and ends with "...". A tooltip shows the whole title. The step counter does not touch the Run menu. After you click + the title wraps to at most two lines.
+   Check: the title stays on one line inside the card and ends with "...". A tooltip shows the whole title. The header has no step counter. The count under the category bar is the only one. After you click + the title wraps to at most two lines.
    Log: none; on screen only.
 10. **Long plan name.** Import a plan with a title of more than 100 characters, with no run active.
    Check: the text stays inside the card and the Start run button shows at the left edge.
@@ -114,6 +114,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: chat says "No run is open, so the test fact was not recorded."
    Log: no second `recorded CheckThat selftest` line. A new `/ct log` report still holds `Facts: 1, last: [CheckThat] selftest=1`.
 
+12. **A screenshot inside a step reaches the report.** Setup: a plan with a step that has `screenshot: true`, a run on the Windows PC with the game folder mounted on the Mac. Open that step, press Print Screen once, then press Pass. On the Mac, type `tools/ct.py collect --wow <game folder> --verbose`.
+    Check: `collect` says "1 new screenshots". It does not say a screenshot matched no attempt. If it does, it names the gap in seconds: that gap is the time difference between the two computers.
+    Log: `evidence/runs/<run id>/shots/` holds `<step id>__<file name>`, and `report` lists it under the step (see issue 95).
+
 ## 5. Categories and unit-test checks
 
 Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
@@ -161,6 +165,10 @@ Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categor
 14. **A key records a result.** Open Key Bindings, AddOns, CheckThat and set a key for Pass. Close the window, open a step on the card and press the key. Press it again after you hide the card with `/ct`.
     Check: the step passes and the card moves on. With the card hidden, a chat line says to open the checklist and no result is recorded.
     Log: `[ct] step <id> pass`.
+
+15. **Open the steps of a category.** Press the plus button at the left of a category row in the Categories window (`/ct tracker`). Click one of the steps that opened.
+    Check: the steps list under the row, each with its result in words and a mark (passed, failed, open, not picked). The button turns into a minus. The card shows the step you clicked, and no result changes. A step of a category that is not picked shows "not picked" and a click on it does nothing. The minus button closes the list.
+    Log: `[ct] tracker expand <category>`, `[ct] show step <id>` and `[ct] tracker collapse <category>`.
 
 ## 6. Plan skills (no game needed)
 

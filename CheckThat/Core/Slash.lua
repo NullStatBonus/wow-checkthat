@@ -24,7 +24,7 @@ function Slash.Run(args, deps)
     local cmd, rest = (args or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     local App = ns.App
-    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, undo = true, back = true, next = true, ["end"] = true, categories = true }
+    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, version = true, undo = true, back = true, next = true, ["end"] = true, categories = true }
     if noArgs[cmd] and rest ~= "" then return { L["Usage: /ct %s takes no arguments."]:format(cmd) } end
     if cmd == "" then deps.card(); return {}
     elseif cmd == "settings" then
@@ -128,6 +128,12 @@ function Slash.Run(args, deps)
         deps.confirmRerun(rest, n, title)
         return {}
     elseif cmd == "export" then deps.export(); return {}
+    elseif cmd == "version" then
+        -- 0.17.0 is the number 1700, so a plan can check "this version or newer" with a fact.
+        local v = tostring(ns.version)
+        local major, minor, patch = v:match("^(%d+)%.(%d+)%.(%d+)")
+        if major then ns.Facts.Report("CheckThat", "version", major * 10000 + minor * 100 + patch) end
+        return { L["CheckThat %s"]:format(Slash.Esc(v)) }
     elseif cmd == "fact" then
         local ok, why = ns.Facts.Report("CheckThat", "selftest", 1)
         if ok then return { L["Reported the test fact."] } end

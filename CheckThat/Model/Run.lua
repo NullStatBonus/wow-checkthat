@@ -18,7 +18,7 @@ end
 -- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
 -- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
 -- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
-Run.MAJOR, Run.FORMAT_REV = 1, 1
+Run.MAJOR, Run.FORMAT_REV = 1, 2
 
 -- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
 -- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
@@ -207,7 +207,7 @@ function Run.Deselect(run, ctx, id)
             if run.cat[run.order[i]] ~= id then after = run.order[i]; break end
         end
     end
-    for _, rec in ipairs(mine) do rec.attempts, rec.verdict, rec.evidence = {}, "deselected", nil end
+    for _, rec in ipairs(mine) do rec.attempts, rec.verdict, rec.evidence, rec.reopened = {}, "deselected", nil, nil end
     run.selected[id] = nil
     reorder(run, ctx)
     if viewing and run.cat[viewing] == id then
@@ -250,6 +250,18 @@ function Run.Trigger(run, ctx, name)
     return "step", name
 end
 
+-- Show one step on the card: only a step that is in the run (not unpicked, not for this client). It picks no category and
+-- changes no result. An ended run still shows it, and its revision stays.
+function Run.Show(run, ctx, id)
+    local rec = run.steps[id]
+    if not rec then return nil, "unknown" end
+    local i = Run.IndexOf(run, id)
+    if not i or rec.verdict == "inapplicable" or rec.verdict == "deselected" then return nil, "not offered" end
+    run.current = i
+    if not run.endedAt then Run.Touch(run, ctx.now) end
+    return true
+end
+
 -- "failed" is no category id (Plan rejects it): it names every picked step whose result is fail or unverified.
 Run.FAILED = "failed"
 
@@ -271,6 +283,7 @@ function Run.Rerun(run, ctx, id)
             first = first or sid
             if rec.verdict ~= "pending" then
                 rec.verdict, rec.evidence = "pending", nil
+                rec.reopened = true -- only a step that had a result: an untouched step is not "awaiting retry"
                 n = n + 1
             end
             -- A retry the card opened earlier holds old log positions and a start time: a fresh attempt starts instead.
@@ -476,6 +489,7 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     verdict = effective
     rec.verdict = verdict
     rec.evidence = a.evidence
+    rec.reopened = nil -- the retry has a result
     run.history = run.history or {}
     run.history[#run.history + 1] = id
     -- Fail moves on like the other results (Undo retries it). Only missing evidence keeps the step open.
@@ -493,6 +507,7 @@ function Run.Undo(run, ctx, id)
     local a = rec and rec.attempts[#rec.attempts]
     if not a or not a.verdict then return false end
     table.remove(rec.attempts)
+    rec.reopened = true -- the report cannot tell this from an untouched step when the only attempt is gone
     local prev = rec.attempts[#rec.attempts]
     rec.verdict = prev and prev.verdict or "pending"
     rec.evidence = prev and prev.evidence or nil

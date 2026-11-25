@@ -1,0 +1,347 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.17 Expand steps and reopened marker
+preamble: |-
+  This plan runs in forever-camelot. It tests CheckThat on its own run, so do not press End run before the last step. The first step checks the CheckThat version, because a game that loads an older copy gives results that mean nothing. Stop there if it fails. Some results are pressed on purpose (Pass, Partial, Skip and Fail), so the run ends with one failed step. The menu fallback, the Esc key on the item list and the screenshot count of the collect tool are tested elsewhere.
+handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report.
+categories:
+- id: expand
+  title: Expand steps
+- id: list
+  title: Step list
+- id: reopen
+  title: Reopened step
+- id: spare
+  title: Spare category
+logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+    cap: 300
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s1
+  title: Open and close a list of steps
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct17.version
+    category: expand
+    title: Check the CheckThat version
+    action:
+      kind: copy-slash
+      text: /ct version
+    expect: Chat says "CheckThat 0.17.0" or a newer version. The card records the result by itself. If the step fails, stop and copy CheckThat 0.17.0 into the game again.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: version
+      op: ge
+      value: 1700
+      label: CheckThat is 0.17.0 or newer
+    notes: The fact is major*10000 + minor*100 + patch, so 0.17.0 is 1700. A run written by 0.16.0 has no such fact, so this step stays unverified.
+  - id: ct17.debug
+    category: expand
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on.". The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+  - id: ct17.window
+    category: expand
+    title: Open the Categories window
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct tracker|r.
+      commands:
+      - /ct tracker
+    expect: A window lists four categories. The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] tracker open'
+      scope: attempt
+      label: The Categories window opened
+    notes: The next step needs the plus button, so it checks that the rows show.
+  - id: ct17.expand
+    category: expand
+    title: Show the steps of a category
+    action:
+      kind: manual
+      text: In the Categories window click the plus button of the row |cffffd100Step list|r.
+    expect: The button turns into a minus. The steps of the category show under the row, in the order of this plan. Then press Pass on the card.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] tracker expand list'
+      scope: attempt
+      label: The steps of Step list showed
+  - id: ct17.collapse
+    category: expand
+    title: Hide the steps of a category
+    action:
+      kind: manual
+      text: In the Categories window click the minus button of the row |cffffd100Step list|r.
+    expect: The steps leave the window and the button is a plus again. Then press Pass on the card.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] tracker collapse list'
+      scope: attempt
+      label: The steps of Step list were hidden
+  - id: ct17.rowclick
+    category: expand
+    title: A click on the row still opens its menu
+    action:
+      kind: manual
+      text: In the Categories window click the row name |cffffd100Expand steps|r. Do not click the plus button.
+    expect: A menu opens. It offers Go to first open step and Rerun category. The steps of the category stay hidden. Then press Pass on the card.
+    verify:
+    - player
+- id: s2
+  title: Results in the list of steps
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct17.pass
+    category: list
+    title: Pass me
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+  - id: ct17.partial
+    category: list
+    title: Partial me
+    action:
+      kind: manual
+      text: Press |cffffd100Partial|r on the card.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+  - id: ct17.skip
+    category: list
+    title: Skip me
+    action:
+      kind: manual
+      text: Press |cffffd100Skip|r on the card.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+  - id: ct17.fail
+    category: list
+    title: Fail me
+    action:
+      kind: manual
+      text: Press |cffffd100Fail|r on the card. This step fails on purpose.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+    notes: Fails on purpose. The reviewer does not count it as a defect.
+  - id: ct17.words
+    category: list
+    title: Read the result of each step
+    action:
+      kind: manual
+      text: In the Categories window click the plus button of the row |cffffd100Step list|r. Press |cffffd100Pass|r on the card when you have looked.
+    expect: 'The list reads: Pass me passed, Partial me partial, Skip me skipped, Fail me failed. Each result has a mark and a word. Read each step title, then its word. This step reads open.'
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] tracker expand list'
+      scope: attempt
+      label: The steps of Step list showed
+    notes: The list also holds one step for classic-era. It reads "not for this client" here. The next step checks it.
+  - id: ct17.classic
+    category: list
+    title: A step for another client
+    action:
+      kind: manual
+      text: Look at the list of Step list in the Categories window. Find the step |cffffd100Only on Classic Era|r.
+    expect: The step shows with the words "not for this client". The card never shows it as a step to do. Then press Pass on the card.
+    verify:
+    - player
+  - id: ct17.land
+    category: list
+    title: Land here
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card moves on to the next step, Click a step in the list.
+    verify:
+    - player
+  - id: ct17.click
+    category: list
+    title: Click a step in the list
+    action:
+      kind: manual
+      text: 'In the Categories window click the step row |cffffd100Land here|r under Step list. Then press |cffffd100>|r on the card to come back to this step.'
+    expect: The card shows the step Land here at once. It reads passed, and its result does not change. The row Partial me still reads partial. After >, the card shows this step again. Then press Pass on the card.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] show step ct17.land'
+      scope: attempt
+      label: The card showed the clicked step
+    notes: Land here comes first and has its result. The click only shows it.
+- id: s3
+  title: Only on Classic Era
+  clients:
+  - classic-era
+  requires:
+  - loaded
+  steps:
+  - id: ct17.only-classic
+    category: list
+    title: Only on Classic Era
+    action:
+      kind: manual
+      text: This step is for Classic Era only. Press |cffffd100Pass|r.
+    expect: The card never shows this step in forever-camelot.
+    verify:
+    - player
+- id: s4
+  title: A reopened step
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct17.reopen
+    category: reopen
+    title: Reopen me
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+  - id: ct17.undo
+    category: reopen
+    title: Undo the result
+    action:
+      kind: manual
+      text: 'Click |cffffd100Undo|r once. The card shows Reopen me. Press |cffffd100Pass|r on it. The card comes back to this step. Press |cffffd100Pass|r here, and do not click Undo again.'
+    expect: After Undo the card shows Reopen me with no result. After your second Pass the card shows the next step.
+    verify:
+    - player
+    notes: Compound step, drafted on request. The card shows this step twice, so the text covers both visits. The reopened flag is gone after the retry, so the saved run cannot show it. A log line for Undo would let a plan check it (issue 100).
+  - id: ct17.retry
+    category: reopen
+    title: Check the reopened step again
+    action:
+      kind: manual
+      text: 'In the Categories window click the plus button of the row |cffffd100Reopened step|r.'
+    expect: The list reads Reopen me passed and Undo the result passed. Then press Pass on the card.
+    verify:
+    - player
+- id: s5
+  title: A category that is not picked
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct17.remove
+    category: expand
+    title: Remove the Spare category
+    action:
+      kind: manual
+      text: 'In the Categories window click the row |cffffd100Spare category|r. Choose |cffffd100Remove from run: Spare category|r.'
+    expect: The row reads "not picked". Then press Pass on the card.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] deselect spare'
+      scope: attempt
+      label: Spare category left the run
+  - id: ct17.notpicked
+    category: expand
+    title: Show a step that is not picked
+    action:
+      kind: manual
+      text: 'In the Categories window click the plus button of the row |cffffd100Spare category|r. Then click the step row |cffffd100Never shown|r.'
+    expect: The step reads "not picked". Clicking it does nothing, and the card keeps its step. Then press Pass on the card.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] tracker expand spare'
+      scope: attempt
+      label: The steps of Spare category showed
+    - kind: log
+      source: debug
+      equals: '[ct] show step ct17.never'
+      absent: true
+      scope: attempt
+      label: The click did not show the step
+  - id: ct17.never
+    category: spare
+    title: Never shown
+    action:
+      kind: manual
+      text: Do not press a result. This step is not in the run.
+    expect: The card never shows this step.
+    verify:
+    - player
+  - id: ct17.done
+    category: expand
+    title: Finish the run
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card shows the results screen after this result.
+    verify:
+    - player

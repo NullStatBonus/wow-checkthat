@@ -36,6 +36,16 @@ Run `build/selftest.ct` first. It exercises the card, copy boxes, the Run button
 
 Next, try `build/dontdothat.ct`.
 
+## Replay a plan
+
+Before a tester runs a CheckThat plan, play it in the fake client: `make build`, then `luajit tests/replay_plan.lua build/<plan>.ct [hooks.lua]`. It starts a run and does what a tester does at each step: it writes the debug lines and facts the step's checks need, lets an automatic step settle, and presses Pass. It prints each step's result and exits 1 on a problem:
+
+- a step asserts the line its own result writes (`[ct] step <its id> ...`). CheckThat judges the result first, so the result stays unverified and the card does not advance;
+- an automatic step never settles, or a step has no result after its action;
+- a step never gets reached.
+
+It warns when the card shows a step a second time, because the step's text must cover both visits. A hooks file (`tests/replay/checkthat-0.17.lua` is an example) says which result to press (`verdict`), which steps the card shows again on purpose (`revisits`), and what to do for a step that moves the card, such as Undo, a click on a step row or Remove from run (`action`). `tests/test_replay.lua` replays the 0.17 plan on every `make test`. It checks the plan's flow only. What the addon does is for the game.
+
 ## Good logs make good plans
 
 A step can only be checked from a log if the addon writes the line. See [Debug logging](debug-logging.md).

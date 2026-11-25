@@ -148,6 +148,15 @@ test("a clean category leaves the run; the others and the order stay", function(
     T.eq(R.Select(run, ctx, "mail"), true, "it can come back"); T.eq(run.steps.m1.verdict, "pending")
 end)
 
+test("a reopened step that leaves the run loses its marker", function()
+    local run, ctx = newRun()
+    pass(run, ctx, "m1"); R.Undo(run, ctx, "m1")
+    T.eq(run.steps.m1.reopened, true)
+    T.eq(R.Deselect(run, ctx, "mail"), true)
+    T.eq(run.steps.m1.reopened, nil)
+    T.eq(R.Select(run, ctx, "mail"), true); T.eq(run.steps.m1.verdict, "pending"); T.eq(run.steps.m1.reopened, nil)
+end)
+
 test("a category with a result or a finished attempt is not removed", function()
     local run, ctx = newRun()
     pass(run, ctx, "m1")

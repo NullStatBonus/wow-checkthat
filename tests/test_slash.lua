@@ -34,6 +34,22 @@ test("fact reports the test fact while a run is open and says so otherwise", fun
     T.eq(run("fact")[1], "The test fact was not recorded.", "over the rate limit")
     T.ok(run("help diagnostics")[1]:find("/ct fact", 1, true), "help names the command")
 end)
+test("version prints the addon version and reports it as a number", function()
+    local list, open = {}, { v = true }
+    ns.Facts.Bind(list, function() return 1 end, function() return open.v end)
+    ns.version = "0.17.3"
+    T.eq(run("version")[1], "CheckThat 0.17.3")
+    T.eq(list[1], "[CheckThat] version=1703")
+    ns.version = "1.2.3"; run("version")
+    T.eq(list[2], "[CheckThat] version=10203")
+    ns.version = "unknown"
+    T.eq(run("version")[1], "CheckThat unknown")
+    T.eq(#list, 2, "an unknown version reports no fact")
+    open.v = false; ns.version = "0.17.0"
+    T.eq(run("version")[1], "CheckThat 0.17.0", "it prints with no run open")
+    T.ok(run("version now")[1]:find("takes no arguments"), "an argument is refused")
+    T.eq(#list, 2)
+end)
 test("help topics and status", function()
     T.ok(run("help")[1]:find("Help:"))
     T.ok(run("help diagnostics")[1]:find("log clear"))

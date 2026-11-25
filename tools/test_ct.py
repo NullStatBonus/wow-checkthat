@@ -1,4 +1,4 @@
-import json, os, re, subprocess, sys, tempfile, unittest, zlib
+import contextlib, io, json, os, re, subprocess, sys, tempfile, unittest, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ct
 
@@ -536,6 +536,60 @@ class Collect(unittest.TestCase):
             ct.cmd_collect(args); ct.cmd_collect(args)
             self.assertEqual(os.listdir(os.path.join(dest, "runs", "R-1", "shots")), ["a__in.jpg"])
             self.assertIn("screenshots: a__in.jpg", ct.report_text(ct.latest_runs(dest), dest))
+
+    def shot_setup(self, d, files, extra=""):
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        shots = os.path.join(d, "shots"); os.makedirs(shots)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write('CheckThatDB = {["runs"] = {["R-1"] = {["revision"] = 1, ["order"] = {"a", "b"}, ["steps"] = {["a"] = {["verdict"] = "pass", ["attempts"] = {{["n"] = 1, ["started"] = 1000, ["finished"] = 1060, ["verdict"] = "pass"}}}, ["b"] = {["verdict"] = "pending", ["attempts"] = {{["n"] = 1, ["started"] = 2000}}}}}}}\n')
+        for name, t in files:
+            p = os.path.join(shots, name); open(p, "wb").close(); os.utime(p, (t, t))
+        dest = os.path.join(d, "dest")
+        return shots, dest, type("A", (), {"src": os.path.join(d, "src"), "dest": dest, "shots": shots})
+
+    def test_loose_screenshots_are_counted_named_and_kept_on_request(self):
+        files = (("in.jpg", 1030), ("edge.jpg", 1062), ("late.jpg", 1500), ("open.jpg", 2800), ("old.jpg", 90000))
+        with tempfile.TemporaryDirectory() as d:
+            shots, dest, args = self.shot_setup(d, files)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                ct.cmd_collect(args)
+            text = out.getvalue()
+            self.assertIn("1 screenshot matched no attempt", text)   # late.jpg only: edge is inside the 2 s slack, open is in the 900 s window, old is days away
+            self.assertNotIn("late.jpg", text)
+            self.assertEqual(sorted(os.listdir(os.path.join(dest, "runs", "R-1", "shots"))), ["a__edge.jpg", "a__in.jpg", "b__open.jpg"])
+            args.verbose = True
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                ct.cmd_collect(args)   # a second collect still counts the same file and does not call the copied ones loose
+            self.assertIn("late.jpg: 440 s from step a of run R-1", out.getvalue())
+            self.assertIn("1 screenshot matched no attempt", out.getvalue())
+            self.assertFalse(os.path.exists(os.path.join(dest, "runs", "R-1", "unassigned-shots")))
+            args.all_shots = True
+            with contextlib.redirect_stdout(io.StringIO()):
+                ct.cmd_collect(args)
+            self.assertEqual(os.listdir(os.path.join(dest, "runs", "R-1", "unassigned-shots")), ["late.jpg"])
+            self.assertEqual(ct.run_shots(dest, "R-1").get("unassigned-shots"), None)
+            self.assertNotIn("unassigned", ct.report_text(ct.latest_runs(dest), dest))
+
+    def test_nearest_attempt_prefers_the_folder_client_then_the_earliest_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = os.path.join(d, "dest")
+            for rid, client in (("R-2", "classic-era"), ("R-1", "forever-camelot"), ("R-3", "classic-era")):
+                p = os.path.join(dest, "runs", rid); os.makedirs(p)
+                run = {"runId": rid, "revision": 1, "client": client, "order": ["a"], "steps": {"a": {"verdict": "pass", "attempts": [{"n": 1, "started": 1000, "finished": 1060, "verdict": "pass"}]}}}
+                with open(os.path.join(p, "r1.json"), "w") as fh:
+                    json.dump(run, fh)
+            era = os.path.join(d, "wow", "_classic_era_", "Screenshots"); os.makedirs(era)
+            fx = os.path.join(d, "wow", "_forever_", "Screenshots"); os.makedirs(fx)
+            for folder in (era, fx):
+                p = os.path.join(folder, "late.jpg"); open(p, "wb").close(); os.utime(p, (1500, 1500))
+            self.assertEqual(ct.collect_shots(dest, era)[1], [("late.jpg", "R-2", "a", 440)])   # equal gaps: the earliest run of the client
+            self.assertEqual(ct.collect_shots(dest, fx)[1], [("late.jpg", "R-1", "a", 440)])
+
+    def test_loose_screenshot_with_no_run_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            shots = os.path.join(d, "shots"); os.makedirs(shots)
+            open(os.path.join(shots, "x.jpg"), "wb").close()
+            self.assertEqual(ct.collect_shots(os.path.join(d, "dest"), shots, all_shots=True), (0, []))
 
 
 class VerifySkill(unittest.TestCase):
@@ -1105,6 +1159,24 @@ class Results(unittest.TestCase):
         self.assertEqual(ct.classify({"verdict": "deselected"}), ("skipped", "category not picked"))
         self.assertEqual(ct.classify({"verdict": "pending"}), ("skipped", "not run"))
 
+    def test_a_reopened_step_is_awaiting_retry_in_the_table_and_the_reports(self):
+        done = {"n": 1, "verdict": "fail", "note": "old note"}
+        flagged = {"verdict": "pending", "reopened": True, "attempts": []}                 # Undo removed the only attempt
+        kept = {"verdict": "pending", "attempts": [done]}                                    # a run from before the flag: the attempt stays
+        fresh = {"verdict": "pending", "attempts": []}
+        stale = {"verdict": "pass", "reopened": True, "attempts": [{"n": 2, "verdict": "pass"}]}   # an older CheckThat finished it and kept the flag
+        for rec in (flagged, kept):
+            self.assertEqual(ct.classify(rec), ("skipped", "awaiting retry"))
+        self.assertEqual(ct.classify(fresh), ("skipped", "not run"))
+        self.assertEqual(ct.classify(stale)[0], "pass")
+        run = {"order": ["f", "k", "n", "s"], "steps": {"f": flagged, "k": kept, "n": fresh, "s": stale}}
+        rows = [line.split() for line in ct.step_table(run)[1:]]
+        self.assertEqual([r[-2:] for r in rows[:2]], [["awaiting", "retry"]] * 2)
+        self.assertNotIn("retry", rows[2]); self.assertNotIn("retry", rows[3])
+        model = {s["id"]: s for s in ct.run_model("R", run)["steps"]}
+        self.assertEqual([model[i]["awaitingRetry"] for i in "fkns"], [True, True, False, False])
+        self.assertEqual(model["f"]["reason"], "awaiting retry")
+
     def test_junit_has_a_suite_per_category_and_failures_skips_and_partials(self):
         from xml.etree import ElementTree as ET
         root = ET.fromstring(ct.report_junit(self.run_with(self.steps())))
@@ -1353,6 +1425,8 @@ class Results(unittest.TestCase):
         new["steps"]["a"]["attempts"][0]["outcomes"][0].update(stoppedAt=2, observed="3", trimmed=True)
         self.assertEqual(list(check(new)), [])
         self.assertEqual(list(check({"steps": {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}}})), [], "an older run has none of the new keys")
+        self.assertEqual(list(check({"steps": {"a": {"verdict": "pending", "reopened": True, "attempts": []}}})), [])
+        self.assertTrue(list(check({"steps": {"a": {"verdict": "pending", "reopened": "yes"}}})), "reopened is a boolean")
         for bad in ({"hits": [{"n": 0}]}, {"result": "bogus"}, {"matched": -1}, {"scope": "everywhere"}, {"hits": [{"n": 1}] * 4}, {"trimmed": False}):
             run = {"steps": {"a": {"attempts": [{"n": 1, "outcomes": [dict({"result": "fail"}, **bad)]}]}}}
             self.assertTrue(list(check(run)), bad)
@@ -1368,7 +1442,9 @@ class Results(unittest.TestCase):
             run = json.load(fh)
         self.assertEqual(list(jsonschema.Draft202012Validator(schema).iter_errors(run)), [])
         ct.read_run(path)
-        self.assertEqual((run["ct"], run["formatRev"]), (1, 1)); self.assertEqual(run["steps"]["a"]["attempts"][0]["formatRev"], 1)   # stamped by the addon
+        with open(os.path.join(ROOT, "CheckThat", "Model", "Run.lua"), encoding="utf-8") as fh:
+            rev = int(re.search(r"Run\.MAJOR, Run\.FORMAT_REV = \d+, (\d+)", fh.read()).group(1))
+        self.assertEqual((run["ct"], run["formatRev"]), (1, rev)); self.assertEqual(run["steps"]["a"]["attempts"][0]["formatRev"], rev)   # stamped by the addon
         outs = run["steps"]["a"]["attempts"][0]["outcomes"]
         self.assertEqual((outs[0]["rule"], outs[0]["hits"][0]["line"]), ('absent: contains "boom"', "boom here"))
         self.assertEqual((outs[1]["stoppedAt"], outs[1]["matched"]), (2, 1)); self.assertEqual(outs[2]["observed"], "2")

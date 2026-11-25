@@ -61,13 +61,12 @@ test("smoke: the card says who checks the step and shows live checks and navigat
     -- back to a finished step: read-only with Redo
     card.prevBtn.scripts.OnClick()
     T.ok(card.redo.shown and not card.pass.shown, "finished step is read-only with Redo")
-    T.ok(card.step.text:find("Step 2/"), "header shows the viewed step: " .. tostring(card.step.text))
     T.ok(card.title.text:find("Endgame"), "the earlier step is shown: " .. tostring(card.title.text))
     T.ok(card.recorded.text:find("Recorded: Pass"), card.recorded.text)
     card.redo.scripts.OnClick()
     T.ok(card.pass.shown and not card.redo.shown, "Redo reopens the step")
     card.nextBtn.scripts.OnClick()
-    T.ok(card.step.text:find("Step 3/"), "forward returns to the current step: " .. tostring(card.step.text))
+    T.ok(card.pass.shown and not card.redo.shown, "forward returns to the current step")
 end)
 test("smoke: importing a plan after a finished run restarts the flow", function()
     do local d = LibStub("AceConfigDialog-3.0"); d.frame.apps = {}; d.frame.closing = {} end

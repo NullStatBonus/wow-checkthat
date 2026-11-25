@@ -645,6 +645,38 @@ function App.RowDetail(row)
     return L["%s · %d passed, %d failed, %d open"]:format(App.StateWord(row.state, c), c.pass, c.fail, c.open)
 end
 
+-- The steps of one category in plan order, also the ones that are not picked or not for this client, for the Categories window:
+-- { id, title, verdict, word, offered }. A step that is not offered is listed but cannot be shown.
+local STEP_WORD = {
+    pass = L["passed"], fail = L["failed"], partial = L["partial"], unverified = L["unverified"], skip = L["skipped"],
+    pending = L["open"], inapplicable = L["not for this client"], deselected = L["not picked"],
+}
+function App.CategorySteps(id)
+    local run, ctx = App.Current()
+    if not run then return {} end
+    local out = {}
+    for _, sec in ipairs(ctx.plan.sections) do
+        for _, st in ipairs(sec.steps) do
+            if run.cat[st.id] == id then
+                local rec = run.steps[st.id]
+                local v = rec and rec.verdict or "pending"
+                out[#out + 1] = { id = st.id, title = st.title, verdict = v, word = STEP_WORD[v] or v, offered = v ~= "deselected" and v ~= "inapplicable" }
+            end
+        end
+    end
+    return out
+end
+
+-- Show one step on the card (a click on a step row). Only a step id counts, never a category name. Returns true, or nil and text.
+function App.ShowStep(id)
+    local run, ctx = App.Current()
+    if not run then return nil, L["There is no run."] end
+    local ok = ns.Run.Show(run, ctx, id)
+    if not ok then return nil, L["That step is not in this run."] end
+    App.Log("show step " .. tostring(id))
+    return true
+end
+
 -- The run the player can change: the one on the card, when it has not ended.
 local function activeRun()
     local run, ctx = App.Current()

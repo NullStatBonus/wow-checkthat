@@ -153,13 +153,173 @@ test("a failed step adds a row that reruns every failed and unverified step", fu
     _G.MenuUtil = nil
 end)
 
-test("without a menu a click runs the main item", function()
+test("without a menu a click shows every item and runs none until one is picked", function()
     local run = start(3, { "c1", "c2" })
     ns.Tracker.Show()
     _G.MenuUtil, _G.UIDropDownMenu_Initialize = nil, nil
-    T.eq(ns.Run.CurrentId(run), "s1a")
+    verdict(run, "s1a", "pass") -- Cat 1 now has a result and an open step: go, rerun and remove are not all offered
+    ns.Run.Select(run, select(2, ns.App.Current()), "c1")
+    T.eq(ns.Run.CurrentId(run), "s1b")
+    local list = _G.CheckThatCategoryList
+    T.eq(list, nil, "no list before a click")
     win().rows[2].scripts.OnClick(win().rows[2])
-    T.eq(ns.Run.CurrentId(run), "s2a", "the main item ran: go to the first open step of Cat 2")
+    list = _G.CheckThatCategoryList
+    T.eq(list:IsShown(), true)
+    local shown = {}
+    for _, b in ipairs(list.buttons) do if b.shown then shown[#shown + 1] = b end end
+    T.ok(#shown >= 1, "an item for the row")
+    T.eq(ns.Run.CurrentId(run), "s1b", "nothing ran yet")
+    local first = shown[1]
+    first.scripts.OnClick(first)
+    T.eq(ns.Run.CurrentId(run), "s2a", "the picked item ran: go to the first open step of Cat 2")
+    T.eq(list:IsShown(), false, "a pick closes the list")
+end)
+
+test("the item list holds every item of a row with results, and Esc closes only the list", function()
+    local run = start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    _G.MenuUtil, _G.UIDropDownMenu_Initialize = nil, nil
+    verdict(run, "s1a", "pass"); verdict(run, "s1b", "pass")
+    win().rows[1].scripts.OnClick(win().rows[1])
+    local list = _G.CheckThatCategoryList
+    local labels = {}
+    for _, b in ipairs(list.buttons) do if b.shown then labels[#labels + 1] = b.text end end
+    T.eq(labels[1], "Rerun category: Cat 1", "rerun is reachable")
+    T.eq(#labels, 1, "a category with results cannot be removed")
+    win().rows[2].scripts.OnClick(win().rows[2])
+    labels = {}
+    for _, b in ipairs(list.buttons) do if b.shown then labels[#labels + 1] = b.text end end
+    T.eq(labels[1], "Go to first open step: Cat 2"); T.eq(labels[2], "Remove from run: Cat 2"); T.eq(#labels, 2)
+    list.scripts.OnKeyDown(list, "A")
+    T.eq(list.calls.SetPropagateKeyboardInput[1], true, "other keys pass on"); T.eq(list:IsShown(), true)
+    list.scripts.OnKeyDown(list, "ESCAPE")
+    T.eq(list.calls.SetPropagateKeyboardInput[1], false, "Esc is taken here, not by the window behind")
+    T.eq(list:IsShown(), false); T.eq(win():IsShown(), true)
+    win().rows[1].scripts.OnClick(win().rows[1]); T.eq(list:IsShown(), true)
+    ns.Tracker.Hide(); T.eq(list:IsShown(), false, "hiding the window closes the list")
+end)
+
+local function logged(text)
+    for _, e in ipairs(ns.Log.Entries()) do if tostring(type(e) == "table" and e.msg or e):find(text, 1, true) then return true end end
+    return false
+end
+local function toggle(i) local r = win().rows[i]; r.toggle.scripts.OnClick(r.toggle) end
+
+test("opening the window is logged, so a plan step can wait for it", function()
+    _G.SlashCmdList["ACECONSOLE_CT"]("debug on")
+    start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    T.ok(logged("tracker open"))
+end)
+
+test("a row expands to its steps with result words and marks, and collapses again", function()
+    _G.SlashCmdList["ACECONSOLE_CT"]("debug on")
+    local run = start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    T.eq(shownRows(), 3, "collapsed by default")
+    verdict(run, "s1a", "pass"); verdict(run, "s1b", "fail")
+    toggle(1)
+    T.eq(shownRows(), 5)
+    T.eq(win().rows[2].label.text, "s1a"); T.eq(win().rows[2].detail.text:find("passed", 1, true) ~= nil, true)
+    T.ok(win().rows[2].detail.text:find("ReadyCheck-Ready", 1, true), "a mark besides the word")
+    T.eq(win().rows[3].label.text, "s1b"); T.ok(win().rows[3].detail.text:find("failed", 1, true) and win().rows[3].detail.text:find("NotReady", 1, true))
+    T.eq(win().rows[4].label.text, "Cat 2", "the next category follows the steps")
+    T.ok(logged("tracker expand c1"), "the toggle is logged")
+    toggle(1)
+    T.eq(shownRows(), 3); T.ok(logged("tracker collapse c1"))
+end)
+
+test("the steps of a category that is not picked read not picked, and a click on one does nothing", function()
+    local run = start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    toggle(3)
+    T.eq(win().rows[4].detail.text, "not picked")
+    local before = ns.Run.CurrentId(run)
+    local printed, print0 = 0, ns.Slash.Print
+    ns.Slash.Print = function() printed = printed + 1 end
+    win().rows[4].scripts.OnClick(win().rows[4])
+    ns.Slash.Print = print0
+    T.eq(printed, 0, "it does nothing, not even a chat line")
+    T.eq(ns.Run.CurrentId(run), before); T.eq(run.selected.c3, nil, "the category stays unpicked")
+    T.eq(run.steps.s3a.verdict, "deselected")
+end)
+
+test("a step that is not for this client is listed as such and a click on it does nothing", function()
+    local p = plan(2); p.sections[1].steps[2].clients = { "forever-camelot" }   -- the stub client is Era
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    local run = assert(ns.App.Start("KeepThat", { "c1", "c2" }))
+    ns.Card.Show(); ns.Tracker.Show(); toggle(1)
+    T.eq(win().rows[2].detail.text, "open"); T.eq(win().rows[3].detail.text, "not for this client")
+    local printed, print0 = 0, ns.Slash.Print
+    ns.Slash.Print = function() printed = printed + 1 end
+    local before = ns.Run.CurrentId(run)
+    win().rows[3].scripts.OnClick(win().rows[3])
+    ns.Slash.Print = print0
+    T.eq(printed, 0); T.eq(ns.Run.CurrentId(run), before); T.eq(run.steps.s1b.verdict, "inapplicable")
+end)
+
+test("a click on a step row shows that step and changes no result", function()
+    local run = start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    verdict(run, "s1a", "pass")
+    toggle(2)
+    local counts = ns.Run.Counts(run)
+    local want
+    for i = 1, 5 do if win().rows[i].shown and win().rows[i].label.text == "s2b" then want = win().rows[i] end end
+    want.scripts.OnClick(want)
+    T.eq(ns.Run.CurrentId(run), "s2b", "the card shows the step")
+    local after = ns.Run.Counts(run)
+    for k, v in pairs(counts) do T.eq(after[k], v, k) end
+    T.eq(run.steps.s1a.verdict, "pass")
+end)
+
+test("a step named like a category opens as a step", function()
+    local p = plan(2); p.sections[2].steps[1].id = "c1"   -- the step c1 sits in category c2
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    local run = assert(ns.App.Start("KeepThat", { "c1", "c2" }))
+    ns.Card.Show(); ns.Tracker.Show()
+    toggle(2)
+    local row
+    for i = 1, 5 do if win().rows[i].shown and win().rows[i].label.text == "s2a" then row = win().rows[i] end end   -- the title; its id is c1
+    row.scripts.OnClick(row)
+    T.eq(ns.Run.CurrentId(run), "c1", "the step, not the category")
+end)
+
+test("expanding steps counts in the paging and keeps the row limit", function()
+    local run = start(10)
+    ns.Tracker.Show()
+    for i = 1, 3 do toggle(1 + (i - 1) * 3) end   -- three categories open: 10 + 6 rows
+    T.eq(shownRows(), 14)
+    T.eq(win().more.text, "Showing 1 to 14 of 16. Use the mouse wheel to see more.")
+end)
+
+test("the expanded rows are forgotten when another run is shown", function()
+    local run = start(3)
+    ns.Tracker.Show(); toggle(1); T.eq(shownRows(), 5)
+    start(3); ns.Tracker.Refresh()
+    T.eq(shownRows(), 3)
+end)
+
+test("a reused row frame changes kind without keeping the old click, tooltip or button", function()
+    local run = start(3)
+    ns.Tracker.Show()
+    local row = win().rows[2]
+    T.ok(row.toggle.shown ~= false and row.arrow.shown ~= false, "a category row has the button and the arrow")
+    toggle(1)   -- row 2 is now a step
+    T.eq(row.stepData and row.stepData.id, "s1a"); T.eq(row.toggle.shown, false)
+    T.ok(row.tip:find("Click to show this step.", 1, true))
+    toggle(1)
+    T.eq(row.stepData, false); T.ok(row.tip:find("Click for actions.", 1, true))
+end)
+
+test("nothing of the expanded rows is drawn at zero opacity", function()
+    local run = start(3)
+    ns.addon.db.profile.card.textOpacity = 0
+    ns.Tracker.Show(); toggle(1)
+    T.eq(win().rows[2].detail.calls.SetAlpha[1], 0); T.eq(win().rows[1].toggle.calls.SetAlpha[1], 0)
+    ns.addon.db.profile.card.textOpacity = 100
 end)
 
 test("with no run the window says so", function()
@@ -167,6 +327,19 @@ test("with no run the window says so", function()
     ns.Tracker.Show()
     T.eq(win().caption.text, "There is no run.")
     T.eq(shownRows(), 0)
+end)
+
+test("expanding a category grows the window downward: the top edge stays put", function()
+    start(3)
+    ns.Tracker.Show()
+    rawset(win(), "GetTop", function() return 500 end); rawset(win(), "GetLeft", function() return 20 end)
+    ns.Tracker.ToggleSteps(ns.App.Categories()[1])
+    local p = win().calls.SetPoint
+    T.eq(p[1], "TOPLEFT"); T.eq(p[3], "BOTTOMLEFT"); T.eq(p[4], 20); T.eq(p[5], 500)
+    win().calls.SetPoint = nil
+    rawset(win(), "GetTop", function() return nil end)
+    ns.Tracker.ToggleSteps(ns.App.Categories()[1])
+    T.eq(win().calls.SetPoint, nil, "an unknown edge leaves the anchor alone")
 end)
 
 test("the position is saved and the window comes back after a reload if it was open", function()

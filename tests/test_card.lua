@@ -48,17 +48,11 @@ test("the collapsed card shows the full step title on hover", function()
     _G.GameTooltip = nil
 end)
 
-test("the collapsed counter sits left of the collapse button and shows the current step", function()
+test("the header shows no step counter: the count under the category bar is the only one", function()
     local run, plan, card = startRun()
-    collapse(true)
-    local c = card.step.calls.SetPoint
-    T.ok(c[1] == "RIGHT" and c[2] == card.collapse and c[3] == "LEFT", "anchored to the collapse button")
-    T.eq(card.step.text, ("%d/%d"):format(run.current, #run.order))
-    ns.App.Goto(1); collapse(true)
-    T.eq(card.step.text, ("%d/%d"):format(run.current, #run.order), "follows the viewed step")
+    T.eq(rawget(card, "step"), nil, "no counter in the header")
+    collapse(true); T.eq(rawget(card, "step"), nil, "none when collapsed")
     collapse(false)
-    c = card.step.calls.SetPoint
-    T.ok(c[2] == card.prevBtn, "expanded: left of the step buttons")
 end)
 
 local function menuApi()
