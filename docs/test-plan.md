@@ -120,7 +120,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 
 ## 5. Categories and unit-test checks
 
-Import `build/selftest.ct` first (`/ct import`). It has 15 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
+Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
 
 1. **Pick categories.** On the start screen, clear the "Lua errors" box and press Start run.
    Check: the card shows five bar segments, the last one empty, and "untested · 0 of 13 passed". No Lua errors steps appear.

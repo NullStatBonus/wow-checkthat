@@ -126,6 +126,8 @@ function Plan.CheckAuto(st, w, errs)
         if not isAuto then errs[#errs + 1] = w .. ": call needs auto"
         elseif type(c) ~= "table" or not (type(c.addon) == "string" and type(c.entry) == "string") then
             errs[#errs + 1] = w .. ": call needs addon and entry text"
+        elseif #c.addon < 1 or #c.addon > 32 or c.addon:find("[^%w_%-]") or #c.entry < 1 or #c.entry > 42 or c.entry:find("[^%w_%.%-]") then
+            errs[#errs + 1] = w .. ": call addon is 1 to 32 letters, digits, _ or -, and entry is 1 to 42 of the same plus ."
         else
             for k in pairs(c) do
                 if k ~= "addon" and k ~= "entry" and k ~= "args" then errs[#errs + 1] = w .. ": call has unknown field " .. tostring(k) end

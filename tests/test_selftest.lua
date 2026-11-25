@@ -8,13 +8,13 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     local function facts() clock = clock + 2; return ns.Slash.Run("selftest facts", {}) end
     local env = { time = function() return clock end, GetBuildInfo = function() return "1.15.7", "1", "x", 11507 end,
         UnitName = function() return "T" end, GetRealmName = function() return "R" end,
-        IsAddOnLoaded = function(n) return n == "CheckThat" end, CheckThat = ns.Facts.API() }
+        IsAddOnLoaded = function(n) return n == "CheckThat" end, CheckThat = ns.Facts.API(), InCombatLockdown = function() return false end }
     local db = {}
     env.CheckThatDB = { global = db }
     App.Init(db, env)
     assert(App.ImportPlan(s))
     local run = assert(App.Start("CheckThat"))
-    T.eq(#run.order, 15)
+    T.eq(#run.order, 16)
     T.eq(#run.categories, 5); T.eq(run.cat["self.typed"], "facts"); T.eq(run.cat["self.error"], "errors")
     ns.Errors.Hook()
     -- step 1 is automatic: it waits until the player types /ct debug on, then records its own result
@@ -61,7 +61,7 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     clock = clock + 20
     local e = App.AutoSettle()
     T.eq(e.verdict, "pass"); T.eq(e.evidence, "matched", "exactly two hits, at most three, one level, and a fact never reported"); T.eq(e.by, "auto")
-    for _, id in ipairs({ "self.state", "self.api.version", "self.api.report" }) do
+    for _, id in ipairs({ "self.state", "self.api.version", "self.api.report", "self.entry" }) do
         local _, _, s = App.Current(); T.eq(s.id, id)
         App.Begin()
         local r = App.AutoSettle()

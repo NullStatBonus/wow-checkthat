@@ -57,7 +57,14 @@ function App.Init(db, env, opts)
     end
     if ns.Facts then ns.Facts.Bind(db.facts, function() return now(App) end, runOpen) end
     if ns.Entries then
-        ns.Entries.Bind(runOpen, function() return App.env.InCombatLockdown and App.env.InCombatLockdown() and true or false end)
+        -- Unknown is treated as combat: an entry never runs when the game cannot say.
+        ns.Entries.Bind(runOpen, function()
+            local f = App.env.InCombatLockdown
+            if type(f) ~= "function" then return true end
+            local ok, r = pcall(f)
+            if not ok then return true end
+            return r and true or false
+        end)
     end
     if ns.Errors then
         ns.Errors.Bind(db.errors, function() return now(App) end, runOpen, App.env, db.errorStacks)

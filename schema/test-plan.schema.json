@@ -671,7 +671,7 @@
             },
             "entry": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9_.-]{1,48}$"
+              "pattern": "^[A-Za-z0-9_.-]{1,42}$"
             },
             "args": {
               "type": "array",

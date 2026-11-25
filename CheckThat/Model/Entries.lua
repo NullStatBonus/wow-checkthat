@@ -3,7 +3,7 @@
 -- its outcome is one fact line: "[addon] entry.<name>=<result>". Data only: the plan names a function the addon's
 -- author chose to expose; it never carries code.
 local _, ns = ...
-local Entries = { NAME = 32, ENTRY = 48, ARGS = 8, TEXT = 100 }
+local Entries = { NAME = 32, ENTRY = 42, ARGS = 8, TEXT = 100 } -- the fact key is "entry." plus the name, and a key holds 48
 ns.Entries = Entries
 
 local registry = {} -- addon -> name -> fn
@@ -67,3 +67,6 @@ function Entries.Run(call)
     note(("called %s.%s: %s"):format(call.addon, call.entry, text))
     return text
 end
+
+-- CheckThat's own entry, so the self-test plan can check the whole path in the game with no other addon.
+Entries.Register("CheckThat", "selftest.add", function(a, b) return a + b end)

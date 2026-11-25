@@ -105,4 +105,32 @@ test("plan validation: call needs an auto step, text names and literal arguments
     T.ok(errs({ addon = "KeepThat", entry = "add", extra = 1 }, true):find("unknown field extra", 1, true))
 end)
 
+test("a 42 character entry name records its fact, and a longer one is refused", function()
+    local p = plan({ addon = "KeepThat", entry = ("n"):rep(42) }, "x")
+    local db = boot(p)
+    T.eq(ns.Facts.API().Entry("KeepThat", ("n"):rep(42), function() return 1 end), true)
+    T.eq(ns.Facts.API().Entry("KeepThat", ("n"):rep(43), function() return 1 end), false)
+    assert(App.ImportPlan(assert(ns.Codec.Encode(p)))); assert(App.Start("KeepThat"))
+    App.Begin()
+    T.eq(db.facts[1], "[KeepThat] entry." .. ("n"):rep(42) .. "=1")
+    local bad = plan({ addon = "KeepThat", entry = ("n"):rep(43) }, "x")
+    T.ok(table.concat(ns.Plan.Validate(bad), "; "):find("entry is 1 to 42", 1, true))
+end)
+
+test("when the game cannot say whether the player is in combat, no entry runs", function()
+    local p = plan({ addon = "KeepThat", entry = "add", args = { 1, 1 } }, "x")
+    local env = { time = function() return 1000 end, GetBuildInfo = function() return "1.15.7", "1", "x", 11507 end,
+        UnitName = function() return "T" end, GetRealmName = function() return "R" end }
+    local db = {}
+    env.CheckThatDB = { global = db }
+    App.Init(db, env)
+    register()
+    T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { 1, 1 } }), "refused: in combat")
+    T.eq(calls, 0)
+    env.InCombatLockdown = function() error("broken") end
+    T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { 1, 1 } }), "refused: in combat")
+    env.InCombatLockdown = function() return nil end   -- the game's own "not in combat" answer on older clients
+    T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { 1, 1 } }), "2")
+end)
+
 finish()
