@@ -238,7 +238,7 @@ class OfflineBlock(unittest.TestCase):
         return p
 
     def run_plan(self, mutate=None):
-        return ct.offline_plan(self.plan(mutate), os.path.dirname(self.PLAN))
+        return ct.offline_plan(self.plan(mutate), os.path.dirname(os.path.dirname(self.PLAN)))
 
     def test_a_matching_block_passes_and_a_wrong_return_fails(self):
         self.assertEqual([i["result"] for i in self.run_plan()], ["pass"] * 5)
@@ -257,6 +257,20 @@ class OfflineBlock(unittest.TestCase):
         self.assertTrue(ct.validate(self.plan(lambda o: o["steps"][0].update(bogus=1))))
         self.assertTrue(ct.validate(self.plan(lambda o: o["steps"].append({"label": "no action"}))))
 
+    def test_the_toc_cannot_leave_the_addons_folder(self):
+        with self.assertRaises(ValueError):
+            self.run_plan(lambda o: o.update(toc="../../../../../../etc/hosts"))
+        with self.assertRaises(ValueError):
+            self.run_plan(lambda o: o.update(toc="/etc/hosts"))
+
+    def test_each_action_takes_only_its_own_fields(self):
+        ev = lambda o: o["steps"].append({"event": {"name": "MERCHANT_SHOW"}, "throws": "x"})
+        self.assertTrue(ct.validate(self.plan(ev)))
+        both = lambda o: o["steps"][0].update(throws="x")      # returns and throws together
+        self.assertTrue(ct.validate(self.plan(both)))
+        typo = lambda o: o["mocks"]["GetItemInfo"][0].update(retuns=["x"])
+        self.assertTrue(ct.validate(self.plan(typo)))
+
     def test_compile_drops_the_block(self):
         with_block = self.plan()
         without = self.plan(); del without["offline"]
@@ -266,10 +280,10 @@ class OfflineBlock(unittest.TestCase):
     def test_a_plan_without_a_block_is_an_error(self):
         p = self.plan(); del p["offline"]
         with self.assertRaises(ValueError):
-            ct.offline_plan(p, os.path.dirname(self.PLAN))
+            ct.offline_plan(p, os.path.dirname(os.path.dirname(self.PLAN)))
 
     def test_cli_prints_junit_and_sets_the_exit_code(self):
-        out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", self.PLAN], capture_output=True, text=True)
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", self.PLAN, "--addons", os.path.dirname(os.path.dirname(self.PLAN))], capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn('failures="0"', out.stdout)
         self.assertIn("offline: 5 passed, 0 failed", out.stderr)
@@ -292,7 +306,8 @@ class EntryCall(unittest.TestCase):
         self.assertEqual(ct.merge_sections(p)["sections"][0]["steps"][0]["call"]["entry"], "add")
 
     def test_a_call_needs_an_auto_step_literal_args_and_known_fields(self):
-        self.assertTrue(any("call needs an auto step" in e for e in ct.validate(self.plan({"addon": "KeepThat", "entry": "add"}, auto=False))))
+        self.assertTrue(ct.validate(self.plan({"addon": "KeepThat", "entry": "add"}, auto=False)))
+        self.assertTrue(ct.validate(self.plan({"addon": "KeepThat", "entry": "add", "args": [1, 2, 3, 4, 5, 6, 7, 8, 9]})))
         self.assertTrue(ct.validate(self.plan({"addon": "KeepThat", "entry": "add", "args": [{}]})))
         self.assertTrue(ct.validate(self.plan({"addon": "KeepThat", "entry": "add", "extra": 1})))
         self.assertTrue(ct.validate(self.plan({"addon": "KeepThat"})))

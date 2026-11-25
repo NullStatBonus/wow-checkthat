@@ -78,11 +78,11 @@ test("an unregistered name, a throw and a call in combat are reported, not run",
     T.eq(calls, before, "the entry did not run")
 end)
 
-test("an entry cannot be registered while a run is open", function()
+test("an entry registers while a run is open, as after a reload that keeps the run", function()
     local p = plan({ addon = "KeepThat", entry = "add" }, "x")
     boot(p); App.ImportPlan(assert(ns.Codec.Encode(p))); App.Start("KeepThat")
-    T.eq(ns.Facts.API().Entry("KeepThat", "late", function() end), false)
-    T.eq(ns.Entries.Has("KeepThat", "late"), false)
+    T.eq(ns.Facts.API().Entry("KeepThat", "late", function() end), true)
+    T.eq(ns.Entries.Has("KeepThat", "late"), true)
 end)
 
 test("an attempt that stays open across a reload does not call the entry again", function()
@@ -131,6 +131,18 @@ test("when the game cannot say whether the player is in combat, no entry runs", 
     T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { 1, 1 } }), "refused: in combat")
     env.InCombatLockdown = function() return nil end   -- the game's own "not in combat" answer on older clients
     T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { 1, 1 } }), "2")
+end)
+
+test("a malformed call is refused before dispatch, in the dispatcher and in the validator", function()
+    boot(plan({ addon = "KeepThat", entry = "add" }, "x")); register()
+    local before = calls
+    T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { a = 1 } }), "invalid call")
+    T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { { 1 }, 2 } }), "invalid call")
+    T.eq(ns.Entries.Outcome({ addon = "KeepThat", entry = "add", args = { 1, nil, 3 } }), "invalid call")
+    T.eq(ns.Entries.Outcome({ addon = {}, entry = "add" }), "invalid call")
+    T.eq(calls, before, "nothing ran")
+    local named = plan({ addon = "KeepThat", entry = "add", args = { a = 1 } }, "x")
+    T.ok(table.concat(ns.Plan.Validate(named), "; "):find("call args must be a list", 1, true))
 end)
 
 finish()

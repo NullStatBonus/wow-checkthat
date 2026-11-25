@@ -58,11 +58,13 @@ It warns when the card shows a step a second time, because the step's text must 
 
 ## Check addon code offline
 
-A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offline plans/<addon>.yaml` loads the addon's TOC files in the fake client and runs the block. It needs `luajit`. It prints JUnit and exits 1 when a step fails, and 2 when the plan has no block or the run cannot start. Compile removes the block, so the game never receives it and the plan digest ignores it.
+A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offline plans/<addon>.yaml` loads the addon's TOC files in the fake client and runs the block. It needs `luajit` and a CheckThat checkout. It prints JUnit and exits 1 when a step fails, and 2 when the plan has no block or the run cannot start. Compile removes the block, so the game never receives it and the plan digest ignores it.
+
+**It runs the addon's Lua with your permissions.** The plan's `toc` is read from inside the folder you pass with `--addons` (default: the folder above this repository), and a path that leaves that folder is refused. Pass only addons you trust, and treat a plan from someone else like code.
 
 ```yaml
 offline:
-  toc: ../../wow-keepthat/KeepThat/KeepThat.toc   # from this plan file's folder
+  toc: wow-keepthat/KeepThat/KeepThat_Vanilla.toc   # inside the folder you pass as --addons
   mocks:                                          # set before the addon loads
     GetItemInfo:
     - { args: [7], returns: [Mocked Seven] }
@@ -75,7 +77,7 @@ offline:
   - { mockCalls: { api: GetItemInfo, count: 1 } }
 ```
 
-- A `call` runs only an entry the addon registered with `CheckThat.Entry`. In the fake client that function is a stub, because the game has no such API yet (#97). A name that is not registered fails the step.
+- A `call` runs only an entry the addon registered with `CheckThat.Entry`. In the fake client `CheckThat.Entry` is a stub that applies the same name rules as the game. A name that is not registered fails the step. An addon should register at `PLAYER_LOGIN`, not at file scope, because the addons CheckThat lists as optional load first and `CheckThat.Entry` does not exist yet (see [Entry points](features.md#entry-points)).
 - Add `returns` (a list) or `throws` (text the error contains) to a call.
 - Only APIs on the runner's list can be mocked (`Runner.MOCKABLE` in `tools/entry_runner.lua`). A plan cannot add to it.
 - Set `mockAfterLoad: true` to mock after the addon loads. A file-scope `local f = f` then keeps the real function.

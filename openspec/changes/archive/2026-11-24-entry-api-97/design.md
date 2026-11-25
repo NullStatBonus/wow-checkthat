@@ -18,7 +18,7 @@
 - **Outcome as a fact.** No new assertion kind; plans, replay (`ct.py replay`) and reports read it as before.
 - **Call at attempt open**, after `Run.Begin`, so the fact falls in the step's window.
 - **`Model/Entries.lua`** owns the registry; the combat state comes through `env.InCombatLockdown` (Adapter's guarded read).
-- **Registration closed while a run is open**, so a plan cannot make an addon add code mid-run.
+- **Registration is allowed at any time.** First drafted as refused while a run is open; changed in review, because a run survives `/reload` and CheckThat loads before the addons that register, so that rule refused every registration after a reload.
 
 ## Risks / Trade-offs
 

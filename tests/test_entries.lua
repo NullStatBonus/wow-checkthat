@@ -77,6 +77,12 @@ test("a mock for a name off the allow list stops the run before load", function(
     T.eq(_G.loadstring, replaced)
 end)
 
+test("a TOC line that leaves the addon folder stops the run before any file loads", function()
+    local r = run({ toc = "tests/fixtures/mockaddon/Escape.toc", steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    T.eq(r.ok, false); T.eq(r.steps[1].step, 0)
+    T.ok(r.steps[1].detail:find("leaves the addon folder", 1, true), r.steps[1].detail)
+end)
+
 test("a step without a mock says so", function()
     local r = run({ toc = TOC, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 2 } }, returns = { 3 } } } })
     T.eq(r.steps[1].mocked, false); same(r.mocks, {})

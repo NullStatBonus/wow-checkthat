@@ -149,10 +149,14 @@ Debug log: `facts recorded <addon> <key>` and `facts dropped ...` with the reaso
 An addon can expose a function for a test to call:
 
 ```lua
-if CheckThat and CheckThat.Entry then CheckThat.Entry("KeepThat", "add", function(a, b) return a + b end) end
+local f = CreateFrame("Frame")
+f:RegisterEvent("PLAYER_LOGIN")
+f:SetScript("OnEvent", function()
+    if CheckThat and CheckThat.Entry then CheckThat.Entry("KeepThat", "add", function(a, b) return a + b end) end
+end)
 ```
 
-- Register at addon load. CheckThat refuses a registration while a run is open, a bad name or a value that is not a function.
+- Register when the player logs in, not at file scope: an addon that CheckThat lists as optional loads before CheckThat, so `CheckThat.Entry` does not exist yet at file scope. Use `PLAYER_LOGIN`. CheckThat refuses a bad name (up to 32 letters, digits, `_` or `-` for the addon and up to 42 for the entry) or a value that is not a function. A registration while a run is open is fine: a run survives `/reload`.
 - An auto step names the entry in `call: {addon: KeepThat, entry: add, args: [2, 3]}`. Arguments are text, numbers or booleans. CheckThat calls it when the step opens, outside combat, and never calls anything the addon did not register.
 - The outcome is the fact `[KeepThat] entry.add=5`. Several returns join with commas. Other outcomes: `(none)`, `threw: <text>`, `not registered`, `refused: in combat`. The step checks it as any fact line.
 - A step that stays open across a reload does not call again.

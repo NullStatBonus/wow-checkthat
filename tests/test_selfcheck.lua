@@ -52,6 +52,29 @@ test("a raw bar in the miss text is doubled for chat", function()
     T.ok(said[1]:find("entry.add=||cffff0000x||r", 1, true), said[1])
 end)
 
+test("a check that cannot be judged at login is a miss, never a match", function()
+    local said = boot("[KeepThat] entry.add=5", true)
+    local p = plan("[KeepThat] entry.add=5")
+    p.sections[1].steps[1].assertions[1].count = { min = 2 }
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+    addon:OnEnable()
+    T.eq(said[1], "Self-check: 0 of 1 entry checks matched. First miss: kt.add: check not judged at login")
+end)
+
+test("the timer looks again: setting turned off, or a run opened, before it fires", function()
+    local said = boot("[KeepThat] entry.add=5", true)
+    local fire
+    ns.Adapter.After = function(_, fn) fire = fn end
+    addon:OnEnable()
+    addon.db.profile.loginCheck = false
+    fire()
+    T.eq(#said, 0, "setting off by the time it fires")
+    addon.db.profile.loginCheck = true
+    assert(ns.App.Start("KeepThat"))
+    fire()
+    T.eq(#said, 0, "a run is open")
+end)
+
 test("with the setting off nothing is called", function()
     local called = false
     local said = boot("[KeepThat] entry.add=5", false)

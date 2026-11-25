@@ -2,7 +2,7 @@ ct: 1
 addon: KeepThat
 title: Offline block sample
 offline:
-  toc: ../mockaddon/MockAddon.toc
+  toc: mockaddon/MockAddon.toc
   mocks:
     GetItemInfo:
     - { args: [7], returns: [Mocked Seven] }

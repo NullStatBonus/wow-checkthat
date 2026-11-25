@@ -132,11 +132,16 @@ function Plan.CheckAuto(st, w, errs)
             for k in pairs(c) do
                 if k ~= "addon" and k ~= "entry" and k ~= "args" then errs[#errs + 1] = w .. ": call has unknown field " .. tostring(k) end
             end
-            if c.args ~= nil and (type(c.args) ~= "table" or #c.args > 8) then errs[#errs + 1] = w .. ": call args must be a list of at most 8"
-            else
-                for i, v in ipairs(c.args or {}) do
-                    local tv = type(v)
-                    if tv ~= "string" and tv ~= "number" and tv ~= "boolean" then errs[#errs + 1] = w .. ": call arg " .. i .. " must be text, a number or true or false" end
+            local nargs = 0
+            if c.args ~= nil and type(c.args) ~= "table" then errs[#errs + 1] = w .. ": call args must be a list of at most 8"
+            elseif c.args ~= nil then
+                for _ in pairs(c.args) do nargs = nargs + 1 end
+                if nargs ~= #c.args or nargs > 8 then errs[#errs + 1] = w .. ": call args must be a list of at most 8"
+                else
+                    for i, v in ipairs(c.args) do
+                        local tv = type(v)
+                        if tv ~= "string" and tv ~= "number" and tv ~= "boolean" then errs[#errs + 1] = w .. ": call arg " .. i .. " must be text, a number or true or false" end
+                    end
                 end
             end
         end

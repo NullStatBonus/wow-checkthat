@@ -123,19 +123,19 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
 
 1. **Pick categories.** On the start screen, clear the "Lua errors" box and press Start run.
-   Check: the card shows five bar segments, the last one empty, and "untested · 0 of 13 passed". No Lua errors steps appear.
+   Check: the card shows five bar segments, the last one empty, and "untested · 0 of 14 passed". No Lua errors steps appear.
    Log: `Categories: overall blue` and `  errors: off (not picked), 0 of 0 done` in the `/ct log` report.
 2. **Typed facts.** Type `/ct run self.typed`, then click Run on the card.
    Check: the card records Pass by itself and the Facts bar segment stays blue and fills halfway.
    Log: `[ct] step self.typed pass auto evidence matched`.
 3. **Unit checks.** Type `/ct run units`. On each of the next three steps ("Compare numbers", "Check text and a list", "Check every report of a fact") click Run. On "Count exactly" click Run once, then wait 20 seconds. A second click makes its checks fail at once. Wait for the last steps.
    Check: the first three and the last three record Pass by themselves, "Count exactly" records Pass by itself when the 20 seconds are up, and the Unit checks segment turns green.
-   Log: `[ct] step self.compare pass auto evidence matched` (the same for `self.text`, `self.which`, `self.state`, `self.api.version`, `self.api.report`) and `[ct] step self.exact pass auto evidence matched` and `[ct] step self.noerror pass auto evidence matched`.
+   Log: `[ct] step self.compare pass auto evidence matched` (the same for `self.text`, `self.which`, `self.state`, `self.api.version`, `self.api.report`, `self.entry`) and `[ct] step self.exact pass auto evidence matched` and `[ct] step self.noerror pass auto evidence matched`.
 4. **Add the error category and record an error.** Type `/ct run errors`. Wait 10 seconds on "No Lua error", then click Run on "Record a Lua error".
    Check: a fifth segment is in use, "No Lua error" passes by itself after 10 seconds, and the card records the second step by itself. The game may show its error window. That is expected. Do it once with BugGrabber loaded and once with it disabled.
    Log: `[errors] recorded an error`, and `CheckThatDB.global.errors` ends with `CheckThat self-test error`. `[errors] handler current` without BugGrabber and `[errors] handler blocked` with it.
 5. **Colors and words.** Press Fail on one step in the Card and Run button category.
-   Check: its segment turns red, the caption reads "1 failed · 0 of 13 passed", and pointing at the segment says the category failed. The Categories window (`/ct tracker`) and the Home page list the same words.
+   Check: its segment turns red, the caption reads "1 failed · 0 of 14 passed", and pointing at the segment says the category failed. The Categories window (`/ct tracker`) and the Home page list the same words.
    Log: `Categories: overall red` in the `/ct log` report.
 6. **Rerun asks first.** Click the Categories control on the card. In the window, click the row of the red category and choose Rerun category. Press the No button, then choose it again and accept.
    Check: nothing changes after No. After accepting the steps with a result are open again and the segment turns blue.

@@ -7,11 +7,10 @@ local Entries = { NAME = 32, ENTRY = 42, ARGS = 8, TEXT = 100 } -- the fact key 
 ns.Entries = Entries
 
 local registry = {} -- addon -> name -> fn
-local isOpen, inCombat = function() return false end, function() return false end
+local inCombat = function() return false end
 
--- open() says whether a run is open; combat() whether the player is in combat.
-function Entries.Bind(open, combat)
-    isOpen = open or isOpen
+-- combat() says whether the player is in combat (true when unknown).
+function Entries.Bind(combat)
     inCombat = combat or inCombat
 end
 
@@ -22,12 +21,12 @@ function Entries.ValidName(addon, name)
         and type(name) == "string" and #name >= 1 and #name <= Entries.ENTRY and not name:find("[^%w_%.%-]")
 end
 
--- Allowed at addon load, before a run opens. Returns true when the entry is stored.
+-- Allowed at any time: a run survives /reload and CheckThat loads before the addons that register, so a run can already be open.
+-- An entry only runs when a plan step names it. Returns true when the entry is stored.
 function Entries.Register(addon, name, fn)
     if not Entries.ValidName(addon, name) or type(fn) ~= "function" then
         note("refused an entry: the name or function is not valid"); return false
     end
-    if isOpen() then note(("refused entry %s.%s: a run is open"):format(addon, name)); return false end
     registry[addon] = registry[addon] or {}
     registry[addon][name] = fn
     note(("registered %s.%s"):format(addon, name))
@@ -45,8 +44,24 @@ end
 
 local function cut(s) return #s > Entries.TEXT and s:sub(1, Entries.TEXT - 3) .. "..." or s end
 
+-- True when call is {addon, entry, args}: valid names and a dense list of at most 8 texts, numbers or booleans.
+function Entries.ValidCall(call)
+    if type(call) ~= "table" or not Entries.ValidName(call.addon, call.entry) then return false end
+    local args = call.args
+    if args == nil then return true end
+    if type(args) ~= "table" or #args > Entries.ARGS then return false end
+    local n = 0
+    for k, v in pairs(args) do
+        n = n + 1
+        local t = type(v)
+        if type(k) ~= "number" or (t ~= "string" and t ~= "number" and t ~= "boolean") then return false end
+    end
+    return n == #args
+end
+
 -- Runs one call ({addon, entry, args}) and returns the text for its fact line.
 function Entries.Outcome(call)
+    if not Entries.ValidCall(call) then return "invalid call" end
     local fn = registry[call.addon] and registry[call.addon][call.entry]
     if not fn then return "not registered" end
     if inCombat() then return "refused: in combat" end
@@ -63,8 +78,9 @@ end
 -- Calls the entry and reports the outcome as a fact. Returns the text.
 function Entries.Run(call)
     local text = Entries.Outcome(call)
-    if ns.Facts then ns.Facts.Report(call.addon, "entry." .. call.entry, text) end
-    note(("called %s.%s: %s"):format(call.addon, call.entry, text))
+    local recorded, why = true, nil
+    if ns.Facts and Entries.ValidCall(call) then recorded, why = ns.Facts.Report(call.addon, "entry." .. call.entry, text) end
+    note(("called %s.%s: %s%s"):format(tostring(call.addon), tostring(call.entry), text, recorded and "" or (" (fact not recorded: %s)"):format(tostring(why))))
     return text
 end
 

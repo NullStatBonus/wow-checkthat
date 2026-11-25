@@ -196,8 +196,6 @@ def validate(plan):
             for c in act.get("commands", []):
                 if not macro_allowed(c, addon):
                     errs.append("%s: command not allowed: %s" % (sid, c))
-            if "call" in st and not st.get("auto"):
-                errs.append("%s: call needs an auto step" % sid)
             if st.get("auto") and "timeout" not in st:
                 for a in st.get("assertions", []):
                     c = a.get("count") or {}
@@ -579,17 +577,24 @@ def replay_junit(plan, items):
 
 # ---------------------------------------------------------------- offline entry runner
 
-def offline_plan(plan, base):
-    """Run a plan's offline block in tools/entry_runner.lua. base is the folder the plan file lives in; toc resolves from it.
-    Returns items {step, label, result: pass|fail, why}. Needs luajit."""
+def offline_plan(plan, addons):
+    """Run a plan's offline block in tools/entry_runner.lua. addons is the folder that holds the addon checkouts; the plan's
+    toc resolves inside it and may not leave it, so a shared plan cannot pick Lua from elsewhere. It still runs that addon's
+    Lua with your permissions: run only addons you trust. Returns items {step, label, result: pass|fail, why}. Needs luajit."""
     import tempfile
+    if not os.path.exists(os.path.join(ROOT, "tests", "harness.lua")):
+        raise ValueError("offline needs a CheckThat checkout (tests/harness.lua is missing): run it from the repository")
     errs = validate(plan)
     if errs:
         raise ValueError("the plan is not valid: " + "; ".join(errs))
     block = plan.get("offline")
     if not block:
         raise ValueError("the plan has no offline block")
-    spec = dict(block, toc=os.path.normpath(os.path.join(base, block["toc"])))
+    root = os.path.realpath(addons)
+    toc = os.path.realpath(os.path.join(root, block["toc"]))
+    if os.path.commonpath([root, toc]) != root:
+        raise ValueError("toc %s leaves the addons folder %s" % (block["toc"], addons))
+    spec = dict(block, toc=toc)
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "spec.json")
         with open(path, "w", encoding="utf-8") as f:
@@ -1383,7 +1388,7 @@ def main(argv=None):
     p = sub.add_parser("validate"); p.add_argument("plan")
     p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
-    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit)"); p.add_argument("plan"); p.add_argument("-o")
+    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=os.path.dirname(ROOT), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository)"); p.add_argument("-o")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
@@ -1446,7 +1451,7 @@ def main(argv=None):
     if a.cmd == "offline":
         plan = load_yaml(a.plan)
         try:
-            items = offline_plan(plan, os.path.dirname(os.path.abspath(a.plan)))
+            items = offline_plan(plan, a.addons)
         except (ValueError, RuntimeError) as e:
             print("error:", e, file=sys.stderr); return 2
         bad = sum(i["result"] == "fail" for i in items)

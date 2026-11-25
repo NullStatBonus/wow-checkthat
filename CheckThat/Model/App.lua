@@ -36,6 +36,12 @@ function App.FutureCount()
     return n
 end
 
+-- True while the character has an open run. The login self-check stays out of the way of a run.
+function App.RunOpen()
+    local run = App.db and App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    return run ~= nil and not run.endedAt
+end
+
 function App.Init(db, env, opts)
     App.env = env or _G
     db.plans = db.plans or {}
@@ -58,7 +64,7 @@ function App.Init(db, env, opts)
     if ns.Facts then ns.Facts.Bind(db.facts, function() return now(App) end, runOpen) end
     if ns.Entries then
         -- Unknown is treated as combat: an entry never runs when the game cannot say.
-        ns.Entries.Bind(runOpen, function()
+        ns.Entries.Bind(function()
             local f = App.env.InCombatLockdown
             if type(f) ~= "function" then return true end
             local ok, r = pcall(f)
@@ -558,15 +564,23 @@ function App.SelfCheck()
                 if st.auto and st.call and ns.Entries then
                     total = total + 1
                     local line = ("[%s] entry.%s=%s"):format(st.call.addon, st.call.entry, ns.Entries.Outcome(st.call))
-                    local rules, ok = 0, true
+                    -- Only a plain equals or contains check on the facts list can be judged here. Anything else
+                    -- (a count, an absence, another source, a fact operator) is not judged, so the step is a miss.
+                    local rules, ok, why = 0, true, nil
                     for _, a in ipairs(st.assertions or {}) do
-                        if a.kind == "log" and not a.diagnostic and not a.absent and (a.equals or a.contains) then
-                            rules = rules + 1
-                            if not ((a.equals and a.equals == line) or (a.contains and line:find(a.contains, 1, true))) then ok = false end
+                        if not a.diagnostic then
+                            local src = plan.logs and plan.logs[a.source]
+                            local plain = a.kind == "log" and not a.absent and not a.count and not a.pattern and (a.equals or a.contains)
+                                and src and src.path == "global.facts"
+                            if not plain then ok = false; why = "check not judged at login"
+                            else
+                                rules = rules + 1
+                                if not ((a.equals and a.equals == line) or (a.contains and line:find(a.contains, 1, true))) then ok = false end
+                            end
                         end
                     end
                     if rules > 0 and ok then matched = matched + 1
-                    elseif not miss then miss = st.id .. ": " .. line end
+                    elseif not miss then miss = st.id .. ": " .. (why or line) end
                 end
             end
         end

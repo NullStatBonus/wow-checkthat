@@ -86,94 +86,139 @@
         "mocks": {
           "type": "object",
           "additionalProperties": {
-            "type": [
-              "array",
-              "object"
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "args": {
+                    "type": "array"
+                  },
+                  "returns": {
+                    "type": "array"
+                  }
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "args": {
+                      "type": "array"
+                    },
+                    "returns": {
+                      "type": "array"
+                    }
+                  }
+                }
+              }
             ]
           }
         },
         "steps": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "label": {
-                "type": "string"
-              },
-              "call": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "addon",
-                  "entry"
-                ],
-                "properties": {
-                  "addon": {
-                    "type": "string"
-                  },
-                  "entry": {
-                    "type": "string"
-                  },
-                  "args": {
-                    "type": "array"
-                  }
-                }
-              },
-              "returns": {
-                "type": "array"
-              },
-              "throws": {
-                "type": "string"
-              },
-              "event": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "name"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "args": {
-                    "type": "array"
-                  }
-                }
-              },
-              "mockCalls": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "api",
-                  "count"
-                ],
-                "properties": {
-                  "api": {
-                    "type": "string"
-                  },
-                  "count": {
-                    "type": "integer",
-                    "minimum": 0
-                  }
-                }
-              }
-            },
             "oneOf": [
               {
+                "type": "object",
+                "additionalProperties": false,
                 "required": [
                   "call"
-                ]
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "call": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "addon",
+                      "entry"
+                    ],
+                    "properties": {
+                      "addon": {
+                        "type": "string"
+                      },
+                      "entry": {
+                        "type": "string"
+                      },
+                      "args": {
+                        "type": "array"
+                      }
+                    }
+                  },
+                  "returns": {
+                    "type": "array"
+                  },
+                  "throws": {
+                    "type": "string"
+                  }
+                },
+                "not": {
+                  "required": [
+                    "returns",
+                    "throws"
+                  ]
+                }
               },
               {
+                "type": "object",
+                "additionalProperties": false,
                 "required": [
                   "event"
-                ]
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "event": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "args": {
+                        "type": "array"
+                      }
+                    }
+                  }
+                }
               },
               {
+                "type": "object",
+                "additionalProperties": false,
                 "required": [
                   "mockCalls"
-                ]
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "mockCalls": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "api",
+                      "count"
+                    ],
+                    "properties": {
+                      "api": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
               }
             ]
           }
@@ -578,6 +623,7 @@
     },
     "step": {
       "type": "object",
+      "dependentSchemas": { "call": { "required": ["auto"], "properties": { "auto": { "const": true } } } },
       "additionalProperties": false,
       "required": [
         "id",
