@@ -4,7 +4,7 @@ addon: CheckThat
 title: CheckThat 0.20 CT macro follows the step
 preamble: |-
   Press the macro key, not Run, on a step that tells you to. Run does the same commands without the marker line, so the step stays unverified. Have one free action bar slot and one free macro slot. Keep the CT macro on the current step may start ticked or cleared. This plan runs in forever-camelot and tests CheckThat on its own run, so do not press End run before the last step. The first step checks the version, because an older copy gives results that mean nothing. Stop there if it fails. Turn debug recording on first, and turn it off when you finish. Combat is tested in the unit tests, not here. At the end, delete the test macros in the macro window.
-handoff: "Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report. Delete the test macros and clear the action bar slot."
+handoff: "Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report. Then clear Keep the CT macro on the current step, turn debug recording off, delete the test macros and clear the action bar slot."
 categories:
 - id: setup
   title: Set up the macro
@@ -58,6 +58,17 @@ sections:
       value: 2000
       label: CheckThat is 0.20.0 or newer
     notes: The fact is major*10000 + minor*100 + patch, so 0.20.0 is 2000.
+  - id: ct20.clear
+    category: setup
+    title: "Clear the debug log"
+    action:
+      kind: manual
+      text: "Type |cff99ccff/ct log clear|r and accept the question. Then press Pass on the card."
+      commands:
+      - "/ct log clear"
+    expect: "A question asks to clear the debug log. After you accept, chat says \"Debug log cleared.\" An old log from an earlier run would hide this run's lines from the checks."
+    verify:
+    - player
   - id: ct20.debug
     category: setup
     title: Turn debug recording on
@@ -348,23 +359,3 @@ sections:
       scope: attempt
       label: "CheckThat did not rewrite the macro for this step"
     notes: "Press the macro key once. A second press only repeats the same lines."
-  - id: ct20.new
-    category: edit
-    title: "Make a second macro"
-    action:
-      kind: manual
-      text: "Do not press your macro key. Click Run, or type |cff99ccff/ct macro|r in chat. Then press Pass on the card."
-      commands:
-      - "/ct macro"
-    expect: "Chat says \"Macro CT2 is set. Drag it to a bar and click it.\" The name is the next free one up to CT9. The macro you changed stays as it was. This needs one more free macro slot."
-    verify:
-    - player
-  - id: ct20.reset
-    category: edit
-    title: "Clean up"
-    action:
-      kind: manual
-      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Clear |cffffd100Keep the CT macro on the current step|r and turn debug recording off. Delete the test macros in the macro window. Press Pass on the card."
-    expect: "The setting is clear and the test macros are gone. The card shows the results screen after this result."
-    verify:
-    - player

@@ -31,7 +31,7 @@ test("the 0.20 plan replays with no problem", function()
     local f = io.open("build/checkthat-0.20.ct", "rb"); local s = f:read("*a"); f:close()
     local out = Replay.run(ns, s)
     T.eq(#out.problems, 0, table.concat(out.problems, "; "))
-    T.eq(#out.trace, 15)
+    T.eq(#out.trace, 14)
 end)
 
 test("a step that asserts its own result line is a problem", function()
