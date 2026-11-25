@@ -977,19 +977,23 @@ function Card.Toggle() if card and card:IsShown() then card:Hide() else Card.Sho
 -- Make the CT macro hold the current step's commands (or /ct status). Never in combat. Never overwrites a macro
 -- the player made or changed. follow: a changed macro is left alone and no second one is made; returns nil.
 -- Returns the macro name, and true when the game was told to change it.
-local function writeMacro(body, follow, silent)
+-- reclaim: a macro the player changed is taken back when its first line is still our marker.
+local function writeMacro(body, follow, silent, reclaim)
     local ui = App.db.ui
     local name, idx = ui.macroName, nil
     if name then
         idx = A.MacroIndex(name)
         if idx > 0 and A.MacroBody(idx) ~= ui.macroBody then -- the player changed it
-            if follow then return nil end
-            idx = 0
+            local ours = reclaim and (A.MacroBody(idx) or ""):find("^/ct macrorun ")
+            if not ours then
+                if follow then return nil end
+                idx = 0
+            end
         end
         if idx == 0 then idx, name = nil, nil end
     end
     if idx then
-        if follow and ui.macroBody == body then return name, false end
+        if follow and A.MacroBody(idx) == body then ui.macroBody = body; return name, false end
         A.EditMacro(idx, name, body)
         if A.MacroBody(idx) ~= body then return nil end -- the game did not take it: keep the saved body
     else
@@ -1039,8 +1043,13 @@ function Card.FollowMacro(fresh)
     if not (App.db and ns.addon.db.profile.macroFollow) or A.InCombat() then return end
     if fresh then failedOnce = nil end
     local body, step = Card.MacroBody()
-    local before = App.db.ui.macroName
-    local name, changed = writeMacro(body, true, failedOnce)
+    local ui = App.db.ui
+    local before = ui.macroName
+    local run = App.Current()
+    -- A player's edit lasts one run: a new run, or the setting turning on, takes the macro back.
+    local reclaim = fresh or (run and ui.macroRun ~= run.runId)
+    local name, changed = writeMacro(body, true, failedOnce, reclaim)
+    if name and run then ui.macroRun = run.runId end
     if name and name ~= before then ns.Slash.Print(L["Macro %s is set. Drag it to a bar and click it."]:format(name)) end
     if name == nil then failedOnce = true end
     if changed then App.Log("macro set " .. (step and step.id or "none")) end

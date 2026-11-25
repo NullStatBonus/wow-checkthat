@@ -186,6 +186,37 @@ test("follow: a macro the player changed is left alone", function()
     T.eq(created, 1, "no second macro")
 end)
 
+test("follow: a new run takes back a macro the player changed, while the marker is there", function()
+    resetFollow(true)
+    st.macroBody = st.macroBody .. "\n/dance"
+    slash("skip")
+    T.ok(st.macroBody:find("/dance", 1, true), "an edit stays for the rest of the run")
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    slash("start KeepThat")
+    T.eq(st.macroBody, marked(macroOf() or "/ct status"), "the new run takes the macro back")
+    st.macroBody = st.macroBody .. "\n/dance"
+    slash("skip")
+    T.ok(st.macroBody:find("/dance", 1, true), "and an edit in that run stays again")
+end)
+
+test("follow: turning the setting on takes back a macro the player changed", function()
+    resetFollow(true)
+    st.macroBody = st.macroBody .. "\n/dance"
+    addon.db.profile.macroFollow = false
+    addon.db.profile.macroFollow = true
+    ns.Card.FollowMacro(true)
+    T.eq(st.macroBody, marked(macroOf() or "/ct status"))
+end)
+
+test("follow: a macro without the marker stays the player's in every run", function()
+    resetFollow(true)
+    st.macroBody = "/dance"
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    slash("start KeepThat")
+    ns.Card.FollowMacro(true)
+    T.eq(st.macroBody, "/dance")
+end)
+
 test("follow: a step whose commands do not fit gets /ct status and a card line", function()
     resetFollow(true)
     local _, ctx, step = ns.App.Current()
