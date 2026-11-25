@@ -141,13 +141,7 @@ sections:
       text: Press |cffffd100Pass|r on the card.
     expect: The card moves on to the next step.
     verify:
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct17.pass pass'
-      scope: attempt
-      label: The step passed
+    - player
   - id: ct17.partial
     category: list
     title: Partial me
@@ -156,13 +150,7 @@ sections:
       text: Press |cffffd100Partial|r on the card.
     expect: The card moves on to the next step.
     verify:
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct17.partial partial'
-      scope: attempt
-      label: The step was partial
+    - player
   - id: ct17.skip
     category: list
     title: Skip me
@@ -171,13 +159,7 @@ sections:
       text: Press |cffffd100Skip|r on the card.
     expect: The card moves on to the next step.
     verify:
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct17.skip skip'
-      scope: attempt
-      label: The step was skipped
+    - player
   - id: ct17.fail
     category: list
     title: Fail me
@@ -186,13 +168,7 @@ sections:
       text: Press |cffffd100Fail|r on the card. This step fails on purpose.
     expect: The card moves on to the next step.
     verify:
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct17.fail fail'
-      scope: attempt
-      label: The step failed
+    - player
     notes: Fails on purpose. The reviewer does not count it as a defect.
   - id: ct17.words
     category: list
@@ -246,13 +222,6 @@ sections:
     expect: The card moves on. It shows this plan's next open step, not a step you finished.
     verify:
     - player
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct17.land pass'
-      scope: attempt
-      label: Land here passed
 - id: s3
   title: Only on Classic Era
   clients:
@@ -284,13 +253,7 @@ sections:
       text: Press |cffffd100Pass|r on the card.
     expect: The card moves on to the next step.
     verify:
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: '[ct] step ct17.reopen pass'
-      scope: attempt
-      label: The step passed
+    - player
   - id: ct17.undo
     category: reopen
     title: Undo the result

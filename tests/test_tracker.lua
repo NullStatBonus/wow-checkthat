@@ -322,6 +322,19 @@ test("with no run the window says so", function()
     T.eq(shownRows(), 0)
 end)
 
+test("expanding a category grows the window downward: the top edge stays put", function()
+    start(3)
+    ns.Tracker.Show()
+    rawset(win(), "GetTop", function() return 500 end); rawset(win(), "GetLeft", function() return 20 end)
+    ns.Tracker.ToggleSteps(ns.App.Categories()[1])
+    local p = win().calls.SetPoint
+    T.eq(p[1], "TOPLEFT"); T.eq(p[3], "BOTTOMLEFT"); T.eq(p[4], 20); T.eq(p[5], 500)
+    win().calls.SetPoint = nil
+    rawset(win(), "GetTop", function() return nil end)
+    ns.Tracker.ToggleSteps(ns.App.Categories()[1])
+    T.eq(win().calls.SetPoint, nil, "an unknown edge leaves the anchor alone")
+end)
+
 test("the position is saved and the window comes back after a reload if it was open", function()
     start(3)
     ns.Tracker.Show()

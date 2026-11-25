@@ -33,6 +33,15 @@ local function place(frame, x, y, anchor)
     frame:ClearAllPoints(); frame:SetPoint("TOPLEFT", anchor or win, "TOPLEFT", x, -y)
 end
 
+-- Grow and shrink downward: the top edge stays put, whatever point the window hangs from.
+local function setHeight(h)
+    local top, left = win:GetTop(), win:GetLeft()
+    win:SetHeight(h)
+    if type(top) == "number" and type(left) == "number" then
+        win:ClearAllPoints(); win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
+end
+
 local function rowFrame(i)
     local r = win.rows[i]
     if r then return r end
@@ -202,7 +211,7 @@ function Tracker.Refresh()
     local ta = (cfg().textOpacity or 100) / 100
     if not cats then
         win.caption:SetText(L["There is no run."]); win.caption:SetTextColor(0.67, 0.67, 0.67); win.caption:Show()
-        win:SetHeight(52); return
+        setHeight(52); return
     end
     win.caption:Hide()
     local rows = flatten(cats)
@@ -252,7 +261,7 @@ function Tracker.Refresh()
         win.up:Show(); win.down:Show()
         height = height + 22
     end
-    win:SetHeight(height + 8)
+    setHeight(height + 8)
 end
 
 function Tracker.Show()
