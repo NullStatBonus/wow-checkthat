@@ -279,3 +279,25 @@ Validation, in the compiler and on import, SHALL reject the id `failed` as a cat
 #### Scenario: No version check first
 - **WHEN** the first step has no version assertion
 - **THEN** validation prints a warning and exits zero
+
+### Requirement: Plan may carry an offline block
+A plan MAY hold a top-level `offline` object with `toc`, optional `mocks` and `mockAfterLoad`, and `steps`. Each step is one of a `call` (addon, entry, literal `args`) with `returns` or `throws`, an `event` (name, literal `args`), or a `mockCalls` count. Validation SHALL reject any other shape. Compile SHALL remove the block, so the compiled string and its digest do not contain it.
+
+#### Scenario: Valid block
+- **WHEN** a plan holds an offline block with one call step
+- **THEN** `ct.py validate` passes
+
+#### Scenario: Unknown step field
+- **WHEN** an offline step holds a field the schema does not list
+- **THEN** `ct.py validate` fails
+
+#### Scenario: Compile drops the block
+- **WHEN** the same plan is compiled with and without the block
+- **THEN** both compiled strings are equal
+
+### Requirement: Step may call an entry
+A step MAY hold `call: {addon, entry, args}` only when it is an auto step. `addon` and `entry` SHALL be names of the same form as a fact's addon and key, and `args` SHALL be a list of at most 8 strings, numbers or booleans. Validation SHALL reject any other field or shape, in the game and in the tools.
+
+#### Scenario: Call on a manual step
+- **WHEN** a step has `call` and is not auto
+- **THEN** validation fails

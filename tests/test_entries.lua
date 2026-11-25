@@ -69,6 +69,14 @@ test("a fake event reaches the handler and a later call sees the state", functio
     T.ok(r.steps[4].detail:find("no frame registered", 1, true))
 end)
 
+test("a mock for a name off the allow list stops the run before load", function()
+    local replaced = false
+    local r = run({ toc = TOC, mocks = { loadstring = { returns = { 1 } } }, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } },
+        function() replaced = rawget(_G, "loadstring") end)
+    T.eq(r.ok, false); T.eq(r.steps[1].step, 0); T.ok(r.steps[1].detail:find("loadstring is not on the allow list", 1, true), r.steps[1].detail)
+    T.eq(_G.loadstring, replaced)
+end)
+
 test("a step without a mock says so", function()
     local r = run({ toc = TOC, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 2 } }, returns = { 3 } } } })
     T.eq(r.steps[1].mocked, false); same(r.mocks, {})

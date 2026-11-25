@@ -196,6 +196,8 @@ def validate(plan):
             for c in act.get("commands", []):
                 if not macro_allowed(c, addon):
                     errs.append("%s: command not allowed: %s" % (sid, c))
+            if "call" in st and not st.get("auto"):
+                errs.append("%s: call needs an auto step" % sid)
             if st.get("auto") and "timeout" not in st:
                 for a in st.get("assertions", []):
                     c = a.get("count") or {}
@@ -260,6 +262,7 @@ def merge_sections(plan):
     """Compile section requirements, setup and clients into each step."""
     out = expand_cases(plan)
     out["kind"], out["ct"] = "plan", 1
+    out.pop("offline", None)  # tools only: the game never receives it
     for sec in out["sections"]:
         sreq, ssetup, scl = sec.pop("requires", []), sec.pop("setup", None), sec.get("clients")
         scat = sec.pop("category", None)
@@ -572,6 +575,38 @@ def replay_junit(plan, items):
         elif i["result"] == "skipped":
             ET.SubElement(case, "skipped", message=i["why"] or "")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode") + "\n"
+
+
+# ---------------------------------------------------------------- offline entry runner
+
+def offline_plan(plan, base):
+    """Run a plan's offline block in tools/entry_runner.lua. base is the folder the plan file lives in; toc resolves from it.
+    Returns items {step, label, result: pass|fail, why}. Needs luajit."""
+    import tempfile
+    errs = validate(plan)
+    if errs:
+        raise ValueError("the plan is not valid: " + "; ".join(errs))
+    block = plan.get("offline")
+    if not block:
+        raise ValueError("the plan has no offline block")
+    spec = dict(block, toc=os.path.normpath(os.path.join(base, block["toc"])))
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "spec.json")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(spec))
+        r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "entry_runner.lua"), path], capture_output=True, text=True, cwd=ROOT)
+    try:
+        res = json.loads(r.stdout)
+    except ValueError:
+        raise RuntimeError((r.stderr or r.stdout).strip() or "the runner printed nothing")
+    items = []
+    for s in res["steps"]:
+        given = block["steps"][s["step"] - 1].get("label") if s["step"] else None
+        items.append({"step": "offline.%d" % s["step"], "label": given or "%s %d" % (s["kind"], s["step"]),
+                      "result": "pass" if s["ok"] else "fail", "why": s.get("detail") or ""})
+    if not res["ok"] and not any(i["result"] == "fail" for i in items):
+        items.append({"step": "offline.0", "label": "run", "result": "fail", "why": "a step produced no result"})
+    return items
 
 
 # ---------------------------------------------------------------- evidence harvest
@@ -1348,6 +1383,7 @@ def main(argv=None):
     p = sub.add_parser("validate"); p.add_argument("plan")
     p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
+    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit)"); p.add_argument("plan"); p.add_argument("-o")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
     p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
@@ -1407,6 +1443,20 @@ def main(argv=None):
         else:
             print(xml, end="")
         return 1 if n("fail") else 0
+    if a.cmd == "offline":
+        plan = load_yaml(a.plan)
+        try:
+            items = offline_plan(plan, os.path.dirname(os.path.abspath(a.plan)))
+        except (ValueError, RuntimeError) as e:
+            print("error:", e, file=sys.stderr); return 2
+        bad = sum(i["result"] == "fail" for i in items)
+        print("offline: %d passed, %d failed" % (len(items) - bad, bad), file=sys.stderr)
+        xml = replay_junit(plan, items)
+        if a.o:
+            open(a.o, "w").write(xml)
+        else:
+            print(xml, end="")
+        return 1 if bad else 0
     if a.cmd == "decode":
         s = a.string_or_file
         if os.path.exists(s):

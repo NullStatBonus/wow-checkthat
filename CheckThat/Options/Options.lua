@@ -278,6 +278,14 @@ function Options.Advanced(order)
             Options.Notify()
         end })
     gap(g, "g2")
+    add(g, "h_selfcheck", { type = "header", name = L["Self-check"] })
+    add(g, "loginCheck", {
+        type = "toggle", width = "full", name = L["Check entry points after login"],
+        get = function() return profile().loginCheck end,
+        set = function(_, value) profile().loginCheck = value and true or false; ns.App.Log("loginCheck " .. (value and "on" or "off")) end,
+    })
+    note(g, "loginCheckHelp", grey(L["After login and outside combat, CheckThat calls the functions your imported plans name and other addons registered. It prints one line in chat. It runs code from those addons, so leave it off unless you test them. It takes effect at the next login."]))
+    gap(g, "g3")
     add(g, "h_debug", { type = "header", name = L["Debug"] })
     add(g, "debug", {
         type = "toggle", width = "full", name = L["Record debug information"],

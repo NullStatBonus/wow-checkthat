@@ -67,6 +67,119 @@
       },
       "description": "Groups of steps the tester can pick when a run starts. Without it each section is a category."
     },
+    "offline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toc",
+        "steps"
+      ],
+      "description": "Tools only. Mocks, entry calls and fake events run by tools/entry_runner.lua. Compile removes it.",
+      "properties": {
+        "toc": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mockAfterLoad": {
+          "type": "boolean"
+        },
+        "mocks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "array",
+              "object"
+            ]
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "call": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "addon",
+                  "entry"
+                ],
+                "properties": {
+                  "addon": {
+                    "type": "string"
+                  },
+                  "entry": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array"
+                  }
+                }
+              },
+              "returns": {
+                "type": "array"
+              },
+              "throws": {
+                "type": "string"
+              },
+              "event": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "args": {
+                    "type": "array"
+                  }
+                }
+              },
+              "mockCalls": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "api",
+                  "count"
+                ],
+                "properties": {
+                  "api": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "call"
+                ]
+              },
+              {
+                "required": [
+                  "event"
+                ]
+              },
+              {
+                "required": [
+                  "mockCalls"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
     "sections": {
       "type": "array",
       "minItems": 1,
@@ -542,6 +655,36 @@
         },
         "screenshot": {
           "type": "boolean"
+        },
+        "call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "addon",
+            "entry"
+          ],
+          "description": "An auto step calls an entry the addon registered with CheckThat.Entry when the step opens, outside combat. The outcome is a fact line [addon] entry.<entry>=<result>, so assert on it as a fact log. Literal arguments only.",
+          "properties": {
+            "addon": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,32}$"
+            },
+            "entry": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,48}$"
+            },
+            "args": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          }
         },
         "auto": {
           "type": "boolean",

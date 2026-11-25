@@ -121,6 +121,24 @@ function Plan.CheckAuto(st, w, errs)
     local isAuto = st.auto == true
     local act = st.action
     if type(act) == "table" and act.kind == "wait-event" and not isAuto then errs[#errs + 1] = w .. ": wait-event needs an auto step" end
+    if st.call ~= nil then
+        local c = st.call
+        if not isAuto then errs[#errs + 1] = w .. ": call needs auto"
+        elseif type(c) ~= "table" or not (type(c.addon) == "string" and type(c.entry) == "string") then
+            errs[#errs + 1] = w .. ": call needs addon and entry text"
+        else
+            for k in pairs(c) do
+                if k ~= "addon" and k ~= "entry" and k ~= "args" then errs[#errs + 1] = w .. ": call has unknown field " .. tostring(k) end
+            end
+            if c.args ~= nil and (type(c.args) ~= "table" or #c.args > 8) then errs[#errs + 1] = w .. ": call args must be a list of at most 8"
+            else
+                for i, v in ipairs(c.args or {}) do
+                    local tv = type(v)
+                    if tv ~= "string" and tv ~= "number" and tv ~= "boolean" then errs[#errs + 1] = w .. ": call arg " .. i .. " must be text, a number or true or false" end
+                end
+            end
+        end
+    end
     local t = st.timeout
     if t ~= nil then
         if not isAuto then errs[#errs + 1] = w .. ": timeout needs auto"

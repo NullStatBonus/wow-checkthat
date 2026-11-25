@@ -15,6 +15,12 @@
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
 
+-- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
+Runner.MOCKABLE = {}
+for _, n in ipairs({ "GetItemInfo", "GetItemCount", "C_Item.GetItemInfo", "C_Item.GetItemCount", "GetMoney", "GetTime",
+    "UnitName", "IsInGuild", "GetNumGroupMembers", "GetContainerNumFreeSlots", "C_Container.GetContainerNumFreeSlots",
+    "C_Container.GetContainerItemInfo" }) do Runner.MOCKABLE[n] = true end
+
 local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
 
 local function deepEq(a, b)
@@ -138,7 +144,11 @@ function Runner.run(spec, opts)
     local name = spec.toc:match("([^/]+)%.toc$") or "Addon"
     local ns = {}
     local loaded, loadErr
-    if spec.mockAfterLoad then
+    local unlisted
+    for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
+    if unlisted then
+        loaded, loadErr = false, ("mock %s is not on the allow list"):format(unlisted)
+    elseif spec.mockAfterLoad then
         loaded, loadErr = loadToc(pathJoin(root, spec.toc), name, ns)
         applyMocks(spec.mocks, counts, saved)
     else

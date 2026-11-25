@@ -396,9 +396,9 @@ sections:
       name: CheckThat
       path: API_VERSION
       op: approx
-      value: 1
+      value: 2
       tolerance: 0.5
-      label: API version is 1, give or take 0.5
+      label: API version is 2, give or take 0.5
     - kind: state
       probe: global-value
       name: CheckThat

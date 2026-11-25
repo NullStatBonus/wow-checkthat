@@ -56,6 +56,49 @@ It warns when the card shows a step a second time, because the step's text must 
 - It prints the fixture's age and warns when `fixture.json` is missing or its digest differs from the plan's. Record the fixture again after a plan or log text change.
 - It tests the plan's text against the log. It does not run the addon, and it does not replace a run in the game.
 
+## Check addon code offline
+
+A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offline plans/<addon>.yaml` loads the addon's TOC files in the fake client and runs the block. It needs `luajit`. It prints JUnit and exits 1 when a step fails, and 2 when the plan has no block or the run cannot start. Compile removes the block, so the game never receives it and the plan digest ignores it.
+
+```yaml
+offline:
+  toc: ../../wow-keepthat/KeepThat/KeepThat.toc   # from this plan file's folder
+  mocks:                                          # set before the addon loads
+    GetItemInfo:
+    - { args: [7], returns: [Mocked Seven] }
+    - { returns: [Mocked Other] }
+  steps:
+  - label: Name comes from the mock
+    call: { addon: KeepThat, entry: name, args: [7] }
+    returns: [Mocked Seven]
+  - { event: { name: MERCHANT_SHOW } }
+  - { mockCalls: { api: GetItemInfo, count: 1 } }
+```
+
+- A `call` runs only an entry the addon registered with `CheckThat.Entry`. In the fake client that function is a stub, because the game has no such API yet (#97). A name that is not registered fails the step.
+- Add `returns` (a list) or `throws` (text the error contains) to a call.
+- Only APIs on the runner's list can be mocked (`Runner.MOCKABLE` in `tools/entry_runner.lua`). A plan cannot add to it.
+- Set `mockAfterLoad: true` to mock after the addon loads. A file-scope `local f = f` then keeps the real function.
+- An offline pass does not prove the game agrees. Whether a replaced global taints a protected action is not measured (#98).
+
+## Call an entry from a step
+
+An auto step can call a function the addon registered with `CheckThat.Entry` (see [Entry points](features.md#entry-points)). The outcome is a fact line, so assert on it:
+
+```yaml
+- id: kt.add
+  title: Add two numbers
+  auto: true
+  action: { kind: manual, text: CheckThat calls the entry. }
+  expect: The entry returns 5.
+  verify: [assertions]
+  call: { addon: KeepThat, entry: add, args: [2, 3] }
+  assertions:
+  - { kind: log, source: facts, equals: '[KeepThat] entry.add=5' }
+```
+
+The step needs the `facts` log source. `call` works only on an auto step. The same entry can be called offline with the [offline block](#check-addon-code-offline).
+
 ## Good logs make good plans
 
 A step can only be checked from a log if the addon writes the line. See [Debug logging](debug-logging.md).

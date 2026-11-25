@@ -1,0 +1,32 @@
+ct: 1
+addon: KeepThat
+title: Offline block sample
+offline:
+  toc: ../mockaddon/MockAddon.toc
+  mocks:
+    GetItemInfo:
+    - { args: [7], returns: [Mocked Seven] }
+    - { returns: [Mocked Other] }
+  steps:
+  - label: Captured name is mocked
+    call: { addon: MockAddon, entry: captured_name, args: [7] }
+    returns: [Mocked Seven]
+  - label: Entry throws on bad input
+    call: { addon: MockAddon, entry: boom }
+    throws: bad input
+  - label: Event reaches the handler
+    event: { name: MERCHANT_SHOW }
+  - label: Handler state is visible
+    call: { addon: MockAddon, entry: events_seen }
+    returns: [1, MERCHANT_SHOW]
+  - label: Mock was called once
+    mockCalls: { api: GetItemInfo, count: 1 }
+sections:
+- id: s
+  title: S
+  steps:
+  - id: s.one
+    title: T
+    action: { kind: manual, text: Do it. }
+    expect: Done.
+    verify: [player]

@@ -15,7 +15,7 @@ end
 
 function Adapter.Env()
     local env = {}
-    for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time", "date" }) do
+    for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time", "date", "InCombatLockdown" }) do
         env[name] = function(...) return call(name, ...) end
     end
     env.IsAddOnLoaded = function(addon)

@@ -56,6 +56,9 @@ function App.Init(db, env, opts)
         return run ~= nil and not run.endedAt
     end
     if ns.Facts then ns.Facts.Bind(db.facts, function() return now(App) end, runOpen) end
+    if ns.Entries then
+        ns.Entries.Bind(runOpen, function() return App.env.InCombatLockdown and App.env.InCombatLockdown() and true or false end)
+    end
     if ns.Errors then
         ns.Errors.Bind(db.errors, function() return now(App) end, runOpen, App.env, db.errorStacks)
     end
@@ -484,7 +487,11 @@ function App.Begin()
     local run, ctx, step = App.Current()
     if not step then return nil end
     if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample() end
+    local rec = run.steps[step.id]
+    local last = rec and rec.attempts[#rec.attempts]
+    local fresh = not (last and not last.verdict) -- a reload keeps its open attempt and its call
     local a = opening(run, step, function() return ns.Run.Begin(run, ctx, step.id) end)
+    if fresh and step.call and step.auto and a and not a.noauto and ns.Entries then ns.Entries.Run(step.call) end
     return a, step
 end
 
@@ -527,6 +534,38 @@ function App.AutoSettle(note)
     local a = ns.Run.AutoSettle(run, ctx, step.id, note)
     if a then logResult(step, a) end
     return a, step
+end
+
+-- Calls every entry that an imported plan's auto step names and compares its fact line with the step's log checks.
+-- Needs no run: nothing is recorded. Returns checked, matched, and the first miss as "step id: line" (nil when none).
+-- A step counts as matched when it has at least one required equals or contains check and all of them hold.
+function App.SelfCheck()
+    local total, matched, miss = 0, 0, nil
+    local names = {}
+    for addon in pairs(App.db and App.db.plans or {}) do names[#names + 1] = addon end
+    table.sort(names)
+    for _, addon in ipairs(names) do
+        local plan = App.db.plans[addon].plan
+        for _, sec in ipairs(plan and plan.sections or {}) do
+            for _, st in ipairs(sec.steps or {}) do
+                if st.auto and st.call and ns.Entries then
+                    total = total + 1
+                    local line = ("[%s] entry.%s=%s"):format(st.call.addon, st.call.entry, ns.Entries.Outcome(st.call))
+                    local rules, ok = 0, true
+                    for _, a in ipairs(st.assertions or {}) do
+                        if a.kind == "log" and not a.diagnostic and not a.absent and (a.equals or a.contains) then
+                            rules = rules + 1
+                            if not ((a.equals and a.equals == line) or (a.contains and line:find(a.contains, 1, true))) then ok = false end
+                        end
+                    end
+                    if rules > 0 and ok then matched = matched + 1
+                    elseif not miss then miss = st.id .. ": " .. line end
+                end
+            end
+        end
+    end
+    App.Log(("self-check: %d of %d entry checks matched"):format(matched, total))
+    return total, matched, miss
 end
 
 -- The open attempt survived a reload: the card should ask for verification, not another reload.
