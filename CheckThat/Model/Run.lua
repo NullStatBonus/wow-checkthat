@@ -18,7 +18,7 @@ end
 -- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
 -- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
 -- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
-Run.MAJOR, Run.FORMAT_REV = 1, 2
+Run.MAJOR, Run.FORMAT_REV = 1, 3
 
 -- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
 -- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
@@ -55,6 +55,9 @@ function Run.New(ctx)
         started = ctx.now, order = {}, steps = {}, current = 1,
         categories = {}, cat = {}, selected = {},
     }
+    -- The tested addon's version, when the game could say (omitted otherwise, never "unknown").
+    local tv = ctx.targetVersion
+    if type(tv) == "string" and tv ~= "" and tv ~= "unknown" then run.targetVersion = tv end
     for _, c in ipairs(cats) do
         run.categories[#run.categories + 1] = { id = c.id, title = c.title }
         if picked[c.id] then run.selected[c.id] = true end

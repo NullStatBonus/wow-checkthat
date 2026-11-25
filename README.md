@@ -86,6 +86,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - Run is not available in combat. It comes back when combat ends.
 - A step with more commands than the card has copy boxes (four) gets no Run button, so no command runs unseen. `/script` and `/dump` are not allowed.
 - A long plan or step title ends with "..." and shows in full when you point at it.
+- Each run saves the version of the addon you test (the plan's addon), when the game can tell it. `ct.py diff` and `ct.py trend --by target` show it. A run from an older CheckThat has none.
 - A step that checks a log with no saved position stays unverified. It never counts the whole log as new.
 
 ## Plans, evidence and skills

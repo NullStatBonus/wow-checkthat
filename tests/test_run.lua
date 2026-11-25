@@ -114,6 +114,18 @@ test("a run saved before the stamp is stamped when it changes, never before", fu
     R.Touch(run, 700)
     T.eq(run.formatRev, R.FORMAT_REV); T.eq(run.writerVersion, "2.0.0")
 end)
+test("a new run records the version of the addon under test, and omits it when unknown", function()
+    local run, ctx = mk()
+    T.eq(run.targetVersion, nil, "no version given: the key is absent")
+    ctx.targetVersion = "3.4.5"
+    local run2 = R.New(ctx)
+    T.eq(run2.targetVersion, "3.4.5"); T.eq(R.Export(run2).targetVersion, "3.4.5")
+    for _, bad in ipairs({ "", "unknown", 5, false }) do
+        ctx.targetVersion = bad
+        T.eq(R.New(ctx).targetVersion, nil, "never records " .. tostring(bad))
+    end
+    T.ok(R.FORMAT_REV >= 3, "the revision that added the key")
+end)
 test("a run of a newer major format is opaque", function()
     T.eq(R.Opaque({ ct = R.MAJOR + 1 }), true); T.eq(R.Opaque({ ct = R.MAJOR }), false); T.eq(R.Opaque({}), false); T.eq(R.Opaque(nil), false)
 end)

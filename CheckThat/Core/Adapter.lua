@@ -49,6 +49,15 @@ function Adapter.Version()
     return ok and type(v) == "string" and v ~= "" and v or "unknown"
 end
 ns.version = Adapter.Version()
+-- The TOC version of another addon (the one under test), or nil when it is not installed, has no version or the client cannot say.
+function Adapter.AddonVersion(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local f = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    if type(f) ~= "function" then return nil end
+    local ok, v = pcall(f, name, "Version")
+    if ok and type(v) == "string" and v ~= "" and v ~= "unknown" then return v end
+    return nil
+end
 -- Runs fn after sec seconds, if the client has timers.
 function Adapter.After(sec, fn)
     if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(sec, fn) end

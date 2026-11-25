@@ -99,6 +99,11 @@
   "writerVersion": {
    "type": "string",
    "description": "The CheckThat version (TOC) that last changed the run. Absent when unknown."
+  },
+  "targetVersion": {
+   "type": "string",
+   "minLength": 1,
+   "description": "The TOC version of the addon under test (the plan's addon) when the run started. Absent when the client could not say (formatRev 3 and later)."
   }
  },
  "$defs": {

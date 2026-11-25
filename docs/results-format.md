@@ -2,7 +2,7 @@
 
 The saved run record is the contract between CheckThat and every tool that reads a run: `tools/ct.py`, the viewer, the `ct-verify` skill and your own scripts. It lives in three places with the same layout: `CheckThatDB.global.runs` in the saved variables, the string `/ct export` makes, and `evidence/runs/<id>/r<revision>.json` after `ct.py collect`. `schema/run-results.schema.json` describes it. How the keys behave is in [Features](features.md).
 
-Current: **ct 1, formatRev 2.**
+Current: **ct 1, formatRev 3.**
 
 ## Two version numbers
 
@@ -16,6 +16,7 @@ Other stamps:
 - `formatRev` on a run is the newest revision that wrote it. It only goes up: an older CheckThat that changes the run does not lower it.
 - `formatRev` on an attempt is the revision it was finished in. A run can hold attempts from several versions, because a newer CheckThat can continue a run an older one started.
 - `writerVersion` is the CheckThat version (the TOC `Version`) that last changed the run. It is missing when the client could not say.
+- `targetVersion` is the TOC `Version` of the addon the plan tests, read when the run starts. It is missing when that addon has no version or the client could not say, and it is never the text "unknown". It is not `writerVersion`, which names CheckThat.
 - `revision` is not a version of the format. It counts the changes to one run, so a copy collected earlier can be told from a later one.
 
 ## Rules for a tool that reads a run
@@ -43,6 +44,7 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 | formatRev | Since | Adds |
 | --- | --- | --- |
+| 3 | 0.19.0 | `targetVersion` on a run: the TOC version of the addon under test (the plan's addon) when the run started. Absent when the client could not say. |
 | 2 | 0.17.0 | `reopened` on a step record: true after Undo or a rerun reopened a step that had a result. |
 | 1 | 0.15.0 | `formatRev` and `writerVersion` on a run, `formatRev` on a finished attempt. |
 | (no stamp) | 0.14.0 | On a check that did not pass: `kind`, `scope`, `source`, `label`, `rule`, `shape`, `window`, `matched`, `hits`, `stoppedAt`, `observed`, `trimmed`. |

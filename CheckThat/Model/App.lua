@@ -401,7 +401,8 @@ function App.Start(addon, picks)
         if not known[id] then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(id)) end
     end
     local ctx = { plan = rec.plan, planDigest = rec.digest, client = App.Client(), build = App.Build(),
-        character = App.Character(), now = now(App), env = App.env, selected = picks }
+        character = App.Character(), now = now(App), env = App.env, selected = picks,
+        targetVersion = ns.Adapter.AddonVersion(rec.plan.addon) }
     local run = ns.Run.New(ctx)
     if not run then return nil, picks and L["Pick at least one category that has steps for this client."] or L["The plan has no steps for this client."] end
     if ns.Errors then ns.Errors.Hook(); ns.Errors.Rebase() end
