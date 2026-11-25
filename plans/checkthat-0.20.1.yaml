@@ -133,9 +133,7 @@ sections:
     title: Press a macro made for another step
     action:
       kind: manual
-      text: Type |cff99ccff/ct macrorun ct2001.nowhere|r once. Do not click Run as well. Then press |cffffd100Pass|r on the card.
-      commands:
-      - /ct macrorun ct2001.nowhere
+      text: Type |cff99ccff/ct macrorun ct2001.nowhere|r once. Then press |cffffd100Pass|r on the card.
     expect: Chat says "This macro is for step ct2001.nowhere. The card shows step ct2001.stale." Then press Pass on the card.
     verify:
     - player
@@ -147,6 +145,7 @@ sections:
       equals: '[ct] macro stale ct2001.nowhere card ct2001.stale'
       scope: attempt
       label: The press was seen as out of date
+    notes: The command is not in commands on purpose, because the Run button would give a second press and a stale count of 2.
     reviewer: After collect, the report row of this step shows 1 stale macro press (macroStale is 1 in the saved run).
 - id: s4
   title: A result needs Redo
@@ -193,7 +192,7 @@ sections:
     title: Close the card
     action:
       kind: manual
-      text: Look for the Run button beside |cff99ccff/ct status|r on the card. Do not click it. Click the X at the top right of the card. Type |cff99ccff/ct|r to open the card again. Press |cffffd100Pass|r on the card.
+      text: Look for the Run button beside |cff99ccff/ct status|r on the card. Click the X at the top right of the card. Type |cff99ccff/ct|r to open the card again. Press |cffffd100Pass|r on the card.
       commands:
       - /ct status
     expect: While the card is closed, no Run button stays on the screen. After |cff99ccff/ct|r the card and its Run button come back. Then press Pass on the card.
