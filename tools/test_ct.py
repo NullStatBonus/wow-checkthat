@@ -1145,6 +1145,13 @@ class LinesCheck(unittest.TestCase):
         self.assertEqual([m[2] for m in missing], ["[toast] vanished from the screen"])
         self.assertEqual([f[2] for f in found], ["[opt] whole line"])
 
+    def test_an_untagged_line_built_at_run_time_matches_on_its_prefix(self):
+        d = self.src(**{"A.lua": 'Log("test command: " .. kind)\nLog("unrelated " .. x)\n'})
+        line = lambda s: {"kind": "log", "source": "debug", "contains": s}
+        found, missing = ct.lines_check(self.plan_for(line("test command: sell"), line("vanished thing here"), line("un x")), d)
+        self.assertEqual([f[2] for f in found], ["test command: sell"])
+        self.assertEqual([m[2] for m in missing], ["vanished thing here", "un x"], "a prefix under 8 characters is not enough")
+
     def test_a_fact_under_any_source_name_is_checked_and_strict_sets_the_exit_code(self):
         d = self.src(**{"A.lua": 'Report("K", "have.it", 1)\n'})
         facts = [{"kind": "fact", "source": "mine", "addon": "K", "key": "have.it"}, {"kind": "fact", "source": "mine", "addon": "K", "key": "not.there"}]
