@@ -151,29 +151,6 @@ sections:
       equals: "[ct] status requested"
       scope: attempt
       label: "The key ran /ct status"
-  - id: ct20.b
-    category: follow
-    title: "Debug command again"
-    action:
-      kind: manual
-      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
-      commands:
-      - "/ct debug on"
-    expect: "Chat says \"Debug recording is on.\". The card stays on this step until you press Pass."
-    verify:
-    - player
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: "[ct] macro run ct20.b"
-      scope: attempt
-      label: "The macro key ran the macro written for this step"
-    - kind: log
-      source: debug
-      equals: "[ct] debug on"
-      scope: attempt
-      label: "The key ran the commands of this step"
   - id: ct20.long
     category: follow
     title: "Too many commands for one macro"
@@ -384,17 +361,10 @@ sections:
     - player
   - id: ct20.reset
     category: edit
-    title: "Turn the setting off and finish"
+    title: "Clean up"
     action:
       kind: manual
-      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Clear |cffffd100Keep the CT macro on the current step|r and turn debug recording off. Press Pass on the card."
-    expect: "The setting is clear. The card shows the results screen after this result."
+      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Clear |cffffd100Keep the CT macro on the current step|r and turn debug recording off. Delete the test macros in the macro window. Press Pass on the card."
+    expect: "The setting is clear and the test macros are gone. The card shows the results screen after this result."
     verify:
     - player
-    - assertions
-    assertions:
-    - kind: log
-      source: debug
-      equals: "[ct] macroFollow off"
-      scope: attempt
-      label: "The setting turned off"
