@@ -836,7 +836,8 @@ function refreshCard()
     if step.screenshot then hint[#hint + 1] = L["Press Print Screen while the result is on screen."] end
     if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Type /reload when done. This step resumes after."] end
     if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Type /reload now so the game saves the log."] end
-    if ns.addon.db.profile.macroFollow and #App.Copyables(step, ctx.plan) > 0 and not App.MacroText(step, ctx.plan) then
+    local _, _, noMacro = Card.MacroBody()
+    if ns.addon.db.profile.macroFollow and noMacro then
         hint[#hint + 1] = L["This step has no macro: its commands do not fit in one."]
     end
     if #hint > 0 then place(card.hint, 12, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
@@ -1003,24 +1004,31 @@ local function writeMacro(body, follow, silent)
     return name, true
 end
 
--- A macro never records a result: a body with a result command (/ct pass, /checkthat fail ...) becomes /ct status.
+-- The CT macro starts with /ct macrorun <step id>, so a press says which step the macro was written for. A macro
+-- never records a result: a body with a result command (/ct pass, /checkthat fail ...) gets /ct status instead.
 local function hasResult(body)
     for line in (body .. "\n"):gmatch("(.-)\n") do
         local cmd, sub = line:lower():match("^(/%S+)%s+(%S+)")
         if (cmd == "/ct" or cmd == "/checkthat") and (sub == "pass" or sub == "partial" or sub == "fail" or sub == "skip") then return true end
     end
 end
-local function macroBodyNow()
+local MACRO_CHARS = 255 -- the game's limit for a macro body
+-- Returns the body, the step, and true when the step has commands that no macro can hold. The Run button never
+-- gets the marker: it runs App.MacroText.
+function Card.MacroBody()
     local _, ctx, step = App.Current()
-    local body = step and App.MacroText(step, ctx.plan)
-    if not body or hasResult(body) then body = "/ct status" end
-    return body, step
+    if not step then return "/ct status" end
+    local marker = "/ct macrorun " .. step.id
+    local cmds = App.MacroText(step, ctx.plan)
+    local fits = cmds and #marker + 1 + #cmds <= MACRO_CHARS
+    if fits and not hasResult(cmds) then return marker .. "\n" .. cmds, step, false end
+    return marker .. "\n/ct status", step, not fits and #App.Copyables(step, ctx.plan) > 0
 end
 
 -- Create or update the macro for the current step. Never in combat; never overwrites a macro the player made.
 function Card.MakeMacro()
     if A.InCombat() then ns.Slash.Print(L["Not available in combat."]); return end
-    local name = writeMacro((macroBodyNow()))
+    local name = writeMacro((Card.MacroBody()))
     if name then ns.Slash.Print(L["Macro %s is set. Drag it to a bar and click it."]:format(name)) end
 end
 
@@ -1030,7 +1038,7 @@ local failedOnce
 function Card.FollowMacro(fresh)
     if not (App.db and ns.addon.db.profile.macroFollow) or A.InCombat() then return end
     if fresh then failedOnce = nil end
-    local body, step = macroBodyNow()
+    local body, step = Card.MacroBody()
     local before = App.db.ui.macroName
     local name, changed = writeMacro(body, true, failedOnce)
     if name and name ~= before then ns.Slash.Print(L["Macro %s is set. Drag it to a bar and click it."]:format(name)) end

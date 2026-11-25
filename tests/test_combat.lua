@@ -111,6 +111,8 @@ local function logHas(pat)
     for _, e in ipairs(ns.Log.Entries()) do if e.msg:find(pat) then n = n + 1 end end
     return n
 end
+-- The CT macro body: the marker for the step on the card, then the commands.
+local function marked(text) local _, _, step = ns.App.Current(); return "/ct macrorun " .. step.id .. "\n" .. text end
 local function resetFollow(on)
     st.setCombat(false)
     st.macros, st.macroBody = {}, nil
@@ -126,7 +128,7 @@ test("follow: the CT macro takes the current step's commands on each step change
     resetFollow(true)
     local seen, prev = 0, nil
     for _ = 1, 6 do
-        local want = macroOf() or "/ct status"
+        local want = marked(macroOf() or "/ct status")
         T.eq(st.macroBody, want, "the macro holds the shown step")
         T.ok(not st.macroBody:find("/ct pass") and not st.macroBody:find("/ct fail")
             and not st.macroBody:find("/ct partial") and not st.macroBody:find("/ct skip"), "no result command")
@@ -156,7 +158,7 @@ test("follow: turning the setting on sets the macro at once", function()
     resetFollow(false)
     addon.db.profile.macroFollow = true
     ns.Card.FollowMacro(true)
-    T.eq(st.macroBody, macroOf() or "/ct status")
+    T.eq(st.macroBody, marked(macroOf() or "/ct status"))
 end)
 
 test("follow: steps changed in combat wait; one rewrite after combat", function()
@@ -168,7 +170,7 @@ test("follow: steps changed in combat wait; one rewrite after combat", function(
     T.eq(st.macroBody, before, "no macro edit in combat")
     T.eq(logHas("macro set"), n, "no log line in combat")
     combatEnds()
-    T.eq(st.macroBody, macroOf() or "/ct status", "the latest step after combat")
+    T.eq(st.macroBody, marked(macroOf() or "/ct status"), "the latest step after combat")
     T.eq(logHas("macro set"), n + 1, "one rewrite")
 end)
 
@@ -189,7 +191,7 @@ test("follow: a step whose commands do not fit gets /ct status and a card line",
     local _, ctx, step = ns.App.Current()
     step.action = { kind = "manual", text = "x", commands = { "/ct status", "/ct status", "/ct status", "/ct status", "/ct status" } }
     ns.Card.Refresh()
-    T.eq(st.macroBody, "/ct status")
+    T.eq(st.macroBody, marked("/ct status"))
     T.ok(_G.CheckThatCard.hint:GetText():find("no macro"), "card line says so")
     step.action = { kind = "manual", text = "x" }
     ns.Card.Refresh()
@@ -205,7 +207,7 @@ test("follow: a result command in a step never reaches the macro", function()
     for _, cmd in ipairs({ "/checkthat pass", "/ct Fail note", "/ct skip" }) do
         step.action = { kind = "manual", text = "x", commands = { "/ct status", cmd } }
         ns.Card.Refresh()
-        T.eq(st.macroBody, "/ct status", cmd)
+        T.eq(st.macroBody, marked("/ct status"), cmd)
     end
     allow["/checkthat"], allow["/ct"] = had, nil
 end)
@@ -216,11 +218,11 @@ test("follow: a collapsed card and the end of combat still move the macro", func
     addon.db.profile.card.collapsed = true
     step.action = { kind = "manual", text = "x", commands = { "/kt log" } }
     ns.Card.Refresh()
-    T.eq(st.macroBody, "/kt log", "collapsed")
+    T.eq(st.macroBody, marked("/kt log"), "collapsed")
     st.setCombat(true)
     step.action = { kind = "manual", text = "x", commands = { "/kt log", "/reload" } }
     combatEnds()
-    T.eq(st.macroBody, "/kt log\n/reload", "after combat while collapsed")
+    T.eq(st.macroBody, marked("/kt log\n/reload"), "after combat while collapsed")
     addon.db.profile.card.collapsed = false
 end)
 
@@ -243,7 +245,94 @@ test("follow: a refused edit keeps following", function()
     T.eq(logHas("macro set"), n, "no false log line")
     _G.EditMacro = real
     ns.Card.Refresh()
-    T.eq(st.macroBody, "/kt log", "the next refresh writes it")
+    T.eq(st.macroBody, marked("/kt log"), "the next refresh writes it")
+end)
+
+-- A key press: the game runs each line of the macro body through /ct.
+local function press()
+    for line in (st.macroBody .. "\n"):gmatch("(.-)\n") do
+        local cmd = line:match("^/ct%s+(.*)$")
+        if cmd then slash(cmd) end
+    end
+end
+
+test("follow: a press on the step the macro was written for logs macro run", function()
+    resetFollow(true)
+    local _, _, step = ns.App.Current()
+    press()
+    T.eq(logHas("macro run " .. step.id), 1)
+    T.eq(logHas("macro stale"), 0)
+end)
+
+test("follow: a press after the step moved in combat logs macro stale", function()
+    resetFollow(true)
+    local _, _, old = ns.App.Current()
+    st.setCombat(true)
+    slash("skip")
+    local _, _, cur = ns.App.Current()
+    local said = {}
+    local print0 = ns.Slash.Print; ns.Slash.Print = function(s) said[#said + 1] = s end
+    press()
+    ns.Slash.Print = print0
+    T.eq(logHas("macro stale " .. old.id .. " card " .. cur.id), 1)
+    T.eq(logHas("macro run"), 0)
+    T.ok(said[1] and said[1]:find(old.id, 1, true) and said[1]:find(cur.id, 1, true), "chat names both steps")
+    combatEnds()
+end)
+
+test("follow: setting off, then a press on a later step, logs macro stale", function()
+    resetFollow(true)
+    local _, _, old = ns.App.Current()
+    addon.db.profile.macroFollow = false
+    slash("skip")
+    local _, _, cur = ns.App.Current()
+    press()
+    T.eq(logHas("macro stale " .. old.id .. " card " .. cur.id), 1)
+end)
+
+test("follow: the Run button never logs macro run", function()
+    resetFollow(true)
+    local card = _G.CheckThatCard
+    toStepWithCommands(); ns.Card.Refresh()
+    ns.Log.Clear()
+    local run = st.click(card.secure)
+    T.ok(run and not run:find("macrorun"), "Run holds the commands only")
+    T.eq(logHas("macro run"), 0)
+end)
+
+test("follow: a body near the limit falls back to the marker and /ct status", function()
+    resetFollow(true)
+    local _, _, step = ns.App.Current()
+    local long = "/kt log " .. ("x"):rep(255 - 8 - #("/ct macrorun " .. step.id) )
+    step.action = { kind = "manual", text = "x", commands = { long } }
+    ns.Card.Refresh()
+    T.eq(st.macroBody, marked("/ct status"), "marker plus command is over 255")
+    T.ok(_G.CheckThatCard.hint:GetText():find("no macro"))
+    step.action = { kind = "manual", text = "x", commands = { "/kt log" } }
+    ns.Card.Refresh()
+    T.eq(st.macroBody, marked("/kt log"))
+end)
+
+test("follow: /ct macrorun needs one step id and records no result", function()
+    resetFollow(true)
+    local said = {}
+    local print0 = ns.Slash.Print; ns.Slash.Print = function(s) said[#said + 1] = s end
+    slash("macrorun"); slash("macrorun a b")
+    ns.Slash.Print = print0
+    T.eq(#said, 2, "usage line each time")
+    T.ok(said[1]:find("Usage"))
+    T.eq(logHas("macro run") + logHas("macro stale"), 0)
+    local _, _, step = ns.App.Current()
+    slash("macrorun " .. step.id)
+    local _, _, still = ns.App.Current()
+    T.eq(still.id, step.id, "no result, the card stays")
+end)
+
+test("follow: a macro without the marker logs nothing", function()
+    resetFollow(true)
+    st.macroBody = "/ct status"
+    press()
+    T.eq(logHas("macro run"), 0); T.eq(logHas("macro stale"), 0)
 end)
 
 test("follow: the setting is in the debug report", function()

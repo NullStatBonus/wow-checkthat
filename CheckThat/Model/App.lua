@@ -465,6 +465,17 @@ function App.MacroText(step, plan)
     end
 end
 
+-- The first line of the CT macro, /ct macrorun <step id>. It only logs: a match is "macro run", another step is
+-- "macro stale". Returns the chat line for a stale press. Never records a result.
+function App.MacroRun(id)
+    local _, _, step = App.Current()
+    local cur = step and step.id
+    if id == cur then App.Log("macro run " .. id); return nil end
+    App.Log("macro stale " .. id .. " card " .. (cur or "none"))
+    if not cur then return L["This macro is for step %s. No step is open."]:format(id) end
+    return L["This macro is for step %s. The card shows step %s."]:format(id, cur)
+end
+
 -- Section intro for the card, shown on the first step of a section that has no verdicts yet.
 function App.SectionIntro(run, ctx, stepId)
     local steps = ns.Plan.Steps(ctx.plan, run.client)
