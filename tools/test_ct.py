@@ -1021,6 +1021,20 @@ class SkillText(unittest.TestCase):
             self.assertEqual(sorted(named - real), [], path)
 
 
+class SkillSplit(unittest.TestCase):
+    def test_the_main_text_leaves_checkthat_internals_to_the_reference(self):
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
+            main = f.read()
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "reference.md"), encoding="utf-8") as f:
+            ref = f.read()
+        for internal in ("`Plan.SLASH`", "`LOGS` in `ct.py`", "major*10000"):
+            self.assertNotIn(internal, main)
+            self.assertIn(internal, ref)
+        for section in ("### Supported addons", "### Log sources", "### Version check"):
+            self.assertIn(section, ref)
+        self.assertIn('in `reference.md`', main)
+
+
 class ReviseMode(unittest.TestCase):
     def test_skill_states_the_revise_rules(self):
         with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:

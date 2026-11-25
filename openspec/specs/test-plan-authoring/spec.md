@@ -288,3 +288,10 @@ The skill SHALL, when the author has a finished run, read the verify report and 
 #### Scenario: Run of another build
 - **WHEN** the report warns that the run used another addon version or plan file
 - **THEN** the skill stops and asks for a new run
+
+### Requirement: Main skill text is addon-neutral
+The skill's main text SHALL hold the rules that apply to any addon and SHALL point to its reference file for CheckThat's supported-addon list, log sources and version-check recipes.
+
+#### Scenario: Author of another addon
+- **WHEN** an author of another addon reads the main skill text
+- **THEN** it names no CheckThat internal file or table, and each detail is one pointer away in the reference
