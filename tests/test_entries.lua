@@ -83,6 +83,20 @@ test("a TOC line that leaves the addon folder stops the run before any file load
     T.ok(r.steps[1].detail:find("leaves the addon folder", 1, true), r.steps[1].detail)
 end)
 
+test("libraries listed through embeds.xml load first, with the addon's name, and a commented-out file does not", function()
+    _G.MockLibs = nil
+    local r = run({ toc = TOC, steps = { { call = { addon = "MockAddon", entry = "libs" }, returns = { "MockAddon", true, false } } } })
+    same(names(r), { true })
+end)
+
+test("an XML path that leaves the addon folder stops the run before any file loads", function()
+    _G.MockAddonRan = nil
+    local r = run({ toc = "tests/fixtures/MockAddon/EscapeXml.toc", steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    T.eq(r.ok, false); T.eq(r.steps[1].step, 0)
+    T.ok(r.steps[1].detail:find("leaves the addon folder: ../MockAddon/Core.lua", 1, true), r.steps[1].detail)
+    T.eq(rawget(_G, "MockAddonRan"), nil)
+end)
+
 test("a step without a mock says so", function()
     local r = run({ toc = TOC, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 2 } }, returns = { 3 } } } })
     T.eq(r.steps[1].mocked, false); same(r.mocks, {})

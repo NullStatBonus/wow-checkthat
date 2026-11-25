@@ -77,6 +77,8 @@ offline:
   - { mockCalls: { api: GetItemInfo, count: 1 } }
 ```
 
+- **TOC.** The runner loads each `.lua` line of the TOC and follows each `.xml` line, such as `embeds.xml`: every `Script` and `Include` file it names loads in order, relative to that XML file, as in the game. XML comments are skipped. A path with `..`, a leading `/` or `\` or a drive letter, in the TOC or in an XML file, stops the run before any file loads. XML frame templates and inline `<Script>` code are not run.
+- **Covers.** A plan with `covers:` is checked against the addon's specs, as with `validate`: `--specs <folder>`, or the nearest `openspec/specs` above the plan file.
 - A `call` runs only an entry the addon registered with `CheckThat.Entry`. In the fake client `CheckThat.Entry` is a stub that applies the same name rules as the game. A name that is not registered fails the step. An addon should register at `PLAYER_LOGIN`, not at file scope, because the addons CheckThat lists as optional load first and `CheckThat.Entry` does not exist yet (see [Entry points](features.md#entry-points)).
 - Add `returns` (a list) or `throws` (text the error contains) to a call.
 - Only APIs on the runner's list can be mocked (`Runner.MOCKABLE` in `tools/entry_runner.lua`). A plan cannot add to it.

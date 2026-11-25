@@ -147,27 +147,46 @@ function H.plain(ns)
     end
 end
 
--- Loads every file a TOC lists, in order, following embeds.xml Script/Include entries.
-function H.loadToc(ns, toc)
-    local dir = toc:match("^(.*)/[^/]+$")
-    local function run(path)
-        path = path:gsub("\\", "/")
+-- The Lua files a TOC loads, in order, following Script and Include entries of the XML files it lists (paths
+-- relative to each XML file, as in the game). Returns nil, err for a path that leaves the addon folder or an XML
+-- file that cannot be read; the whole list is built before anything runs.
+function H.tocFiles(toc)
+    local out = {}
+    local function bad(p) return p:find("..", 1, true) or p:match("^[/\\]") or p:match("^%a:") end
+    local function add(base, rel)
+        rel = rel:gsub("\\", "/"):gsub("^%s+", ""):gsub("%s+$", "")
+        if bad(rel) then return nil, "a TOC file path leaves the addon folder: " .. rel end
+        local path = base .. "/" .. rel
         if path:match("%.xml$") then
-            local f = assert(io.open(path)); local xml = f:read("*a"); f:close()
-            xml = xml:gsub("<!%-%-.-%-%->", "")
-            local base = path:match("^(.*)/[^/]+$")
-            for kind, rel in xml:gmatch('<(%a+) file="([^"]+)"') do
-                if kind == "Script" or kind == "Include" then run(base .. "/" .. rel) end
+            local f = io.open(path)
+            if not f then return nil, "cannot read " .. path end
+            local xml = f:read("*a"):gsub("<!%-%-.-%-%->", ""); f:close()
+            local dir = path:match("^(.*)/[^/]+$")
+            for kind, file in xml:gmatch('<(%a+)%s+file="([^"]+)"') do
+                if kind == "Script" or kind == "Include" then
+                    local ok, err = add(dir, file)
+                    if not ok then return nil, err end
+                end
             end
         elseif path:match("%.lua$") then
-            local chunk = assert(loadfile(path))
-            chunk("CheckThat", ns)
+            out[#out + 1] = path
         end
+        return true
     end
+    local dir = toc:match("^(.*)/[^/]+$") or "."
     for line in io.lines(toc) do
         line = line:gsub("\r", "")
-        if not line:match("^#") and line:match("%S") then run(dir .. "/" .. line) end
+        if line:match("%S") and not line:match("^%s*#") then
+            local ok, err = add(dir, line)
+            if not ok then return nil, err end
+        end
     end
+    return out
+end
+
+-- Loads every file a TOC lists, in order, following embeds.xml Script/Include entries.
+function H.loadToc(ns, toc)
+    for _, path in ipairs(assert(H.tocFiles(toc))) do assert(loadfile(path))("CheckThat", ns) end
 end
 
 return function()

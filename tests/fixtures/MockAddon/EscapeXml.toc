@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: EscapeXml
+## Notes: Fixture: an XML file whose Script path climbs out of the addon folder. The runner must refuse it. Not shipped.
+Core.lua
+escape.xml
