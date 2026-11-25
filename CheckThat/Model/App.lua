@@ -536,7 +536,10 @@ function App.Verdict(verdict, note)
     do -- A step that has a result is read-only until Redo or Undo opens it again.
         local rec = run.steps[step.id]
         local last = rec and rec.attempts[#rec.attempts]
-        if last and last.verdict and rec.verdict ~= "pending" then return nil, L["This step has a result. Use Redo this step or Undo first."] end
+        if last and last.verdict and rec.verdict ~= "pending" then
+            App.Log(("verdict refused %s: step has a result"):format(step.id))
+            return nil, L["This step has a result. Use Redo this step or Undo first."]
+        end
     end
     if ns.Errors then
         local rec = run.steps[step.id]

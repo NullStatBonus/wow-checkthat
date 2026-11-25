@@ -81,7 +81,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 
 18. **A result needs Redo.** Pass a step, press the back arrow to show it, then type `/ct fail`.
    Check: chat says the step has a result and to use Redo this step or Undo first. The step still shows Pass.
-   Log: no `[ct] step <id> fail` line for it.
+   Log: `[ct] verdict refused <step id>: step has a result`, and no `[ct] step <id> fail` line for it.
 
 ## 4. Evidence
 

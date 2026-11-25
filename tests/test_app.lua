@@ -239,11 +239,14 @@ test("undo follows commit order and drops the open retry", function()
     T.eq(run.steps["kt.1"].verdict, "skip", "earlier step untouched")
 end)
 test("a slash verdict on a step that has a result needs Redo or Undo first", function()
-    boot(); App.ImportPlan(assert(ns.Codec.Encode(plan()))); App.Start("KeepThat")
+    local db0 = boot(); db0.log.enabled = true; App.ImportPlan(assert(ns.Codec.Encode(plan()))); App.Start("KeepThat")
     App.Begin(); T.ok(App.Verdict("skip"))     -- kt.1
     App.Goto(-1)
     local a, err = App.Verdict("fail")
     T.ok(a == nil and err:find("has a result"), err)
+    local logged = 0
+    for _, e in ipairs(ns.Log.Entries()) do if e.msg == "[ct] verdict refused kt.1: step has a result" then logged = logged + 1 end end
+    T.eq(logged, 1, "the refusal is logged")
     local run = App.Current()
     T.eq(run.steps["kt.1"].verdict, "skip"); T.eq(#run.steps["kt.1"].attempts, 1)
     App.Begin(); T.ok(App.Verdict("pass"), "after Redo a verdict is taken")
