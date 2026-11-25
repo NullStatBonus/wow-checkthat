@@ -2,19 +2,21 @@
 # Copies only the files the CT collector needs from every WoW install, keeping per-character files
 # (the shared copy script skips those for Classic Era): CheckThat, KeepThat, DontDoThat and
 # ClosestVendor saved variables, plus Screenshots. Read-only on the game folders.
+# -Names lists the saved-variables file names to copy (CheckThat is always copied). Each copied file prints its modified time and age.
 # Then run:  .venv/bin/python tools/ct.py collect --src <Destination>
 param(
     [string[]]$Roots = @(
         'D:\Program Files\World of Warcraft\_forever_',
         'D:\Program Files\World of Warcraft\_classic_era_'
     ),
-    [string]$Destination = (Join-Path $PSScriptRoot '..\evidence-src')
+    [string]$Destination = (Join-Path $PSScriptRoot '..\evidence-src'),
+    [string[]]$Names = @('KeepThat', 'DontDoThat', 'ClosestVendor')
 )
 $ErrorActionPreference = 'Stop'
 $Destination = [System.IO.Path]::GetFullPath($Destination)
 Write-Host "Copying to $Destination"
 try {
-$names = 'CheckThat', 'KeepThat', 'DontDoThat', 'ClosestVendor'
+$names = @('CheckThat') + @($Names | Where-Object { $_ -ne 'CheckThat' })
 foreach ($root in $Roots) {
     $flavor = Split-Path $root -Leaf
     $wtf = Join-Path $root 'WTF'
@@ -26,8 +28,14 @@ foreach ($root in $Roots) {
                 $target = Join-Path (Join-Path $Destination $flavor) (Join-Path 'WTF' $rel)
                 [void][System.IO.Directory]::CreateDirectory((Split-Path $target))
                 Copy-Item -LiteralPath $_.FullName -Destination $target -Force
-                Write-Host "Copied $flavor\$rel"
+                $age = New-TimeSpan -Start $_.LastWriteTime -End (Get-Date)
+                Write-Host ("Copied {0}\{1}, modified {2:yyyy-MM-dd HH:mm:ss}, {3:N0} min ago" -f $flavor, $rel, $_.LastWriteTime, $age.TotalMinutes)
             }
+    }
+    foreach ($n in $names) {
+        if (-not (Get-ChildItem -LiteralPath $wtf -Recurse -File -Filter "$n.lua" -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq 'SavedVariables' })) {
+            Write-Host "Warning: no $n.lua under $flavor." -ForegroundColor Yellow
+        }
     }
     $shots = Join-Path $root 'Screenshots'
     if (Test-Path -LiteralPath $shots) {

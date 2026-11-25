@@ -616,21 +616,325 @@ def offline_plan(plan, addons):
 
 # ---------------------------------------------------------------- evidence harvest
 
+# ---------------------------------------------------------------- saved-variables reader (no luajit)
+# Reads the subset of Lua the game writes to SavedVariables and gives the JSON text tools/sv2json.lua gives: the same
+# array test, string keys, depth limit and canonical encoder (CheckThat/Model/Json.lua). Strings stay bytes, as in Lua.
+
+class SVError(ValueError):
+    pass
+
+_SV_NUM = re.compile(rb"0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+_SV_NAME = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*")
+_SV_LONG = re.compile(rb"\[(=*)\[")
+_SV_ESC = {ord(k): v for k, v in (("n", 10), ("t", 9), ("r", 13), ("a", 7), ("b", 8), ("f", 12), ("v", 11), ("\\", 92), ('"', 34), ("'", 39), ("\n", 10))}
+
+class _SVParser:
+    def __init__(self, data):
+        self.s, self.i = data, 0
+
+    def fail(self, msg):
+        raise SVError("%s at byte %d" % (msg, self.i))
+
+    def skip(self):
+        s = self.s
+        while self.i < len(s):
+            c = s[self.i]
+            if c in b" \t\r\n":
+                self.i += 1
+            elif s.startswith(b"--", self.i):
+                m = _SV_LONG.match(s, self.i + 2)
+                if m:
+                    end = s.find(b"]" + m.group(1) + b"]", m.end())
+                    if end < 0:
+                        self.fail("unfinished long comment")
+                    self.i = end + len(m.group(1)) + 2
+                else:
+                    nl = s.find(b"\n", self.i)
+                    self.i = len(s) if nl < 0 else nl
+            else:
+                break
+
+    def long_string(self, m):
+        close = b"]" + m.group(1) + b"]"
+        end = self.s.find(close, m.end())
+        if end < 0:
+            self.fail("unfinished long string")
+        body = self.s[m.end():end]
+        self.i = end + len(close)
+        return body[1:] if body.startswith(b"\r\n") else body[1:] if body.startswith(b"\n") else body
+
+    def string(self):
+        s, q = self.s, self.s[self.i]
+        self.i += 1
+        out = bytearray()
+        while True:
+            if self.i >= len(s):
+                self.fail("unfinished string")
+            c = s[self.i]
+            if c == q:
+                self.i += 1
+                return bytes(out)
+            if c == 10:
+                self.fail("unfinished string")
+            if c != 92:
+                out.append(c); self.i += 1; continue
+            self.i += 1
+            e = s[self.i] if self.i < len(s) else None
+            if e is None:
+                self.fail("unfinished string")
+            if e in _SV_ESC:
+                out.append(_SV_ESC[e]); self.i += 1
+            elif 48 <= e <= 57:
+                m = re.compile(rb"\d{1,3}").match(s, self.i)
+                if int(m.group()) > 255:
+                    self.fail("escape sequence too large")
+                out.append(int(m.group())); self.i = m.end()
+            elif e == 120:   # \xXX
+                m = re.compile(rb"[0-9a-fA-F]{2}").match(s, self.i + 1)
+                if not m:
+                    self.fail("hexadecimal digit expected")
+                out.append(int(m.group(), 16)); self.i = m.end()
+            elif e == 122:   # \z skips the white space after it
+                self.i += 1
+                while self.i < len(s) and s[self.i] in b" \t\r\n\f\v":
+                    self.i += 1
+            else:
+                self.fail("invalid escape sequence")
+
+    def value(self):
+        self.skip()
+        s = self.s
+        if self.i >= len(s):
+            self.fail("value expected")
+        c = s[self.i]
+        if c == 123:
+            return self.table()
+        if c in b"\"'":
+            return self.string()
+        m = _SV_LONG.match(s, self.i) if c == 91 else None
+        if m:
+            return self.long_string(m)
+        neg = c == 45
+        if neg:
+            self.i += 1; self.skip(); c = s[self.i] if self.i < len(s) else 0
+        if c in b"0123456789." and (m := _SV_NUM.match(s, self.i)):
+            self.i = m.end()
+            t = m.group()
+            v = float(int(t, 16)) if t[:2] in (b"0x", b"0X") else float(t)
+            return -v if neg else v
+        if neg:
+            self.fail("number expected")
+        m = _SV_NAME.match(s, self.i)
+        if m and m.group() in (b"true", b"false", b"nil"):
+            self.i = m.end()
+            return {b"true": True, b"false": False, b"nil": None}[m.group()]
+        self.fail("unsupported value")
+
+    def table(self):
+        s = self.s
+        self.i += 1
+        t, n = {}, 0
+        while True:
+            self.skip()
+            if self.i >= len(s):
+                self.fail("unfinished table")
+            if s[self.i] == 125:
+                self.i += 1
+                return t
+            key = None
+            m = _SV_LONG.match(s, self.i) if s[self.i] == 91 else None
+            if s[self.i] == 91 and not m:
+                self.i += 1
+                key = self.value(); self.skip()
+                if s[self.i:self.i + 1] != b"]":
+                    self.fail("] expected")
+                self.i += 1; self.skip()
+                if s[self.i:self.i + 1] != b"=":
+                    self.fail("= expected")
+                self.i += 1
+                if key is None:
+                    self.fail("nil key")
+                if isinstance(key, bool):
+                    key = ("bool", key)   # True == 1.0 in a dict: keep the two apart
+                val = self.value()
+            else:
+                nm = _SV_NAME.match(s, self.i)
+                after = nm and s[nm.end():].lstrip(b" \t\r\n")[:2]
+                if nm and after[:1] == b"=" and after != b"==" and nm.group() not in (b"true", b"false", b"nil"):
+                    key = nm.group(); self.i = nm.end(); self.skip(); self.i += 1
+                    val = self.value()
+                else:
+                    n += 1; key = float(n)
+                    val = self.value()
+            if val is None:
+                t.pop(key, None)
+            else:
+                t[key] = val
+            self.skip()
+            if s[self.i:self.i + 1] in (b",", b";"):
+                self.i += 1
+            elif s[self.i:self.i + 1] != b"}":
+                self.fail("} expected")
+
+def sv_globals(data):
+    """{name: value} for each global the file assigns. Tables are dicts keyed by bytes, bool or float."""
+    p, env = _SVParser(data), {}
+    while True:
+        p.skip()
+        if p.i >= len(data):
+            return env
+        m = _SV_NAME.match(data, p.i)
+        if not m:
+            p.fail("name expected")
+        p.i = m.end(); p.skip()
+        if data[p.i:p.i + 1] != b"=" or data[p.i:p.i + 2] == b"==":
+            p.fail("= expected")
+        p.i += 1
+        v = p.value()
+        if v is None:
+            env.pop(m.group(), None)
+        else:
+            env[m.group()] = v
+        p.skip()
+        if data[p.i:p.i + 1] == b";":
+            p.i += 1
+
+def _sv_tostring(k):
+    if isinstance(k, bytes):
+        return k
+    if isinstance(k, tuple):
+        return b"true" if k[1] else b"false"
+    return (b"%.14g" % k)
+
+def _sv_is_array(t):
+    return all(float(i) in t for i in range(1, len(t) + 1))
+
+def _sv_norm(v, depth):
+    if not isinstance(v, dict):
+        return v
+    if depth > 30:
+        return None
+    if _sv_is_array(v):
+        pairs = [(float(i), v[float(i)]) for i in range(1, len(v) + 1)]
+    else:
+        pairs = [(_sv_tostring(k), x) for k, x in v.items()]
+    return {k: n for k, x in pairs if (n := _sv_norm(x, depth + 1)) is not None}
+
+_SV_JESC = {34: '\\"', 92: "\\\\", 8: "\\b", 12: "\\f", 10: "\\n", 13: "\\r", 9: "\\t"}
+
+def _sv_utf8cp(s, i):
+    c, n = s[i], len(s)
+    if c < 0x80:
+        return c, 1
+    if c >= 0xF0:
+        if i + 3 >= n:
+            return 0xFFFD, 1
+        a, b, d = s[i + 1:i + 4]
+        return ((c % 8) * 262144) + ((a % 64) * 4096) + ((b % 64) * 64) + (d % 64), 4
+    if c >= 0xE0:
+        if i + 2 >= n:
+            return 0xFFFD, 1
+        a, b = s[i + 1:i + 3]
+        return ((c % 16) * 4096) + ((a % 64) * 64) + (b % 64), 3
+    if c >= 0xC0:
+        if i + 1 >= n:
+            return 0xFFFD, 1
+        return ((c % 32) * 64) + (s[i + 1] % 64), 2
+    return 0xFFFD, 1
+
+def _sv_enc_string(s):
+    out, i = ['"'], 0
+    while i < len(s):
+        c = s[i]
+        if c < 0x80:
+            out.append(_SV_JESC.get(c) or ("\\u%04x" % c if c < 0x20 or c == 0x7F else chr(c)))
+            i += 1
+        else:
+            cp, ln = _sv_utf8cp(s, i)
+            if cp >= 0x10000:
+                cp -= 0x10000
+                out.append("\\u%04x\\u%04x" % (0xD800 + cp // 1024, 0xDC00 + cp % 1024))
+            else:
+                out.append("\\u%04x" % cp)
+            i += ln
+    out.append('"')
+    return "".join(out)
+
+def _sv_enc(v, out, depth):
+    if depth > 40:
+        raise SVError("too deep")
+    if isinstance(v, bytes):
+        out.append(_sv_enc_string(v))
+    elif isinstance(v, bool):
+        out.append("true" if v else "false")
+    elif isinstance(v, float):
+        if v != v or v in (float("inf"), float("-inf")):
+            raise SVError("bad number")
+        out.append("%d" % v if v == int(v) and abs(v) < 1e15 else "%.14g" % v)
+    elif isinstance(v, dict):
+        if _sv_is_array(v):
+            out.append("[")
+            for i in range(1, len(v) + 1):
+                if i > 1:
+                    out.append(",")
+                _sv_enc(v[float(i)], out, depth + 1)
+            out.append("]")
+        else:
+            if not all(isinstance(k, bytes) for k in v):
+                raise SVError("non-string key")
+            out.append("{")
+            for j, k in enumerate(sorted(v)):
+                if j:
+                    out.append(",")
+                out.append(_sv_enc_string(k) + ":")
+                _sv_enc(v[k], out, depth + 1)
+            out.append("}")
+    else:
+        raise SVError("cannot encode")
+
+def sv_text(path):
+    """The canonical JSON text of every global in a saved-variables file: what sv2json.lua prints, without the final newline."""
+    with open(path, "rb") as fh:
+        env = sv_globals(fh.read())
+    top = {k: n for k, v in env.items() if (n := _sv_norm(v, 0)) is not None}
+    out = []
+    _sv_enc(top, out, 0)
+    return "".join(out)
+
 def sv_json(path):
-    r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "sv2json.lua"), path], capture_output=True, text=True)
-    if r.returncode:
-        raise RuntimeError(r.stderr.strip())
-    return json.loads(r.stdout)
+    return json.loads(sv_text(path))
 
 
-WATCH = ("CheckThat", "KeepThat", "DontDoThat", "ClosestVendor")
+WATCH = ("CheckThat", "KeepThat", "DontDoThat", "ClosestVendor")   # the files collected when no plan is given
 
+def sv_wanted(plan):
+    """(file names, globals) a plan asks for: its addon's file, CheckThat's own, and every logs.*.global."""
+    plan = plan if isinstance(plan, dict) else {}
+    stems = ["CheckThat"] + ([plan["addon"]] if isinstance(plan.get("addon"), str) else [])
+    logs = plan.get("logs") if isinstance(plan.get("logs"), dict) else {}
+    globs = {l["global"] for l in logs.values() if isinstance(l, dict) and isinstance(l.get("global"), str)}
+    return tuple(stems), globs
 
-def find_sv(src):
-    found = []
-    for name in WATCH:
-        found += glob.glob(os.path.join(src, "**", "SavedVariables", name + ".lua"), recursive=True)
-    return sorted(set(found))
+def find_sv(src, stems=WATCH, globs=(), defined=None):
+    """Saved-variables files under src: those named in stems, and (when globs is given) those that assign one of the globals.
+    Each global found is added to the set defined."""
+    found = set()
+    for p in glob.glob(os.path.join(src, "**", "SavedVariables", "*.lua"), recursive=True):
+        hit = os.path.basename(p)[:-4] in stems
+        if globs:
+            try:
+                with open(p, "rb") as fh:
+                    data = fh.read()
+            except OSError:
+                continue
+            for g in globs:
+                if re.search(rb"(?m)^\s*" + re.escape(g.encode()) + rb"\s*=", data):
+                    hit = True
+                    if defined is not None:
+                        defined.add(g)
+        if hit:
+            found.add(p)
+    return sorted(found)
 
 
 WOW_CLIENTS = ("_classic_era_", "_forever_")
@@ -654,12 +958,17 @@ def cmd_collect(a):
         if getattr(a, "shots", None):
             shot_dirs = [a.shots]
     new_sv = new_runs = failed = 0
+    plan = getattr(a, "plan", None)
+    want = sv_wanted(load_yaml(plan)) if plan else (WATCH, set())
+    defined = set()
     for src, base in sources:
-        n_sv, n_runs, n_failed = collect_src(src, base, dest)
+        n_sv, n_runs, n_failed = collect_src(src, base, dest, want, defined)
         new_sv += n_sv; new_runs += n_runs; failed += n_failed
+    for g in sorted(want[1] - defined):
+        print("warning: no saved-variables file under %s defines %s (a plan log reads it)" % (", ".join(s for s, _ in sources), g), file=sys.stderr)
     new_shots, loose = 0, []
     for d in shot_dirs:
-        n, un = collect_shots(dest, d, all_shots=getattr(a, "all_shots", False))
+        n, un = collect_shots(dest, d, all_shots=getattr(a, "all_shots", False), slack=getattr(a, "shot_slack", 2))
         new_shots += n; loose += un
     print("collected: %d new saved-variable copies, %d new run revisions, %d new screenshots -> %s" % (new_sv, new_runs, new_shots, dest))
     if loose:
@@ -669,7 +978,7 @@ def cmd_collect(a):
             for name, rid, sid, gap in loose:
                 print("  %s: %d s from step %s of run %s" % (name, gap, sid, rid))
     if failed:
-        print("error: %d saved-variables file(s) could not be decoded (is luajit installed?)" % failed, file=sys.stderr)
+        print("error: %d saved-variables file(s) could not be decoded (is the file damaged?)" % failed, file=sys.stderr)
         return 1
     return 0
 
@@ -707,13 +1016,15 @@ def load_errors(dest, rid=None):
                     into.setdefault(line.split(" ", 1)[0], line.split(" ", 1)[1])
     return errs, stacks
 
-def collect_src(src, base, dest):
+def collect_src(src, base, dest, want=(WATCH, ()), defined=None):
     os.makedirs(os.path.join(dest, "sv"), exist_ok=True)
     os.makedirs(os.path.join(dest, "runs"), exist_ok=True)
     new_sv = new_runs = failed = 0
-    for f in find_sv(src):
+    for f in find_sv(src, want[0], want[1], defined):
         with open(f, "rb") as fh:
             data = fh.read()
+        mt = os.path.getmtime(f)
+        print("source: %s, modified %s, %s ago" % (os.path.relpath(f, base), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mt)), age(time.time() - mt)))
         h = hashlib.sha1(data).hexdigest()[:10]
         rel = os.path.relpath(f, base).replace(os.sep, "__")
         out = os.path.join(dest, "sv", "%s.%s.lua" % (rel[:-4], h))
@@ -761,8 +1072,8 @@ SHOT_NEAR = 3600   # a screenshot this many seconds from an attempt, outside its
 SHOT_CLIENT = {"_classic_era_": "classic-era", "_forever_": "forever-camelot"}
 
 
-def collect_shots(dest, shots_dir, all_shots=False):
-    """Copy screenshots whose mtime falls inside a step attempt window into runs/<id>/shots/.
+def collect_shots(dest, shots_dir, all_shots=False, slack=2):
+    """Copy screenshots whose mtime falls inside a step attempt window (plus slack seconds each side) into runs/<id>/shots/.
     Returns (copied, loose): loose lists (file, run, step, gap in seconds) for each file that fits no window but lies within SHOT_NEAR of one.
     A file inside a window is matched whether or not an earlier collect copied it. all_shots copies loose files to runs/<id>/unassigned-shots/."""
     if not shots_dir or not os.path.isdir(shots_dir):
@@ -783,7 +1094,7 @@ def collect_shots(dest, shots_dir, all_shots=False):
                     wins.append((rid, pos.get(sid, 0), sid, start, at.get("finished") or start + 900, run.get("client")))
     copied, loose = 0, []
     for mt, name, p in sorted(files):
-        inside = [w for w in wins if w[3] - 2 <= mt <= w[4] + 2]
+        inside = [w for w in wins if w[3] - slack <= mt <= w[4] + slack]
         for rid, _, sid, _, _, _ in inside:
             out = os.path.join(dest, "runs", safe_name(rid), "shots", "%s__%s" % (safe_name(sid), safe_name(name)))
             if not os.path.exists(out):
@@ -1394,6 +1705,8 @@ def main(argv=None):
     p = sub.add_parser("sv2json"); p.add_argument("file")
     p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; collects _classic_era_ and _forever_ (WTF and Screenshots)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
+    p.add_argument("--plan", help="plan file: collect the saved variables it reads (logs.*.global, its addon) and CheckThat's own, not the default four addons")
+    p.add_argument("--shot-slack", dest="shot_slack", type=float, default=2, help="seconds a screenshot may lie outside an attempt's window and still match it (default 2)")
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
