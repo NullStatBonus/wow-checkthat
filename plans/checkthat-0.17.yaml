@@ -4,7 +4,7 @@ addon: CheckThat
 title: CheckThat 0.17 Expand steps and reopened marker
 preamble: |-
   This plan runs in forever-camelot. It tests CheckThat on its own run, so do not press End run before the last step. The first step checks the CheckThat version, because a game that loads an older copy gives results that mean nothing. Stop there if it fails. Some results are pressed on purpose (Pass, Partial, Skip and Fail), so the run ends with one failed step. The menu fallback, the Esc key on the item list and the screenshot count of the collect tool are tested elsewhere.
-handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report. The step |cffffd100Reopen me|r must show as awaiting retry in it.
+handoff: Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report.
 categories:
 - id: expand
   title: Expand steps
@@ -268,21 +268,20 @@ sections:
     title: Undo the result
     action:
       kind: manual
-      text: 'Do not press a result. Click |cffffd100Undo|r on the card.'
-    expect: The card shows Reopen me again with no result. In the Categories window the step reads open.
+      text: 'Click |cffffd100Undo|r once. The card shows Reopen me. Press |cffffd100Pass|r on it. The card comes back to this step. Press |cffffd100Pass|r here, and do not click Undo again.'
+    expect: After Undo the card shows Reopen me with no result. After your second Pass the card shows the next step.
     verify:
     - player
-    notes: Reviewer. After export the run holds reopened on ct17.reopen until the next result. The collect tool shows it as awaiting retry.
+    notes: Compound step, drafted on request. The card shows this step twice, so the text covers both visits. The reopened flag is gone after the retry, so the saved run cannot show it. A log line for Undo would let a plan check it (issue 100).
   - id: ct17.retry
     category: reopen
     title: Check the reopened step again
     action:
       kind: manual
-      text: 'Press |cffffd100Pass|r on Reopen me, then on Undo the result. Then click the plus button of the row |cffffd100Reopened step|r in the Categories window.'
+      text: 'In the Categories window click the plus button of the row |cffffd100Reopened step|r.'
     expect: The list reads Reopen me passed and Undo the result passed. Then press Pass on the card.
     verify:
     - player
-    notes: Reviewer. The reopened flag on ct17.reopen is gone after the second result.
 - id: s5
   title: A category that is not picked
   clients:
