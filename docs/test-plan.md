@@ -75,6 +75,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 16. **Runs to keep.** Keep at least six runs. On Advanced, drag Runs to keep down to 5 and back up to 15. Then start a run.
    Check: the list keeps every run while you drag. Lower the slider to 5 and start a run: the list keeps five runs and the oldest are gone. The run on the card stays.
    Log: `[ct] run pruned`.
+17. **Macro follows the step.** On Advanced, turn on Keep the CT macro on the current step. Drag the CT macro from the macro window to a bar and bind a key to it. Bind keys to Pass and Skip under Key Bindings, AddOns, CheckThat. Start a run with a plan that has commands. Play three steps with only those keys.
+   Check: each press of the macro key runs the commands of the step on the card, and the Pass key moves the card on. The macro never records a result by itself.
+   Log: `[ct] macroFollow on`, then `[ct] macro set <step id>` for each step with a new macro text, and `[ct] macro run <step id>` for each key press on the step the macro was written for.
 
 ## 4. Evidence
 

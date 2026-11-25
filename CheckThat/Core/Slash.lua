@@ -50,7 +50,7 @@ function Slash.Run(args, deps)
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
         elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run)."] }
         elseif topic == "runs" then return {
-            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>, /ct rerun failed (retries the failed and unverified steps of all categories)."] }
+            L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct macrorun <step id>, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>, /ct rerun failed (retries the failed and unverified steps of all categories)."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
         return { L["Help: /ct help appearance, /ct help diagnostics, /ct help runs. Open /ct settings [page] or read /ct status [topic]."] }
     elseif cmd == "status" then
@@ -161,6 +161,10 @@ function Slash.Run(args, deps)
         end
         return { L["Usage: /ct selftest facts or /ct selftest error."] }
     elseif cmd == "macro" then deps.macro(); return {}
+    elseif cmd == "macrorun" then
+        if rest == "" or rest:find("%s") then return { L["Usage: /ct macrorun <step id>."] } end
+        local line = App.MacroRun(rest)
+        return line and { Slash.Esc(line) } or {}
     elseif cmd == "reload" then deps.reload(); return {}
     end
     return { L["Unknown command. Use /ct help."] }

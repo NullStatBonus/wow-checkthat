@@ -34,5 +34,6 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - CheckThat records Lua errors only while a run is open. It passes every error to the previous handler, names the addon in each line, and sets its handler again if another addon takes it. BugGrabber is optional: with it CheckThat reads its list instead.
 - A plan with more than 8 categories shows one bar on the card. Pick its categories with the Choose categories button or on the Home page, 24 at a time.
 - Pass, Partial, Fail and Skip have optional key bindings. No key is set by default.
+- An optional setting keeps the CT macro on the current step's commands, so a key and the result keys can play a whole plan.
 - Blue on the tracker means untested. Yellow means partial or unverified.
 - Automatic steps record a result also while the card is hidden. They pause while the game interface is hidden. They read logs and never send input.
