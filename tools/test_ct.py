@@ -282,6 +282,28 @@ class OfflineBlock(unittest.TestCase):
         with self.assertRaises(ValueError):
             ct.offline_plan(p, os.path.dirname(os.path.dirname(self.PLAN)))
 
+    def covered(self):
+        p = self.plan(); p["sections"][0]["steps"][0]["covers"] = ["First thing works"]
+        return p
+
+    def test_a_plan_with_covers_runs_with_the_specs_folder(self):
+        specs = os.path.join(ROOT, "tests", "fixtures", "coverage", "openspec", "specs")
+        items = ct.offline_plan(self.covered(), os.path.dirname(os.path.dirname(self.PLAN)), ct.plan_requirements(self.covered(), self.PLAN, specs))
+        self.assertEqual([i["result"] for i in items], ["pass"] * 5)
+
+    def test_a_plan_with_covers_and_no_specs_folder_exits_2(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "plan.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(self.covered()))
+            args = [sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons", os.path.dirname(os.path.dirname(self.PLAN))]
+            out = subprocess.run(args, capture_output=True, text=True)
+            self.assertEqual(out.returncode, 2, out.stderr)
+            self.assertIn("covers needs the addon's openspec/specs folder", out.stderr)
+            specs = os.path.join(ROOT, "tests", "fixtures", "coverage", "openspec", "specs")
+            out = subprocess.run(args + ["--specs", specs], capture_output=True, text=True)
+            self.assertEqual(out.returncode, 0, out.stderr)
+
     def test_cli_prints_junit_and_sets_the_exit_code(self):
         out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", self.PLAN, "--addons", os.path.dirname(os.path.dirname(self.PLAN))], capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)

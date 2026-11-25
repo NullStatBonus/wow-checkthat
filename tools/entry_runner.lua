@@ -88,20 +88,15 @@ local function restoreMocks(saved)
     for i = #saved, 1, -1 do saved[i].t[saved[i].key] = saved[i].old end
 end
 
--- Loads every file a TOC lists, with the addon's own (name, ns) arguments.
-local function loadToc(path, name, ns)
-    local dir = path:match("^(.*)/[^/]+$") or "."
-    for line in io.lines(path) do
-        line = line:gsub("\r", "")
-        if line:match("%S") and not line:match("^%s*#") and line:match("%.lua%s*$") then
-            if line:find("..", 1, true) or line:match("^%s*[/\\]") or line:match("^%s*%a:") then
-                return false, "a TOC file path leaves the addon folder: " .. line
-            end
-            local chunk, err = loadfile(dir .. "/" .. line:gsub("\\", "/"):gsub("%s+$", ""))
-            if not chunk then return false, err end
-            local ok, e = pcall(chunk, name, ns)
-            if not ok then return false, tostring(e) end
-        end
+-- Loads every file a TOC lists (following its XML files, see H.tocFiles), with the addon's own (name, ns) arguments.
+local function loadToc(H, path, name, ns)
+    local files, err = H.tocFiles(path)
+    if not files then return false, err end
+    for _, file in ipairs(files) do
+        local chunk, lerr = loadfile(file)
+        if not chunk then return false, lerr end
+        local ok, e = pcall(chunk, name, ns)
+        if not ok then return false, tostring(e) end
     end
     return true
 end
@@ -155,11 +150,11 @@ function Runner.run(spec, opts)
     if unlisted then
         loaded, loadErr = false, ("mock %s is not on the allow list"):format(unlisted)
     elseif spec.mockAfterLoad then
-        loaded, loadErr = loadToc(pathJoin(root, spec.toc), name, ns)
+        loaded, loadErr = loadToc(H, pathJoin(root, spec.toc), name, ns)
         applyMocks(spec.mocks, counts, saved)
     else
         applyMocks(spec.mocks, counts, saved)
-        loaded, loadErr = loadToc(pathJoin(root, spec.toc), name, ns)
+        loaded, loadErr = loadToc(H, pathJoin(root, spec.toc), name, ns)
     end
 
     local function add(i, kind, ok, detail)
