@@ -117,7 +117,14 @@ function Adapter.SpecialFrame(name)
     list[#list + 1] = name
     return true
 end
-function Adapter.InCombat() return call("InCombatLockdown") and true or false end
+-- Missing or failing reads as in combat, like Adapter.Env: a protected frame must not be changed when the game cannot say.
+function Adapter.InCombat()
+    local f = _G.InCombatLockdown
+    if type(f) ~= "function" then return true end
+    local ok, r = pcall(f)
+    if not ok then return true end
+    return r and true or false
+end
 function Adapter.Reload() return call("ReloadUI") end
 -- Hide a frame for the whole of combat, and show it again when combat ends (the owner re-checks it then).
 function Adapter.HideInCombat(frame) return call("RegisterStateDriver", frame, "visibility", "[combat] hide; show") end
@@ -184,6 +191,7 @@ end
 -- A native confirmation dialog. onAccept runs only on the player's click.
 function Adapter.Confirm(text, onAccept)
     if not (_G.StaticPopupDialogs and _G.StaticPopup_Show) then return false end
+    if type(_G.StaticPopup_Hide) == "function" then pcall(_G.StaticPopup_Hide, "WOWCHECKTHAT_CONFIRM") end -- an open one would keep its old text
     _G.StaticPopupDialogs["WOWCHECKTHAT_CONFIRM"] = {
         text = text, button1 = _G.YES or "Yes", button2 = _G.NO or "No", timeout = 0, whileDead = true,
         hideOnEscape = true, preferredIndex = 3, OnAccept = onAccept,

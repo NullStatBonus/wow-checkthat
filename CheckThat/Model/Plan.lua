@@ -247,12 +247,14 @@ function Plan.Validate(plan)
         if not isStr(sec.id) then errs[#errs + 1] = "section without an id"
         elseif isStr(sec.id) and sec.id:lower() == "failed" and not declared then errs[#errs + 1] = "section id failed is reserved for /ct rerun failed (each section is a category)"
         elseif secIds[sec.id] then errs[#errs + 1] = "duplicate section id " .. sec.id
+        elseif not sec.id:match(Plan.ID) then errs[#errs + 1] = "section id is not valid"
         else secIds[sec.id] = true end
         if sec.category ~= nil and not cats[sec.category] then errs[#errs + 1] = "section " .. tostring(sec.id) .. ": unknown category " .. tostring(sec.category) end
         for _, st in ipairs(sec.steps) do
             if type(st) ~= "table" then errs[#errs + 1] = "step is not a table"; return errs end
             local w = "step " .. tostring(st.id)
             if not isStr(st.id) then errs[#errs + 1] = "step without id"
+            elseif not st.id:match(Plan.ID) then errs[#errs + 1] = "step id is not valid"
             elseif seen[st.id] then errs[#errs + 1] = "duplicate step id " .. st.id
             else seen[st.id] = true end
             if not isStr(st.title) then errs[#errs + 1] = w .. ": title missing" end

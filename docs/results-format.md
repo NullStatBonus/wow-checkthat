@@ -2,7 +2,7 @@
 
 The saved run record is the contract between CheckThat and every tool that reads a run: `tools/ct.py`, the viewer, the `ct-verify` skill and your own scripts. It lives in three places with the same layout: `CheckThatDB.global.runs` in the saved variables, the string `/ct export` makes, and `evidence/runs/<id>/r<revision>.json` after `ct.py collect`. `schema/run-results.schema.json` describes it. How the keys behave is in [Features](features.md).
 
-Current: **ct 1, formatRev 3.**
+Current: **ct 1, formatRev 4.**
 
 ## Two version numbers
 
@@ -44,6 +44,7 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 | formatRev | Since | Adds |
 | --- | --- | --- |
+| 4 | 0.20.1 | `macroStale` on a step record: how many times the CT macro ran while the card showed another step. Absent means none. |
 | 3 | 0.19.0 | `targetVersion` on a run: the TOC version of the addon under test (the plan's addon) when the run started. Absent when the client could not say. |
 | 2 | 0.17.0 | `reopened` on a step record: true after Undo or a rerun reopened a step that had a result. |
 | 1 | 0.15.0 | `formatRev` and `writerVersion` on a run, `formatRev` on a finished attempt. |
@@ -51,6 +52,8 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 | (no stamp) | 0.13.0 | `excerpt` on a failed or unverified attempt. |
 | (no stamp) | 0.10.0 | `categories`, `cat` and `selected`. An older run gets them when it is loaded. |
 | (no stamp) | before | `kind`, `ct`, `runId`, `revision`, `addon`, `planDigest`, `planTitle`, `client`, `build`, `character`, `started`, `updated`, `order`, `steps`, and for each attempt `n`, `started`, `finished`, `verdict`, `claimed`, `by`, `note`, `evidence`, `outcomes` (`result`, `why`, `diagnostic`). |
+
+The record also holds `current` (the step the card showed, which browsing moves without a new revision, so a tool must not use it to compare revisions), `history` (step ids in the order their results were recorded) and, on an attempt, `build`. They were always written and are in the schema now. `tools/test_ct.py` fails when the addon writes a key the schema does not name.
 
 ## Other versions
 

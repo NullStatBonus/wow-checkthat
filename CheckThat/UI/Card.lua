@@ -271,7 +271,13 @@ local function build()
     card.copies = {}
     for i = 1, 4 do card.copies[i] = copyBox(card); card.copies[i]:SetWidth(190) end
     Card.EnsureSecure()
-    card:HookScript("OnHide", function() if not A.InCombat() and card.secure then card.secure:Hide() end end)
+    card:HookScript("OnHide", function()
+        if A.InCombat() or not card.secure then return end
+        -- Release the state driver too, or it shows the button again beside no card.
+        card.secureWanted = false
+        if card.combatHide ~= false then card.combatHide = false; A.ReleaseCombatHide(card.secure) end
+        card.secure:Hide()
+    end)
     card:HookScript("OnShow", function() Card.Refresh() end)
 
     card.note = CreateFrame("EditBox", nil, card, "InputBoxTemplate")
@@ -709,6 +715,8 @@ function refreshCard()
     local tracker = Card.Tracker(rows, overall, sum, inner)
     local top = Card.DrawTracker(tracker, rows, overall, sum, inner, mini, resolved, total)
     if collapsed then
+        local r0 = step and run.steps[step.id]
+        if r0 and (r0.verdict == "pending" or r0.verdict == "unverified") then App.Begin() end -- arm evidence and the auto timer while collapsed
         local shownTitle = step and step.title or (run.endedAt and L["Run ended"] or L["Run complete"])
         place(card.title, 12, 32 + top); setText(card.title, shownTitle)
         card.titleHit.full = shownTitle; card.titleHit:Show()

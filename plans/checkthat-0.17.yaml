@@ -272,7 +272,14 @@ sections:
     expect: After Undo the card shows Reopen me with no result. After your second Pass the card shows the next step.
     verify:
     - player
-    notes: Compound step, drafted on request. The card shows this step twice, so the text covers both visits. The reopened flag is gone after the retry, so the saved run cannot show it. A log line for Undo would let a plan check it (issue 100).
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] undo ct17.reopen: reopened'
+      scope: attempt
+      label: Undo reopened Reopen me
+    notes: Compound step, drafted on request. The card shows this step twice, so the text covers both visits. The reopened flag is gone after the retry, so the saved run cannot show it. The Undo log line shows it.
   - id: ct17.retry
     category: reopen
     title: Check the reopened step again

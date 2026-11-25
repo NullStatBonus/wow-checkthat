@@ -1,0 +1,201 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.20.1 Undo, stale macro press, result needs Redo and closing the card
+preamble: |-
+  This plan runs in forever-camelot and tests CheckThat on its own run, so do not press End run before the last step. The first step checks the version, because an older copy gives results that mean nothing. Stop there if it fails. Turn debug recording on in the first steps and off when you finish. Some steps use two or three presses on purpose. The text of each step says which. Combat, plan import checks and the collect tool are tested elsewhere.
+handoff: "Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report: step ct2001.stale must show one stale macro press. Then turn debug recording off."
+categories:
+- id: setup
+  title: Set up
+- id: undo
+  title: Undo
+- id: macro
+  title: Stale macro press
+- id: verdict
+  title: A result needs Redo
+- id: card
+  title: Closing the card
+logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+    cap: 300
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+sections:
+- id: s1
+  title: Set up
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct2001.version
+    category: setup
+    title: Check the CheckThat version
+    action:
+      kind: copy-slash
+      text: /ct version
+    expect: Chat shows the CheckThat version, 0.20.1 or newer. The card records the result by itself. If the step fails, stop and copy CheckThat 0.20.1 into the game again.
+    verify:
+    - assertions
+    auto: true
+    timeout: 180
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: version
+      op: ge
+      value: 2001
+      label: CheckThat is 0.20.1 or newer
+    notes: The fact is major*10000 + minor*100 + patch, so 0.20.1 is 2001.
+  - id: ct2001.clear
+    category: setup
+    title: Clear the debug log
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct log clear|r and accept the question. Then press Pass on the card.
+      commands:
+      - /ct log clear
+    expect: A question asks to clear the debug log. After you accept, chat says "Debug log cleared."
+    verify:
+    - player
+    notes: An old log from an earlier run would hide this run's lines from the checks.
+  - id: ct2001.debug
+    category: setup
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on." The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+- id: s2
+  title: Undo writes a log line
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct2001.reopen
+    category: undo
+    title: Pass me
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+  - id: ct2001.undo
+    category: undo
+    title: Undo the result
+    action:
+      kind: manual
+      text: Click |cffffd100Undo|r once. The card goes back to the step Pass me. Press |cffffd100Pass|r on it. The card comes back to this step. Press |cffffd100Pass|r here, and do not click Undo again.
+    expect: After Undo the card shows Pass me with no result. After your second Pass the card shows the next step.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] undo ct2001.reopen: reopened'
+      scope: attempt
+      label: Undo reopened Pass me
+    notes: Compound step, drafted on request. The card shows this step twice, so the text covers both visits.
+- id: s3
+  title: A stale macro press is counted
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct2001.stale
+    category: macro
+    title: Press a macro made for another step
+    action:
+      kind: manual
+      text: Type |cff99ccff/ct macrorun ct2001.nowhere|r once. Then press |cffffd100Pass|r on the card.
+    expect: Chat says "This macro is for step ct2001.nowhere. The card shows step ct2001.stale." Then press Pass on the card.
+    verify:
+    - player
+    - assertions
+    - reviewer
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] macro stale ct2001.nowhere card ct2001.stale'
+      scope: attempt
+      label: The press was seen as out of date
+    notes: The command is not in commands on purpose, because the Run button would give a second press and a stale count of 2.
+    reviewer: After collect, the report row of this step shows 1 stale macro press (macroStale is 1 in the saved run).
+- id: s4
+  title: A result needs Redo
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct2001.resolved
+    category: verdict
+    title: Pass me again
+    action:
+      kind: manual
+      text: Press |cffffd100Pass|r on the card.
+    expect: The card moves on to the next step.
+    verify:
+    - player
+  - id: ct2001.refuse
+    category: verdict
+    title: A result on a finished step
+    action:
+      kind: manual
+      text: Click the |cffffd100<|r button at the top right of the card once. The card shows Pass me again with its result. Do not click Redo this step. Type |cff99ccff/ct fail|r. Then click the |cffffd100>|r button and press |cffffd100Pass|r here.
+    expect: After the command chat says "This step has a result. Use Redo this step or Undo first." Pass me again keeps its Pass. Then press Pass on this step.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] verdict refused ct2001.resolved: step has a result'
+      scope: attempt
+      label: CheckThat refused the result of a finished step
+    notes: Compound step, drafted on request. The command /ct fail is not in commands on purpose, because the Run button would record Fail on this step. The refusal writes its own log line. A step that checked only that no fail line appears would stay unverified, because nothing else is logged in its window.
+- id: s5
+  title: Closing the card
+  clients:
+  - forever-camelot
+  requires:
+  - loaded
+  steps:
+  - id: ct2001.close
+    category: card
+    title: Close the card
+    action:
+      kind: manual
+      text: Look for the Run button beside |cff99ccff/ct status|r on the card. Click the X at the top right of the card. Type |cff99ccff/ct|r to open the card again. Press |cffffd100Pass|r on the card.
+      commands:
+      - /ct status
+    expect: While the card is closed, no Run button stays on the screen. After |cff99ccff/ct|r the card and its Run button come back. Then press Pass on the card.
+    verify:
+    - player
+    notes: Nothing is logged when the card closes, so this step is a player check. The command /ct is not in commands on purpose, because it toggles the card and the Run button would close it.

@@ -34,7 +34,8 @@ end
 
 -- Lines added after the snapshot. Logs repeat the same startup block each session, so find the boundary by
 -- position: if the snapshot tail sits exactly at the snapshot length, nothing rolled and the boundary is there.
--- Otherwise (ring rolled) accept a single match; several matches are ambiguous. Returns array, or nil when the
+-- Otherwise (ring rolled) take the last match. Several matches (a repeated run leaves the same lines) make the
+-- boundary inexact: a line may be missed, so an absence cannot be shown. Returns array, or nil when the
 -- boundary cannot be located (treat as unverified).
 -- cap is how many lines the log keeps, when the plan says (a bounded list that drops the oldest line at the cap).
 function Evidence.NewLines(snapshot, current, cap)
@@ -52,14 +53,13 @@ function Evidence.NewLines(snapshot, current, cap)
         for j = 1, k do if current[last - k + j] ~= tail[tl - k + j] then return false end end
         return true
     end
-    local last = nil
+    local last, found = nil, 0
     if tailAt(n) then last = n
     else
-        local found = 0
         for i = k, #current do
             if tailAt(i) then found = found + 1; last = i end
         end
-        if found ~= 1 then return nil end
+        if found == 0 then return nil end
     end
     -- A full ring rolls with every new line, so a boundary found by search is normal. It holds when the tail is
     -- distinctive. A tail made of one repeated line (a flood) can also match lines written after the step opened,
@@ -69,10 +69,13 @@ function Evidence.NewLines(snapshot, current, cap)
         local l = tail[tl - k + j]
         if not seen[l] then seen[l] = true; distinct = distinct + 1 end
     end
-    local exact = distinct >= math.ceil(k / 2)
+    local exact = found <= 1 and distinct >= math.ceil(k / 2)
     -- A log that keeps cap lines and holds fewer has never dropped one, so a boundary at the snapshot position is
     -- certain, however alike the lines are.
     if not exact and cap and last == n and #current < cap then exact = true end
+    -- A full ring that again reads the saved tail may have rolled all the way: new lines pushed the old ones out and the
+    -- last of them repeat the tail. "Nothing new" is then not certain.
+    if cap and last == n and #current >= cap then exact = false end
     local out = {}
     for i = last + 1, #current do out[#out + 1] = current[i] end
     return out, exact
@@ -401,7 +404,9 @@ function Evidence.CheckFact(a, snapshots, plan, env, wantDetail)
                 if op(v, a.value, a) then any = true else all = false end
             end
             if which == "any" then
-                if any then r = "pass" else r, why = "fail", "no fact matched" end
+                if any then r = "pass"
+                elseif a.scope ~= "session" and exact == false then r, why = "unverified", "log rolled over; a fact that could match may be lost"
+                else r, why = "fail", "no fact matched" end
             elseif all and a.scope ~= "session" and exact == false then
                 r, why = "unverified", "log rolled over; a fact that could contradict may be lost"
             elseif all then r = "pass"

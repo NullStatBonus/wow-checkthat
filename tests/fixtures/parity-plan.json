@@ -1,0 +1,70 @@
+{
+ "kind": "plan",
+ "ct": 1,
+ "addon": "KeepThat",
+ "title": "t",
+ "logs": {
+  "debug": {
+   "global": "G",
+   "path": "log",
+   "format": "strings"
+  }
+ },
+ "requirements": {
+  "loaded": {
+   "text": "loaded"
+  }
+ },
+ "macros": [
+  {
+   "id": "dbg",
+   "text": "/kt debug on\n/reload"
+  }
+ ],
+ "sections": [
+  {
+   "id": "s1",
+   "title": "S",
+   "steps": [
+    {
+     "id": "a.1",
+     "title": "A",
+     "clients": [
+      "classic-era"
+     ],
+     "requires": [
+      "loaded"
+     ],
+     "action": {
+      "kind": "secure-macro",
+      "macro": "dbg"
+     },
+     "expect": "e",
+     "verify": [
+      "player",
+      "assertions"
+     ],
+     "assertions": [
+      {
+       "kind": "log",
+       "source": "debug",
+       "contains": "x"
+      }
+     ]
+    },
+    {
+     "id": "a.2",
+     "title": "B",
+     "action": {
+      "kind": "manual",
+      "text": "t"
+     },
+     "expect": "e",
+     "verify": [
+      "player"
+     ]
+    }
+   ]
+  }
+ ]
+}
