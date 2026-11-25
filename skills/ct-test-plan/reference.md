@@ -59,3 +59,18 @@ Judge each log assertion against `docs/debug-logging.md`.
 ## Share points
 - The preamble names the debug command and the `/reload` to run first.
 - The handoff tells the tester how to export the result.
+
+## CheckThat specifics
+
+Rules that hold for CheckThat's own plans and tools. Read them when the plan is for CheckThat or the addon integrates with it.
+
+### Supported addons
+A plan names an addon CheckThat supports: it must be in `Plan.SLASH` in `$CT/CheckThat/Model/Plan.lua` and in `SLASH` in `ct.py`. For any other addon the plan needs a CheckThat change first.
+
+### Log sources
+`LOGS` in `ct.py` lists the debug-log saved variable, its path and its format (`strings` or `entries`) for each supported addon. The addon's own source decides when they differ.
+
+### Version check
+- CheckThat itself: an `auto` step runs `/ct version` with a `fact` assertion `key: version`, `op: ge`, `value: major*10000 + minor*100 + patch` (0.17.0 is 1700), and a `facts` log source.
+- An addon that integrates reports its own `version` entry and fact the same way (KeepThat uses `entry.version`, `ge 700`).
+- Any other addon: a manual step that asks the player to read its version in the AddOns list. `ct.py report --expect-version` then catches a run of another build, because every run records the tested addon's version.

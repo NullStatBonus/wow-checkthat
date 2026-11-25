@@ -2,6 +2,7 @@
 
 PY := .venv/bin/python
 SKILL_DIR ?= $(HOME)/.claude/skills
+BIN_DIR ?=
 
 test: build test-lua test-py
 
@@ -19,20 +20,29 @@ test-py:
 # Install the ct-test-plan and ct-verify skills with everything they run, outside this checkout: the skill text,
 # a bundle of the plan tools (same layout as the checkout), and a private Python with PyYAML and
 # jsonschema. SKILL_DIR changes the target; SKILL_NO_VENV=1 skips the pip step (tests).
-BUNDLE := tools/ct.py schema/test-plan.schema.json docs/test-plan.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md CheckThat/Model/Plan.lua CheckThat/Model/Json.lua CheckThat/Model/Evidence.lua tools/sv2json.lua tools/replay_sv.lua requirements.txt tools/ct_tui.py requirements-tui.txt
+BUNDLE := tools/ct.py tools/ct schema/test-plan.schema.json docs/test-plan.md docs/authoring-plans.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md tools/sv2json.lua tools/replay_sv.lua tools/entry_runner.lua tests/harness.lua tests/replay.lua tests/replay_plan.lua requirements.txt tools/ct_tui.py requirements-tui.txt
+# The whole addon folder: the fake client loads it for flow replay and the offline block.
+BUNDLE_DIR := CheckThat
 
 install-skill:
 	@root=$$(pwd -P); mkdir -p "$(SKILL_DIR)" || exit 1; dest=$$(cd "$(SKILL_DIR)" && pwd -P); \
 	case "$$dest/" in "$$root"/*) echo "SKILL_DIR must be outside this checkout" >&2; exit 1;; esac; \
+	if [ -n "$(BIN_DIR)" ]; then \
+	  case "$(BIN_DIR)" in "~"*) echo "BIN_DIR starts with ~: the shell did not expand it; use \$$HOME/bin" >&2; exit 1;; esac; \
+	  mkdir -p "$(BIN_DIR)" || exit 1; bin=$$(cd "$(BIN_DIR)" && pwd -P); \
+	  case "$$bin/" in "$$root"/*) echo "BIN_DIR must be outside this checkout" >&2; exit 1;; esac; \
+	fi; \
 	tmp=$$(mktemp -d "$$dest/.ct-test-plan.XXXXXX") || exit 1; tmp2=$$(mktemp -d "$$dest/.ct-verify.XXXXXX") || exit 1; trap 'rm -rf "$$tmp" "$$tmp2"' EXIT; \
 	cp -R skills/ct-test-plan/. "$$tmp" && cp -R skills/ct-verify/. "$$tmp2" || { echo "install-skill: copying the skills failed" >&2; exit 1; }; \
 	for f in $(BUNDLE); do mkdir -p "$$tmp/ct/$$(dirname "$$f")" && cp "$$f" "$$tmp/ct/$$f" || { echo "install-skill: copying $$f failed" >&2; exit 1; }; done; \
+	for d in $(BUNDLE_DIR); do mkdir -p "$$tmp/ct/$$d" && cp -R "$$d/." "$$tmp/ct/$$d" || { echo "install-skill: copying $$d failed" >&2; exit 1; }; done; \
 	sed -n 's/^## Version: *//p' CheckThat/CheckThat_Vanilla.toc > "$$tmp/ct/VERSION" || exit 1; \
 	if [ -z "$$SKILL_NO_VENV" ]; then \
 	  python3 -m venv "$$tmp/.venv" || { echo "install-skill: creating the Python environment failed (need python3 with venv)" >&2; exit 1; }; \
 	  "$$tmp/.venv/bin/python" -m pip install -q --disable-pip-version-check -r "$$tmp/ct/requirements.txt" || { echo "install-skill: installing PyYAML and jsonschema failed (need network access)" >&2; exit 1; }; \
 	fi; \
-	rm -rf "$$dest/ct-test-plan" "$$dest/ct-verify" && mv "$$tmp" "$$dest/ct-test-plan" && mv "$$tmp2" "$$dest/ct-verify" && echo "installed ct-test-plan and ct-verify to $$dest"
+	rm -rf "$$dest/ct-test-plan" "$$dest/ct-verify" && mv "$$tmp" "$$dest/ct-test-plan" && mv "$$tmp2" "$$dest/ct-verify" && echo "installed ct-test-plan and ct-verify to $$dest" || { echo "install-skill: replacing the earlier copy failed" >&2; exit 1; }; \
+	if [ -n "$(BIN_DIR)" ]; then ln -sf "$$dest/ct-test-plan/ct/tools/ct" "$$bin/ct" && echo "ct launcher linked at $$bin/ct" || exit 1; fi
 
 # Build the Claude Code plugin (skills + tools bundle) into build/plugin. Skills are named plan and verify there, so the
 # commands read /checkthat:plan and /checkthat:verify. Load it with: claude --plugin-dir build/plugin
@@ -45,6 +55,7 @@ build-plugin:
 	  sed -e 's/ct-test-plan/plan/g' -e 's/ct-verify/verify/g' "skills/$$src/SKILL.md" > "$(PLUGIN_DIR)/skills/$$dst/SKILL.md" || exit 1; \
 	done; \
 	for f in $(BUNDLE); do mkdir -p "$(PLUGIN_DIR)/skills/plan/ct/$$(dirname "$$f")" && cp "$$f" "$(PLUGIN_DIR)/skills/plan/ct/$$f" || { echo "build-plugin: copying $$f failed" >&2; exit 1; }; done; \
+	for d in $(BUNDLE_DIR); do mkdir -p "$(PLUGIN_DIR)/skills/plan/ct/$$d" && cp -R "$$d/." "$(PLUGIN_DIR)/skills/plan/ct/$$d" || { echo "build-plugin: copying $$d failed" >&2; exit 1; }; done; \
 	ver=$$(sed -n 's/^## Version: *//p' CheckThat/CheckThat_Vanilla.toc); [ -n "$$ver" ] || exit 1; \
 	echo "$$ver" > "$(PLUGIN_DIR)/skills/plan/ct/VERSION"; \
 	printf '{\n  "name": "checkthat",\n  "version": "%s",\n  "description": "Draft CheckThat test plans and read finished runs back against them.",\n  "license": "MIT"\n}\n' "$$ver" > "$(PLUGIN_DIR)/.claude-plugin/plugin.json"; \

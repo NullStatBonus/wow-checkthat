@@ -8,6 +8,14 @@ sections:
 - id: ka
   title: Second character
   steps:
+  - id: ka.v
+    title: Check the KeepThat version
+    action:
+      kind: manual
+      text: Open the AddOns list at the character screen and read the KeepThat version.
+    expect: the version is the one under test. Press Pass.
+    verify:
+    - player
   - id: ka.1
     title: Open your bags
     action:

@@ -4,6 +4,9 @@ Two skills help addon developers write plans and read finished runs back. They a
 
 - **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time.
   - By default each step has one action and one expected result. Ask for a compound step when you need one.
+  - Before a plan goes to a tester it runs a gate: `validate`, `compile`, `ct.py replay-flow`, `ct.py lines`, the `offline` block, and a review against what the card shows, with every finding fixed.
+  - After a run it revises the plan: it sorts each failing step into plan fault, addon fault or unknown, edits only plan faults, and says whether to `/ct rerun failed` or import the new plan.
+  - A step id is a key: never renumber or rename one. `ct.py diff` marks a step that kept its text but changed its id as renamed.
   - A check that needs several characters becomes one plan for each character role, named `<name>.<role>.yaml`. Each preamble names every partner plan.
   - Examples: `skills/ct-test-plan/keepthat-tally.bank.yaml` and `keepthat-tally.alt.yaml`.
 - **`ct-verify`** reads a finished run back against its plan.
@@ -13,6 +16,7 @@ Two skills help addon developers write plans and read finished runs back. They a
   - `ct.py coverage <plan> --addon-src <folder> --evidence` shows which subcommands, settings and spec requirements the plans cover, and whether the newest run passed them.
   - `ct.py diff <run A> <run B>` shows which steps regressed, were fixed or are no longer comparable between two runs. `ct.py trend` shows many runs and marks flaky steps.
   - `ct.py report --format json` or `--format junit`, with `--strict`, gives results to a script or a CI job.
+  - `ct.py report --expect-version <addon version> --plan <plan file>` warns about a run of another addon version, a run written by another CheckThat version than the tools, and a run made from an older plan file.
   - It never edits a plan and never runs the game.
   - Collected evidence goes to a folder you name, `evidence/` by default. Keep it out of Git.
 
@@ -28,6 +32,8 @@ make install-skill SKILL_DIR=~/.codex/skills    # Codex: its skills folder
 make install-skill SKILL_DIR=<folder>           # any other agent that reads SKILL.md folders
 ```
 
+- `make install-skill BIN_DIR=<folder on PATH>` also links a `ct` launcher there (a folder outside the checkout; write `$HOME/bin`, not `~/bin`), so you can type `ct validate plans/x.yaml`. `tools/ct` inside the install does the same without it: it picks the skill's Python, then `python3`.
+- The bundle holds the whole addon folder, the fake-client harness, the replay and the offline runner, so `ct.py replay-flow`, `ct.py lines` and `ct.py offline` run with no CheckThat checkout.
 - Each run installs both skills into `<folder>/ct-test-plan` and `<folder>/ct-verify` and replaces an earlier copy. Run it once for each agent you use.
 - `SKILL_DIR` must be outside the checkout.
 - The install includes a copy of the plan tools, the decoder files that `collect` needs, and a private Python with PyYAML and jsonschema. The skills then work in any addon repository with no checkout.
@@ -38,6 +44,8 @@ make install-skill SKILL_DIR=<folder>           # any other agent that reads SKI
 - Run the install again after the tools change. Each skill reports the tools version it uses.
 
 Tested with Claude Code only. Codex and other agents read the same `SKILL.md` format, but each one picks its own skills folder. Check its documentation for the folder it reads and pass that folder as `SKILL_DIR`.
+
+[Adopt CheckThat in an addon repository](adopting.md) has the AGENTS.md section to paste into an addon that uses the skills.
 
 ## Claude Code plugin
 

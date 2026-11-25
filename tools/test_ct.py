@@ -465,7 +465,7 @@ class PlanSkill(unittest.TestCase):
         with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
             text = f.read()
         for needle in ("auto or manual", "end its `expect` text with the press it needs", "`timeout` to 120",
-                       "own result press writes", "tests/replay_plan.lua", "stale", "make install-skill"):
+                       "own result press writes", "replay-flow", "stale", "make install-skill"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -525,7 +525,7 @@ class PlanSkill(unittest.TestCase):
             self.assertIn("%s: preamble does not name keepthat-tally.alt.yaml" % os.path.basename(paths[0]), self.partner_problems(paths))
             for p in paths:
                 plan = ct.load_yaml(p)
-                plan["sections"][0]["steps"][1]["reviewer"] = "Compare the totals."
+                plan["sections"][0]["steps"][2]["reviewer"] = "Compare the totals."
                 with open(p, "w") as f:
                     yaml.safe_dump(plan, f)
             self.assertTrue(any("no plan has reviewer lines" in x for x in self.partner_problems(paths)))
@@ -547,7 +547,7 @@ class PlanSkill(unittest.TestCase):
         self.assertIn("CheckThat.Report", guide)
         plan = ct.load_yaml(os.path.join(self.SKILL, "example.yaml"))
         plan["logs"]["facts"] = {"global": "CheckThatDB", "path": "global.facts", "format": "strings"}
-        step = plan["sections"][0]["steps"][0]
+        step = plan["sections"][0]["steps"][1]
         step["assertions"] = [{"kind": "log", "source": "facts", "equals": "[KeepThat] freeSlots=3"}]
         self.assertEqual(ct.validate(plan), [])
 
@@ -568,7 +568,8 @@ class PlanSkill(unittest.TestCase):
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
-              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "tools/sv2json.lua", "tools/replay_sv.lua",
+              "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "CheckThat/UI/Card.lua", "CheckThat/CheckThat_Vanilla.toc", "tools/sv2json.lua", "tools/replay_sv.lua",
+              "tools/ct", "tools/entry_runner.lua", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
               "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
 
@@ -656,6 +657,53 @@ class InstallSkill(unittest.TestCase):
             v = subprocess.run([sys.executable, os.path.join(dest, "ct", "tools", "ct_tui.py")], capture_output=True, text=True, cwd=d)   # no terminal, no Textual needed
             self.assertEqual(v.returncode, 2, v.stdout + v.stderr)
             self.assertIn("needs a terminal", v.stderr)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_installed_replay_and_offline_run_from_another_folder(self):
+        # The bundle must replay a plan and run an offline block with no CheckThat checkout beside it.
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.make(d, SKILL_NO_VENV="1", BIN_DIR=os.path.join(d, "bin")).returncode, 0)
+            ctpy = os.path.join(d, "ct-test-plan", "ct", "tools", "ct.py")
+            work = os.path.join(d, "work"); os.makedirs(work)
+            run = lambda *args: subprocess.run([sys.executable, ctpy] + list(args), capture_output=True, text=True, cwd=work)
+            example = os.path.join(d, "ct-test-plan", "example.yaml")
+            r = run("replay-flow", example)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("replay ok", r.stdout)
+            fx = os.path.join(d, "fixtures"); shutil.copytree(os.path.join(ROOT, "tests", "fixtures"), fx)
+            r = run("offline", os.path.join(fx, "offline-plan", "plan.yaml"), "--addons", fx)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("offline: 5 passed, 0 failed", r.stderr)
+            self.assertEqual(os.listdir(work), [], "nothing is written to the working folder")
+
+    @unittest.skipIf(os.name == "nt", "the launcher is a shell script and the link needs a POSIX shell")
+    def test_bin_dir_links_a_launcher_that_finds_the_skill_python(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.make(d, SKILL_NO_VENV="1", BIN_DIR=os.path.join(d, "bin")).returncode, 0)
+            py = os.path.join(d, "ct-test-plan", ".venv", "bin"); os.makedirs(py)
+            with open(os.path.join(py, "python"), "w") as f:   # the skill's private Python
+                f.write('#!/bin/sh\nexec "%s" "$@"\n' % sys.executable)
+            os.chmod(os.path.join(py, "python"), 0o755)
+            r = subprocess.run([os.path.join(d, "bin", "ct"), "validate", os.path.join(d, "ct-test-plan", "example.yaml")],
+                               capture_output=True, text=True, cwd=d, env=dict(os.environ, PATH="/usr/bin:/bin"))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("ok", r.stdout)
+
+    def test_bin_dir_is_refused_when_it_is_unexpanded_or_inside_the_checkout(self):
+        with tempfile.TemporaryDirectory() as d:
+            for bad in ("~/x", os.path.join(ROOT, "zz-bin-test")):
+                r = self.make(d, SKILL_NO_VENV="1", BIN_DIR=bad)
+                self.assertNotEqual(r.returncode, 0, bad)
+                self.assertIn("BIN_DIR", r.stderr)
+            shutil.rmtree(os.path.join(ROOT, "zz-bin-test"), ignore_errors=True)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_replay_flow_runs_each_client_and_every_step_runs_on_one(self):
+        p = good(); p["sections"][0]["clients"] = ["classic-era"]
+        code, text = ct.replay_flow(p)
+        self.assertEqual(code, 0, text)
+        self.assertIn("== classic-era", text); self.assertIn("== forever-camelot", text)
+        self.assertNotIn("no client ran", text)
 
     def test_failed_dependency_install_keeps_the_earlier_copy(self):
         with tempfile.TemporaryDirectory() as d:
@@ -917,6 +965,207 @@ class Collect(unittest.TestCase):
             shots = os.path.join(d, "shots"); os.makedirs(shots)
             open(os.path.join(shots, "x.jpg"), "wb").close()
             self.assertEqual(ct.collect_shots(os.path.join(d, "dest"), shots, all_shots=True), (0, []))
+
+
+class RunWarnings(unittest.TestCase):
+    def test_each_mismatch_is_named_and_a_missing_field_is_not(self):
+        runs = {"R-1": {"addon": "KeepThat", "planTitle": "t", "targetVersion": "0.16.0", "writerVersion": "0.0.1", "planDigest": "aaaa1111"},
+                "R-2": {"planTitle": "no fields recorded"}}
+        got = ct.run_warnings(runs, "0.17.0", "bbbb2222")
+        self.assertTrue(any("R-1" in w and "0.16.0" in w and "0.17.0" in w for w in got), got)
+        self.assertTrue(any("R-1" in w and "edits since that run are untested" in w for w in got), got)
+        self.assertFalse(any("R-2" in w for w in got), got)
+        scoped = ct.run_warnings(dict(runs, **{"R-3": {"addon": "Other", "planTitle": "p", "planDigest": "cccc3333"}}), None, "bbbb2222", "KeepThat", "t")
+        self.assertFalse(any("R-3" in w for w in scoped), "another addon's run is not judged against this plan")
+        self.assertTrue(any("R-1" in w and "untested" in w for w in scoped))
+        two = {"R-%d" % i: {"writerVersion": "0.0.1"} for i in (1, 2)}
+        self.assertLessEqual(sum("written by" in w for w in ct.run_warnings(two)), 1, "one warning for each writer version")
+
+
+class GoldenPlans(unittest.TestCase):
+    """The plans the skill ships as its examples must pass what the skill tells authors to run: no validate error or warning,
+    compile, a clean flow replay, and partner references that resolve."""
+    DIR = os.path.join(ROOT, "skills", "ct-test-plan")
+    PLANS = sorted(glob.glob(os.path.join(DIR, "*.yaml")))
+
+    def test_each_example_validates_without_warning_and_compiles(self):
+        self.assertTrue(self.PLANS)
+        for path in self.PLANS:
+            plan = ct.load_yaml(path)
+            self.assertEqual(ct.validate(plan), [], path)
+            self.assertIsNone(ct.version_warning(plan), path)
+            self.assertEqual(ct.card_move_warnings(plan), [], path)
+            self.assertEqual(ct.warnings(plan), [], path)
+            self.assertIn("!CT1!", ct.encode(ct.merge_sections(plan)), path)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_each_example_replays_cleanly(self):
+        for path in self.PLANS:
+            code, text = ct.replay_flow(ct.load_yaml(path))
+            self.assertEqual(code, 0, path + "\n" + text)
+
+    def test_partner_references_name_a_real_step(self):
+        steps = {os.path.basename(p): {s["id"] for sec in ct.load_yaml(p)["sections"] for s in sec["steps"]} for p in self.PLANS}
+        for path in self.PLANS:
+            with open(path, encoding="utf-8") as f:
+                for name, sid in re.findall(r"([\w.-]+\.yaml) step (\w+(?:\.\w+)*)", f.read()):
+                    self.assertIn(sid, steps.get(name, set()), "%s names %s step %s" % (os.path.basename(path), name, sid))
+
+
+class SkillText(unittest.TestCase):
+    def test_every_ct_py_command_the_skills_and_docs_name_exists(self):
+        with open(os.path.join(ROOT, "tools", "ct.py"), encoding="utf-8") as f:
+            real = set(re.findall(r'sub\.add_parser\("([\w-]+)"', f.read()))
+        for path in ("skills/ct-test-plan/SKILL.md", "skills/ct-verify/SKILL.md", "docs/skills.md", "docs/adopting.md", "docs/authoring-plans.md"):
+            with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+                named = set(re.findall(r"ct\.py`? ([a-z][\w-]+)", f.read())) - {"is", "in", "and", "runs", "to", "for", "from", "with", "or", "the", "a", "on"}
+            self.assertEqual(sorted(named - real), [], path)
+
+
+class SkillSplit(unittest.TestCase):
+    def test_the_main_text_leaves_checkthat_internals_to_the_reference(self):
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
+            main = f.read()
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "reference.md"), encoding="utf-8") as f:
+            ref = f.read()
+        for internal in ("`Plan.SLASH`", "`LOGS` in `ct.py`", "major*10000"):
+            self.assertNotIn(internal, main)
+            self.assertIn(internal, ref)
+        for section in ("### Supported addons", "### Log sources", "### Version check"):
+            self.assertIn(section, ref)
+        self.assertIn('in `reference.md`', main)
+
+
+class ReviseMode(unittest.TestCase):
+    def test_skill_states_the_revise_rules(self):
+        with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
+            text = f.read()
+        for rule in ("## 4c. Revise after a run", "**Plan fault.**", "**Addon fault.**", "**Cannot tell.**", "/ct rerun failed", "new run", "ct.py diff",
+                     "Never edit addon code unasked", "keep every step id"):
+            self.assertIn(rule, text)
+        with open(os.path.join(ROOT, "skills", "ct-verify", "SKILL.md"), encoding="utf-8") as f:
+            self.assertIn("Revise after a run", f.read())
+
+
+class SkillFlags(unittest.TestCase):
+    DOCS = ("skills/ct-test-plan/SKILL.md", "skills/ct-verify/SKILL.md", "docs/skills.md", "docs/adopting.md", "docs/authoring-plans.md", "README.md")
+
+    def flags(self):
+        with open(os.path.join(ROOT, "tools", "ct.py"), encoding="utf-8") as f:
+            parts = f.read().split("sub.add_parser(")[1:]
+        out = {}
+        for part in parts:
+            name = re.match(r'"([\w-]+)"', part).group(1)
+            out[name] = set(re.findall(r'add_argument\("(--[\w-]+)"', part))
+        return out
+
+    def test_every_flag_the_docs_name_exists_for_that_command(self):
+        real = self.flags()
+        self.assertIn("--expect-version", real["report"])
+        for path in self.DOCS:
+            with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+                text = f.read()
+            for cmd, rest in re.findall(r"ct\.py `?([a-z][\w-]+)([^`\n]*)", text):
+                if cmd not in real:
+                    continue
+                for flag in re.findall(r"(--[a-z][\w-]*)", rest):
+                    self.assertIn(flag, real[cmd], "%s: ct.py %s names %s" % (path, cmd, flag))
+
+
+class CardMoveWarning(unittest.TestCase):
+    def plan(self, cmds, **extra):
+        st = {"id": "a.1", "action": {"kind": "manual", "text": "t", "commands": cmds}}
+        st.update(extra)
+        return {"sections": [{"steps": [st]}]}
+
+    def test_a_command_that_moves_the_card_is_named(self):
+        self.assertEqual(ct.card_move_warnings(self.plan(["/ct version", "/ct pass"])), [("a.1", "/ct pass")])
+        self.assertEqual(ct.card_move_warnings(self.plan(["/checkthat Fail"])), [("a.1", "/checkthat Fail")])
+
+    def test_a_second_line_a_macro_body_and_a_case_are_checked(self):
+        self.assertEqual(ct.card_move_warnings(self.plan(["/ct version\n/ct next"])), [("a.1", "/ct next")])
+        p = self.plan([]); p["macros"] = [{"id": "m", "text": "/ct debug on\n/ct skip"}]; p["sections"][0]["steps"][0]["action"] = {"kind": "secure-macro", "macro": "m"}
+        self.assertEqual(ct.card_move_warnings(p), [("a.1", "/ct skip")])
+        self.assertEqual(ct.card_move_warnings(self.plan(["/ct pass"], notes="Sent ON PURPOSE.")), [])
+
+    def test_other_commands_and_on_purpose_notes_are_left_alone(self):
+        self.assertEqual(ct.card_move_warnings(self.plan(["/ct version", "/ct debug on", "/passport"])), [])
+        self.assertEqual(ct.card_move_warnings(self.plan(["/ct pass"], notes="The Pass is sent on purpose.")), [])
+
+
+class Defaults(unittest.TestCase):
+    def test_default_addons_follows_the_layout_and_a_missing_luajit_is_a_clear_error(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "checkout"); os.makedirs(root)
+            with mock.patch.object(ct, "ROOT", root):
+                self.assertEqual(ct.default_addons(), os.path.dirname(os.getcwd()), "no .git: an installed skill, the folder above the current one")
+                open(os.path.join(root, ".git"), "w").close()   # a linked worktree holds a .git file
+                self.assertEqual(ct.default_addons(), d)
+        with mock.patch.object(ct.subprocess, "run", side_effect=FileNotFoundError):
+            with self.assertRaises(ValueError) as e:
+                ct.run_luajit(["x.lua"])
+            self.assertIn("luajit", str(e.exception))
+
+
+class LinesCheck(unittest.TestCase):
+    def test_literal_run_is_the_longest_plain_part(self):
+        self.assertEqual(ct.literal_run("^%[toast%] shown %d+$"), "[toast] shown ")
+        self.assertEqual(ct.literal_run("^%[a%] (x)-?%d+ done$"), " done")
+        self.assertEqual(ct.literal_run("^abc?def$"), "def")
+        self.assertEqual(ct.literal_run("[xyz]+"), "")
+
+    def test_a_line_the_source_lacks_is_reported(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "A.lua"), "w") as f:
+                f.write('Log("toast", ("shown %d"):format(id))\nReport("KeepThat", "toast.seq", 1)\n')
+            plan = {"sections": [{"steps": [{"id": "s.1", "assertions": [
+                {"kind": "log", "source": "debug", "pattern": "^%[toast%] shown %d+$", "label": "toast"},
+                {"kind": "log", "source": "debug", "equals": "[toast] vanished", "label": "gone"},
+                {"kind": "fact", "source": "facts", "addon": "KeepThat", "key": "toast.seq", "op": "ge", "value": 1},
+                {"kind": "fact", "source": "facts", "addon": "KeepThat", "key": "toast.nope", "op": "ge", "value": 1}]}]}]}
+            found, missing = ct.lines_check(plan, d)
+            self.assertEqual([m[2] for m in missing], ["[toast] vanished", "toast.nope"])
+            self.assertEqual(len(found), 2)
+
+    def plan_for(self, *assertions):
+        return {"logs": {"debug": {"global": "G"}, "facts": {"global": "CheckThatDB"}}, "sections": [{"steps": [{"id": "s.1", "assertions": list(assertions)}]}]}
+
+    def src(self, **files):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        for name, text in files.items():
+            p = os.path.join(d, name.replace("__", "/")); os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as f: f.write(text)
+        return d
+
+    def test_a_comment_or_a_test_file_does_not_count_and_a_whole_line_does(self):
+        d = self.src(**{"A.lua": '-- toast vanished from the screen\nLog("toast", "shown")\nLog("[opt] whole line")\n', "tests__T.lua": 'x = "[toast] vanished from the screen"\n'})
+        line = lambda s: {"kind": "log", "source": "debug", "equals": s}
+        found, missing = ct.lines_check(self.plan_for(line("[toast] vanished from the screen"), line("[opt] whole line")), d)
+        self.assertEqual([m[2] for m in missing], ["[toast] vanished from the screen"])
+        self.assertEqual([f[2] for f in found], ["[opt] whole line"])
+
+    def test_a_fact_under_any_source_name_is_checked_and_strict_sets_the_exit_code(self):
+        d = self.src(**{"A.lua": 'Report("K", "have.it", 1)\n'})
+        facts = [{"kind": "fact", "source": "mine", "addon": "K", "key": "have.it"}, {"kind": "fact", "source": "mine", "addon": "K", "key": "not.there"}]
+        found, missing = ct.lines_check(self.plan_for(*facts), d)
+        self.assertEqual([m[2] for m in missing], ["not.there"])
+        plan_file = os.path.join(d, "p.yaml")
+        import yaml
+        with open(plan_file, "w") as f: yaml.safe_dump(dict(self.plan_for(*facts), ct=1), f)
+        self.assertEqual(self.cli("lines", plan_file, "--addon-src", d)[0], 0)
+        self.assertEqual(self.cli("lines", plan_file, "--addon-src", d, "--strict")[0], 1)
+
+    def cli(self, *argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = ct.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_dollar_and_caret_are_anchors_only_at_the_ends(self):
+        self.assertEqual(ct.literal_run("^foo$bar$"), "foo$bar")
+        self.assertEqual(ct.literal_run("a^b"), "a^b")
+        self.assertEqual(ct.literal_run("[%]x]yy"), "yy")
 
 
 class VerifySkill(unittest.TestCase):
@@ -2085,6 +2334,27 @@ class CompareRuns(unittest.TestCase):
         self.assertTrue(d["planChanged"])
         self.assertEqual(self.labels(d), {"s1": "regressed", "gone": "removed", "new": "added"})
         self.assertIn("plan changed", self.cli("diff", "A-1", "B-1", "--dest", self.dest({"A-1": a, "B-1": b}))[1])
+
+    def test_a_step_that_only_changed_its_id_is_called_renamed(self):
+        a = self.mk({"s1.1": self.st("pass"), "s2": self.st("pass")})
+        b = self.mk({"s1.2": self.st("pass"), "s2": self.st("pass")}, digest="d2")
+        p1 = {"sections": [{"steps": [{"id": "s1.1", "expect": "same"}, {"id": "s2", "expect": "x"}]}]}
+        p2 = {"sections": [{"steps": [{"id": "s1.2", "expect": "same"}, {"id": "s2", "expect": "x"}]}]}
+        d = self.diff(a, b, store={"d1": p1, "d2": p2})[1]
+        rows = {r["id"]: r for r in d["steps"]}
+        self.assertEqual(rows["s1.1"]["reason"], "renamed to s1.2")
+        self.assertEqual(rows["s1.2"]["reason"], "renamed from s1.1")
+        self.assertTrue(any("history is split" in w for w in d["warnings"]))
+        p2["sections"][0]["steps"][0]["expect"] = "different"
+        d = self.diff(a, b, store={"d1": p1, "d2": p2})[1]
+        self.assertEqual(d["warnings"], [], "a step with new text is a new step, not a rename")
+
+    def test_identical_steps_are_not_guessed_to_be_renames(self):
+        a = self.mk({"old": self.st("pass")}); b = self.mk({"n1": self.st("pass"), "n2": self.st("pass")}, digest="d2")
+        p1 = {"sections": [{"steps": [{"id": "old", "expect": "same"}]}]}
+        p2 = {"sections": [{"steps": [{"id": "n1", "expect": "same"}, {"id": "n2", "expect": "same"}]}]}
+        d = self.diff(a, b, store={"d1": p1, "d2": p2})[1]
+        self.assertEqual(d["warnings"], [])
 
     def test_a_changed_step_is_not_comparable_and_a_missing_plan_is_never_guessed(self):
         a = self.mk({"s1": self.st("pass"), "s2": self.st("pass")})

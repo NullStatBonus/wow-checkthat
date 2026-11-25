@@ -238,3 +238,60 @@ When `$CT/VERSION` and a checkout both exist and differ, the skill SHALL warn th
 #### Scenario: Bundle older than checkout
 - **WHEN** `$CT/VERSION` is 0.16.0 and the checkout is 0.17.0
 - **THEN** the skill tells the author to run `make install-skill`
+
+### Requirement: Handoff gate before a tester runs a plan
+The skill SHALL run `validate`, `compile`, `replay-flow`, `lines` and (when the plan has one) `offline`, then an independent review of the plan against what the card shows, and SHALL fix every finding in the same session. It SHALL say plainly when a step was not run, and which plan version an earlier in-game run used.
+
+#### Scenario: No luajit
+- **WHEN** `luajit` is missing
+- **THEN** the skill says the plan was not replayed
+
+### Requirement: Step ids stay put
+The skill SHALL tell the author never to renumber or rename an existing step id. `ct.py diff` SHALL mark a step that kept its text and changed its id as renamed and warn that its history is split.
+
+#### Scenario: Renamed step
+- **WHEN** two runs of different plan versions hold a step with the same text under different ids
+- **THEN** `diff` shows "renamed to" and "renamed from" and a warning
+
+### Requirement: Offline question in the interview
+The interview SHALL ask which scope items need no client and draft those as offline steps first.
+
+#### Scenario: Pure function in scope
+- **WHEN** a scope item is a classification the addon exposes as an entry
+- **THEN** the skill drafts an offline step for it before any player step
+
+### Requirement: Optional pull request block
+The skill SHALL offer a pull request block with one unticked checkbox for each manual check and plan step, each with its full text.
+
+#### Scenario: Manual check in the block
+- **WHEN** the author asks for the block
+- **THEN** each manual check appears unticked with its setup, action, Check and Log text, not a pointer
+
+### Requirement: Card-moving commands are warned about
+`ct.py validate` SHALL warn about a manual step whose `commands` include a CheckThat command that records a result or moves the card, unless the step's notes say it is on purpose.
+
+#### Scenario: Pass in the Run button
+- **WHEN** a manual step lists `/ct pass` in its commands
+- **THEN** `validate` names the step and the command
+
+### Requirement: Revise a plan after a run
+The skill SHALL, when the author has a finished run, read the verify report and its version warnings first, sort each failed, unverified or contradicted step as a plan fault, an addon fault or unknown, edit only plan faults, keep every step id and run the handoff gate again. It SHALL say whether the next run is `/ct rerun failed` (plan unchanged) or a new import (plan changed) and SHALL point to `ct.py diff` for the comparison. It SHALL NOT edit addon code unasked.
+
+#### Scenario: Pattern stricter than the line
+- **WHEN** a failed step's hit shows a near match of its pattern
+- **THEN** the skill calls it a plan fault and edits the pattern
+
+#### Scenario: Forbidden line present
+- **WHEN** a step failed because an `absent` line appeared
+- **THEN** the skill calls it an addon fault and edits nothing
+
+#### Scenario: Run of another build
+- **WHEN** the report warns that the run used another addon version or plan file
+- **THEN** the skill stops and asks for a new run
+
+### Requirement: Main skill text is addon-neutral
+The skill's main text SHALL hold the rules that apply to any addon and SHALL point to its reference file for CheckThat's supported-addon list, log sources and version-check recipes.
+
+#### Scenario: Author of another addon
+- **WHEN** an author of another addon reads the main skill text
+- **THEN** it names no CheckThat internal file or table, and each detail is one pointer away in the reference

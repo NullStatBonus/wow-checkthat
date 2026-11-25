@@ -28,6 +28,8 @@ Ask one question at a time. Skip what the author already gave.
 
 ## 2. Collect
 
+Read saved variables before you ask the author for more in-game steps: collect first, then decide what is still unknown.
+
 Pass `--dest` every time, because the default sits under the tools root.
 
 - Saved variables: `$PY $CT/tools/ct.py collect --wow <game folder> --dest <evidence>` (or `--src <WTF folder>`).
@@ -46,6 +48,8 @@ A run stores `planDigest`, not the plan. The digest is the 8-hex field of the co
 3. A run from another plan, or a plan that changed since the run, does not count for that role.
 
 ## 4. Read each step
+
+First run `$PY $CT/tools/ct.py report --dest <evidence> --expect-version <tested addon version> --plan <plan file>` and relay every `warning:` it prints before you read a step. It names a run that tested another version of the addon (the 0.17 plan once ran on 0.16.0, so its twelve failures meant nothing), a run written by another CheckThat version than these tools, and a run made from an older plan file ("edits since that run are untested"). A run with a version warning does not count for the build under test; say so in the report.
 
 `$PY $CT/tools/ct.py report --dest <evidence>` prints a `result:` line for each run, keeps the failed or unverified attempts of a step that later passed, and shows the Lua error stack raised during a failed or unverified attempt (matched by time, so it may say it also fits another attempt). `report --failed-only` keeps only the failing steps, and `show <run> <step>` prints one step with every attempt. `--format json` gives step results and, for each attempt, the checks that did not pass with their rule, counts and hit positions (add `--lines` for the line text and values, `--stacks` for error stacks), and `--strict` exits 1 on any failed or unverified step.
 
@@ -70,6 +74,8 @@ For each `reviewer` line that names partner files, step IDs and a relationship:
 4. Compare what the reviewer line asks, and report the relationship as held, broken or unverified, with the cited values. The number of roles is not limited.
 
 ## 6. Report
+
+When a step failed because of the plan and not the addon (a circular assertion, an unreadable log, a pattern stricter than the line), say so in the report and point the author to the `ct-test-plan` skill's "Revise after a run" section. You still never edit the plan.
 
 Start with the `status` result (healthy or not) in one line. Print one table per run (step, effective, claimed, by, evidence, citation), then the cross-character results, then a short list of: contradicted steps, unverified steps, steps with no evidence, and suggested assertions or log lines. Say what you could not judge and why (partial input, plan not established, missing role). Do not edit the plan; the author decides what to change. Do not commit the evidence folder.
 

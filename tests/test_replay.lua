@@ -83,4 +83,82 @@ test("a step that was never reached is a problem", function()
     local out = Replay.run(ns, plan({ step("a"), step("b") }), { hooks = { action = { a = function(R) R.press(); R.App.End() end } } })
     T.ok(has(out.problems, "b: never reached"), table.concat(out.problems, "; "))
 end)
+test("sample builds a line a Lua pattern matches", function()
+    for _, pat in ipairs({ "^%[toast%] shown %d+$", "^%[merchant%] tinted [1-9]%d* of %d+ on page %d+$", "^%[toast%] move done at %u+ %-?%d+ %-?%d+$",
+        "%[Other%]", "^%[recipes%] recipe probe: x source=.* stale=0 .*mismatches=0 ", "^%[opt%] %a+ on [^x]+$" }) do
+        local s = Replay.sample(pat)
+        T.ok(s and s:find(pat), pat .. " gave " .. tostring(s))
+    end
+    T.eq(Replay.sample("%1"), nil, "a back-reference has no sample")
+end)
+
+test("a plan that reads another addon's log replays with no hooks and says the evidence is assumed", function()
+    local assertions = { { kind = "log", source = "debug", pattern = "^%[toast%] shown %d+$", scope = "attempt", label = "toast" },
+        { kind = "log-sequence", source = "debug", scope = "attempt", label = "seq", sequence = { { contains = "first" }, { pattern = "^second %d$" } } } }
+    local s = assert(ns.Codec.Encode({ ct = 1, kind = "plan", addon = "KeepThat", title = "t",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings", cap = 300 } },
+        sections = { { id = "s", title = "S", steps = { step("a", { auto = true, verify = { "assertions" }, assertions = assertions }) } } } }))
+    local out = Replay.run(ns, s)
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+    T.ok(has(out.warnings, "evidence assumed"), table.concat(out.warnings, "; "))
+end)
+
+local function otherPlan(steps, cap)
+    return assert(ns.Codec.Encode({ ct = 1, kind = "plan", addon = "KeepThat", title = "t",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings", cap = cap or 300 },
+            facts = { global = "CheckThatDB", path = "global.facts", format = "strings", cap = 300 } },
+        sections = { { id = "s", title = "S", steps = steps } } }))
+end
+local function auto(id, assertions) return step(id, { auto = true, verify = { "assertions" }, timeout = 5, assertions = assertions }) end
+
+test("a step that ends in Fail although the replay did what its checks need is a problem", function()
+    local out = Replay.run(ns, otherPlan({ auto("a", { { kind = "log", source = "debug", contains = "x", scope = "attempt", label = "x" },
+        { kind = "log", source = "debug", contains = "x", absent = true, scope = "attempt", label = "no x" } }) }))
+    T.ok(has(out.problems, "a: the step failed"), table.concat(out.problems, "; "))
+end)
+
+test("the plan's own addon counts as loaded", function()
+    local out = Replay.run(ns, otherPlan({ auto("a", { { kind = "state", probe = "addon-loaded", name = "KeepThat", op = "eq", value = true, scope = "attempt", label = "loaded" } }) }))
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+end)
+
+test("a fact made up for another addon is reported as assumed", function()
+    local out = Replay.run(ns, otherPlan({ auto("a", { { kind = "fact", source = "facts", addon = "KeepThat", key = "k", op = "ge", value = 1, scope = "attempt", label = "k" } }) }))
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+    T.ok(has(out.warnings, "evidence assumed"), table.concat(out.warnings, "; "))
+end)
+
+test("a count check gets as many lines as it needs, and none when it must be zero", function()
+    local out = Replay.run(ns, otherPlan({ auto("a", { { kind = "log", source = "debug", contains = "x", count = { min = 3 }, scope = "attempt", label = "three" },
+        { kind = "log", source = "debug", contains = "y", count = { exactly = 0 }, scope = "attempt", label = "no y" } }) }))
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+end)
+
+test("the written log keeps to the source's cap", function()
+    local seq = { kind = "log-sequence", source = "debug", scope = "attempt", label = "two", sequence = { { contains = "first" }, { contains = "second" } } }
+    local out = Replay.run(ns, otherPlan({ auto("a", { seq }), }, 1))
+    T.ok(#out.problems > 0, "two lines cannot both sit in a log that holds one")
+end)
+
+test("a pattern that matches the step's own result line is a problem", function()
+    local out = Replay.run(ns, plan({ step("a", { verify = { "assertions" }, assertions = { { kind = "log", source = "debug", pattern = "^%[ct%] step a %a+$", scope = "session", label = "own" } } }) }))
+    T.ok(has(out.problems, "matches the line its own result writes"), table.concat(out.problems, "; "))
+end)
+
+test("sample finds a character for a class or set", function()
+    for _, pat in ipairs({ "^%P$", "^[^!]$", "^[%]x]$", "^[%a_]+$" }) do
+        local s = Replay.sample(pat)
+        T.ok(s and s:find(pat), pat .. " gave " .. tostring(s))
+    end
+    T.eq(Replay.sample("^%z$"), nil)
+end)
+
+test("a check with no literal line is reported, not guessed", function()
+    local s = assert(ns.Codec.Encode({ ct = 1, kind = "plan", addon = "KeepThat", title = "t",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings", cap = 300 } },
+        sections = { { id = "s", title = "S", steps = { step("a", { auto = true, verify = { "assertions" }, timeout = 5,
+            assertions = { { kind = "log", source = "debug", pattern = "%1", scope = "attempt", label = "x" } } }) } } } }))
+    local out = Replay.run(ns, s)
+    T.ok(has(out.warnings, "evidence not derived"), table.concat(out.warnings, "; "))
+end)
 finish()
