@@ -16,7 +16,7 @@ The tools root holds `tools/ct.py`, `tools/sv2json.lua`, `CheckThat/Model/Json.l
 3. Else try two folders up from this file (the skill runs inside the checkout). Use `$CT/.venv/bin/python` as `$PY` if it exists, else `python3` under the same import check and stop rule as step 2.
 4. If none is a root, ask: "Where is your CheckThat checkout?" Say that `make install-skill` in it sets up both skills. Do not use the working directory.
 
-Read `$CT/VERSION` and tell the author which tools version you use. Only an installed bundle has that file; in a checkout say that you use the checkout. `collect` needs `luajit` on the PATH. If it is missing, say so and stop; do not guess results from raw files.
+Read `$CT/VERSION` and tell the author which tools version you use. Only an installed bundle has that file; in a checkout say that you use the checkout. `collect` needs no `luajit`. For a plan about another addon, run `collect --plan <plan>` so that addon's saved variables are collected. If it is missing, say so and stop; do not guess results from raw files.
 
 ## 1. Ask what to verify
 

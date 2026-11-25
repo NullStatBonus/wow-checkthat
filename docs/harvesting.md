@@ -2,7 +2,7 @@
 
 After a run, `/reload` or log out so the game writes the saved variables. Then read them on your computer with `tools/ct.py`.
 
-`collect` and `report` need LuaJIT (`luajit` on your PATH) to decode saved variables. To judge a plan against a saved-variables fixture without the game, see [Check a plan against saved variables](authoring-plans.md#check-a-plan-against-saved-variables).
+`collect`, `status` and `report` decode saved variables with a Python reader. They do not need LuaJIT (a test checks that the reader gives the same JSON as `tools/sv2json.lua` on every fixture). `replay` and `offline` still need `luajit`. To judge a plan against a saved-variables fixture without the game, see [Check a plan against saved variables](authoring-plans.md#check-a-plan-against-saved-variables).
 
 ## Collect, check and report
 
@@ -13,6 +13,7 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 ```
 
 - **Source.** `collect` reads `../shared-addon-resources/saved` by default. `--wow <game dir>` (or `CT_WOW`) collects `_classic_era_` and `_forever_` with their `WTF` and `Screenshots` folders. `--src <WTF dir>` (or `CT_WTF`) names one folder and wins.
+- **Which files.** With no plan, `collect` copies the saved variables of CheckThat, KeepThat, DontDoThat and ClosestVendor. `--plan <plan.yaml>` copies CheckThat's file, the file named for the plan's `addon`, and every file that assigns a `logs.*.global` of the plan, so a plan for any addon is collected. Each file prints its path, modified time and age (`source: ..., modified 2026-11-24 21:03:10, 12m ago`), so a stale copy shows. A plan global that no file defines prints a warning on stderr and `collect` still exits 0.
 - **Report.** `REPORT.md` gives each run a `result:` line (`ok`, `UNVERIFIED` or `FAIL` with counts) and a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass. A step that passed after a rerun lists its earlier failed or unverified attempts too. A failed or unverified attempt shows the Lua error that was raised while it was open, with its call stack. The match is by time (whole seconds), so a stack that also fits another attempt says so.
 - **Status.** `status` prints one row per run at its newest readable revision: steps done over steps that apply, fail, unverified and open counts, age, and the export size as a percent of the 2 MB limit (`size~`, an estimate from the saved run). It names every revision file it cannot read and every conflict or decode failure `collect` met (kept in `evidence/problems.log`; delete the file once you have looked). It judges the evidence, not the test result. `--json` prints the same as JSON.
 - **Newer format.** A run saved in a newer major format is refused with its file name and the reason. `collect` stores nothing of it and writes `refused.json`. `status` lists it, `report` warns (it shows an older revision when there is one, and says when the run is missing), and `report --strict` fails until a later `collect` stores a revision at least as new. `import-results` refuses it before it reads anything else. Update the tools folder. See [Results format](results-format.md).
@@ -50,7 +51,7 @@ Everywhere: `e` shows what an export will write (scope, format, file, stacks) an
 
 ## Screenshots
 
-Set `screenshot: true` on a step. The card asks for Print Screen. The addon never captures. `collect` copies screenshots taken inside an attempt's time window (`--shots <folder>`, default `Screenshots` beside `--src`). A file taken outside every window but within an hour of an attempt is not copied. `collect` counts these files on every run ("2 screenshots matched no attempt"). `--verbose` names each one with the nearest step and the gap in seconds. `--all-shots` copies them to `runs/<id>/unassigned-shots/` of the nearest run. No step lists them. With `--wow`, a folder prefers the runs of its own client. If a screenshot inside a step is still missing on a network mount, compare the gap with the clock: [#95](https://github.com/NullStatBonus/wow-checkthat/issues/95).
+Set `screenshot: true` on a step. The card asks for Print Screen. The addon never captures. `collect` copies screenshots taken inside an attempt's time window (`--shots <folder>`, default `Screenshots` beside `--src`). `--shot-slack SECONDS` (default 2) widens or narrows each window on both sides. A file taken outside every window but within an hour of an attempt is not copied. `collect` counts these files on every run ("2 screenshots matched no attempt"). `--verbose` names each one with the nearest step and the gap in seconds. `--all-shots` copies them to `runs/<id>/unassigned-shots/` of the nearest run. No step lists them. With `--wow`, a folder prefers the runs of its own client. If a screenshot inside a step is still missing on a network mount, the file times may differ from the game clock. Read the gap from `--verbose` and raise `--shot-slack`. The real skew is not measured yet: [#95](https://github.com/NullStatBonus/wow-checkthat/issues/95).
 
 ## Classic Era per-character data
 
@@ -60,7 +61,7 @@ Some addons keep a log per character. On Classic Era, ClosestVendor's `ClosestVe
 
 Double-click `tools/Copy-CheckThatEvidence.bat`. It runs `Copy-CheckThatEvidence.ps1` beside it. `/reload` or log out first so the game writes the files.
 
-It copies CheckThat and the three addons' saved variables (including Era per-character files) and Screenshots into `evidence-src/`. Then, on a computer with LuaJIT, run:
+It copies CheckThat and the three addons' saved variables (including Era per-character files) and Screenshots into `evidence-src/`. Each copied file prints its modified time and age, and a missing file prints a warning. To copy other addons, run the script with `-Names` (file names without `.lua`; CheckThat is always copied): `powershell -File tools\Copy-CheckThatEvidence.ps1 -Names MyAddon,OtherAddon`. Then run the tools with Python:
 
 ```
 .venv/bin/python tools/ct.py collect --src evidence-src
@@ -68,7 +69,7 @@ It copies CheckThat and the three addons' saved variables (including Era per-cha
 .venv/bin/python tools/ct.py report
 ```
 
-The Windows PC does not need LuaJIT or Python for the copy step.
+The Windows PC does not need Python for the copy step, and no step needs LuaJIT.
 
 ## Categories in the report
 

@@ -1,4 +1,4 @@
-import contextlib, io, json, os, re, shutil, subprocess, sys, tempfile, unittest, zlib
+import contextlib, glob, io, json, os, re, shutil, subprocess, sys, tempfile, unittest, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ct
 
@@ -655,6 +655,43 @@ class InstallSkill(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.SRC, "SKILL.md")))
 
 
+class SVReader(unittest.TestCase):
+    FIXTURES = sorted(glob.glob(os.path.join(ROOT, "tests", "fixtures", "sv-edge", "*.lua")) + glob.glob(os.path.join(ROOT, "tests", "fixtures", "replay-sv", "*.lua")))
+
+    def read(self, text):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "X.lua")
+            with open(p, "wb") as fh:
+                fh.write(text if isinstance(text, bytes) else text.encode())
+            return ct.sv_text(p)
+
+    def test_there_are_fixtures(self):
+        self.assertGreaterEqual(len(self.FIXTURES), 3)
+
+    def test_string_escapes_and_numbers(self):
+        self.assertEqual(self.read(r'A = "q\"b\\c\n\65\x41\z   d"'), r'{"A":"q\"b\\c\nAAd"}')
+        self.assertEqual(self.read("A = { 1e15, 999999999999999, 0.5, -3, 0x10, 1e300 }"), '{"A":[1e+15,999999999999999,0.5,-3,16,1e+300]}')
+        self.assertEqual(self.read(r'A = "\195\169\240\159\152\128\1"'), r'{"A":"\u00e9\ud83d\ude00\u0001"}')
+
+    def test_tables_follow_sv2json(self):
+        self.assertEqual(self.read("A = {}"), '{"A":[]}')
+        self.assertEqual(self.read("A = { 1, 2, x = true }"), '{"A":{"1":1,"2":2,"x":true}}')
+        self.assertEqual(self.read('A = { [3] = "c", [1] = "a" }'), '{"A":{"1":"a","3":"c"}}')
+        self.assertEqual(self.read("A = { [true] = 1, [1] = 2 }"), '{"A":{"1":2,"true":1}}')
+
+    def test_bad_files_raise(self):
+        for bad in ("A = {", 'A = "x', "A = 1 +", "A = f()", r"A = 'a\qb'"):
+            with self.assertRaises(ct.SVError, msg=bad):
+                self.read(bad)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_same_json_as_luajit_on_every_fixture(self):
+        for path in self.FIXTURES:
+            r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "sv2json.lua"), path], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(ct.sv_text(path) + "\n", r.stdout, path)
+
+
 class Collect(unittest.TestCase):
     def test_sv2json_and_collect_dedupe(self):
         with tempfile.TemporaryDirectory() as d:
@@ -686,6 +723,56 @@ class Collect(unittest.TestCase):
         a = self.collect_body('CheckThatDB = {["runs"] = {["R-1"] = {["revision"] = 1, ["steps"] = {}, ["order"] = {}}}}\n')
         self.assertEqual(ct.cmd_collect(a), 0)
         self.assertEqual(ct.cmd_collect(a), 0)
+
+    def plan_tree(self, d, plan):
+        """A fake WTF with CheckThat's file, a made-up addon whose file name differs from its global, and an unrelated addon."""
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        files = {"CheckThat.lua": 'CheckThatDB = {["runs"] = {["R-1"] = {["revision"] = 1, ["steps"] = {}, ["order"] = {}}}}\n',
+                 "MadeUpThing.lua": 'MadeUpDB = {["log"] = {"x"}}\nMadeUpCharDB = {}\n',
+                 "Unrelated.lua": 'UnrelatedDB = {}\n'}
+        for name, body in files.items():
+            with open(os.path.join(sv, name), "w") as fh:
+                fh.write(body)
+        pp = os.path.join(d, "plan.yaml")
+        with open(pp, "w") as fh:
+            json.dump(plan, fh)
+        return type("A", (), {"src": os.path.join(d, "src"), "dest": os.path.join(d, "dest"), "shots": None, "plan": pp})
+
+    def test_plan_names_the_files_to_collect(self):
+        plan = {"addon": "MadeUp", "logs": {"debug": {"global": "MadeUpDB", "path": "log", "format": "strings"}}}
+        with tempfile.TemporaryDirectory() as d:
+            args = self.plan_tree(d, plan)
+            with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(ct.cmd_collect(args), 0)
+            self.assertEqual(sorted(f.split(".")[0] for f in os.listdir(os.path.join(args.dest, "sv"))), ["Account__A__SavedVariables__CheckThat", "Account__A__SavedVariables__MadeUpThing"])
+            self.assertEqual(err.getvalue(), "")
+            self.assertRegex(out.getvalue(), r"source: Account.A.SavedVariables.MadeUpThing\.lua, modified \d{4}-\d\d-\d\d \d\d:\d\d:\d\d, \d+s ago")
+            args.plan = None   # no plan: the default list, which names neither the made-up addon nor the unrelated one
+            shutil.rmtree(args.dest)
+            with contextlib.redirect_stdout(io.StringIO()):
+                ct.cmd_collect(args)
+            self.assertEqual(len(os.listdir(os.path.join(args.dest, "sv"))), 1)
+
+    def test_a_plan_global_no_file_defines_is_reported(self):
+        plan = {"addon": "MadeUp", "logs": {"a": {"global": "MadeUpDB"}, "b": {"global": "GhostDB"}}}
+        with tempfile.TemporaryDirectory() as d:
+            args = self.plan_tree(d, plan)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(ct.cmd_collect(args), 0)
+            self.assertIn("GhostDB", err.getvalue())
+            self.assertNotIn("MadeUpDB", err.getvalue())
+
+    def test_shot_slack_widens_or_narrows_the_window(self):
+        files = (("edge.jpg", 1062), ("far.jpg", 1065))   # attempt a runs 1000 to 1060
+        for slack, copied, loose in ((2, ["a__edge.jpg"], 1), (0, [], 2), (10, ["a__edge.jpg", "a__far.jpg"], 0)):
+            with tempfile.TemporaryDirectory() as d:
+                shots, dest, args = self.shot_setup(d, files)
+                args.shot_slack = slack
+                with contextlib.redirect_stdout(io.StringIO()):
+                    ct.cmd_collect(args)
+                got = os.path.join(dest, "runs", "R-1", "shots")
+                self.assertEqual(sorted(f for f in (os.listdir(got) if os.path.isdir(got) else []) if f.startswith("a__")), copied, slack)
+                self.assertEqual(len(ct.collect_shots(dest, shots, slack=slack)[1]), loose, slack)
 
     def test_wow_folder_collects_each_client(self):
         with tempfile.TemporaryDirectory() as d:
