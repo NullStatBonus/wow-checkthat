@@ -104,6 +104,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 make test      # build, luajit tests, python tests
 make check     # packaging and version checks
+luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fake client
 ```
 
 Requirements live in `openspec/`. The release steps are in [docs/publishing.md](docs/publishing.md).

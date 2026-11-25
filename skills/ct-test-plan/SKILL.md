@@ -78,7 +78,7 @@ After the last step show the author:
 - For a set of plans: each preamble names every partner file, and the reviewer line names the partner files and step IDs.
 - The checklist in `reference.md`, with each finding tied to a step id.
 
-Re-run `validate` after changes, then run `compile <plan> -o <file>.ct` on every final plan. For a set, tell the author the import order: one role per character, each imported and started before the next import.
+Re-run `validate` after changes, then run `compile <plan> -o <file>.ct` on every final plan. For a CheckThat plan in a checkout, replay it too: `luajit tests/replay_plan.lua <file>.ct [hooks.lua]` (see "Replay a plan" in `$CT/docs/authoring-plans.md`). Fix every problem, and check the text of every step it warns about. For a set, tell the author the import order: one role per character, each imported and started before the next import.
 
 ## 5. Gaps
 

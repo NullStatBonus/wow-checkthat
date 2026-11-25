@@ -52,7 +52,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: after No the run goes on unchanged. After Yes the card shows "Run ended" with Export results and Main window, and has no Undo or Resume. Starting the plan again opens a new run.
    Log: `[ct] run ended`, and `/ct status run` ends with "(run ended)".
 9. **Long step title.** Start a run. Open the plan file and give the current step a title of more than 100 characters, or use a plan with one. Click the card's - button to minimize the card, then point at the title.
-   Check: the title stays on one line inside the card and ends with "...". A tooltip shows the whole title. The step counter does not touch the Run menu. After you click + the title wraps to at most two lines.
+   Check: the title stays on one line inside the card and ends with "...". A tooltip shows the whole title. The header has no step counter. The count under the category bar is the only one. After you click + the title wraps to at most two lines.
    Log: none; on screen only.
 10. **Long plan name.** Import a plan with a title of more than 100 characters, with no run active.
    Check: the text stays inside the card and the Start run button shows at the left edge.

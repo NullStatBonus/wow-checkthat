@@ -290,7 +290,7 @@ sections:
   - loaded
   steps:
   - id: ct17.remove
-    category: spare
+    category: expand
     title: Remove the Spare category
     action:
       kind: manual
@@ -306,7 +306,7 @@ sections:
       scope: attempt
       label: Spare category left the run
   - id: ct17.notpicked
-    category: spare
+    category: expand
     title: Show a step that is not picked
     action:
       kind: manual
