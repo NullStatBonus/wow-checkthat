@@ -3,7 +3,7 @@
 
 Needs PyYAML and jsonschema (see requirements.txt). Run via .venv/bin/python tools/ct.py.
 """
-import argparse, base64, copy, glob, hashlib, json, os, re, shutil, subprocess, sys, time, zlib
+import argparse, base64, copy, glob, hashlib, json, math, os, re, shutil, subprocess, sys, time, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "test-plan.schema.json")
@@ -31,7 +31,7 @@ def load_yaml(path):
 
 
 def macro_allowed(text, addon):
-    if not isinstance(text, str) or not text or len(text) > 255:
+    if not isinstance(text, str) or not text or len(text.encode("utf-8")) > 255:
         return False
     allow = set(SLASH.get(addon, [])) | set(BUILTIN) | {"/console"}
     for line in text.split("\n"):
@@ -50,7 +50,7 @@ TYPES = ("number", "boolean", "string")
 
 
 def is_num(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 def check_op(a, sid, errs):
@@ -203,6 +203,8 @@ def validate(plan, requirements=None):
     for sec in plan["sections"]:
         if str(sec["id"]).lower() == "failed" and not cats:
             errs.append("section id failed is reserved for /ct rerun failed (each section is a category)")
+        if not ID.fullmatch(str(sec["id"])):
+            errs.append("section id %r is not valid (lowercase letters, digits, . _ -)" % sec["id"])
         if sec["id"] in sec_ids:
             errs.append("duplicate section id %s" % sec["id"])
         sec_ids.add(sec["id"])
@@ -214,6 +216,8 @@ def validate(plan, requirements=None):
             errs.append("section %s: unknown category %s" % (sec["id"], sec["category"]))
         for st in sec["steps"]:
             sid = st["id"]
+            if not ID.fullmatch(str(sid)):
+                errs.append("step id %r is not valid (lowercase letters, digits, . _ -)" % sid)
             if sid in seen:
                 errs.append("duplicate step id %s" % sid)
             seen.add(sid)
@@ -348,6 +352,7 @@ def export_form(run):
         for a in rec.get("attempts") or []:
             a.pop("snapshots", None)
             a.pop("reloaded", None)   # set when the game reloads with the attempt open; it does not change the revision
+    run.pop("current", None)   # the step the card shows: browsing moves it without a new revision
     return run
 
 def note_problem(dest, text):
@@ -377,7 +382,9 @@ def write_revision(dest, run):
             with open(rj, encoding="utf-8") as fh:
                 stored = json.load(fh)
         except (ValueError, OSError):
-            return "conflict"   # a damaged stored file is not the same run
+            # An interrupted write left a partial file. Keep it aside and store this revision again.
+            os.replace(rj, rj + ".damaged")
+            return write_revision(dest, run)
         try:
             check_major(stored)
         except MajorError as e:
@@ -387,8 +394,20 @@ def write_revision(dest, run):
         except (AttributeError, TypeError, ValueError):
             same = False
         return "same" if same else "conflict"
-    with open(rj, "w", encoding="utf-8") as fh:
+    # Write the whole file under another name, then publish it without overwriting: a stop in between leaves no partial
+    # revision, and two collectors cannot both write the same one.
+    tmp = "%s.%d.tmp" % (rj, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(text)
+    try:
+        os.link(tmp, rj)
+    except FileExistsError:
+        os.remove(tmp)
+        return write_revision(dest, run)
+    except OSError:
+        os.replace(tmp, rj)   # a file system with no hard links
+        return "new"
+    os.remove(tmp)
     return "new"
 
 
@@ -1031,6 +1050,9 @@ def cmd_collect(a):
     if loose:
         print("%d screenshot%s matched no attempt (taken outside every step, within an hour of one)%s" % (
             len(loose), "" if len(loose) == 1 else "s", "" if getattr(a, "verbose", False) else ": --verbose names them, --all-shots keeps them"))
+        near = min(g for _, _, _, g in loose)
+        if near <= SHOT_SKEW_HINT:
+            print("the nearest is %d s outside a step: on a game folder over a network mount the file times may differ from the game clock; try --shot-slack %d" % (near, near + 1))
         if getattr(a, "verbose", False):
             for name, rid, sid, gap in loose:
                 print("  %s: %d s from step %s of run %s" % (name, gap, sid, rid))
@@ -1125,6 +1147,7 @@ def collect_src(src, base, dest, want=(WATCH, ()), defined=None):
 SHOT_EXT = (".jpg", ".jpeg", ".png", ".tga")
 
 
+SHOT_SKEW_HINT = 120   # a loose screenshot this close to an attempt may be clock skew, not a late photo
 SHOT_NEAR = 3600   # a screenshot this many seconds from an attempt, outside its window, is reported; older files are not ours to count
 SHOT_CLIENT = {"_classic_era_": "classic-era", "_forever_": "forever-camelot"}
 
@@ -1279,10 +1302,17 @@ def read_run(path):
         run["steps"] = {}   # an empty Lua table decodes to a list
     if not isinstance(run, dict) or not isinstance(run.get("steps"), dict) or not isinstance(run.get("order", []), list):
         raise ValueError("not a run record")
+    cats = run.get("categories", [])
+    if (not all(isinstance(s, str) for s in run.get("order", []))
+            or not isinstance(cats, list) or not all(isinstance(c, dict) and isinstance(c.get("id"), str) for c in cats)
+            or not isinstance(run.get("cat", {}), dict) or not isinstance(run.get("selected", {}), dict)):
+        raise ValueError("not a run record")
     for rec in run["steps"].values():   # the readers below call .get on each of these
         ats = rec.get("attempts", []) if isinstance(rec, dict) else None
         if not isinstance(ats, list) or not all(isinstance(a, dict) and isinstance(a.get("outcomes", []), list) and all(outcome_ok(o) for o in a.get("outcomes", []))
                                                 and isinstance(a.get("excerpt", {}), dict) for a in ats):
+            raise ValueError("a step record is malformed")
+        if not isinstance(rec.get("verdict", ""), str) or not all(isinstance(a.get(k), (str, type(None))) for a in ats for k in ("verdict", "note", "by")):
             raise ValueError("a step record is malformed")
     return run
 
@@ -1363,6 +1393,9 @@ def step_table(r, only=None):
         note = "awaiting retry" if reopened else " ".join(((done[-1].get("note") or "") if done else "").splitlines())   # splitlines also splits Unicode line breaks
         if len(note) > 40:
             note = note[:37] + "..."
+        stale = rec.get("macroStale")
+        if isinstance(stale, int) and stale > 0:
+            note = ((note + "; ") if note else "") + "%d stale macro press%s" % (stale, "" if stale == 1 else "es")
         rows.append((sid, str(rec.get("verdict", "?")), evidence_state(rec), str(len(rec.get("attempts") or [])), note))
     widths = [max(len(row[i]) for row in rows) for i in range(4)]
     return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
@@ -1543,7 +1576,8 @@ def run_model(rid, r, stacks=None, lines=False):
         counts[result] = counts.get(result, 0) + 1
         done = [a for a in rec.get("attempts") or [] if a.get("verdict")]
         s = {"id": sid, "category": (r.get("cat") or {}).get(sid), "attempt": done[-1].get("n") if done else None, "result": result, "verdict": rec.get("verdict"), "reason": why,
-             "attempts": len(rec.get("attempts") or []), "awaitingRetry": awaiting_retry(rec), "recordedByCheckThat": by_checkthat(rec)}
+             "attempts": len(rec.get("attempts") or []), "awaitingRetry": awaiting_retry(rec), "recordedByCheckThat": by_checkthat(rec),
+             "macroStale": rec.get("macroStale") if isinstance(rec.get("macroStale"), int) else 0}
         checks = []
         for at in rec.get("attempts") or []:
             outs = [outcome_view(i, o, lines) for i, o in enumerate(at.get("outcomes") or [], 1) if o.get("result") != "pass"]
@@ -1707,12 +1741,13 @@ OK_RESULTS = ("pass", "partial")
 def plan_store(dest):
     """{digest: plan} from the CheckThat saved variables that collect copied to dest/sv. A file that cannot be read adds nothing."""
     store = {}
-    for p in sorted(glob.glob(os.path.join(dest, "sv", "CheckThat*.lua"))):
+    for p in sorted(glob.glob(os.path.join(dest, "sv", "*CheckThat*.lua"))):   # collect prefixes the name with the folder it came from
         try:
             db = sv_json(p).get("CheckThatDB")
         except (OSError, ValueError, RecursionError):
             continue
-        ps = db.get("planStore") if isinstance(db, dict) else None
+        g = db.get("global") if isinstance(db, dict) else None
+        ps = (g.get("planStore") if isinstance(g, dict) else None) or (db.get("planStore") if isinstance(db, dict) else None)   # AceDB keeps it under global
         for digest, plan in (ps.items() if isinstance(ps, dict) else []):
             store.setdefault(digest, plan)
     return store
@@ -1761,7 +1796,7 @@ def diff_data(ida, ra, idb, rb, store):
     rows, unknown = [], False
     for sid in list(sa) + [i for i in sb if i not in sa]:
         x, y = sa.get(sid), sb.get(sid)
-        row = {"id": sid, "a": x and x["result"], "b": y and y["result"], "label": None, "reason": ""}
+        row = {"id": sid, "a": x and x["result"], "b": y and y["result"], "label": None, "reason": "", "macroStale": [x["macroStale"] if x else 0, y["macroStale"] if y else 0]}
         if y is None:
             row["label"] = "removed"
         elif x is None:
@@ -1800,6 +1835,9 @@ def diff_text(d):
         if rows:
             lines += ["", "## " + k]
             lines += ["- %s: %s -> %s%s" % (r["id"], r["a"] or "-", r["b"] or "-", " (%s)" % r["reason"] if r["reason"] else "") for r in rows]
+    stale = [r for r in d["steps"] if any(r["macroStale"])]
+    if stale:
+        lines += ["", "## stale macro presses"] + ["- %s: %d -> %d" % (r["id"], *r["macroStale"]) for r in stale]
     return "\n".join(lines)
 
 def finished(r):

@@ -468,10 +468,12 @@ end
 -- The first line of the CT macro, /ct macrorun <step id>. It only logs: a match is "macro run", another step is
 -- "macro stale". Returns the chat line for a stale press. Never records a result.
 function App.MacroRun(id)
-    local _, _, step = App.Current()
+    local run, ctx, step = App.Current()
     local cur = step and step.id
     if id == cur then App.Log("macro run " .. id); return nil end
     App.Log("macro stale " .. id .. " card " .. (cur or "none"))
+    local rec = run and cur and not run.endedAt and run.steps[cur]
+    if rec then rec.macroStale = (rec.macroStale or 0) + 1; ns.Run.Touch(run, ctx.now) end
     if not cur then return L["This macro is for step %s. No step is open."]:format(id) end
     return L["This macro is for step %s. The card shows step %s."]:format(id, cur)
 end
@@ -531,6 +533,11 @@ function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
     if run and run.endedAt then return nil, L["This run has ended. Start the plan again for a new run."] end
     if not step then return nil, L["There is no current step."] end
+    do -- A step that has a result is read-only until Redo or Undo opens it again.
+        local rec = run.steps[step.id]
+        local last = rec and rec.attempts[#rec.attempts]
+        if last and last.verdict and rec.verdict ~= "pending" then return nil, L["This step has a result. Use Redo this step or Undo first."] end
+    end
     if ns.Errors then
         local rec = run.steps[step.id]
         local last = rec and rec.attempts[#rec.attempts]
@@ -656,7 +663,9 @@ end
 function App.Undo()
     local run, ctx = App.Current()
     if not run then return false end
-    return ns.Run.UndoLast(run, ctx)
+    local ok, id = ns.Run.UndoLast(run, ctx)
+    if ok then App.Log("undo " .. tostring(id) .. ": reopened") end
+    return ok, id
 end
 
 function App.Export(runId)

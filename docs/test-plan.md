@@ -79,6 +79,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: each press of the macro key runs the commands of the step on the card, and the Pass key moves the card on. The macro never records a result by itself.
    Log: `[ct] macroFollow on`, then `[ct] macro set <step id>` for each step with a new macro text, and `[ct] macro run <step id>` for each key press on the step the macro was written for.
 
+18. **A result needs Redo.** Pass a step, press the back arrow to show it, then type `/ct fail`.
+   Check: chat says the step has a result and to use Redo this step or Undo first. The step still shows Pass.
+   Log: no `[ct] step <id> fail` line for it.
+
 ## 4. Evidence
 
 1. **Auto-check ticks.** On a step with the green CHECKTHAT CHECKS THIS STEP banner, do the action.

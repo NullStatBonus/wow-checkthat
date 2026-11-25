@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.20.1
+
+Changed: **Undo and stale macro presses show in the run.** The report and diff now count presses of an out-of-date CT macro. Undo writes a line to the debug log.
+Changed: **Screenshot timing hint.** The collect tool now suggests a screenshot slack when a file lies just outside a step.
+Fixed: **A second confirm question showed the old text.** Each confirm question now replaces the one that is open.
+Fixed: **Run button in a game that cannot report combat.** CheckThat now treats that game as in combat and leaves the button alone.
+Fixed: **A closed card left the Run button on screen.** The button now goes away with the card.
+Fixed: **A slash result changed a finished step.** `/ct pass` on a step you went back to now asks for Redo or Undo first.
+Fixed: **A full log could pass a check that must fail.** A check that a line is absent now stays unverified when the log is full.
+Fixed: **Plans with a bad step id.** Plan import now rejects a step or section id with spaces, capitals or a new line.
+Fixed: **Collecting runs.** An interrupted collect no longer blocks a run revision. Moving the card no longer shows a conflict. Diff finds plans in collected files.
+Fixed: **A repeated run lost its log evidence.** A step showed "log rolled over" when you played the same plan twice. Checks for a line that must appear can pass. A check that cannot be sure stays unverified.
+
 ## 0.20.0
 
 New: **CT macro follows the step.** A new setting, off by default, keeps the CT macro on the commands of the current step. Bind a key to it and play a plan with it and the result keys. The macro never gives a result. It changes only out of combat, and never replaces a macro you changed. Its first line says which step it was made for. A press for another step shows a warning.

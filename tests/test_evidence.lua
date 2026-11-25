@@ -37,8 +37,9 @@ test("repeating startup block: boundary found by position after reload", functio
     after[#after + 1] = "[kt] new"
     local lines = E.NewLines(before, after)
     T.eq(#lines, 4, "the third block plus the new line are new")
-    -- ambiguous after a roll: same tail twice, none at the snapshot length
-    T.ok(E.NewLines({ "a", "b", "c" }, { "x", "a", "b", "c", "a", "b", "c", "z" }) == nil, "ambiguous is unverified")
+    -- ambiguous after a roll: same tail twice, none at the snapshot length. The last match is taken and not exact.
+    local amb, ex = E.NewLines({ "a", "b", "c" }, { "x", "a", "b", "c", "a", "b", "c", "z" })
+    T.eq(#amb, 1); T.eq(ex, false, "a repeated run leaves an inexact boundary")
     -- single match after a roll is accepted
     T.eq(#E.NewLines({ "a", "b", "c" }, { "x", "y", "a", "b", "c", "q" }), 1)
 end)
@@ -245,6 +246,56 @@ test("which picks the last, any or all facts", function()
     T.eq((judge(fact({ which = "all", op = "ge", value = 1 }), {}, after)), "pass")
     T.eq((judge(fact({ which = "all", op = "le", value = 5 }), {}, after)), "fail")
     T.eq((judge(fact({ which = "any", value = 7 }), {}, after)), "fail", "facts arrived and none match")
+end)
+test("a full ring that reads the saved tail again is not exact", function()
+    local lines, exact = E.NewLines({ "a", "b", "c" }, { "a", "b", "c" }, 3)
+    T.eq(#lines, 0); T.eq(exact, false, "forbidden,a,b,c would look the same")
+    local _, exact2 = E.NewLines({ "a", "b", "c" }, { "a", "b", "c" }, 5)
+    T.eq(exact2, true, "a log below its cap never dropped a line")
+end)
+-- Model test: a log that keeps its newest cap lines, with startup blocks that repeat. Whatever NewLines says, the lines it
+-- returns must be the end of the true new lines, and exact may be true only when they are all of them.
+test("NewLines never claims an exact boundary it cannot prove (ring model)", function()
+    local seed = 12345
+    local function rnd(n) seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n + 1 end
+    local blocks = { { "a", "b", "c" }, { "x", "y" }, { "z" } }
+    local checked = 0
+    for _ = 1, 400 do
+        local cap = rnd(8) + 3
+        local ring, all = {}, {}
+        local function write(l)
+            all[#all + 1] = l; ring[#ring + 1] = l
+            if #ring > cap then table.remove(ring, 1) end
+        end
+        for _ = 1, rnd(12) do
+            if rnd(3) == 1 then for _, l in ipairs(blocks[rnd(#blocks)]) do write(l) end else write("u" .. rnd(50)) end
+        end
+        local tail = {}
+        for i, l in ipairs(ring) do tail[i] = l end
+        local snap = { n = #ring, tail = tail }
+        local at = #all
+        for _ = 1, rnd(8) - 1 do
+            if rnd(3) == 1 then for _, l in ipairs(blocks[rnd(#blocks)]) do write(l) end else write("u" .. rnd(50)) end
+        end
+        local trueNew = {}
+        for i = at + 1, #all do trueNew[#trueNew + 1] = all[i] end
+        local got, exact = E.NewLines(snap, ring, cap)
+        if got then
+            checked = checked + 1
+            local off = #trueNew - #got
+            local suffix = off >= 0
+            if suffix then for i = 1, #got do if got[i] ~= trueNew[off + i] then suffix = false end end end
+            T.ok(suffix, "window is the end of the true new lines")
+            if exact then T.eq(#got, #trueNew, "exact means every new line is there") end
+        end
+    end
+    T.ok(checked > 100, "the model exercised many windows")
+end)
+test("which any is unverified, not failed, when the boundary is inexact", function()
+    local p = { "[KT] p=1", "[KT] p=2", "[KT] p=3" }
+    local after = { "[KT] z=0", p[1], p[2], p[3], "[KT] level=5", p[1], p[2], p[3], "[KT] level=1" }
+    T.eq((judge(fact({ which = "any", value = 5 }), p, after)), "unverified", "level=5 may sit before the last tail copy")
+    T.eq((judge(fact({ which = "any", value = 1 }), p, after)), "pass", "a match still passes")
 end)
 test("missing passes when no fact arrived and fails when one did", function()
     T.eq((judge(fact({ op = "missing", value = nil }), { "[KT] x=1" }, { "[KT] x=1", "[KT] y=1" })), "pass")

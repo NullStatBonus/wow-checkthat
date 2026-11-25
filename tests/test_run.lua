@@ -125,6 +125,20 @@ test("a new run records the version of the addon under test, and omits it when u
         T.eq(R.New(ctx).targetVersion, nil, "never records " .. tostring(bad))
     end
     T.ok(R.FORMAT_REV >= 3, "the revision that added the key")
+    T.ok(R.FORMAT_REV >= 4, "the revision that added macroStale")
+end)
+test("an ended run is never touched again", function()
+    local run, ctx = mk()
+    local rev = run.revision
+    T.eq(R.End(run, ctx.now), true); T.eq(run.revision, rev + 1, "End records itself once")
+    T.eq(R.Touch(run, ctx.now + 5), false); T.eq(run.revision, rev + 1); T.ok(run.updated ~= ctx.now + 5)
+end)
+test("ResetRecord clears every per-result key", function()
+    local rec = { verdict = "pass", evidence = "matched", reopened = true, macroStale = 3, attempts = { { n = 1 } } }
+    R.ResetRecord(rec, "pending")
+    T.eq(rec.verdict, "pending"); T.eq(rec.evidence, nil); T.eq(rec.reopened, nil); T.eq(rec.macroStale, 3); T.eq(#rec.attempts, 1)
+    R.ResetRecord(rec, "deselected", true)
+    T.eq(rec.macroStale, nil); T.eq(#rec.attempts, 0)
 end)
 test("a run of a newer major format is opaque", function()
     T.eq(R.Opaque({ ct = R.MAJOR + 1 }), true); T.eq(R.Opaque({ ct = R.MAJOR }), false); T.eq(R.Opaque({}), false); T.eq(R.Opaque(nil), false)

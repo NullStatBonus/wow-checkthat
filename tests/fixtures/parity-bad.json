@@ -1,0 +1,145 @@
+[
+ {
+  "name": "step id with a space",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "id"
+  ],
+  "value": "a b"
+ },
+ {
+  "name": "step id with a trailing newline",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "id"
+  ],
+  "value": "a.2\n"
+ },
+ {
+  "name": "step id with a second line",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "id"
+  ],
+  "value": "a.2\n/run x"
+ },
+ {
+  "name": "step id with capitals",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "id"
+  ],
+  "value": "A.2"
+ },
+ {
+  "name": "section id with capitals",
+  "path": [
+   "sections",
+   0,
+   "id"
+  ],
+  "value": "Basics"
+ },
+ {
+  "name": "section id with a trailing newline",
+  "path": [
+   "sections",
+   0,
+   "id"
+  ],
+  "value": "s1\n"
+ },
+ {
+  "name": "duplicate step id",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "id"
+  ],
+  "value": "a.1"
+ },
+ {
+  "name": "macro over 255 bytes of two-byte characters",
+  "path": [
+   "macros",
+   0,
+   "text"
+  ],
+  "value": "/kt éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+ },
+ {
+  "name": "macro command not on the allow list",
+  "path": [
+   "macros",
+   0,
+   "text"
+  ],
+  "value": "/run x"
+ },
+ {
+  "name": "markdown in display text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "expect"
+  ],
+  "value": "Press **Pass**."
+ },
+ {
+  "name": "unknown requirement",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "requires"
+  ],
+  "value": [
+   "nope"
+  ]
+ },
+ {
+  "name": "a count above the limit",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log",
+   "source": "debug",
+   "contains": "x",
+   "count": {
+    "exactly": 100001
+   }
+  }
+ },
+ {
+  "name": "a log cap above the limit",
+  "path": [
+   "logs",
+   "debug",
+   "cap"
+  ],
+  "value": 100001
+ }
+]

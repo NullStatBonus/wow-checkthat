@@ -18,7 +18,7 @@ end
 -- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
 -- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
 -- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
-Run.MAJOR, Run.FORMAT_REV = 1, 3
+Run.MAJOR, Run.FORMAT_REV = 1, 4
 
 -- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
 -- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
@@ -210,7 +210,7 @@ function Run.Deselect(run, ctx, id)
             if run.cat[run.order[i]] ~= id then after = run.order[i]; break end
         end
     end
-    for _, rec in ipairs(mine) do rec.attempts, rec.verdict, rec.evidence, rec.reopened = {}, "deselected", nil, nil end
+    for _, rec in ipairs(mine) do Run.ResetRecord(rec, "deselected", true) end
     run.selected[id] = nil
     reorder(run, ctx)
     if viewing and run.cat[viewing] == id then
@@ -268,6 +268,13 @@ end
 -- "failed" is no category id (Plan rejects it): it names every picked step whose result is fail or unverified.
 Run.FAILED = "failed"
 
+-- The one place that clears what a step record holds for its last result. full also drops the attempts and counters: the
+-- step leaves the run. A new per-step key goes here, so no path can leave it behind.
+function Run.ResetRecord(rec, verdict, full)
+    rec.verdict, rec.evidence, rec.reopened = verdict, nil, nil
+    if full then rec.attempts, rec.macroStale = {}, nil end
+end
+
 -- Reopen the picked steps of a category, or every failed or unverified step, as pending. Attempts stay.
 -- Returns how many steps reopened, or nil and a reason.
 function Run.Rerun(run, ctx, id)
@@ -285,7 +292,7 @@ function Run.Rerun(run, ctx, id)
             gone[sid] = true
             first = first or sid
             if rec.verdict ~= "pending" then
-                rec.verdict, rec.evidence = "pending", nil
+                Run.ResetRecord(rec, "pending")
                 rec.reopened = true -- only a step that had a result: an untouched step is not "awaiting retry"
                 n = n + 1
             end
@@ -302,7 +309,12 @@ function Run.Rerun(run, ctx, id)
     return n
 end
 
-function Run.Touch(run, now) run.revision = run.revision + 1; run.updated = now; stamp(run) end
+-- An ended run never changes again, so a late press or a viewed past run cannot raise its revision. End touches first.
+function Run.Touch(run, now)
+    if run.endedAt then return false end
+    run.revision = run.revision + 1; run.updated = now; stamp(run)
+    return true
+end
 
 local function stepOf(ctx, id)
     for _, sec in ipairs(ctx.plan.sections) do
@@ -579,7 +591,7 @@ function Run.End(run, now)
         local a = rec.attempts[#rec.attempts]
         if a and not a.verdict then a.snapshots = nil end
     end
-    run.endedAt = now
     Run.Touch(run, now)
+    run.endedAt = now
     return true
 end

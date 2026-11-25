@@ -840,6 +840,18 @@ class Collect(unittest.TestCase):
         dest = os.path.join(d, "dest")
         return shots, dest, type("A", (), {"src": os.path.join(d, "src"), "dest": dest, "shots": shots})
 
+    def test_a_screenshot_just_outside_a_step_suggests_a_slack(self):
+        with tempfile.TemporaryDirectory() as d:
+            shots, dest, args = self.shot_setup(d, (("skew.jpg", 1070),))
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                ct.cmd_collect(args)
+            self.assertIn("try --shot-slack 11", out.getvalue())
+        with tempfile.TemporaryDirectory() as d:
+            shots, dest, args = self.shot_setup(d, (("late.jpg", 1500),))
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                ct.cmd_collect(args)
+            self.assertNotIn("--shot-slack", out.getvalue(), "440 s is not clock skew")
+
     def test_loose_screenshots_are_counted_named_and_kept_on_request(self):
         files = (("in.jpg", 1030), ("edge.jpg", 1062), ("late.jpg", 1500), ("open.jpg", 2800), ("old.jpg", 90000))
         with tempfile.TemporaryDirectory() as d:
@@ -1402,6 +1414,24 @@ class Cases(unittest.TestCase):
         p["sections"][0]["steps"].append(dict(dup, id="a.2.cloth"))
         self.assertTrue(any("duplicate step id a.2.cloth" in e for e in ct.validate(p)))
 
+    def test_ids_and_numbers_follow_the_game_rules(self):
+        p = self.plan(); p["sections"][0]["steps"][0]["id"] = "a.1\n"   # the schema pattern lets a trailing newline through
+        self.assertTrue(any("step id" in e and "not valid" in e for e in ct.validate(p)))
+        p = self.plan(); p["sections"][0]["id"] = "Basics"
+        self.assertTrue(any("section id" in e and "not valid" in e for e in ct.validate(p)))
+        self.assertFalse(ct.is_num(float("nan"))); self.assertFalse(ct.is_num(float("inf"))); self.assertTrue(ct.is_num(2.5))
+        self.assertFalse(ct.macro_allowed("/reload " + chr(233) * 130, "KeepThat"), "bytes, not characters")
+
+    def test_the_validator_rejects_every_plan_of_the_shared_parity_set(self):
+        with open(os.path.join(ROOT, "tests", "fixtures", "parity-plan.json"), encoding="utf-8") as fh: base = json.load(fh)
+        with open(os.path.join(ROOT, "tests", "fixtures", "parity-bad.json"), encoding="utf-8") as fh: muts = json.load(fh)   # tests/test_plan.lua reads the same files
+        self.assertEqual(ct.validate(json.loads(json.dumps(base))), [])
+        for m in muts:
+            p = json.loads(json.dumps(base)); o = p
+            for k in m["path"][:-1]: o = o[k]
+            o[m["path"][-1]] = m["value"]
+            self.assertTrue(ct.validate(p), "ct.py accepted: " + m["name"])
+
     def test_more_than_fifty_cases_fail(self):
         p = self.plan(); p["sections"][0]["steps"][1]["cases"] = [{"id": "c%d" % i, "vars": {"slot": "x"}} for i in range(51)]
         self.assertTrue(ct.validate(p))
@@ -1451,6 +1481,18 @@ class Results(unittest.TestCase):
         self.assertEqual(ct.classify(rec("partial", "pass"))[0], "partial")
         self.assertEqual(ct.classify({"verdict": "deselected"}), ("skipped", "category not picked"))
         self.assertEqual(ct.classify({"verdict": "pending"}), ("skipped", "not run"))
+
+    def test_stale_macro_presses_show_in_the_table_the_model_and_the_diff_text(self):
+        run = {"order": ["a", "b"], "steps": {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}], "macroStale": 2}, "b": {"verdict": "pending", "attempts": []}}}
+        rows = ct.step_table(run)
+        self.assertIn("2 stale macro presses", rows[1]); self.assertNotIn("stale", rows[2])
+        model = {s["id"]: s for s in ct.run_model("R", run)["steps"]}
+        self.assertEqual([model["a"]["macroStale"], model["b"]["macroStale"]], [2, 0])
+        d = {"a": {"runId": "A", "client": None, "build": None, "character": None, "planDigest": None, "writerVersion": None, "targetVersion": None},
+             "b": {"runId": "B", "client": None, "build": None, "character": None, "planDigest": None, "writerVersion": None, "targetVersion": None},
+             "planChanged": False, "counts": {"unchanged": 2}, "warnings": [],
+             "steps": [{"id": "a", "a": "pass", "b": "pass", "label": "unchanged", "reason": "", "macroStale": [0, 2]}]}
+        self.assertIn("## stale macro presses\n- a: 0 -> 2", ct.diff_text(d))
 
     def test_a_reopened_step_is_awaiting_retry_in_the_table_and_the_reports(self):
         done = {"n": 1, "verdict": "fail", "note": "old note"}
@@ -1709,6 +1751,17 @@ class Results(unittest.TestCase):
             json.dump({"steps": {"a": {"attempts": [{"n": 1, "outcomes": [{"result": "fail", "hits": [{"n": 1, "line": "x"}], "matched": 1, "window": 1}, {"result": "pass"}]}]}}}, fh)
         ct.read_run(os.path.join(d, "ok.json"))   # older runs, with none of it, read as before
 
+    def test_a_run_record_with_the_wrong_types_is_unreadable(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        bad = ({"order": [["a"]], "steps": {}}, {"steps": {}, "categories": [5]}, {"steps": {}, "categories": {"id": "x"}},
+               {"steps": {}, "cat": []}, {"steps": {}, "selected": 3}, {"steps": {"a": {"verdict": 5, "attempts": []}}},
+               {"steps": {"a": {"attempts": [{"n": 1, "verdict": ["pass"]}]}}}, {"steps": {"a": {"attempts": [{"n": 1, "note": 7}]}}})
+        for i, run in enumerate(bad):
+            p = os.path.join(d, "r%d.json" % i)
+            with open(p, "w") as fh: json.dump(run, fh)
+            with self.assertRaises(ValueError, msg=str(run)):
+                ct.read_run(p)
+
     def test_the_results_schema_accepts_old_and_new_runs_and_names_bad_detail(self):
         import jsonschema
         with open(os.path.join(ROOT, "schema", "run-results.schema.json")) as fh:
@@ -1723,6 +1776,26 @@ class Results(unittest.TestCase):
         for bad in ({"hits": [{"n": 0}]}, {"result": "bogus"}, {"matched": -1}, {"scope": "everywhere"}, {"hits": [{"n": 1}] * 4}, {"trimmed": False}):
             run = {"steps": {"a": {"attempts": [{"n": 1, "outcomes": [dict({"result": "fail"}, **bad)]}]}}}
             self.assertTrue(list(check(run)), bad)
+
+    def test_every_export_of_a_played_run_passes_the_schema(self):
+        import jsonschema
+        path = os.path.join(ROOT, "build", "export-runs.json")   # written by tests/test_export_schema.lua, which make test runs first
+        if not os.path.exists(path):
+            self.skipTest("run tests/test_export_schema.lua first")
+        with open(os.path.join(ROOT, "schema", "run-results.schema.json")) as fh:
+            schema = json.load(fh)
+        with open(path) as fh:
+            runs = json.load(fh)
+        self.assertGreaterEqual(len(runs), 8)
+        for i, run in enumerate(runs):
+            self.assertEqual(list(jsonschema.Draft202012Validator(schema).iter_errors(run)), [], "export %d" % i)
+            # The schema lets unknown keys through (readers ignore them), so a key the writer adds must be named in it.
+            known = lambda d, obj: set(obj) - set((d.get("properties") or {}))
+            self.assertEqual(known(schema, run), set(), "top-level keys not in the schema")
+            for rec in run["steps"].values():
+                self.assertEqual(known(schema["$defs"]["step"], rec), set(), "step keys not in the schema")
+                for a in rec["attempts"]:
+                    self.assertEqual(known(schema["$defs"]["attempt"], a), set(), "attempt keys not in the schema")
 
     def test_a_run_the_addon_wrote_passes_the_schema_and_both_tools_read_it(self):
         import jsonschema
@@ -1910,6 +1983,24 @@ class CompareRuns(unittest.TestCase):
             with open(os.path.join(d, "sv", "CheckThat-abc.lua"), "w") as f:
                 f.write("CheckThatDB = %s\n" % verify_fixture.lua({"planStore": store}))
         return d
+
+    def test_plan_store_reads_a_collected_file_name_and_the_global_table(self):
+        import verify_fixture
+        d = self.dest({}); os.makedirs(os.path.join(d, "sv"))
+        with open(os.path.join(d, "sv", "Account__A__SavedVariables__CheckThat.1234567890.lua"), "w") as f:
+            f.write("CheckThatDB = %s\n" % verify_fixture.lua({"global": {"planStore": {"dig": {"sections": []}}}}))
+        self.assertIn("dig", ct.plan_store(d))
+
+    def test_a_partial_revision_file_is_replaced_and_navigation_is_not_a_conflict(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        run = {"runId": "R-1", "revision": 3, "ct": 1, "steps": {}, "current": 2}
+        self.assertEqual(ct.write_revision(d, run), "new")
+        self.assertEqual(ct.write_revision(d, dict(run, current=5)), "same", "browsing does not change a revision")
+        rj = os.path.join(d, "runs", "R-1", "r3.json")
+        with open(rj, "w") as f: f.write('{"runId": "R-1", "rev')
+        self.assertEqual(ct.write_revision(d, run), "new", "a damaged file is kept aside and the revision stored again")
+        self.assertTrue(os.path.exists(rj + ".damaged"))
+        self.assertEqual([n for n in os.listdir(os.path.dirname(rj)) if n.endswith(".tmp")], [])
 
     def cli(self, *argv):
         out, err = io.StringIO(), io.StringIO()

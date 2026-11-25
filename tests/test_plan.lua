@@ -19,6 +19,26 @@ local function bad(mut, needle)
     T.ok(#errs > 0, "expected errors for " .. needle)
     T.ok(table.concat(errs, ";"):find(needle, 1, true), needle .. " not in: " .. table.concat(errs, ";"))
 end
+test("plan rejects step and section ids the macro marker cannot carry", function()
+    bad(function(p) p.sections[1].steps[2].id = "a b" end, "step id is not valid")
+    bad(function(p) p.sections[1].steps[2].id = "a.2\n/run x" end, "step id is not valid")
+    bad(function(p) p.sections[1].id = "Basics" end, "section id is not valid")
+end)
+-- The same plans that tools/test_ct.py gives ct.py validate (tests/fixtures/parity-*.json): both validators must agree.
+test("the validator rejects every plan of the shared parity set and accepts its base", function()
+    local function read(p) local f = assert(io.open(p, "rb")); local s = f:read("*a"); f:close(); return assert(ns.Json.Decode(s)) end
+    local base, muts = read("tests/fixtures/parity-plan.json"), read("tests/fixtures/parity-bad.json")
+    T.eq(#ns.Plan.Validate(base), 0, table.concat(ns.Plan.Validate(base), ";"))
+    T.ok(#muts >= 10, "the set is not empty")
+    for _, m in ipairs(muts) do
+        local p = read("tests/fixtures/parity-plan.json")
+        local o = p
+        for i = 1, #m.path - 1 do local k = m.path[i]; o = o[type(k) == "number" and k + 1 or k] end
+        local last = m.path[#m.path]
+        o[type(last) == "number" and last + 1 or last] = m.value
+        T.ok(#ns.Plan.Validate(p) > 0, "Lua accepted: " .. m.name)
+    end
+end)
 test("plan rejects Markdown in display text", function()
     bad(function(p) p.sections[1].steps[2].action.text = "Type `/kt log`." end, "markdown in step a.2")
     bad(function(p) p.sections[1].steps[2].expect = "Press **Pass**." end, "markdown")

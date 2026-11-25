@@ -89,6 +89,29 @@ test("combat: closing the card in combat leaves no Run button after combat", fun
     slash("")  -- opens the card again
     T.ok(card:IsShown() and st.click(card.secure) == macroOf(), "opening the card brings the button back")
 end)
+test("combat: closing the card out of combat releases the state driver", function()
+    ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.ok(card:IsShown() and st.click(card.secure), "the button is live with the card open")
+    card:Hide()
+    st.tick()
+    T.ok(not card.secure:IsShown(), "no Run button beside a closed card")
+    st.tick(); st.tick()
+    T.ok(not card.secure:IsShown(), "and the driver does not bring it back")
+    slash("")  -- opens the card again
+    T.ok(card:IsShown() and st.click(card.secure) == macroOf(), "opening the card brings the button back")
+end)
+test("combat: a collapsed card still opens the attempt of the step it shows", function()
+    ns.Card.Refresh()
+    addon.db.profile.card.collapsed = true
+    slash("skip")
+    ns.Card.Refresh()
+    local run, _, step = ns.App.Current()
+    local rec = run.steps[step.id]
+    local last = rec.attempts[#rec.attempts]
+    T.ok(last and not last.verdict, "an open attempt for " .. step.id)
+    addon.db.profile.card.collapsed = false
+end)
 test("combat: category commands in combat raise nothing and the Run button follows the step shown", function()
     importKeepThat()
     st.setCombat(false)
@@ -293,6 +316,11 @@ test("follow: a press on the step the macro was written for logs macro run", fun
     press()
     T.eq(logHas("macro run " .. step.id), 1)
     T.eq(logHas("macro stale"), 0)
+    T.eq(ns.App.Current().steps[step.id].macroStale, nil, "a matching press is not counted")
+    local run = ns.App.Current(); run.endedAt = 1
+    local rev = run.revision
+    ns.App.MacroRun("nope")
+    T.eq(run.revision, rev, "an ended run is never touched"); run.endedAt = nil
 end)
 
 test("follow: a press after the step moved in combat logs macro stale", function()
@@ -306,6 +334,8 @@ test("follow: a press after the step moved in combat logs macro stale", function
     press()
     ns.Slash.Print = print0
     T.eq(logHas("macro stale " .. old.id .. " card " .. cur.id), 1)
+    T.eq(ns.App.Current().steps[cur.id].macroStale, 1, "the stale press is counted on the step on the card")
+    T.eq(ns.Run.Export(ns.App.Current()).steps[cur.id].macroStale, 1, "and exported")
     T.eq(logHas("macro run"), 0)
     T.ok(said[1] and said[1]:find(old.id, 1, true) and said[1]:find(cur.id, 1, true), "chat names both steps")
     combatEnds()
