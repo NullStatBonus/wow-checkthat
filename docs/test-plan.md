@@ -91,7 +91,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 4. **Export.** Finish the run, type `/ct export`, then `/reload`.
    Check: a box shows a string starting with `!CT1!`. After the reload `WTF/Account/<account>/SavedVariables/CheckThat.lua` holds the run.
    Log: `CheckThatDB.global.runs` holds the run with its steps, each with a category.
-5. **Harvest.** Double-click `tools/Copy-CheckThatEvidence.bat` on the PC, then run `tools/ct.py collect --src evidence-src` and `report` on the Mac.
+5. **Harvest.** On the computer with the game, run `tools/ct.py collect` and then `report` (see docs/setup.md).
    Check: `evidence/REPORT.md` lists the run and no unverified evidence.
    Log: none; read the report.
 6. **Automatic step shows who records it.** Press < on the card after an automatic step finished.

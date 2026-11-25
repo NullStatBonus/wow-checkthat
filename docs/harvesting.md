@@ -1,6 +1,6 @@
 # Collect evidence
 
-After a run, `/reload` or log out so the game writes the saved variables. Then read them on your computer with `tools/ct.py`.
+After a run, `/reload` or log out so the game writes the saved variables. Then read them on your computer with `tools/ct.py` (Python, on Windows, macOS and Linux: [Set up the tools](setup.md); the commands below use the macOS and Linux form `.venv/bin/python`).
 
 `collect`, `status` and `report` decode saved variables with a Python reader. They do not need LuaJIT (a test checks that the reader gives the same JSON as `tools/sv2json.lua` on every fixture). `replay` and `offline` still need `luajit`. To judge a plan against a saved-variables fixture without the game, see [Check a plan against saved variables](authoring-plans.md#check-a-plan-against-saved-variables).
 
@@ -12,7 +12,7 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 .venv/bin/python tools/ct.py report      # write evidence/REPORT.md
 ```
 
-- **Source.** `collect` reads `../shared-addon-resources/saved` by default. `--wow <game dir>` (or `CT_WOW`) collects `_classic_era_` and `_forever_` with their `WTF` and `Screenshots` folders. `--src <WTF dir>` (or `CT_WTF`) names one folder and wins.
+- **Source.** `collect` reads `../shared-addon-resources/saved` by default. When that folder is missing, it looks in the usual game install folders for your system and prints the one it uses. `--wow <game dir>` (or `CT_WOW`) collects `_classic_era_` and `_forever_` with their `WTF` and `Screenshots` folders. `--src <WTF dir>` (or `CT_WTF`) names one folder and wins.
 - **Which files.** With no plan, `collect` copies the saved variables of CheckThat, KeepThat, DontDoThat and ClosestVendor. `--plan <plan.yaml>` copies CheckThat's file, the file named for the plan's `addon`, and every file that assigns a `logs.*.global` of the plan, so a plan for any addon is collected. Each file prints its path, modified time and age (`source: ..., modified 2026-11-24 21:03:10, 12m ago`), so a stale copy shows. A plan global that no file defines prints a warning on stderr and `collect` still exits 0.
 - **Report.** `REPORT.md` gives each run a `result:` line (`ok`, `UNVERIFIED` or `FAIL` with counts) and a table of every step: verdict, evidence (`met`, `bad`, `missing` or `none`), attempt count and note. Detail lines follow for steps that did not pass. A step that passed after a rerun lists its earlier failed or unverified attempts too. A failed or unverified attempt shows the Lua error that was raised while it was open, with its call stack. The match is by time (whole seconds), so a stack that also fits another attempt says so.
 - **Status.** `status` prints one row per run at its newest readable revision: steps done over steps that apply, fail, unverified and open counts, age, and the export size as a percent of the 2 MB limit (`size~`, an estimate from the saved run). It names every revision file it cannot read and every conflict or decode failure `collect` met (kept in `evidence/problems.log`; delete the file once you have looked). It judges the evidence, not the test result. `--json` prints the same as JSON.
@@ -78,19 +78,9 @@ Set `screenshot: true` on a step. The card asks for Print Screen. The addon neve
 
 Some addons keep a log per character. On Classic Era, ClosestVendor's `ClosestVendorCharDB` is one. A copy that takes only account-level saved variables misses it. Run `collect --src "<WoW>/_classic_era_/WTF"` against the real folder instead.
 
-## Windows
+## Windows and other computers
 
-Double-click `tools/Copy-CheckThatEvidence.bat`. It runs `Copy-CheckThatEvidence.ps1` beside it. `/reload` or log out first so the game writes the files.
-
-It copies CheckThat and the three addons' saved variables (including Era per-character files) and Screenshots into `evidence-src/`. Each copied file prints its modified time and age, and a missing file prints a warning. To copy other addons, run the script with `-Names` (file names without `.lua`; CheckThat is always copied): `powershell -File tools\Copy-CheckThatEvidence.ps1 -Names MyAddon,OtherAddon`. Then run the tools with Python:
-
-```
-.venv/bin/python tools/ct.py collect --src evidence-src
-.venv/bin/python tools/ct.py status
-.venv/bin/python tools/ct.py report
-```
-
-The Windows PC does not need Python for the copy step, and no step needs LuaJIT.
+Windows works like any other system: [Set up the tools](setup.md) lists the Python install and the `.venv\Scripts\python` form of each command here. `collect` finds the game in its usual folder, or takes `--wow`. It copies the saved variables (including Era per-character files) and screenshots. No step needs LuaJIT. If the game is on another computer, copy the `WTF` and `Screenshots` folders of each client and point `--wow` at the copy.
 
 ## Categories in the report
 

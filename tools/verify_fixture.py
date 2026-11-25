@@ -71,7 +71,7 @@ def build(dest, ambiguous=False):
     for name in ("keepthat-tally.bank.yaml", "keepthat-tally.alt.yaml"):
         shutil.copyfile(os.path.join(SKILL, name), os.path.join(dest, "plans", name))
     import yaml
-    with open(os.path.join(dest, "plans", "fixture.yaml"), "w") as f:
+    with open(os.path.join(dest, "plans", "fixture.yaml"), "w", encoding="utf-8") as f:
         yaml.safe_dump(FIXTURE_PLAN, f, sort_keys=False)
     runs = {
         "Bank-1": run("Bank-1", "Tally-Bank-Realm", bank, {"kb.1": step("pass"), "kb.2": step("pass", note="total 12")}),
@@ -87,7 +87,7 @@ def build(dest, ambiguous=False):
     store = {digest(p): ct.merge_sections(p) for p in (FIXTURE_PLAN,)}
     sv = os.path.join(dest, "src", "Account", "A", "SavedVariables")
     os.makedirs(sv, exist_ok=True)
-    with open(os.path.join(sv, "CheckThat.lua"), "w") as f:
+    with open(os.path.join(sv, "CheckThat.lua"), "w", encoding="utf-8") as f:
         f.write("CheckThatDB = %s\n" % lua({"runs": runs, "planStore": store}))
     return runs
 

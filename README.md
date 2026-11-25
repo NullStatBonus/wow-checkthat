@@ -93,6 +93,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 
 - [Write a plan](docs/authoring-plans.md): the plan format, compile, and the sample and full plans.
 - [Results format](docs/results-format.md): the saved run record, its version numbers and the rules for a tool that reads it.
+- [Set up the tools](docs/setup.md): Python on Windows, macOS and Linux, and where `collect` finds the game.
 - [Collect evidence](docs/harvesting.md): `collect`, `status`, `show`, `browse` (a terminal viewer), `report` (Markdown, JSON or JUnit), per-character data on Classic Era, and Windows. `collect` needs no LuaJIT, takes `--plan` to collect any addon's saved variables and `--shot-slack` for screenshot timing. `diff` compares two finished runs and `trend` lines up many. `coverage` lists the commands, settings and spec requirements no plan step touches.
 - [Plan skills](docs/skills.md): `ct-test-plan` and `ct-verify` for Claude Code, Codex and other agents, and the Claude Code plugin.
 - [Debug logging](docs/debug-logging.md): what a good addon debug log looks like.
@@ -103,7 +104,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 ## Develop
 
 ```
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: docs/setup.md
 make test      # build, luajit tests, python tests
 make check     # packaging and version checks
 luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fake client

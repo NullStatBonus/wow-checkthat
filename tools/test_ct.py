@@ -790,6 +790,30 @@ class Collect(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 ct.cmd_collect(args)
 
+    def test_find_wow_in_the_usual_place(self):
+        with tempfile.TemporaryDirectory() as d:
+            sv = os.path.join(d, "World of Warcraft", "_forever_", "WTF", "Account", "A", "SavedVariables"); os.makedirs(sv)
+            with open(os.path.join(sv, "CheckThat.lua"), "w", encoding="utf-8") as fh:
+                fh.write('CheckThatDB = {["runs"] = {["R-9"] = {["revision"] = 1, ["steps"] = {}, ["order"] = {}}}}\n')
+            dest = os.path.join(d, "dest")
+            args = type("A", (), {"src": None, "wow": None, "dest": dest, "shots": None})
+            old_env, old_src = os.environ.get("ProgramFiles"), ct.default_src
+            ct.default_src = lambda: os.path.join(d, "none")
+            try:
+                os.environ["ProgramFiles"] = os.path.join(d, "empty")
+                with self.assertRaises(SystemExit) as e:   # nothing found: the message names the flags
+                    ct.cmd_collect(args)
+                self.assertIn("--wow", str(e.exception))
+                os.environ["ProgramFiles"] = d
+                self.assertEqual(ct.find_wow(), os.path.join(d, "World of Warcraft"))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(ct.cmd_collect(args), 0)
+                self.assertEqual(os.listdir(os.path.join(dest, "runs")), ["R-9"])
+            finally:
+                ct.default_src = old_src
+                if old_env is None: os.environ.pop("ProgramFiles", None)
+                else: os.environ["ProgramFiles"] = old_env
+
     def test_screenshots_by_attempt_window(self):
         with tempfile.TemporaryDirectory() as d:
             sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
