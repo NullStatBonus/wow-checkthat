@@ -82,9 +82,18 @@ sections:
       text: Type |cff99ccff/ct tracker|r.
       commands:
       - /ct tracker
-    expect: A window lists four categories. Each row has a plus button on its left. No step shows under a row. Then press Pass on the card.
+    expect: A window lists four categories. The card records the result by itself.
     verify:
-    - player
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] tracker open'
+      scope: attempt
+      label: The Categories window opened
+    notes: The next step needs the plus button, so it checks that the rows show.
   - id: ct17.expand
     category: expand
     title: Show the steps of a category

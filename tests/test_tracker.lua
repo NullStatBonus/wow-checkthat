@@ -205,6 +205,13 @@ local function logged(text)
 end
 local function toggle(i) local r = win().rows[i]; r.toggle.scripts.OnClick(r.toggle) end
 
+test("opening the window is logged, so a plan step can wait for it", function()
+    _G.SlashCmdList["ACECONSOLE_CT"]("debug on")
+    start(3, { "c1", "c2" })
+    ns.Tracker.Show()
+    T.ok(logged("tracker open"))
+end)
+
 test("a row expands to its steps with result words and marks, and collapses again", function()
     _G.SlashCmdList["ACECONSOLE_CT"]("debug on")
     local run = start(3, { "c1", "c2" })

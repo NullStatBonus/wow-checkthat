@@ -160,7 +160,7 @@ A plan groups its steps into categories. A plan that declares none uses each sec
 - **Colors.** Red: a step failed. Yellow: a step is partial or unverified. Green: every step has a result and one passed. Blue: some steps are still untested, whether or not others have results (the words say "untested" or "in progress"). Grey: every step skipped. A category you did not pick is shown dim. The same words and counts show on the Home page and in `/ct categories`.
 - **Text opacity.** The tracker follows the card's text opacity. At zero it draws nothing.
 
-Debug log: `trigger <category|step> <name>: step <id>`, `select <category>`, `rerun <category or failed>: <n> steps reopened`, `tracker expand <category>`, `tracker collapse <category>`, `show step <id>`. The report adds `Categories: overall <state>` and one line for each category.
+Debug log: `trigger <category|step> <name>: step <id>`, `select <category>`, `rerun <category or failed>: <n> steps reopened`, `tracker open`, `tracker expand <category>`, `tracker collapse <category>`, `show step <id>`. The report adds `Categories: overall <state>` and one line for each category.
 
 ## Unit-test checks
 

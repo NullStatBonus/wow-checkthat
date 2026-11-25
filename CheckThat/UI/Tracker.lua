@@ -268,6 +268,7 @@ function Tracker.Show()
     if not win then build() end
     cfg().trackerOpen = true
     win:Show()
+    App.Log("tracker open")
     Tracker.Refresh()
 end
 
