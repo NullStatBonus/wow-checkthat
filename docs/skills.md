@@ -30,6 +30,7 @@ make install-skill SKILL_DIR=<folder>           # any other agent that reads SKI
 - `SKILL_DIR` must be outside the checkout.
 - The install includes a copy of the plan tools, the decoder files that `collect` needs, and a private Python with PyYAML and jsonschema. The skills then work in any addon repository with no checkout.
 - It needs Python 3 with `venv`, and network access once.
+- `ct.py replay` (see [Check a plan against saved variables](authoring-plans.md#check-a-plan-against-saved-variables)) also needs `luajit`.
 - `ct-verify` also needs `luajit` on your PATH to read saved variables. `collect` exits with an error and names the file when it cannot decode one.
 - The two skills must sit in the same folder, because `ct-verify` finds the tools in `../ct-test-plan/ct`.
 - Run the install again after the tools change. Each skill reports the tools version it uses.

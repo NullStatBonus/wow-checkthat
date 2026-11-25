@@ -11,7 +11,7 @@ A plan is a YAML file in `plans/` that follows `schema/test-plan.schema.json`. C
    ```
 
    Or ask the [plan skill](skills.md) to interview you and draft it.
-2. **Validate.** `.venv/bin/python tools/ct.py validate plans/<addon>.yaml`.
+2. **Validate.** `.venv/bin/python tools/ct.py validate plans/<addon>.yaml`. It fails on a step that asserts its own result line, and warns when the first step does not check the version.
 3. **Compile.** `make build` writes `build/*.ct`. Compile one plan with `.venv/bin/python tools/ct.py compile plans/<name>.yaml -o build/<name>.ct`.
 4. **Import and run.** In game, `/ct import`, paste, then `/ct start <addon>`.
 
@@ -45,6 +45,16 @@ Before a tester runs a CheckThat plan, play it in the fake client: `make build`,
 - a step never gets reached.
 
 It warns when the card shows a step a second time, because the step's text must cover both visits. A hooks file (`tests/replay/checkthat-0.17.lua` is an example) says which result to press (`verdict`), which steps the card shows again on purpose (`revisits`), and what to do for a step that moves the card, such as Undo, a click on a step row or Remove from run (`action`). `tests/test_replay.lua` replays the 0.17 plan on every `make test`. It checks the plan's flow only. What the addon does is for the game.
+
+## Check a plan against saved variables
+
+`.venv/bin/python tools/ct.py replay plans/<addon>.yaml --sv <fixture dir>` judges the plan's log and fact checks against saved variables, with no game. It needs `luajit`. The fixture dir holds the SavedVariables `*.lua` files from a real run, with personal names removed, and may hold `fixture.json`: `{"recorded": "YYYY-MM-DD", "digest": "<plan digest>"}`. The command prints JUnit and exits 1 when a required check fails.
+
+- The whole log is the window, as with `scope: session`. A typo in `contains` or `pattern`, a line that is not in the log, and a forbidden line that is in the log all fail.
+- A check that needs the step's own window cannot pass here. `absent`, `exactly`, `max` and a `missing` fact count as not judged offline when the log does not contradict them. A state probe is not judged either, because it needs the game.
+- Diagnostic checks are left out.
+- It prints the fixture's age and warns when `fixture.json` is missing or its digest differs from the plan's. Record the fixture again after a plan or log text change.
+- It tests the plan's text against the log. It does not run the addon, and it does not replace a run in the game.
 
 ## Good logs make good plans
 

@@ -2,7 +2,7 @@
 
 After a run, `/reload` or log out so the game writes the saved variables. Then read them on your computer with `tools/ct.py`.
 
-`collect` and `report` need LuaJIT (`luajit` on your PATH) to decode saved variables.
+`collect` and `report` need LuaJIT (`luajit` on your PATH) to decode saved variables. To judge a plan against a saved-variables fixture without the game, see [Check a plan against saved variables](authoring-plans.md#check-a-plan-against-saved-variables).
 
 ## Collect, check and report
 

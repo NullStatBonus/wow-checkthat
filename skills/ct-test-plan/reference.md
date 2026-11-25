@@ -12,12 +12,15 @@ Sources: `schema/test-plan.schema.json`, `openspec/specs/test-plan-format/spec.m
 - Steps for one client carry a `clients` tag; shared behavior runs on both.
 
 ## Assertions
+- No step asserts its own result line (`[ct] step <its id> ...`); that proof belongs on a later step with `scope: session`.
 - The first step checks the version under test (`/ct version` and a `version` fact with `op: ge` for CheckThat).
 - A required assertion backs every step where the addon logs the evidence.
 - `absent` checks cover "must not happen".
 - `scope` fits the step. Use `attempt` for evidence expected after the step opens; attempts survive `/reload`. Use `session` only for a line an earlier step wrote.
+- The compiled plan replays clean in `tests/replay_plan.lua`.
 - Assertion labels read as a result, not a log line.
 - No step asks the player to read a log line.
+- Each step is marked auto or manual, and a manual step's `expect` ends with the press it needs. An auto step has a `timeout` (default 120).
 - Steps with no log evidence use `verify: [player]`; the gap is listed for an issue.
 
 ## Evidence quality
