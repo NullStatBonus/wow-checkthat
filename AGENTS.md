@@ -43,6 +43,15 @@ When player-visible behavior, a setting, or a command changes, update the suppor
 - For each new UI control or screen, check Blizzard UI source and popular addons for an established pattern. Use a standard control when available. If a custom control is necessary, keep the standard fallback where the custom control is unavailable.
 - Follow `DESIGN.md` for settings pages, control sizes and help text.
 
+## Compatibility
+
+- Keep every change backward compatible. What a released version wrote or accepted keeps working: saved variables, plan files (`ct:`), run records (`Run.MAJOR`, `Run.FORMAT_REV`), import and export strings (`!CT1!`), census manifests (`format`), offline blocks, replay hook files, and `tools/ct.py` commands and output.
+- Change a versioned format only by addition: add an optional key, never remove, rename or change the meaning of one. Readers ignore keys they do not know. Raise the revision for an addition. A break needs a new major version, and the reader keeps reading the old one.
+- Migrate saved variables forward at load, and only from a known older shape. Never delete player data a migration cannot rebuild.
+- A stricter offline check (fake client, `ct offline`, replay) fails only a plan that opts in to it with a declared `level` in its offline block. A plan without the level keeps its old result and gets a warning. New plans from the skills declare the newest level. A check that fails only code the game itself rejects (the Lua 5.1 scan, the hidden globals) is a fix and needs no level.
+- Add a test that reads the old shape whenever a format or offline check changes.
+- Break compatibility only with explicit approval. Name the break in `design.md` and under `Changed:` in `CHANGELOG.md`.
+
 ## Backlog
 
 - Track deferred work and future ideas as GitHub issues (`gh issue create`), not in repo files. When a change or review defers something, open the issue in the same session and name it in the change's `design.md` (Non-Goals) when there is one.

@@ -2,7 +2,7 @@
 --
 --   luajit tools/entry_runner.lua SPEC.json      (from the repository root; prints the result as JSON)
 --
--- SPEC.json: { "toc": "path/Addon.toc",
+-- SPEC.json: { "toc": "path/Addon.toc", "level": 2,
 --              "mocks": { "GetItemInfo": [ {"args": [1], "returns": ["A"]}, {"returns": ["Z"]} ],
 --                         "C_Item.GetItemCount": {"returns": [3]} },
 --              "mockAfterLoad": false,
@@ -14,6 +14,9 @@
 -- Mocks are set before the addon loads (a file-scope "local f = f" then sees them) unless mockAfterLoad is set,
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
+
+-- The newest offline level. A plan without a level runs at level 1, so its results do not change.
+Runner.LEVEL = 2
 
 -- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
 Runner.MOCKABLE = {}
@@ -146,8 +149,13 @@ function Runner.run(spec, opts)
     local _, _, _, _, H = dofile(root .. "/tests/harness.lua")()
     local Lua51 = dofile(root .. "/tools/lua51_check.lua")
     local tocPath = pathJoin(root, spec.toc)
-    local interface = tocInterface(tocPath)
-    local st = H.stubClient({ toc = interface })
+    -- Offline level: what a plan opted in to. Level 1 (no level) keeps the fake client's first answers: interface 11507
+    -- and issecurevariable false for every name. Level 2 answers with the TOC's interface and the secure game names.
+    local level = spec.level or 1
+    local badLevel = type(level) ~= "number" or level % 1 ~= 0 or level < 1 or level > Runner.LEVEL
+    if badLevel then level = 1 end
+    local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2 })
+    local interface = select(4, _G.GetBuildInfo())
     -- What the shared fake client lacked: a record of the events a frame registered.
     local plainCreate = _G.CreateFrame
     _G.CreateFrame = function(...)
@@ -187,7 +195,9 @@ function Runner.run(spec, opts)
     local folder = tocPath:match("^(.*)/[^/]+$") or "."
     local stopNil, unhide
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
-    if unlisted then
+    if badLevel then
+        loaded, loadErr = false, ("offline level %s is not supported (this runner knows 1 to %d)"):format(tostring(spec.level), Runner.LEVEL)
+    elseif unlisted then
         loaded, loadErr = false, ("mock %s is not on the allow list"):format(unlisted)
     else
         local chunks, cerr = compileToc(Lua51, H, tocPath)
@@ -273,7 +283,7 @@ function Runner.run(spec, opts)
     for _, r in ipairs(results) do if not r.ok then ok = false end end
     local nsteps = #(spec.steps or {})
     if loaded and #results ~= nsteps then ok = false end
-    return { ok = ok, interface = interface, nilReads = nilReads, mocks = mockNames, mockCalls = counts, reports = reports, steps = results }, jns.Json
+    return { ok = ok, level = level, interface = interface, nilReads = nilReads, mocks = mockNames, mockCalls = counts, reports = reports, steps = results }, jns.Json
 end
 
 local function main()

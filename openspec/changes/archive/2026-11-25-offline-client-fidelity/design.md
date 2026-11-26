@@ -50,6 +50,10 @@ Globals read as nil in this run (interface 11509):
 
 With no manifest it prints one sorted list. When the interface matches more than one manifest it prints "Interface 11509 matches multiple builds. Showing unclassified names.", and `--build` picks one among the manifests of that interface (a build of another interface exits 2). JUnit `<properties>` carries `interface` and `build`.
 
+## D7. Offline level
+
+Two runner changes alter results for a plan that is valid today: the TOC interface in place of 11507, and an `issecurevariable` that knows the game names. They apply only at `level: 2` in the offline block. A block without a level runs at level 1 with the old answers and gets a warning, so no existing plan changes result (AGENTS.md, Compatibility). The Lua 5.1 scan and the hidden globals fail only code the game rejects, so they apply at every level.
+
 ## Non-Goals
 
 - A fake generated from the manifest (rest of #145), lifecycle (#149) and events (#150).

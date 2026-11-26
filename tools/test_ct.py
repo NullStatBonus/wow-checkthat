@@ -305,7 +305,7 @@ class OfflineBlock(unittest.TestCase):
             self.assertEqual(out.returncode, 0, out.stderr)
 
     def nil_plan(self, o):
-        o["toc"] = "MockAddon/Hidden.toc"; o["mocks"] = {}
+        o["toc"] = "MockAddon/Hidden.toc"; o["mocks"] = {}; o["level"] = 2
         o["steps"] = [{"call": {"addon": "MockAddon", "entry": "missing_api"}, "returns": [False]}]
 
     def run_cli(self, manifests, *extra):
@@ -322,9 +322,24 @@ class OfflineBlock(unittest.TestCase):
             args = [sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons", os.path.dirname(os.path.dirname(self.PLAN))] + list(extra)
             return subprocess.run(args, capture_output=True, text=True, env=env)
 
+    def test_a_block_without_level_runs_level_1_and_warns(self):
+        def legacy(o):
+            self.nil_plan(o); del o["level"]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "plan.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(self.plan(legacy)))
+            out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons",
+                                  os.path.dirname(os.path.dirname(self.PLAN))], capture_output=True, text=True,
+                                 env=dict(os.environ, CT_TEST_MANIFESTS=d))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn(ct.OFFLINE_LEVEL_WARNING, out.stderr)
+        self.assertIn("(interface 11507)", out.stderr)
+
     def test_the_report_lists_nil_reads_and_junit_carries_it_with_the_interface(self):
         out = self.run_cli({})
         self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertNotIn(ct.OFFLINE_LEVEL_WARNING, out.stderr)
         self.assertIn("Globals read as nil in this run (interface 16001):", out.stderr)
         self.assertIn("C_NotInThisClient", out.stderr)
         from xml.etree import ElementTree as ET
@@ -359,6 +374,11 @@ class OfflineBlock(unittest.TestCase):
         self.assertIn("Present in census for build 1.61.0.2: C_NotInThisClient", out.stderr)
         self.assertNotIn("matches multiple builds", out.stderr)
         self.assertEqual(self.run_cli(both, "--build", "9.9").returncode, 2)
+
+    def test_schema_accepts_levels_1_and_2_only(self):
+        for lv, ok in ((1, True), (2, True), (3, False), ("2", False)):
+            p = self.plan(lambda o: o.__setitem__("level", lv))
+            self.assertEqual(not ct.validate(p), ok, lv)
 
     def test_build_never_picks_a_manifest_of_another_interface(self):
         era = {"format": 1, "client": "era", "build": "1.15.9.1", "interface": 11509, "globals": {"io": "table"}}

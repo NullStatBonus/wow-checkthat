@@ -82,12 +82,20 @@ The runner SHALL load an XML file named on a TOC line by loading each `Script` a
 - **WHEN** a plan carries `covers:` and no specs folder is given or found
 - **THEN** the command exits 2 and says that covers needs the specs folder
 
-### Requirement: Runner answers with the interface from the TOC
-The runner SHALL make `GetBuildInfo` return, as its interface number, the number on the TOC's `## Interface:` line. The key SHALL count only at the start of a line, so the same text inside another line, such as `## Notes:`, is ignored. When the line lists several numbers, the first one SHALL be used.
+### Requirement: Runner answers by the plan's offline level
+The offline block MAY declare `level`, 1 or 2. A block without `level` SHALL run at level 1, so its results do not change: `GetBuildInfo` returns interface 11507 and `issecurevariable` returns false for every name. At level 2 the runner SHALL make `GetBuildInfo` return, as its interface number, the number on the TOC's `## Interface:` line, and the key SHALL count only at the start of a line, so the same text inside another line, such as `## Notes:`, is ignored. When the line lists several numbers, the first one SHALL be used. At level 2 `issecurevariable` SHALL return true for each global the fake client set up before addon code ran, and false with "Addon" for any other global. Any other `level` SHALL fail the load step and no addon file SHALL run. The JSON result SHALL carry the level and the interface the addon read. `ct.py offline` SHALL print a warning to stderr when the block has no `level`.
 
-#### Scenario: Era and Forever interfaces
-- **WHEN** a TOC says `## Interface: 11509` and another says `## Interface: 16001`
+#### Scenario: Era and Forever interfaces at level 2
+- **WHEN** a block with `level: 2` names a TOC that says `## Interface: 11509`, and another names one that says `## Interface: 16001`
 - **THEN** the addon reads 11509 in the first run and 16001 in the second, and the JSON result carries that number
+
+#### Scenario: Block without a level
+- **WHEN** a block has no `level`
+- **THEN** the addon reads interface 11507, `issecurevariable("CreateFrame")` is false, and `ct.py offline` prints the level warning
+
+#### Scenario: Unknown level
+- **WHEN** a block says `level: 3`
+- **THEN** the load step fails with "offline level 3 is not supported" and no addon file runs
 
 ### Requirement: Runner scans addon files for Lua 5.1 differences
 Before any addon file runs, the runner SHALL scan every file the TOC loads, XML and libraries included, with `tools/lua51_check.lua`. A finding SHALL fail the load step with the text `file:line: message` and no addon file SHALL run. The scanner SHALL report `goto` used as a statement, `::name::` labels, the `\x`, `\z` and `\u{` escapes in short strings and, for the whole numeral, the `LL`, `ULL` and `i` number suffixes, hex numbers with a fraction or `p` exponent, `0b` binary numbers and `_` inside a number, and a `[[` nested inside a level-0 long string or comment, each with its own message. It SHALL count `\r\n`, `\n\r` and a lone `\r` as one line end, so a `--` comment ends at any of them. It SHALL skip comments and long strings, and SHALL accept `goto` used as a name, including after `=`, `,`, `(`, `return` or an operator.

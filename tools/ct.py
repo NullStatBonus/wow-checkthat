@@ -878,6 +878,10 @@ def nil_read_report(interface, names, manifests, build=None):
     return "\n".join(lines) + "\n", m["build"]
 
 
+OFFLINE_LEVEL_WARNING = ("warning: the offline block has no level, so it runs at level 1 (interface 11507, issecurevariable false). "
+                         "Add level: 2 to answer with the TOC interface and the game's secure names.")
+
+
 def offline_plan(plan, addons, requirements=None, info=None):
     """Run a plan's offline block in tools/entry_runner.lua. addons is the folder that holds the addon checkouts; the plan's
     toc resolves inside it and may not leave it, so a shared plan cannot pick Lua from elsewhere. It still runs that addon's
@@ -2585,6 +2589,8 @@ def main(argv=None):
             print("error:", e, file=sys.stderr); return 2
         bad = sum(i["result"] == "fail" for i in items)
         print("offline: %d passed, %d failed" % (len(items) - bad, bad), file=sys.stderr)
+        if "level" not in plan["offline"]:
+            print(OFFLINE_LEVEL_WARNING, file=sys.stderr)
         print(report, end="", file=sys.stderr)
         props = {"interface": info["interface"]} if info.get("interface") else {}
         if build:

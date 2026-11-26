@@ -104,12 +104,26 @@ end)
 
 local HIDDEN_TOC = "tests/fixtures/MockAddon/Hidden.toc"
 
-test("GetBuildInfo answers with the interface number from the TOC", function()
-    local r = run({ toc = TOC, steps = {} }, function() end)
-    T.eq(r.interface, 11509)
-    local r2 = run({ toc = HIDDEN_TOC, steps = {} }, function() end)
+test("at level 2 GetBuildInfo answers with the interface number from the TOC", function()
+    local r = run({ toc = TOC, level = 2, steps = {} }, function() end)
+    T.eq(r.interface, 11509); T.eq(r.level, 2)
+    local r2 = run({ toc = HIDDEN_TOC, level = 2, steps = {} }, function() end)
     T.eq(r2.interface, 16001)
     T.eq(select(4, GetBuildInfo()), 16001, "the fake client keeps the last interface it was given")
+end)
+
+test("without a level the run keeps level 1: interface 11507 and every name insecure", function()
+    local r = run({ toc = TOC, steps = {} }, function() end)
+    T.eq(r.level, 1); T.eq(r.interface, 11507)
+    T.eq(issecurevariable("CreateFrame"), false, "level 1 issecurevariable answers false")
+    run({ toc = TOC, level = 2, steps = {} }, function() end)
+    T.eq(issecurevariable("CreateFrame"), true, "level 2 knows the game names")
+end)
+
+test("an unknown level fails the load step and runs no addon file", function()
+    local r = run({ toc = TOC, level = 3, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    T.eq(r.ok, false)
+    T.ok(r.steps[1].detail:find("offline level 3 is not supported", 1, true), r.steps[1].detail)
 end)
 
 test("a file that uses goto fails the load step with file:line text", function()

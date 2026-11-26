@@ -111,7 +111,9 @@ function st.click(f)
 end
 -- The game's own names are secure: here, every global the fake client set up before addon code ran (st.secure, taken at
 -- the end of stubClient). A member of any other table counts as secure.
+-- opts.allInsecure keeps the answer of offline level 1: false for every name.
 _G.issecurevariable = function(t, k)
+    if opts.allInsecure then return false end
     local name = t
     if type(t) == "table" then if t ~= _G then return true end; name = k end
     if st.secure and st.secure[name] then return true end
