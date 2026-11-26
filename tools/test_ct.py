@@ -267,6 +267,9 @@ class Recordings(unittest.TestCase):
 ["GetMoney()"] = { ["n"] = 1, ["typeOnly"] = true, ["values"] = { { ["type"] = "number" } } },
 ["UnitClass(player)"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Mage" } } },
 ["GetItemInfo(6948)"] = { ["error"] = "attempt to call a nil value" },
+["GetFlag(true, 5)"] = { ["n"] = 1, ["values"] = { { ["type"] = "boolean", ["value"] = true } } },
+["GetNamed(\\"a,b\\")"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 1 } } },
+["GetWord(playerfoo)"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 2 } } },
 ["C_Container.GetContainerItemInfo(0, 1)"] = { ["n"] = 1, ["values"] = { { ["type"] = "table", ["value"] = {} } } },
 },
 }
@@ -282,7 +285,9 @@ class Recordings(unittest.TestCase):
         d, path = self.make()
         client, rec, skipped = ct.probe_recordings(path)
         self.assertEqual((client, rec["format"], rec["build"]), ("forever", 1, "1.60.1.71139"))
-        self.assertEqual(sorted(rec["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetBuildInfo()"])
+        self.assertEqual(sorted(rec["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetBuildInfo()", "GetFlag(true, 5)", "GetWord(playerfoo)"])
+        self.assertEqual(rec["calls"]["GetFlag(true, 5)"]["args"], [True, 5], "a boolean argument stays a boolean")
+        self.assertEqual(rec["calls"]["GetWord(playerfoo)"]["args"], ["playerfoo"], "only the exact word player marks a call on the player")
         c = rec["calls"]["C_Item.GetItemInfo(6948)"]
         self.assertEqual((c["api"], c["args"], c["n"], c["nils"]), ("C_Item.GetItemInfo", [6948], 4, [3]))
         self.assertEqual(c["returns"][2], False, "a nil is a placeholder listed in nils")
@@ -290,6 +295,7 @@ class Recordings(unittest.TestCase):
         self.assertEqual(rec["calls"]["GetBuildInfo()"]["args"], [])
         why = dict(skipped)
         self.assertIn("personal", why["GetMoney()"]); self.assertIn("player", why["UnitClass(player)"])
+        self.assertIn("cannot be read back", why['GetNamed("a,b")'])
         self.assertIn("error", why["GetItemInfo(6948)"]); self.assertIn("table", why["C_Container.GetContainerItemInfo(0, 1)"])
 
     def test_an_item_link_keeps_the_item_and_loses_the_level_and_specialization(self):

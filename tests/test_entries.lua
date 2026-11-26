@@ -447,6 +447,7 @@ test("a recording that does not fit fails the load step and says why", function(
     T.ok(loadError(run({ toc = REC_ERA, level = 5, mocks = { ["C_Item.GetItemInfo"] = { recording = "GetItemInfo(6948)" } }, steps = steps })):find("is for another function", 1, true))
     T.ok(loadError(run({ toc = REC_ERA, level = 4, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = steps })):find("needs offline level 5", 1, true), "below level 5")
     T.ok(loadError(run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(1)" } }, steps = steps })):find("no recording GetItemInfo(1) for the era client", 1, true), "an unknown label")
+    T.ok(loadError(run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)", returns = { "x" } } }, steps = steps })):find("cannot be combined", 1, true), "a recording with returns")
     T.ok(run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { returns = { "x" } } }, steps = { recCall("info_old", 1, { "x" }) } }).ok, "a plain mock still runs")
 end)
 

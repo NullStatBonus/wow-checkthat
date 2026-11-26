@@ -1269,7 +1269,8 @@ def probe_recordings(sv_path):
     """(client, recording, skipped) from the CTProbeDB.fixtures that CTProbe's /ctp record saved. recording is {format, client, build, calls}
     with calls[label] = {api, args, returns, n, nils}: the arguments are parsed from the label (numbers and plain words), a nil return is a
     false placeholder listed in nils (the plan JSON has no null). skipped names each call left out and why: one that raised an error, a
-    personal value (recorded by type only), a call on the player, and a return that is a table or a function."""
+    personal value (recorded by type only), a call on the player, an argument the label cannot give back exactly (a quoted string, nil),
+    and a return that is a table or a function."""
     db = sv_json(sv_path).get("CTProbeDB")
     if not isinstance(db, dict) or not isinstance(db.get("fixtures"), dict):
         raise ValueError("%s holds no CTProbeDB.fixtures: run /ctp record in game, then /reload" % sv_path)
@@ -1286,11 +1287,17 @@ def probe_recordings(sv_path):
             skipped.append((label, "the call raised an error in game: %s" % str(rec["error"])[:60])); continue
         if rec.get("typeOnly"):
             skipped.append((label, "a personal value, recorded by type only")); continue
-        if not m or "player" in m.group(2):
+        if not m:
+            skipped.append((label, "the label is not a call")); continue
+        parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
+        if "player" in parts:
             skipped.append((label, "a call on the player")); continue
+        if any(not re.fullmatch(r"-?\d+(\.\d+)?|true|false|[A-Za-z_]\w*", p) for p in parts) or "nil" in parts:
+            skipped.append((label, "an argument that cannot be read back exactly from the label")); continue
         args = []
-        for part in [p.strip() for p in m.group(2).split(",") if p.strip()]:
-            args.append(int(part) if re.fullmatch(r"-?\d+", part) else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
+        for part in parts:
+            args.append(True if part == "true" else False if part == "false" else int(part) if re.fullmatch(r"-?\d+", part)
+                        else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
         returns, nils, bad = [], [], None
         for i, v in enumerate(rec.get("values", []), 1):
             t = v.get("type")

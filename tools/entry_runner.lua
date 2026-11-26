@@ -267,18 +267,21 @@ function Runner.run(spec, opts)
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
     -- A mock entry { recording = "GetItemInfo(6948)" } takes its args and returns from tools/recordings/<client>.json (made from a CTProbe
     -- run by ct.py recordings) for the client the TOC names. The entry is filled in place: makeMock then reads it like any other.
-    local recErr
+    local recErr, recFileErr
     local function fill(api, entry)
         if type(entry) ~= "table" or not entry.recording then return end
         local label = entry.recording
+        if entry.args ~= nil or entry.returns ~= nil then recErr = recErr or ("mock %s: a recording cannot be combined with args or returns"):format(api); return end
         if not surface then recErr = recErr or ("mock %s: a recording needs offline level 5"):format(api); return end
         if label:sub(1, #api + 1) ~= api .. "(" then recErr = recErr or ("mock %s: the recording %s is for another function"):format(api, label); return end
         local call = surface.recordings and surface.recordings.calls and surface.recordings.calls[label]
+        if recFileErr then recErr = recErr or recFileErr; return end
         if not call then
             recErr = recErr or ("mock %s: no recording %s for the %s client (tools/recordings/%s.json)"):format(api, label, surface.client, surface.client)
             return
         end
-        entry.recording, entry.args, entry.returns, entry.n = nil, call.args or {}, call.returns or {}, call.n
+        local function copy(list) local c = {}; for i, v in pairs(list or {}) do c[i] = v end; return c end -- the recording stays as it was read
+        entry.recording, entry.args, entry.returns, entry.n = nil, copy(call.args), copy(call.returns), call.n
         for _, i in ipairs(call.nils or {}) do entry.returns[i] = nil end -- the JSON has no null: a nil return is listed in nils
     end
     local function fillMocks(mocks)
@@ -291,7 +294,12 @@ function Runner.run(spec, opts)
     end
     if surface then
         local rf = io.open(root .. "/tools/recordings/" .. surface.client .. ".json", "r")
-        if rf then surface.recordings = jns.Json.Decode(rf:read("*a")); rf:close() end
+        if rf then
+            local rec, derr = jns.Json.Decode(rf:read("*a")); rf:close()
+            if type(rec) ~= "table" then recFileErr = ("tools/recordings/%s.json cannot be read: %s"):format(surface.client, tostring(derr))
+            elseif rec.format ~= 1 then recFileErr = ("tools/recordings/%s.json has format %s: this runner reads format 1"):format(surface.client, tostring(rec.format))
+            else surface.recordings = rec end
+        end
     end
     fillMocks(spec.mocks); for _, g in ipairs(groups) do fillMocks(g.mocks) end
     local absent
