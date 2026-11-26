@@ -902,11 +902,12 @@ OFFLINE_LEVEL_WARNING = ("warning: the offline block has no level, so it runs at
                          "timers on a virtual clock (wait steps).")
 
 
-def offline_plan(plan, addons, requirements=None, info=None):
+def offline_plan(plan, addons, requirements=None, info=None, client=None):
     """Run a plan's offline block in tools/entry_runner.lua. addons is the folder that holds the addon checkouts; the plan's
     toc resolves inside it and may not leave it, so a shared plan cannot pick Lua from elsewhere. It still runs that addon's
     Lua with your permissions: run only addons you trust. requirements is what plan_requirements gives, for covers.
-    Returns items {step, label, result: pass|fail, why}. Needs luajit. A dict passed as info gets the run's interface and nilReads."""
+    Returns items {step, label, result: pass|fail, why}. Needs luajit. A dict passed as info gets the run's interface and nilReads.
+    client ("era" or "forever") runs the block with the TOC of offline.tocs for that client instead of offline.toc."""
     import tempfile
     if not os.path.exists(os.path.join(ROOT, "tests", "harness.lua")):
         raise ValueError("offline needs tests/harness.lua (missing): reinstall the skill with make install-skill")
@@ -917,9 +918,14 @@ def offline_plan(plan, addons, requirements=None, info=None):
     if not block:
         raise ValueError("the plan has no offline block")
     root = os.path.realpath(addons)
-    toc = os.path.realpath(os.path.join(root, block["toc"]))
+    toc_name = block["toc"]
+    if client:
+        toc_name = (block.get("tocs") or {}).get(client)
+        if not toc_name:
+            raise ValueError("the offline block has no tocs.%s: add it, or run without --client" % client)
+    toc = os.path.realpath(os.path.join(root, toc_name))
     if os.path.commonpath([root, toc]) != root:
-        raise ValueError("toc %s leaves the addons folder %s" % (block["toc"], addons))
+        raise ValueError("toc %s leaves the addons folder %s" % (toc_name, addons))
     spec = dict(block, toc=toc)
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "spec.json")
@@ -2649,7 +2655,7 @@ def main(argv=None):
     p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
-    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository, or above the current folder when ct.py runs from an installed skill)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help); p.add_argument("--build", help="split the nil-read report with the census of this build (tests/manifests/*.json); needed when the interface matches several builds")
+    p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository, or above the current folder when ct.py runs from an installed skill)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help); p.add_argument("--build", help="split the nil-read report with the census of this build (tests/manifests/*.json); needed when the interface matches several builds"); p.add_argument("--client", choices=("era", "forever", "both"), help="run the block with the TOC of offline.tocs for that client; both runs it twice and prefixes each case with its client. Without it the block runs once with offline.toc, as before")
     p = sub.add_parser("replay-flow", help="play a plan's steps in the fake client and report plan mistakes (needs luajit). Log lines the plan expects are written by the replay: it checks the plan, not the addon"); p.add_argument("plan"); p.add_argument("--hooks", help="Lua hooks file for steps that need more than a Pass (see docs/authoring-plans.md)"); p.add_argument("--specs", help=specs_help)
     p = sub.add_parser("lines", help="check that each log line and fact key a plan asserts appears in the addon's Lua source"); p.add_argument("plan"); p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC)"); p.add_argument("--strict", action="store_true", help="exit 1 when a line is missing")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
@@ -2760,10 +2766,26 @@ def main(argv=None):
         return 1 if missing and a.strict else 0
     if a.cmd == "offline":
         plan = load_yaml(a.plan)
+        clients = {"era": ["era"], "forever": ["forever"], "both": ["era", "forever"]}.get(getattr(a, "client", None), [None])
+        items, props, report = [], {}, ""
+        if len(clients) > 1 and a.build:
+            print("error: --build names one build, and --client both runs two clients with different builds: run each client with --client era or forever", file=sys.stderr); return 2
         try:
-            info = {}
-            items = offline_plan(plan, a.addons, plan_requirements(plan, a.plan, a.specs), info)
-            report, build = nil_read_report(info.get("interface"), info.get("nilReads") or [], census_manifests(), a.build)
+            reqs = plan_requirements(plan, a.plan, a.specs)
+            for cl in clients:
+                info = {}
+                got = offline_plan(plan, a.addons, reqs, info, cl)
+                rep, build = nil_read_report(info.get("interface"), info.get("nilReads") or [], census_manifests(), a.build)
+                if len(clients) > 1:  # both clients: every case names its client, so the two runs read apart
+                    for i in got:
+                        i["step"] = "%s.%s" % (cl, i["step"]); i["label"] = "%s: %s" % (cl, i["label"])
+                    rep = "%s:\n%s" % (cl, rep) if rep else rep
+                    if info.get("interface"): props["interface." + cl] = info["interface"]
+                    if build: props["build." + cl] = build
+                else:
+                    if info.get("interface"): props["interface"] = info["interface"]
+                    if build: props["build"] = build
+                items += got; report += rep
         except (ValueError, RuntimeError) as e:
             print("error:", e, file=sys.stderr); return 2
         bad = sum(i["result"] == "fail" for i in items)
@@ -2771,9 +2793,6 @@ def main(argv=None):
         if "level" not in plan["offline"]:
             print(OFFLINE_LEVEL_WARNING, file=sys.stderr)
         print(report, end="", file=sys.stderr)
-        props = {"interface": info["interface"]} if info.get("interface") else {}
-        if build:
-            props["build"] = build
         xml = replay_junit(plan, items, props, report)
         if a.o:
             open(a.o, "w", encoding="utf-8").write(xml)

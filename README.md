@@ -114,7 +114,7 @@ make check     # packaging and version checks
 make mutate    # on demand: change CheckThat/ one small way at a time and list the changes the Lua tests miss (LIMIT=300, FILES='CheckThat/Core/*.lua')
 luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fake client
 .venv/bin/python tools/ct.py replay plans/<plan>.yaml --sv <fixture dir>   # judge log checks against saved variables, no game
-.venv/bin/python tools/ct.py offline plans/<plan>.yaml   # run the plan's offline block (mocks, entry calls, fake events), no game
+.venv/bin/python tools/ct.py offline plans/<plan>.yaml   # run the plan's offline block (mocks, entry calls, fake events), no game; --client era|forever|both
 .venv/bin/python tools/ct.py replay-flow plans/<plan>.yaml   # play a plan for each client; works for any addon's plan and from the installed skill
 .venv/bin/python tools/ct.py lines plans/<plan>.yaml --addon-src <addon folder>   # check each asserted log line and fact key appears in the addon's source
 .venv/bin/python tools/ct.py report --expect-version <addon version> --plan plans/<plan>.yaml   # warn about a run of another build or an older plan

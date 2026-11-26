@@ -462,6 +462,58 @@ class OfflineBlock(unittest.TestCase):
         p = self.plan(lambda o: o.update(tocs=both)); p["offline"].pop("level", None)
         self.assertNotEqual(ct.validate(p), [], "tocs with no level")
 
+    def client_plan(self, **extra):
+        def m(o):
+            o.clear()
+            o.update(toc="MockAddon/MockAddon_Vanilla.toc", level=5, steps=[
+                {"label": "Event reaches the handler", "event": {"name": "MERCHANT_SHOW"}},
+                {"label": "Handler state is visible", "call": {"addon": "MockAddon", "entry": "events_seen"}, "returns": [1, "MERCHANT_SHOW"]}], **extra)
+        return self.plan(m)
+
+    def offline_cli(self, plan, *extra):
+        import yaml
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "plan.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(plan, f)
+            args = [sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons", os.path.dirname(os.path.dirname(self.PLAN))]
+            return subprocess.run(args + list(extra), capture_output=True, text=True)
+
+    def test_client_runs_the_toc_of_that_client_and_both_names_each_case(self):
+        tocs = {"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"}
+        plan = self.client_plan(tocs=tocs)
+        both = self.offline_cli(plan, "--client", "both")
+        self.assertEqual(both.returncode, 0, both.stderr)
+        for cl in ("era", "forever"):
+            self.assertIn('name="%s: Event reaches the handler"' % cl, both.stdout)
+        self.assertIn("interface.era", both.stdout); self.assertIn("interface.forever", both.stdout)
+        self.assertIn("offline: 4 passed, 0 failed", both.stderr)
+        one = self.offline_cli(plan, "--client", "forever")
+        self.assertEqual(one.returncode, 0, one.stderr)
+        self.assertIn('name="Event reaches the handler"', one.stdout); self.assertIn('name="interface" value="16001"', one.stdout)
+        self.assertIn("offline: 2 passed, 0 failed", one.stderr)
+
+    def test_without_client_a_plan_with_tocs_runs_toc_alone_as_before(self):
+        plain = self.offline_cli(self.client_plan())
+        with_tocs = self.offline_cli(self.client_plan(tocs={"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"}))
+        self.assertEqual(plain.returncode, 0, plain.stderr); self.assertEqual(with_tocs.returncode, 0, with_tocs.stderr)
+        self.assertEqual(plain.stdout, with_tocs.stdout); self.assertEqual(plain.stderr, with_tocs.stderr)
+
+    def test_a_client_the_block_has_no_toc_for_is_an_error_and_one_failing_client_shows_apart(self):
+        missing = self.offline_cli(self.client_plan(tocs={"era": "MockAddon/MockAddon_Vanilla.toc"}), "--client", "both")
+        self.assertEqual(missing.returncode, 2); self.assertIn("no tocs.forever", missing.stderr)
+        self.assertEqual(self.offline_cli(self.client_plan(), "--client", "era").returncode, 2, "a block with no tocs at all")
+        plan = self.client_plan(tocs={"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"})
+        plan["offline"]["mocks"] = {"GetItemInfo": [{"returns": ["x"]}]}
+        out = self.offline_cli(plan, "--client", "both")
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertRegex(out.stdout, r'name="forever: [^"]*"[^>]*>\s*<failure'); self.assertNotRegex(out.stdout, r'name="era: [^"]*"[^>]*>\s*<failure')
+
+    def test_build_cannot_go_with_both_clients(self):
+        plan = self.client_plan(tocs={"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"})
+        out = self.offline_cli(plan, "--client", "both", "--build", "1.15.9.70576")
+        self.assertEqual(out.returncode, 2); self.assertIn("--build names one build", out.stderr)
+
     def test_compile_still_drops_a_block_that_holds_tocs(self):
         both = {"era": "MockAddon/MockAddon_Vanilla.toc"}
         with_block = self.plan(lambda o: o.update(level=5, tocs=both))

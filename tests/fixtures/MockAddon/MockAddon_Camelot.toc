@@ -1,0 +1,5 @@
+## Interface: 16001
+## Title: MockAddon
+## Notes: Fixture for the --client tests: the same files as MockAddon_Vanilla.toc, on the Forever interface. Not shipped.
+embeds.xml
+Core.lua
