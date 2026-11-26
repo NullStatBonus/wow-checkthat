@@ -1256,6 +1256,30 @@ class Doctor(unittest.TestCase):
         lines, found = ct.doctor_report(env={})
         self.assertEqual(found, 0); self.assertIn("pass --wow <game folder>", "\n".join(lines))
 
+    def test_a_plan_changes_the_files_it_looks_for(self):
+        d = self.game(sv=())
+        with open(os.path.join(d, "_classic_era_", "WTF", "Account", "A", "SavedVariables", "OtherAddon.lua"), "w") as f: f.write("OtherDB = {}\n")
+        self.assertEqual(ct.doctor_report(wow=d, env={})[1], 0)
+        self.assertEqual(ct.doctor_report(wow=d, env={}, want=(("CheckThat", "OtherAddon"), ()))[1], 1)
+
+    def test_it_looks_at_the_same_client_folders_as_collect(self):
+        d = self.game(clients=("_classic_era_", "_forever_"), sv=("_classic_era_", "_forever_"), extra=("_ptr_",))
+        text = "\n".join(ct.doctor_report(wow=d, env={})[0])
+        for wtf, _ in ct.wow_sources(d)[0]:
+            self.assertIn(wtf, text)
+        self.assertEqual(len(ct.wow_sources(d)[0]), 2)
+
+    def test_an_unreadable_folder_is_reported_not_raised(self):
+        d = self.game(sv=())
+        shots = os.path.join(d, "_classic_era_", "Screenshots"); os.makedirs(shots)
+        real = os.listdir
+        def deny(p):
+            if p == shots: raise PermissionError("denied")
+            return real(p)
+        os.listdir = deny
+        self.addCleanup(lambda: setattr(os, "listdir", real))
+        self.assertIn("cannot read " + shots, "\n".join(ct.doctor_report(wow=d, env={})[0]))
+
     def test_the_command_exits_1_when_nothing_is_found(self):
         d = self.game(sv=())
         out = io.StringIO()

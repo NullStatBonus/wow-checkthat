@@ -1344,23 +1344,32 @@ def default_src():
     return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
 
 
-def doctor_report(src=None, wow=None, env=None):
+def doctor_report(src=None, wow=None, env=None, want=(WATCH, ())):
     """Lines that say where collect looks, what it finds there and the likely reason for a miss. Returns (lines, found): found is the
-    number of saved-variables files collect would read. It reads nothing but folder listings and file times."""
+    number of saved-variables files collect would read. want is (file names, globals), as collect --plan gives. It reads nothing but
+    folder listings and file times; a folder it cannot read is reported, not raised."""
     env = os.environ if env is None else env
     src, wow = src or env.get("CT_WTF"), wow or env.get("CT_WOW")
     lines, found = [], 0
     def report_src(label, folder, base):
         nonlocal found
-        files = find_sv(folder, WATCH, ())
         lines.append("%s: %s" % (label, folder))
+        try:
+            files = find_sv(folder, want[0], want[1])
+        except OSError as e:
+            lines.append("  cannot read it: %s" % e)
+            return
         if not os.path.isdir(folder):
             lines.append("  not a folder: check the path (a typo, a drive that is not mounted, or a Wine prefix on another path)")
             return
         if not files:
-            lines.append("  no saved-variables file named %s under it: the addon writes one only after /reload or logout, and only for a character that logged in" % ", ".join(WATCH))
+            lines.append("  no saved-variables file named %s under it: the addon writes one only after /reload or logout, and only for a character that logged in" % ", ".join(want[0]))
         for f in files:
-            mt = os.path.getmtime(f)
+            try:
+                mt = os.path.getmtime(f)
+            except OSError as e:
+                lines.append("  cannot read %s: %s" % (f, e))
+                continue
             lines.append("  found %s, modified %s, %s ago" % (os.path.relpath(f, base), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mt)), age(time.time() - mt)))
             found += 1
     if src:
@@ -1386,10 +1395,17 @@ def doctor_report(src=None, wow=None, env=None):
                 if os.path.isdir(wtf):
                     report_src(c, wtf, wow)
                     shots = os.path.join(wow, c, "Screenshots")
-                    lines.append("  screenshots: %s" % (("%d file(s) in %s" % (len(os.listdir(shots)), shots)) if os.path.isdir(shots) else "no Screenshots folder (collect skips it)"))
+                    try:
+                        lines.append("  screenshots: %s" % (("%d file(s) in %s" % (len(os.listdir(shots)), shots)) if os.path.isdir(shots) else "no Screenshots folder (collect skips it)"))
+                    except OSError as e:
+                        lines.append("  screenshots: cannot read %s: %s" % (shots, e))
                 else:
                     lines.append("%s: no WTF folder at %s (this client is not installed or never started here)" % (c, wtf))
-            others = sorted(d for d in os.listdir(wow) if d.startswith("_") and d.endswith("_") and d not in WOW_CLIENTS and os.path.isdir(os.path.join(wow, d, "WTF")))
+            try:
+                others = sorted(d for d in os.listdir(wow) if d.startswith("_") and d.endswith("_") and d not in WOW_CLIENTS and os.path.isdir(os.path.join(wow, d, "WTF")))
+            except OSError as e:
+                others = []
+                lines.append("cannot list %s: %s" % (wow, e))
             for d in others:
                 lines.append("%s: has a WTF folder, but collect does not read it (only %s are measured layouts); pass --src %s to read it" % (d, " and ".join(WOW_CLIENTS), os.path.join(wow, d, "WTF")))
     if not found:
@@ -1400,7 +1416,8 @@ def doctor_report(src=None, wow=None, env=None):
 
 
 def cmd_doctor(a):
-    lines, found = doctor_report(getattr(a, "src", None), getattr(a, "wow", None))
+    plan = getattr(a, "plan", None)
+    lines, found = doctor_report(getattr(a, "src", None), getattr(a, "wow", None), want=sv_wanted(load_yaml(plan)) if plan else (WATCH, ()))
     print("\n".join(lines))
     return 0 if found else 1
 
@@ -2644,7 +2661,7 @@ def main(argv=None):
     p.add_argument("--shot-slack", dest="shot_slack", type=float, default=2, help="seconds a screenshot may lie outside an attempt's window and still match it (default 2)")
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
-    p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder")
+    p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")

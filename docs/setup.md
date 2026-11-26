@@ -35,7 +35,7 @@ Run the Python tests without `make`: `.venv\Scripts\python -m unittest discover 
 .venv\Scripts\python tools\ct.py collect
 ```
 
-With no flags, `collect` looks in the usual install places: `Program Files (x86)\World of Warcraft` and `Program Files\World of Warcraft` on Windows (drives C and D), `/Applications/World of Warcraft` on macOS, and the default Wine and Lutris prefixes on Linux. It prints the folder it uses. If your game is elsewhere, pass it once or save it:
+With no flags, `collect` looks in the usual install places (run `ct.py doctor` to see where it looks and why it found nothing): `Program Files (x86)\World of Warcraft` and `Program Files\World of Warcraft` on Windows (drives C and D), `/Applications/World of Warcraft` on macOS, and the default Wine and Lutris prefixes on Linux. It prints the folder it uses. If your game is elsewhere, pass it once or save it:
 
 ```
 .venv\Scripts\python tools\ct.py collect --wow "E:\Games\World of Warcraft"
