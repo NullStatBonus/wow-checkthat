@@ -297,11 +297,11 @@ function Runner.run(spec, opts)
     local function login(reloading)
         -- Measured in game on Era and Forever (docs/contracts.md): VARIABLES_LOADED comes after ADDON_LOADED and before PLAYER_LOGIN,
         -- and SPELLS_CHANGED after PLAYER_ENTERING_WORLD. Five UPDATE_BINDINGS fire as well; they are not played.
-        local events = { { "ADDON_LOADED", name, hasBindings }, { "VARIABLES_LOADED" }, { "PLAYER_LOGIN" },
-            { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false }, { "SPELLS_CHANGED" } }
+        local events = { { "ADDON_LOADED", name, hasBindings and true or false, n = 3 }, { "VARIABLES_LOADED" }, { "PLAYER_LOGIN" },
+            { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false, n = 3 }, { "SPELLS_CHANGED" } }
         for _, e in ipairs(events) do
             if e[1] == "PLAYER_LOGIN" then cur.st.loggedIn = true end
-            local n, err = fire(unpack(e, 1, #e)) -- exactly the values the game passes: none for VARIABLES_LOADED
+            local n, err = fire(unpack(e, 1, e.n or #e)) -- exactly the values the game passes: none for VARIABLES_LOADED
             if not n then return false, ("%s handler threw %s"):format(e[1], err) end
         end
         return true
