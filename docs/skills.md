@@ -17,6 +17,7 @@ Two skills help addon developers write plans and read finished runs back. They a
   - It checks the evidence folder first (`ct.py status`), then reports pass, fail, unverified and contradicted steps, with earlier failed or unverified attempts and error stacks.
   - `ct.py browse` opens a read-only terminal viewer of the collected evidence. It is optional and needs Textual.
   - `ct.py coverage <plan> --addon-src <folder> --evidence` shows which subcommands, settings and spec requirements the plans and the unit tests (`-- covers:` comments) cover, and whether the newest run passed them.
+  - `ct.py drift <plan> --dest evidence` compares what a plan's offline block predicted for each step with the collected runs, for each client, and lists the wrong predictions (see [Drift ledger](harvesting.md#drift-ledger)).
   - `ct.py diff <run A> <run B>` shows which steps regressed, were fixed or are no longer comparable between two runs. `ct.py trend` shows many runs and marks flaky steps.
   - `ct.py report --format json` or `--format junit`, with `--strict`, gives results to a script or a CI job.
   - `ct.py report --expect-version <addon version> --plan <plan file>` warns about a run of another addon version, a run written by another CheckThat version than the tools, and a run made from an older plan file.
