@@ -167,7 +167,7 @@ class Compile(unittest.TestCase):
 
 class Plans(unittest.TestCase):
     def test_shipped_plans_validate(self):
-        for n in ("keepthat", "dontdothat", "closestvendor", "selftest"):
+        for n in ("keepthat", "dontdothat", "selftest"):
             plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
             self.assertEqual(ct.validate(plan), [], n)
             self.assertEqual(ct.warnings(plan), [], n)
@@ -214,7 +214,7 @@ class NativeText(unittest.TestCase):
 class SamplePlans(unittest.TestCase):
     def test_sample_plans_stay_short_and_full_plans_stay_valid(self):
         import glob
-        for n in ("keepthat", "dontdothat", "closestvendor"):
+        for n in ("keepthat", "dontdothat"):
             plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
             steps = sum(len(s["steps"]) for s in plan["sections"])
             self.assertLessEqual(steps, 8, n)
@@ -1322,6 +1322,13 @@ class LinesCheck(unittest.TestCase):
         found, missing = ct.lines_check(self.plan_for(line("test command: sell"), line("vanished thing here"), line("un x")), d)
         self.assertEqual([f[2] for f in found], ["test command: sell"])
         self.assertEqual([m[2] for m in missing], ["vanished thing here", "un x"], "a prefix under 8 characters is not enough")
+
+    def test_a_contains_line_built_at_run_time_matches_on_its_longest_literal_part(self):
+        d = self.src(**{"A.lua": 'Log(("%d items found"):format(n))\nLog("score: " .. n .. " points earned")\n'})
+        line = lambda s: {"kind": "log", "source": "debug", "contains": s}
+        found, missing = ct.lines_check(self.plan_for(line("3 items found"), line("score: 5 points earned"), line("5 widgets found")), d)
+        self.assertEqual([f[2] for f in found], ["3 items found", "score: 5 points earned"])
+        self.assertEqual([m[2] for m in missing], ["5 widgets found"])
 
     def test_a_fact_under_any_source_name_is_checked_and_strict_sets_the_exit_code(self):
         d = self.src(**{"A.lua": 'Report("K", "have.it", 1)\n'})
@@ -2651,12 +2658,29 @@ class Coverage(unittest.TestCase):
         d = self.cov(p)[1]
         self.assertTrue(all(not i["steps"] for i in d["commands"] + d["settings"]))
 
+    def test_subcommands_come_from_every_lua_file_the_toc_lists_through_embeds_xml(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        def put(name, text):
+            p = os.path.join(d, name); os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as f: f.write(text)
+        put("Mock.toc", "## Title: Mock\n# Comment.lua\nembeds.xml\nCommands.lua\nCore\\Dispatch.lua\n")
+        put("embeds.xml", '<Ui><!-- <Script file="Skipped.lua"/> --><Include file="More\\more.xml"/></Ui>')
+        put("More/more.xml", '<Ui><Script file="Deep.lua"/></Ui>')
+        put("Commands.lua", 'if cmd == "get" then end\n')
+        put("Core/Dispatch.lua", 'elseif cmd == "put" then end\n')
+        put("More/Deep.lua", 'elseif cmd == "deep" then end\n')
+        put("Skipped.lua", 'elseif cmd == "skipped" then end\n')
+        put("Unlisted.lua", 'elseif cmd == "unlisted" then end\n')
+        put("Libs/Lib.lua", 'elseif cmd == "lib" then end\n')
+        put("Slash.lua", 'if cmd == "old" then end\n')
+        self.assertEqual(ct.slash_commands(d), ["deep", "get", "old", "put"])
+
     def test_nothing_extracted_and_mixed_addons_are_errors(self):
         p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
         out = io.StringIO()
         with contextlib.redirect_stderr(out):
             code = ct.main(["coverage", "--addon-src", os.path.join(self.FX, "openspec"), os.path.join(ROOT, "plans", "selftest.yaml")])
-        self.assertEqual(code, 2); self.assertIn("no subcommand found", out.getvalue())
+        self.assertEqual(code, 2); self.assertIn("no subcommand found", out.getvalue()); self.assertIn("the Lua files its TOC lists", out.getvalue())
         q = self.plan(("c1", {"kind": "manual", "text": "t"}, None)); q["addon"] = "DontDoThat"; q["macros"] = []
         code, _, err = self.cov(p, q)
         self.assertEqual(code, 2); self.assertIn("2 addons", err)

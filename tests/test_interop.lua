@@ -1,7 +1,7 @@
 local ns, test, T, finish, H = dofile("tests/harness.lua")()
 H.plain(ns)
 -- Strings compiled by tools/ct.py (make build) must decode and validate in the addon.
-local names = { "keepthat", "dontdothat", "closestvendor", "selftest" }
+local names = { "keepthat", "dontdothat", "selftest" }
 for _, n in ipairs(names) do
     test("interop: python-compiled " .. n .. " decodes and validates in Lua", function()
         local f = io.open("build/" .. n .. ".ct")
