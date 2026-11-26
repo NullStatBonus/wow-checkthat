@@ -33,4 +33,9 @@ test("a run started before a reload is still the current run after it", function
     T.eq(seen[2].runId, seen[1].runId, "the same run is current after the reload")
 end)
 
+test("a second level 3 run in the same process loads CheckThat again", function()
+    local r = Runner.run({ toc = "CheckThat/CheckThat_Vanilla.toc", level = 3, steps = { { reload = true } } })
+    T.ok(r.ok, r.steps[#r.steps].detail)
+end)
+
 finish()

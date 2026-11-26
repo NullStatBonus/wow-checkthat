@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon spawn
+## Notes: Fixture: a handler that creates a frame for the same event. Not shipped.
+Spawn.lua

@@ -319,6 +319,40 @@ test("groups: each starts from a fresh load with its own mocks", function()
     T.ok(r.ok)
 end)
 
+test("an event reaches a frame that a handler created while the event ran, as before", function()
+    _G.MockSpawned = nil
+    local r = run({ toc = "tests/fixtures/MockAddon/Spawn.toc", steps = { { event = { name = "FOO" } } } })
+    T.eq(r.steps[1].detail, "fired at 2 frame(s)")
+end)
+
+test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()
+    _G.CreateFrame = nil
+    local mine = {}
+    run({ toc = TOC, steps = {} }, function() _G.CheckThat = mine end)
+    T.eq(type(_G.CreateFrame), "function"); T.eq(_G.CheckThat, mine)
+    run({ toc = TOC, mocks = { loadstring = {} }, steps = {} }, function() _G.CheckThat = mine end)
+    T.eq(type(_G.CreateFrame), "function", "also when the load is refused"); T.eq(_G.CheckThat, mine)
+end)
+
+test("level 3: steps after a reload still say they ran with mocks", function()
+    local r = run({ toc = LIFE, level = 3, mocks = { GetItemInfo = { returns = { "X" } } },
+        steps = { call("item", nil, { "X" }), { reload = true }, call("item", nil, { "X" }) } })
+    T.ok(r.ok); for _, s in ipairs(r.steps) do T.eq(s.mocked, true, s.kind .. " " .. s.step) end
+end)
+
+test("level 3: a block with steps and groups, or empty groups, fails the load step", function()
+    local r = run({ toc = LIFE, level = 3, steps = { call("db", nil, { "x" }) }, groups = { { steps = {} } } })
+    T.eq(r.ok, false); T.ok(r.steps[1].detail:find("steps or groups, not both", 1, true), r.steps[1].detail)
+    r = run({ toc = LIFE, level = 3, groups = {} })
+    T.eq(r.ok, false); T.ok(r.steps[1].detail:find("groups is empty", 1, true), r.steps[1].detail)
+end)
+
+test("level 3 puts the global table back after the run", function()
+    _G.MockLifeLoose, _G.MockLifeDB = nil, nil
+    run({ toc = LIFE, level = 3, steps = { { reload = true } } })
+    T.eq(rawget(_G, "MockLifeLoose"), nil); T.eq(rawget(_G, "MockLifeDB"), nil)
+end)
+
 test("snapshot restore removes added globals and library keys and puts old values back", function()
     local H = select(5, dofile("tests/harness.lua")())
     _G.SnapKeep = 1

@@ -201,7 +201,7 @@ function Runner.run(spec, opts)
     for _, g in ipairs(groups) do checkDeclared(g.savedVariables) end
 
     local restoreGlobals = H.snapshot()
-    local plainCreate, oldCT = _G.CreateFrame, _G.CheckThat
+    local plainCreate, oldCT -- what the run puts back at the end: the stub client's CreateFrame and CheckThat after prepare
     local name = spec.toc:match("([^/]+)/[^/]+%.toc$") or spec.toc:match("([^/]+)%.toc$") or "Addon" -- the game passes the folder name
     local folder = tocPath:match("^(.*)/[^/]+$") or "."
     local reports, results, nilSeen = {}, {}, {}
@@ -227,9 +227,7 @@ function Runner.run(spec, opts)
     -- Fires an event at each frame that registered it. Returns the number of frames, or nil and the error.
     local function fire(ev, ...)
         local fired = 0
-        local frames = cur.st.frames
-        for i = 1, #frames do
-            local f = frames[i]
+        for _, f in ipairs(cur.st.frames) do -- ipairs: a frame a handler creates gets the event too, as before
             local evs = rawget(f, "events")
             if type(evs) == "table" and evs[ev] and f.scripts.OnEvent then
                 local ok, err = pcall(f.scripts.OnEvent, f, ev, ...)
@@ -260,7 +258,8 @@ function Runner.run(spec, opts)
         if loads > 0 then stopLoad(); restoreGlobals() end
         loads = loads + 1
         local st = client()
-        cur = { st = st, entries = {}, counts = counts, saved = {} }
+        cur = { st = st, entries = {}, counts = counts, saved = {}, mocks = mocks }
+        plainCreate = _G.CreateFrame
         -- What the shared fake client lacked: a record of the events a frame registered.
         local create = _G.CreateFrame
         _G.CreateFrame = function(...)
@@ -271,6 +270,7 @@ function Runner.run(spec, opts)
             return f
         end
         if opts.prepare then opts.prepare(H, st) end
+        oldCT = _G.CheckThat
         local entries = cur.entries
         _G.CheckThat = {
             PROTOTYPE = true,
@@ -322,6 +322,10 @@ function Runner.run(spec, opts)
     local chunks, loadErr
     if badLevel then
         loadErr = ("offline level %s is not supported (this runner knows 1 to %d)"):format(tostring(spec.level), Runner.LEVEL)
+    elseif spec.groups and spec.steps then
+        loadErr = "a block holds steps or groups, not both"
+    elseif spec.groups and (type(spec.groups) ~= "table" or #spec.groups == 0) then
+        loadErr = "groups is empty"
     elseif needs3 and level < 3 then
         loadErr = ("%s needs offline level 3"):format(needs3)
     elseif undeclared then
@@ -333,10 +337,13 @@ function Runner.run(spec, opts)
     end
     if not chunks then -- no load: the fake client is still built once, as before, for the caller's prepare
         cur = { st = client() }
+        plainCreate = _G.CreateFrame
         if opts.prepare then opts.prepare(H, cur.st) end
+        oldCT = _G.CheckThat
     end
 
     local mockCalls = {}
+    if loadErr and #groups == 0 then groups = { {} } end -- one load result says why
     for gi, g in ipairs(groups) do
         local function add(i, kind, ok, detail)
             results[#results + 1] = { step = i, group = grouped and gi or nil, kind = kind, ok = ok and true or false,
@@ -349,7 +356,6 @@ function Runner.run(spec, opts)
         mockCalls[gi] = counts
         local ok, err = false, loadErr
         if chunks then ok, err = load(chunks, mocks, counts, g.savedVariables or spec.savedVariables, false) end
-        cur.mocks = mocks
         if not ok then
             add(0, "load", false, err)
             if not chunks then break end
@@ -417,6 +423,9 @@ function Runner.run(spec, opts)
     stopLoad()
     _G.CheckThat = oldCT
     _G.CreateFrame = plainCreate
+    -- Level 3 puts the global table back as the run found it, so a later run in the same process starts clean (its
+    -- LibStub and libraries included). Levels 1 and 2 leave the fake client in place, as they always did.
+    if lifecycle and loads > 0 then restoreGlobals() end
     local nilReads = {}
     for n in pairs(nilSeen) do nilReads[#nilReads + 1] = n end
     table.sort(nilReads)
@@ -427,7 +436,7 @@ function Runner.run(spec, opts)
     local steps = 0
     for _, r in ipairs(results) do if r.step > 0 then steps = steps + 1 end end
     if chunks and steps ~= want then ok = false end
-    return { ok = ok, level = level, interface = interface or select(4, _G.GetBuildInfo()), nilReads = nilReads, mocks = mockNames,
+    return { ok = ok, level = level, interface = interface, nilReads = nilReads, mocks = mockNames,
         mockCalls = grouped and mockCalls or mockCalls[1] or {}, reports = reports, steps = results }, jns.Json
 end
 

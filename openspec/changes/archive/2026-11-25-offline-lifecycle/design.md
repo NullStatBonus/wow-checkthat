@@ -45,7 +45,7 @@ Source: warcraft.wiki.gg, "AddOn loading process" and "Saving variables between 
 3. builds a new `stubClient`, so `st.secure` holds only the game's names;
 4. puts back its `CreateFrame` wrapper, the `CheckThat` stub with new entries, the mocks, the hidden globals and the nil-read hook.
 
-Restoring the snapshot removes `LibStub`, so libraries register again, as after a real reload. The compiled chunks are reused, because calling a chunk again makes new locals and upvalues. Nil reads from every load are merged.
+Restoring the snapshot removes `LibStub`, so libraries register again, as after a real reload. At level 3 the runner also restores the snapshot when the run ends, so a second run in the same process starts clean. Levels 1 and 2 leave the fake client in place, as they always did. The snapshot is shallow: a `LibStub` that existed before the run keeps what the first load registered, and a reload then fails with "already exists". `ct.py` starts a new process for each plan, so only a test that loads libraries before `Runner.run` meets this. The compiled chunks are reused, because calling a chunk again makes new locals and upvalues. Nil reads from every load are merged.
 
 ### D5. Groups
 
@@ -55,7 +55,11 @@ Restoring the snapshot removes `LibStub`, so libraries register again, as after 
 - Mock counts start at zero for each group and continue across a reload inside it.
 - Each result carries `group`, so `ct.py` names steps `offline.G.N`. A block without groups keeps the ids `offline.N`.
 
-### D6. Output
+### D6. Old blocks keep their results
+
+At levels 1 and 2 an event still reaches a frame that a handler created while it ran (`ipairs`). After the run, `CreateFrame` is still the stub client's and `CheckThat` is what `prepare` left. The runner refuses a block that holds both `steps` and `groups`, or empty `groups`, as the schema does.
+
+### D7. Output
 
 The JSON result keeps every key it has. A block without groups produces the same steps, ids and labels as before. The level warning now suggests `level: 3`. The text of a warning on stderr is not a format the tools read.
 
