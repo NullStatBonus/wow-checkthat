@@ -49,14 +49,35 @@ local function member(frames, k)
     end
 end
 
--- kind is the widget type. With a client surface (frames.surface, see H.stubClient), a frame of a listed type without a
--- template has only that type's methods: any other name reads nil, so a call to it fails as in the game. A frame from a
--- template, or of a type the surface does not list, takes any method (templates add methods the census does not see).
+-- The names a frame of this widget type made from these templates (a comma or space list) answers to: the type's methods, and
+-- the methods and child keys of each template the surface lists. A template the surface does not list (an addon's own, or one
+-- nobody read from Blizzard's source) makes the frame take any method, so this returns nil.
+function H.templateMethods(surface, kind, template)
+    local cache = surface.templateCache
+    if not cache then cache = {}; surface.templateCache = cache end
+    local key = kind:lower() .. "\0" .. template
+    if cache[key] ~= nil then return cache[key] or nil end
+    local set = {}
+    for n in pairs(surface.widgetsByLower[kind:lower()]) do set[n] = true end
+    for name in template:gmatch("[^,%s]+") do
+        local t = surface.templates and surface.templates[name]
+        if not t then cache[key] = false; return nil end
+        for n in pairs(t.methods) do set[n] = true end
+        for n in pairs(t.keys) do set[n] = true end
+    end
+    cache[key] = set
+    return set
+end
+
+-- kind is the widget type. With a client surface (frames.surface, see H.stubClient), a frame of a listed type has only that
+-- type's methods, plus those of its templates when the surface lists every one: any other name reads nil, so a call to it
+-- fails as in the game. A frame of a type the surface does not list, or from a template it does not list, takes any method.
 function stubFrame(frames, template, name, kind)
     local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name, kind = kind }
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
-    local methods = frames.surface and not template and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
+    local methods = frames.surface and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
+    if methods and template then methods = H.templateMethods(frames.surface, kind, template) end
     return setmetatable(f, { __index = function(t, k)
         if methods and not methods[k] then return nil end
         local fn = member(frames, k)
@@ -251,7 +272,8 @@ function H.recordNilReads(prefixes, excludes)
 end
 
 -- A client surface: what one game client defines, from tools/clients/<client>.json (made by tools/client_slice.py from
--- an in-game census). Returns { client, build, interface, functions = set, namespaces = {C_X = set}, widgets = {Type = set} }.
+-- an in-game census). Returns { client, build, interface, functions = set, namespaces = {C_X = set}, widgets = {Type = set},
+-- templates = {Name = {methods = set, keys = set}} (from tools/template_slice.py; absent in an older file) }.
 function H.clientSurface(client, root)
     root = root or "."
     local jns = {}
@@ -266,6 +288,8 @@ function H.clientSurface(client, root)
     s.lacksBase = {}
     for _, n in ipairs({ "dofile", "load", "loadfile", "module", "require" }) do if not s.functions[n] then s.lacksBase[n] = true end end
     for ns, list in pairs(m.namespaces) do s.namespaces[ns] = set(list) end
+    s.templates = {}
+    for name, t in pairs(m.templates or {}) do s.templates[name] = { methods = set(t.methods or {}), keys = set(t.keys or {}) } end
     s.widgetsByLower = {}
     for w, list in pairs(m.widgets) do s.widgets[w] = set(list); s.widgetsByLower[w:lower()] = s.widgets[w] end -- CreateFrame("frame") works
     return s

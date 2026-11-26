@@ -173,6 +173,50 @@ class Plans(unittest.TestCase):
             self.assertEqual(ct.warnings(plan), [], n)
 
 
+class TemplateSlice(unittest.TestCase):
+    """tools/template_slice.py reads templates from Blizzard-style XML and Lua; here a tiny fake source tree."""
+    def tree(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        def put(name, text):
+            p = os.path.join(d, "src", name); os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w") as f: f.write(text)
+        put("a.xml", '<Ui><!-- <Frame name="Commented" virtual="true"/> -->'
+                     '<Frame name="Base" virtual="true" mixin="BaseMixin"><Frames><Frame parentKey="Inner"/></Frames></Frame>'
+                     '<Button name="Child" virtual="true" inherits="Base, Missing" mixin="ChildMixin"><Layers><Layer><FontString parentKey="Text"/></Layer></Layers></Button></Ui>')
+        put("a.lua", 'BaseMixin = {}\nfunction BaseMixin:Ping() end\nChildMixin = CreateFromMixins(BaseMixin, OtherMixin)\nfunction ChildMixin:Pong() end\nOtherMixin = {}\nfunction OtherMixin.Far() end\nfunction Unrelated:Nope() end\n')
+        surface = os.path.join(d, "surface.json")
+        with open(surface, "w") as f: f.write('{\n "format": 1,\n "client": "x",\n "widgets": {"Frame": ["SetPoint"]}\n}\n')
+        return d, surface
+
+    def test_methods_follow_mixins_parents_and_inherits_and_keys_are_collected(self):
+        import template_slice
+        d, surface = self.tree()
+        templates, mixins = template_slice.scan(os.path.join(d, "src"))
+        self.assertNotIn("Commented", templates)
+        methods, keys = template_slice.resolve("Child", templates, mixins)
+        self.assertEqual(sorted(methods), ["Far", "Ping", "Pong"]); self.assertEqual(sorted(keys), ["Inner", "Text"])
+        self.assertNotIn("Nope", methods)
+
+    def test_the_surface_file_keeps_every_other_byte_and_an_unknown_template_is_an_error(self):
+        d, surface = self.tree()
+        with open(surface) as fh: before = fh.read()
+        tool = [sys.executable, os.path.join(ROOT, "tools", "template_slice.py"), surface, os.path.join(d, "src")]
+        out = subprocess.run(tool + ["Child"], capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertTrue(out.stdout.startswith(before.rstrip()[:-1].rstrip()), "the old text is the prefix")
+        j = json.loads(out.stdout)
+        self.assertEqual(j["widgets"], {"Frame": ["SetPoint"]}); self.assertEqual(j["templates"]["Child"]["methods"], ["Far", "Ping", "Pong"])
+        bad = subprocess.run(tool + ["Nope"], capture_output=True, text=True)
+        self.assertNotEqual(bad.returncode, 0); self.assertIn("no template named Nope", bad.stderr)
+
+    def test_the_committed_surfaces_list_the_templates_checkthat_uses(self):
+        for client in ("era", "forever"):
+            with open(os.path.join(ROOT, "tools", "clients", client + ".json")) as f:
+                t = json.load(f)["templates"]
+            for n in ("BackdropTemplate", "UIPanelButtonTemplate", "UIPanelScrollFrameTemplate", "UICheckButtonTemplate", "UIDropDownMenuTemplate"):
+                self.assertIn(n, t, client)
+            self.assertIn("SetBackdrop", t["BackdropTemplate"]["methods"], client)
+
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
         plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))
@@ -825,11 +869,12 @@ class ClientSlice(unittest.TestCase):
         for client, interface in (("era", 11509), ("forever", 16001)):
             with open(os.path.join(ROOT, "tools", "clients", client + ".json"), encoding="utf-8") as f:
                 s = json.load(f)
-            self.assertEqual(list(s), self.KEYS, client)
+            self.assertEqual(list(s), self.KEYS + ["templates"], client)   # templates: added by tools/template_slice.py, read from Blizzard's source
             self.assertEqual((s["format"], s["client"], s["interface"]), (1, client, interface))
             self.assertTrue(all(isinstance(n, str) for n in s["functions"]))
             self.assertTrue(all(k.startswith("C_") and all(isinstance(n, str) for n in v) for k, v in s["namespaces"].items()))
             self.assertTrue(all(isinstance(v, list) for v in s["widgets"].values()))
+            self.assertTrue(all(sorted(v) == ["keys", "methods"] and all(isinstance(n, str) for n in v["methods"] + v["keys"]) for v in s["templates"].values()))
 
     def test_the_slice_leaves_out_tester_data(self):
         sys.path.insert(0, os.path.join(ROOT, "tools"))
