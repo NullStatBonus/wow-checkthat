@@ -2,7 +2,7 @@
 --
 --   luajit tools/entry_runner.lua SPEC.json      (from the repository root; prints the result as JSON)
 --
--- SPEC.json: { "toc": "path/Addon.toc", "level": 3,
+-- SPEC.json: { "toc": "path/Addon.toc", "level": 4,
 --              "mocks": { "GetItemInfo": [ {"args": [1], "returns": ["A"]}, {"returns": ["Z"]} ],
 --                         "C_Item.GetItemCount": {"returns": [3]} },
 --              "mockAfterLoad": false,
@@ -12,14 +12,14 @@
 --                         {"mockCalls": {"api": "GetItemInfo", "count": 2}},
 --                         {"reload": true} ] }
 -- Level 3 also takes "savedVariables": {"AddonDB": {...}}, and "groups": [{"label", "mocks", "savedVariables", "steps"}]
--- in place of "steps": each group gets a fresh load.
+-- in place of "steps": each group gets a fresh load. Level 4 adds {"wait": seconds} steps.
 -- Everything in a spec is data. A step can only call an entry the addon registered through CheckThat.Entry.
 -- Mocks are set before the addon loads (a file-scope "local f = f" then sees them) unless mockAfterLoad is set,
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
 
 -- The newest offline level. A plan without a level runs at level 1, so its results do not change.
-Runner.LEVEL = 3
+Runner.LEVEL = 4
 
 -- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
 Runner.MOCKABLE = {}
@@ -179,11 +179,13 @@ function Runner.run(spec, opts)
     local tocPath = pathJoin(root, spec.toc)
     -- Offline level: what a plan opted in to. Level 1 (no level) keeps the fake client's first answers: interface 11507
     -- and issecurevariable false for every name. Level 2 answers with the TOC's interface and the secure game names.
-    -- Level 3 adds the game's load order: saved variables, login events, reload and groups.
+    -- Level 3 adds the game's load order: saved variables, login events, reload and groups. Level 4 adds the client's
+    -- event list (tools/events/<client>.json) and a virtual clock with wait steps.
     local level = spec.level or 1
     local badLevel = type(level) ~= "number" or level % 1 ~= 0 or level < 1 or level > Runner.LEVEL
     if badLevel then level = 1 end
     local lifecycle = level >= 3
+    local timed = level >= 4
     local groups = spec.groups or { { steps = spec.steps } }
     local grouped = spec.groups ~= nil
     local needs3
@@ -191,6 +193,37 @@ function Runner.run(spec, opts)
     for _, g in ipairs(groups) do
         if not needs3 and g.savedVariables then needs3 = "savedVariables" end
         if not needs3 and hasReload(g.steps) then needs3 = "a reload step" end
+    end
+    local needs4
+    for _, g in ipairs(groups) do
+        for _, s in ipairs(g.steps or {}) do if s.wait ~= nil then needs4 = "a wait step" end end
+    end
+    -- Level 4: the events of the client the TOC names (below interface 16000 Era, from 16000 Forever), from Blizzard's
+    -- generated API documentation and the events Blizzard's own code registers. An event step is checked before load.
+    local events, eventsErr
+    if timed then
+        local n = tocInterface(tocPath) or 11507
+        local client = n >= 16000 and "forever" or "era"
+        local f = io.open(root .. "/tools/events/" .. client .. ".json", "r")
+        if f then
+            local m = jns.Json.Decode(f:read("*a")); f:close()
+            events = m and m.events
+        end
+        if not events then eventsErr = ("no event list for %s (tools/events/%s.json)"):format(client, client) end
+        for _, g in ipairs(groups) do
+            for _, s in ipairs(g.steps or {}) do
+                local ev = s.event
+                if ev and events and not eventsErr then
+                    local e = events[ev.name]
+                    local nargs = #(ev.args or {})
+                    if not e then
+                        eventsErr = ("the client has no event %s"):format(tostring(ev.name))
+                    elseif e.payload and (nargs > e.payload or nargs < e.required) then
+                        eventsErr = ("%s carries %d value(s), %d of them always, and the step gives %d"):format(ev.name, e.payload, e.required, nargs)
+                    end
+                end
+            end
+        end
     end
     local meta = lifecycle and H.tocMeta(tocPath) or { savedVariables = {} }
     local declared = {}
@@ -250,8 +283,10 @@ function Runner.run(spec, opts)
         return true
     end
 
+    local clockStart -- GetTime goes on across a reload; a group starts again at 1
     local function client()
-        local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle })
+        local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
+            clock = timed and { start = clockStart } or nil })
         interface = select(4, _G.GetBuildInfo())
         return st
     end
@@ -270,6 +305,14 @@ function Runner.run(spec, opts)
             f.events = {}
             rawset(f, "RegisterEvent", function(self, ev) self.events[ev] = true end)
             if lifecycle then rawset(f, "UnregisterEvent", function(self, ev) self.events[ev] = nil end) end
+            if timed then -- the client refuses an event it does not have
+                local function register(self, ev)
+                    if not events[ev] then error(("Frame:RegisterEvent(): Attempt to register unknown event \"%s\""):format(tostring(ev)), 3) end
+                    self.events[ev] = true
+                end
+                rawset(f, "RegisterEvent", function(self, ev) register(self, ev) end)
+                rawset(f, "RegisterUnitEvent", function(self, ev) register(self, ev) end)
+            end
             return f
         end
         if opts.prepare then opts.prepare(H, st) end
@@ -331,6 +374,10 @@ function Runner.run(spec, opts)
         loadErr = "groups is empty"
     elseif needs3 and level < 3 then
         loadErr = ("%s needs offline level 3"):format(needs3)
+    elseif needs4 and level < 4 then
+        loadErr = ("%s needs offline level 4"):format(needs4)
+    elseif eventsErr then
+        loadErr = eventsErr
     elseif undeclared then
         loadErr = ("savedVariables names %s, which the TOC does not declare"):format(undeclared)
     elseif unlisted then
@@ -357,6 +404,7 @@ function Runner.run(spec, opts)
         for api, r in pairs(g.mocks or {}) do mocks[api] = r end
         local counts = {}
         mockCalls[gi] = counts
+        clockStart = nil
         local ok, err = false, loadErr
         if chunks then ok, err = load(chunks, mocks, counts, g.savedVariables or spec.savedVariables, false) end
         if not ok then
@@ -398,6 +446,10 @@ function Runner.run(spec, opts)
                 elseif step.mockCalls then
                     local n = counts[step.mockCalls.api] or 0
                     add(i, "mockCalls", n == step.mockCalls.count, ("%s called %d time(s), expected %d"):format(step.mockCalls.api, n, step.mockCalls.count))
+                elseif step.wait ~= nil then
+                    local ran, werr = cur.st.advance(step.wait)
+                    if werr then add(i, "wait", false, ("a timer callback threw %s"):format(werr))
+                    else add(i, "wait", true, ("waited %ss, ran %d timer callback(s)"):format(tostring(step.wait), ran)) end
                 elseif step.reload then
                     local rok, rerr = true, nil
                     for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "PLAYER_LOGOUT" }, { "ADDONS_UNLOADING", false } }) do
@@ -406,6 +458,7 @@ function Runner.run(spec, opts)
                         if not n then rok, rerr = false, ("%s handler threw %s"):format(ev, ferr); break end
                     end
                     if rok then
+                        clockStart = cur.st.now
                         local saved = {}
                         for n in pairs(declared) do saved[n] = savedCopy(rawget(_G, n)) end
                         rok, rerr = load(chunks, mocks, counts, saved, true)
@@ -416,7 +469,7 @@ function Runner.run(spec, opts)
                         break
                     end
                 else
-                    add(i, "unknown", false, "step has no call, event, mockCalls or reload")
+                    add(i, "unknown", false, "step has no call, event, mockCalls, wait or reload")
                 end
             end
             end, tostring)

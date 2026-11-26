@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon clock
+## Notes: Fixture for offline level 4: timers, the clock and the event list. Not shipped.
+Clock.lua

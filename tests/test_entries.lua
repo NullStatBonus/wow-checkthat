@@ -121,9 +121,9 @@ test("without a level the run keeps level 1: interface 11507 and every name inse
 end)
 
 test("an unknown level fails the load step and runs no addon file", function()
-    local r = run({ toc = TOC, level = 4, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    local r = run({ toc = TOC, level = 5, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
     T.eq(r.ok, false)
-    T.ok(r.steps[1].detail:find("offline level 4 is not supported", 1, true), r.steps[1].detail)
+    T.ok(r.steps[1].detail:find("offline level 5 is not supported", 1, true), r.steps[1].detail)
 end)
 
 test("a file that uses goto fails the load step with file:line text", function()
@@ -370,6 +370,77 @@ test("snapshot restore removes added globals and library keys and puts old value
     restore()
     T.eq(rawget(_G, "SnapAdded"), nil); T.eq(_G.SnapKeep, 1); T.eq(string.snapAdded, nil)
     _G.SnapKeep = nil
+end)
+
+local CLOCK = "tests/fixtures/MockAddon/Clock.toc"
+local function c(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
+local function allOk(r) for _, s in ipairs(r.steps) do T.ok(s.ok, ("%s %s %d: %s"):format(tostring(s.group), s.kind, s.step, tostring(s.detail))) end; T.ok(r.ok) end
+
+test("the event lists name every event the runner fires, with the same number of values", function()
+    local jns = {}
+    assert(loadfile("CheckThat/Model/Json.lua"))("CheckThat", jns)
+    local fired = { ADDON_LOADED = 2, PLAYER_LOGIN = 0, PLAYER_ENTERING_WORLD = 2, PLAYER_LEAVING_WORLD = 0, PLAYER_LOGOUT = 0, ADDONS_UNLOADING = 1 }
+    for client, interface in pairs({ era = 11509, forever = 16001 }) do
+        local f = assert(io.open("tools/events/" .. client .. ".json")); local m = assert(jns.Json.Decode(f:read("*a"))); f:close()
+        T.eq(m.format, 1); T.eq(m.client, client); T.eq(m.interface, interface)
+        for ev, n in pairs(fired) do T.eq(m.events[ev] and m.events[ev].payload, n, client .. " " .. ev) end
+    end
+end)
+
+test("level 4: a 2-second timer fires after wait 2 and not before", function()
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("after", { 2 }, { true }), { wait = 1.5 }, c("fired", nil, { "no" }),
+        { wait = 0.5 }, c("fired", nil, { 3 }) } }))
+end)
+
+test("level 4: GetTime and time() follow the clock", function()
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("now", nil, { 1, 1764028800 }), { wait = 10 }, c("now", nil, { 11, 1764028810 }) } }))
+end)
+
+test("level 4: a ticker runs its iterations and a cancelled timer never runs", function()
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("ticker", { 1, 3 }, { true }), c("cancelled_timer", { 1 }, { true }),
+        { wait = 10 }, c("ticks", nil, { 3 }), c("fired", nil, { "no" }) } }))
+end)
+
+test("level 4: timers run by due time, then in the order they were made, and a timer made inside the wait runs", function()
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("order", nil, { true }), { wait = 2 }, c("seen", nil, { "a,a2,b,c" }) } }))
+end)
+
+test("level 4: a timer that throws fails the wait step", function()
+    local r = run({ toc = CLOCK, level = 4, steps = { c("boom_later", nil, { true }), { wait = 1 } } })
+    T.eq(r.steps[2].ok, false); T.ok(r.steps[2].detail:find("late boom", 1, true), r.steps[2].detail)
+end)
+
+test("level 4: the clock goes on across a reload, its timers do not, and a group starts again", function()
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("after", { 5 }, { true }), { wait = 2 }, { reload = true }, c("now", nil, { 3, 1764028802 }),
+        { wait = 10 }, c("fired", nil, { "no" }) } }))
+    allOk(run({ toc = CLOCK, level = 4, groups = { { steps = { { wait = 4 } } }, { steps = { c("now", nil, { 1, 1764028800 }) } } } }))
+end)
+
+test("level 4: RegisterEvent refuses an event the client does not have", function()
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("register", { "MERCHANT_SHOW" }, { true }),
+        c("register", { "NOT_AN_EVENT" }, { false, 'Frame:RegisterEvent(): Attempt to register unknown event "NOT_AN_EVENT"' }) } }))
+end)
+
+test("level 4: an event step the client lacks, or with the wrong number of values, fails before load", function()
+    _G.MockAddonRan = nil
+    local r = run({ toc = CLOCK, level = 4, steps = { { event = { name = "NOT_AN_EVENT" } } } })
+    T.eq(r.ok, false); T.eq(r.steps[1].step, 0); T.ok(r.steps[1].detail:find("the client has no event NOT_AN_EVENT", 1, true), r.steps[1].detail)
+    r = run({ toc = CLOCK, level = 4, steps = { { event = { name = "BAG_UPDATE" } } } })
+    T.ok(r.steps[1].detail:find("BAG_UPDATE carries 1 value(s), 1 of them always, and the step gives 0", 1, true), r.steps[1].detail)
+    r = run({ toc = CLOCK, level = 4, steps = { { event = { name = "BAG_UPDATE", args = { 0 } } }, c("seen", nil, { "BAG_UPDATE 0" }) } })
+    allOk(r)
+end)
+
+test("levels 1 to 3 keep GetTime at 1 and timers queued, check no event list, and refuse a wait step", function()
+    local r = run({ toc = CLOCK, level = 3, steps = { c("after", { 0 }, { true }), c("fired", nil, { "no" }), c("register", { "NOT_AN_EVENT" }, { true }),
+        { event = { name = "NOT_AN_EVENT" } } } })
+    T.ok(r.steps[1].ok and r.steps[2].ok and r.steps[3].ok, r.steps[2].detail .. " / " .. r.steps[3].detail)
+    T.eq(r.steps[4].detail, "fired at 1 frame(s)", "below level 4 any event name registers and fires")
+    T.eq(GetTime(), 1)
+    for lv = 1, 3 do
+        r = run({ toc = CLOCK, level = lv, steps = { { wait = 1 } } })
+        T.eq(r.ok, false); T.ok(r.steps[1].detail:find("a wait step needs offline level 4", 1, true), r.steps[1].detail)
+    end
 end)
 
 finish()

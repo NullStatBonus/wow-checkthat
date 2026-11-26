@@ -92,6 +92,7 @@ function H.stubClient(opts)
     _G.GetTime = function() return 1 end
     st.timers = {}
     _G.C_Timer = { After = function(_, fn) st.timers[#st.timers + 1] = fn end } -- queued; a test runs them
+    if opts.clock then H.clock(st, opts.clock) end
     -- The secure state driver: [combat] hide; show. The game applies it with its own privileges, also in combat,
 -- and applies it again about five times a second. st.tick() is one such pass.
 local function applyDriver(f)
@@ -232,6 +233,68 @@ function H.recordNilReads(prefixes, excludes)
         for k in pairs(seen) do list[#list + 1] = k end
         table.sort(list)
         return list
+    end
+end
+
+-- A virtual clock (offline level 4). GetTime, time and C_Timer read it; st.advance(seconds) moves it on and runs each
+-- timer that comes due, in the order the game would: by due time, then by the order they were made. A timer a callback
+-- makes runs too when it comes due inside the same advance. clock.start is GetTime at the start (default 1) and
+-- clock.epoch is what time() returns at GetTime 1. Returns nothing; st.now is the clock.
+function H.clock(st, clock)
+    clock = type(clock) == "table" and clock or {}
+    local start = clock.start or 1
+    local epoch = clock.epoch or 1764028800 -- 2025-11-25 00:00 UTC
+    st.now, st.queue, st.seq = start, {}, 0
+    local function add(seconds, fn, handle)
+        if type(seconds) ~= "number" or type(fn) ~= "function" then error("Usage: C_Timer(seconds, callback)", 3) end
+        st.seq = st.seq + 1
+        st.queue[#st.queue + 1] = { due = st.now + math.max(seconds, 0), seq = st.seq, fn = fn, handle = handle, every = seconds }
+    end
+    local function handle(seconds, fn, iterations)
+        local h = { cancelled = false, left = iterations }
+        function h.Cancel(self) (self or h).cancelled = true end
+        function h.IsCancelled(self) return (self or h).cancelled end
+        add(seconds, fn, h)
+        return h
+    end
+    _G.GetTime = function() return st.now end
+    _G.time = function() return epoch + math.floor(st.now - 1) end -- epoch at GetTime 1, also after a reload
+    _G.C_Timer = {
+        After = function(seconds, fn) add(seconds, fn) end,
+        NewTimer = function(seconds, fn) return handle(seconds, fn, 1) end,
+        NewTicker = function(seconds, fn, iterations) return handle(seconds, fn, iterations) end,
+    }
+    st.timers = st.queue
+    -- Returns the number of callbacks run, and the first error a callback raised (the others still run, as in the game).
+    function st.advance(seconds)
+        local target, ran, firstErr = st.now + math.max(seconds or 0, 0), 0, nil
+        while true do
+            local best, bi
+            for i, t in ipairs(st.queue) do
+                if t.due <= target and (not best or t.due < best.due or (t.due == best.due and t.seq < best.seq)) then best, bi = t, i end
+            end
+            if not best then break end
+            table.remove(st.queue, bi)
+            local h = best.handle
+            if not (h and h.cancelled) then
+                st.now = math.max(st.now, best.due)
+                ran = ran + 1
+                local ok, err = pcall(best.fn, h)
+                if not ok and not firstErr then firstErr = tostring(err) end
+                if h and not h.cancelled then
+                    if h.left then h.left = h.left - 1 end
+                    if not h.left or h.left > 0 then
+                        st.seq = st.seq + 1
+                        best.due, best.seq = st.now + math.max(best.every, 0.0001), st.seq -- a 0-second ticker still moves on
+                        st.queue[#st.queue + 1] = best
+                    else
+                        h.cancelled = true
+                    end
+                end
+            end
+        end
+        st.now = target
+        return ran, firstErr
     end
 end
 
