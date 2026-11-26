@@ -117,7 +117,7 @@ luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fak
 .venv/bin/python tools/ct.py offline plans/<plan>.yaml   # run the plan's offline block (mocks, entry calls, fake events), no game; --client era|forever|both
 .venv/bin/python tools/ct.py replay-flow plans/<plan>.yaml   # play a plan for each client; works for any addon's plan and from the installed skill
 .venv/bin/python tools/ct.py lines plans/<plan>.yaml --addon-src <addon folder>   # check each asserted log line and fact key appears in the addon's source
-.venv/bin/python tools/ct.py report --expect-version <addon version> --plan plans/<plan>.yaml   # warn about a run of another build or an older plan
+.venv/bin/python tools/ct.py report --addon-src <addon folder> --plan plans/<plan>.yaml   # warn about a run of another build (version from the TOC) or an older plan
 ```
 
 Requirements live in `openspec/`. The release steps are in [docs/publishing.md](docs/publishing.md).

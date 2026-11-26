@@ -336,6 +336,15 @@ def toc_version(path):
     major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
     return "%d.%d.%d" % (major, minor, patch), major * 10000 + minor * 100 + patch
 
+def toc_version_raw(path):
+    """The ## Version: text exactly as the TOC writes it (the addon reports this text as its version), or None."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            m = re.search(r"^## Version:\s*(\S+)", f.read(), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
 def plan_toc(plan, addon_src=None, addons=None):
     """The addon's TOC for version checks: the folder's *_Vanilla.toc (else its first TOC) with addon_src, else the plan's offline.toc
     (or its first offline.tocs entry) under the addons folder when that file exists. None when neither is known."""
@@ -737,25 +746,113 @@ def from_md(path, addon):
 
 # ---------------------------------------------------------------- offline replay
 
+SV_COPY = re.compile(r"^(.*)\.[0-9a-f]{10}\.lua$")
+SAME_COLLECT = 60  # seconds of slack: one collect writes its copies within this of each other
+
+def sv_copy_parts(name):
+    """(prefix up to and including Account__<name>, the folders after it, the file name) of a collected copy such as
+    _forever___WTF__Account__A__91__Etock-Redmoor__SavedVariables__ClosestVendor.<hash>.lua, or None when the name has no account."""
+    m = SV_COPY.match(name)
+    parts = m.group(1).split("__") if m else []
+    if "Account" not in parts:
+        return None
+    i = parts.index("Account")
+    rest = parts[i + 2:]
+    if len(rest) < 2 or rest[-2] != "SavedVariables":
+        return None
+    return "__".join(parts[:i + 2]), rest[:-2], rest[-1]
+
+def character_folder_matches(folders, character):
+    """True when a character folder (the folders between the account and SavedVariables) belongs to the run's character, Name-Realm.
+    Forever names the folder Name-Realm, Era Realm/Name with spaces in the realm. A realm of ? matches on the name alone."""
+    if not folders or not character:
+        return False
+    name, _, realm = str(character).partition("-")
+    last = folders[-1]
+    if last == character:
+        return True
+    if realm == "?":
+        return last == name or last.partition("-")[0] == name
+    return last == name and len(folders) >= 2 and folders[-2].replace(" ", "") == realm
+
+def run_sv_files(dest, run_id):
+    """(files, notes) to replay a plan against a collected run (#223): the newest collected CheckThat.lua that holds the run at its
+    newest stored revision, and the copies of the same client and account, account-wide and from the run's own character folder,
+    each the newest copy collected no later than that CheckThat copy. Raises ValueError for an unknown run or one no copy holds."""
+    revs = rev_files(os.path.join(dest, "runs", safe_name(run_id)))
+    run = None
+    for p in reversed(revs):
+        try:
+            run = read_run(p); break
+        except (ValueError, OSError):
+            continue
+    if run is None:
+        raise ValueError("no stored run %s under %s: collect first (ct.py collect)" % (run_id, os.path.join(dest, "runs")))
+    rev = run.get("revision")
+    copies = []
+    for p in glob.glob(os.path.join(dest, "sv", "*.lua")):
+        parts = sv_copy_parts(os.path.basename(p))
+        if parts:
+            copies.append((os.path.getmtime(p), p, parts))
+    chosen = None
+    for mt, p, (prefix, folders, fname) in sorted(copies, reverse=True):
+        if fname != "CheckThat" or folders:
+            continue
+        with open(p, encoding="utf-8", errors="replace") as fh:
+            if '"%s"' % run_id not in fh.read():   # cheap: decode only a copy that names the run
+                continue
+        try:
+            db = sv_json(p).get("CheckThatDB") or {}
+        except Exception:
+            continue
+        g = db.get("global") if isinstance(db, dict) else None
+        runs = (g.get("runs") if isinstance(g, dict) else None) or (db.get("runs") if isinstance(db, dict) else None) or {}
+        held = runs.get(run_id) if isinstance(runs, dict) else None
+        if isinstance(held, dict) and held.get("revision") == rev:
+            chosen = (mt, p, prefix); break
+    if not chosen:
+        raise ValueError("no collected CheckThat.lua holds run %s at revision %s: collect again after /reload (ct.py collect)" % (run_id, rev))
+    mt0, ct_path, prefix = chosen
+    # collect stores each content once, so a file that did not change keeps the copy of its first collect: the content in effect at
+    # the CheckThat copy's collect is the newest copy no later than it (with SAME_COLLECT slack for one collect's own seconds)
+    by_file = {}
+    for mt, p, (pre, folders, fname) in copies:
+        if pre != prefix or fname == "CheckThat" or (folders and not character_folder_matches(folders, run.get("character"))):
+            continue
+        by_file.setdefault((tuple(folders), fname), []).append((mt, p))
+    files, notes = [ct_path], []
+    for key in sorted(by_file):
+        found = sorted(by_file[key])
+        before = [c for c in found if c[0] <= mt0 + SAME_COLLECT]
+        mt, p = before[-1] if before else found[0]
+        files.append(p)
+        if not before:
+            notes.append("%s was first collected %s after the CheckThat copy: it may hold lines written after the run" % (os.path.basename(p), age(mt - mt0)))
+    return files, notes
+
 def replay_plan(plan, fixture, today=None):
     """Judge each required log and fact check of a plan against the SavedVariables files in a fixture folder.
     Returns (items, notes): items are {step, label, result: pass|fail|skipped, why}; notes are warnings about the fixture.
-    Needs luajit. The fixture folder holds the *.lua files and may hold fixture.json: {"recorded": "YYYY-MM-DD", "digest": "<plan digest>"}."""
+    Needs luajit. The fixture folder holds the *.lua files and may hold fixture.json: {"recorded": "YYYY-MM-DD", "digest": "<plan digest>"}.
+    fixture may also be a list of *.lua files (run_sv_files), which has no fixture.json."""
     import datetime, tempfile
     errs = validate(plan)
     if errs:
         raise ValueError("the plan is not valid: " + "; ".join(errs))
     merged = merge_sections(plan)
     digest = encode(merged)[len(PREFIX):len(PREFIX) + 8]
-    files = sorted(glob.glob(os.path.join(fixture, "*.lua")))
-    if not files:
-        raise ValueError("no SavedVariables *.lua file in " + fixture)
     notes, meta = [], {}
-    try:
-        with open(os.path.join(fixture, "fixture.json"), encoding="utf-8") as f:
-            meta = json.load(f)
-    except (OSError, ValueError):
-        notes.append("fixture.json is missing or unreadable: the fixture's age and plan digest are unknown")
+    if isinstance(fixture, list):   # the copies run_sv_files picked for a collected run
+        files = fixture
+    else:
+        files = sorted(glob.glob(os.path.join(fixture, "*.lua")))
+        if not files:
+            raise ValueError("no SavedVariables *.lua file in " + fixture)
+        try:
+            with open(os.path.join(fixture, "fixture.json"), encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            notes.append("fixture.json is missing or unreadable: the fixture's age and plan digest are unknown")
     if meta.get("recorded"):
         days = ((today or datetime.date.today()) - datetime.date.fromisoformat(meta["recorded"])).days
         notes.append("fixture recorded %s (%d days ago)" % (meta["recorded"], days))
@@ -2996,7 +3093,7 @@ def main(argv=None):
     p.add_argument("--harness", action="store_true", help="read the setting keys from the options tables the addon registers with AceConfigRegistry-3.0 when its TOC loads in the fake client (needs luajit; runs the addon's Lua: use addons you trust); falls back to the source when the registry is empty")
     p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md")
-    p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
+    p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder or a collected run (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("--run", help="a collected run id: use the saved-variable copies collected with its newest revision"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"), help="evidence folder for --run"); p.add_argument("-o")
     p = sub.add_parser("offline", help="run a plan's offline block (mocks, entry calls, fake events) in the fake client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts; the plan's toc is read from inside it (default: the folder above this repository, or above the current folder when ct.py runs from an installed skill)"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help); p.add_argument("--build", help="split the nil-read report with the census of this build (tests/manifests/*.json); needed when the interface matches several builds"); p.add_argument("--client", choices=("era", "forever", "both"), help="run the block with the TOC of offline.tocs for that client; both runs it twice and prefixes each case with its client. Without it the block runs once with offline.toc, as before")
     p = sub.add_parser("replay-flow", help="play a plan's steps in the fake client and report plan mistakes (needs luajit). Log lines the plan expects are written by the replay: it checks the plan, not the addon"); p.add_argument("plan"); p.add_argument("--hooks", help="Lua hooks file for steps that need more than a Pass (see docs/authoring-plans.md)"); p.add_argument("--specs", help=specs_help)
     p = sub.add_parser("lines", help="check that each log line and fact key a plan asserts appears in the addon's Lua source"); p.add_argument("plan"); p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC)"); p.add_argument("--strict", action="store_true", help="exit 1 when a line is missing")
@@ -3013,7 +3110,7 @@ def main(argv=None):
     p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
-    p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
+    p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, there are no runs, or a revision could not be read")
     p.add_argument("--lines", action="store_true", help="put the log lines that decided each check (and values the checks saw) in json and junit; they can hold private data")
@@ -3082,8 +3179,15 @@ def main(argv=None):
         return 0
     if a.cmd == "replay":
         plan = load_yaml(a.plan)
+        if bool(a.sv) == bool(a.run):
+            print("error: give either --sv <fixture folder> or --run <run id>", file=sys.stderr); return 2
         try:
-            items, notes = replay_plan(plan, a.sv)
+            fixture, pick = (a.sv, []) if a.sv else run_sv_files(a.dest, a.run)
+            if a.run:
+                for f in fixture:
+                    print("replay: using %s" % os.path.relpath(f, a.dest), file=sys.stderr)
+            items, notes = replay_plan(plan, fixture)
+            notes = pick + notes
         except (ValueError, RuntimeError) as e:
             print("error:", e, file=sys.stderr); return 2
         for n in notes:
@@ -3218,7 +3322,13 @@ def main(argv=None):
                 digest = encode(merge_sections(scope)).split("!")[2]
             except (OSError, IndexError, KeyError, ValueError) as e:
                 print("error: cannot read the digest of %s: %s" % (a.plan_file, e), file=sys.stderr); return 2
-        for w in run_warnings(runs, a.expect_version, digest, scope and scope.get("addon"), scope and scope.get("title")):
+        expect = a.expect_version
+        if not expect:   # #226: the version under test is the one in the addon's TOC
+            toc = plan_toc(scope or {}, a.addon_src)
+            expect = toc and toc_version_raw(toc)
+            if expect:
+                print("report: expected version %s, from %s" % (expect, os.path.basename(toc)), file=sys.stderr)
+        for w in run_warnings(runs, expect, digest, scope and scope.get("addon"), scope and scope.get("title")):
             print("warning: " + w, file=sys.stderr)
         if a.format == "md":
             txt = report_text(runs, a.dest, failed_only=a.failed_only)

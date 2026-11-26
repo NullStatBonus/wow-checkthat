@@ -102,9 +102,12 @@ For a plan about another addon, the replay writes the lines the checks look for 
 
 `.venv/bin/python tools/ct.py replay plans/<addon>.yaml --sv <fixture dir>` judges the plan's log and fact checks against saved variables, with no game. It needs `luajit`. The fixture dir holds the SavedVariables `*.lua` files from a real run, with personal names removed, and may hold `fixture.json`: `{"recorded": "YYYY-MM-DD", "digest": "<plan digest>"}`. The command prints JUnit and exits 1 when a required check fails.
 
+`.venv/bin/python tools/ct.py replay plans/<addon>.yaml --run <run id> [--dest evidence]` does the same against a collected run, with no fixture folder to make. It uses the collected `CheckThat.lua` copy that holds the run at its newest revision, and the addon files of the same client and account from that collect: the account-wide ones and those of the run's own character, never another character's. It prints each file it used. Use it after you revise a plan, before you ask for another run in the game.
+
 - The whole log is the window, as with `scope: session`. A typo in `contains` or `pattern`, a line that is not in the log, and a forbidden line that is in the log all fail.
 - A check that needs the step's own window cannot pass here. `absent`, `exactly`, `max` and a `missing` fact count as not judged offline when the log does not contradict them. A state probe is not judged either, because it needs the game.
 - Diagnostic checks are left out.
+- For `--run`, a file that did not change since an earlier collect keeps its first copy, which is the right content. A file first collected after the run gets a warning, because it may hold lines written later.
 - It prints the fixture's age and warns when `fixture.json` is missing or its digest differs from the plan's. Record the fixture again after a plan or log text change.
 - It tests the plan's text against the log. It does not run the addon, and it does not replace a run in the game.
 

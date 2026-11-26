@@ -22,7 +22,7 @@ Two skills help addon developers write plans and read finished runs back. They a
   - `ct.py drift <plan> --dest evidence` compares what a plan's offline block predicted for each step with the collected runs, for each client, and lists the wrong predictions (see [Drift ledger](harvesting.md#drift-ledger)).
   - `ct.py diff <run A> <run B>` shows which steps regressed, were fixed or are no longer comparable between two runs. `ct.py trend` shows many runs and marks flaky steps.
   - `ct.py report --format json` or `--format junit`, with `--strict`, gives results to a script or a CI job.
-  - `ct.py report --expect-version <addon version> --plan <plan file>` warns about a run of another addon version, a run written by another CheckThat version than the tools, and a run made from an older plan file.
+  - `ct.py report --addon-src <addon folder> --plan <plan file>` (or `--expect-version <addon version>`) warns about a run of another addon version, a run written by another CheckThat version than the tools, and a run made from an older plan file.
   - It never edits a plan and never runs the game.
   - Collected evidence goes to a folder you name, `evidence/` by default. Keep it out of Git.
 
