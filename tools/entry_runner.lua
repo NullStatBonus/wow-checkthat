@@ -283,7 +283,7 @@ function Runner.run(spec, opts)
             local evs, units = rawget(f, "events"), rawget(f, "units")
             local forUnit = not (units and units[ev]) or units[ev][(...)]
             if type(evs) == "table" and evs[ev] and forUnit and f.scripts.OnEvent then
-                local ok, err = pcall(f.scripts.OnEvent, f, ev, ...)
+                local ok, err = H.budgeted(strict and H.DEFAULT_BUDGET or nil, f.scripts.OnEvent, f, ev, ...) -- the script-time budget is level 5
                 fired = fired + 1
                 if not ok then return nil, tostring(err) end
             end
@@ -302,7 +302,7 @@ function Runner.run(spec, opts)
 
     local clockStart -- GetTime goes on across a reload; a group starts again at 1
     local function client()
-        local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
+        local st = H.stubClient({ scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
             clock = timed and { start = clockStart } or nil, client = surface })
         interface = select(4, _G.GetBuildInfo())
         return st

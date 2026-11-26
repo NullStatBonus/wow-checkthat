@@ -334,6 +334,16 @@ test("an event reaches a frame that a handler created while the event ran, as be
     T.eq(r.steps[1].detail, "fired at 2 frame(s)")
 end)
 
+test("a handler that runs too long fails its event step with a budget message; a quick one passes", function()
+    local steps = { { event = { name = "BAG_UPDATE", args = { 100 } } }, { event = { name = "BAG_UPDATE", args = { 50000 } } } }
+    local r = run({ toc = "tests/fixtures/MockAddon/Slow.toc", level = 5, steps = steps })
+    T.ok(r.steps[1].ok, "100 reads are fine: " .. tostring(r.steps[1].detail))
+    T.ok(not r.steps[2].ok and tostring(r.steps[2].detail):find("script ran too long", 1, true), tostring(r.steps[2].detail))
+    local old = run({ toc = "tests/fixtures/MockAddon/Slow.toc", level = 4, steps = steps })
+    T.ok(old.steps[2].ok, "below level 5 the same plan keeps its old result")
+    T.ok(run({ toc = "tests/fixtures/MockAddon/Slow.toc", steps = steps }).steps[2].ok, "and so does a plan with no level")
+end)
+
 test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()
     _G.CreateFrame = nil
     local mine = {}
