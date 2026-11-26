@@ -431,6 +431,30 @@ test("level 4: an event step the client lacks, or with the wrong number of value
     allOk(r)
 end)
 
+test("level 4: a timer that keeps making 0-second timers fails the wait instead of hanging", function()
+    local r = run({ toc = CLOCK, level = 4, steps = { c("poll_forever", nil, { true }), { wait = 1 } } })
+    T.eq(r.steps[2].ok, false); T.ok(r.steps[2].detail:find("keeps making 0-second timers", 1, true), r.steps[2].detail)
+end)
+
+test("level 4: a unit event reaches the frame only for the units it registered", function()
+    local r = run({ toc = CLOCK, level = 4, steps = { c("unit", { "player" }, { true }),
+        { event = { name = "UNIT_HEALTH", args = { "target" } } }, { event = { name = "UNIT_HEALTH", args = { "player" } } } } })
+    T.ok(r.steps[2].detail:find("no frame registered UNIT_HEALTH", 1, true), r.steps[2].detail)
+    T.eq(r.steps[3].detail, "fired at 1 frame(s)")
+end)
+
+test("level 4: time{...} converts a date, and NewTicker refuses iterations that are not a number", function()
+    local ostime = os.time({ year = 2026, month = 1, day = 2, hour = 12 })
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("time_of", nil, { true }), c("bad_ticker", nil, { false, true }) } },
+        function() _G.os_time_probe = ostime end))
+end)
+
+test("level 4: a run that fails before load puts the global table back", function()
+    _G.time = nil
+    run({ toc = CLOCK, level = 4, steps = { { event = { name = "NOPE" } } } })
+    T.eq(rawget(_G, "time"), nil)
+end)
+
 test("levels 1 to 3 keep GetTime at 1 and timers queued, check no event list, and refuse a wait step", function()
     local r = run({ toc = CLOCK, level = 3, steps = { c("after", { 0 }, { true }), c("fired", nil, { "no" }), c("register", { "NOT_AN_EVENT" }, { true }),
         { event = { name = "NOT_AN_EVENT" } } } })

@@ -33,7 +33,10 @@ The client is the one the TOC's interface names: below 16000 Era, from 16000 For
 - `H.clock(st, {start, epoch})` in the harness. `GetTime` starts at 1, as at the earlier levels, and `time()` is `epoch + floor(GetTime() - 1)`.
 - `After(seconds, fn)` calls `fn()`. `NewTimer` and `NewTicker` return a handle with `Cancel` and `IsCancelled`, and call `fn(handle)`, as the API documentation's `TickerCallback` says.
 - `st.advance(seconds)` runs every due callback in order of due time, then creation order, and sets the clock to each one's due time while it runs. A callback that throws does not stop the others; the wait step reports the first error.
-- A ticker of 0 seconds moves on by 0.0001 seconds, so a wait always ends.
+- A ticker of 0 seconds moves on by 0.0001 seconds. A wait stops after 100,000 callbacks and fails, so timers that keep making 0-second timers cannot hang `ct.py offline`.
+- `time(table)` converts a date with Lua's `os.time`, read before the runner hides `os`.
+- `RegisterUnitEvent(event, unit1, unit2)` registers the event for those units only. A unit event reaches the frame only when its first value names one of them.
+- Not measured: whether a `NewTimer` handle reads `IsCancelled()` true after it fired. Here it does.
 
 ### D5. Levels 1 to 3 do not change
 

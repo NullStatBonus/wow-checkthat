@@ -244,28 +244,35 @@ function H.clock(st, clock)
     clock = type(clock) == "table" and clock or {}
     local start = clock.start or 1
     local epoch = clock.epoch or 1764028800 -- 2025-11-25 00:00 UTC
+    local ostime = os.time -- read now: the runner hides os from addon code
     st.now, st.queue, st.seq = start, {}, 0
-    local function add(seconds, fn, handle)
-        if type(seconds) ~= "number" or type(fn) ~= "function" then error("Usage: C_Timer(seconds, callback)", 3) end
+    local function add(seconds, fn, handle, level)
+        if type(seconds) ~= "number" or type(fn) ~= "function" then error("Usage: C_Timer(seconds, callback)", level) end
         st.seq = st.seq + 1
         st.queue[#st.queue + 1] = { due = st.now + math.max(seconds, 0), seq = st.seq, fn = fn, handle = handle, every = seconds }
     end
     local function handle(seconds, fn, iterations)
+        if iterations ~= nil and type(iterations) ~= "number" then error("Usage: C_Timer.NewTicker(seconds, callback[, iterations])", 3) end
         local h = { cancelled = false, left = iterations }
         function h.Cancel(self) (self or h).cancelled = true end
         function h.IsCancelled(self) return (self or h).cancelled end
-        add(seconds, fn, h)
+        add(seconds, fn, h, 4)
         return h
     end
     _G.GetTime = function() return st.now end
-    _G.time = function() return epoch + math.floor(st.now - 1) end -- epoch at GetTime 1, also after a reload
+    _G.time = function(t) -- epoch at GetTime 1, also after a reload; time{year=...} as in the game
+        if type(t) == "table" then return ostime(t) end
+        return epoch + math.floor(st.now - 1)
+    end
     _G.C_Timer = {
-        After = function(seconds, fn) add(seconds, fn) end,
+        After = function(seconds, fn) add(seconds, fn, nil, 3) end,
         NewTimer = function(seconds, fn) return handle(seconds, fn, 1) end,
         NewTicker = function(seconds, fn, iterations) return handle(seconds, fn, iterations) end,
     }
     st.timers = st.queue
     -- Returns the number of callbacks run, and the first error a callback raised (the others still run, as in the game).
+    -- A wait stops after st.maxCallbacks callbacks with an error, so timers that keep making 0-second timers cannot hang it.
+    st.maxCallbacks = 100000
     function st.advance(seconds)
         local target, ran, firstErr = st.now + math.max(seconds or 0, 0), 0, nil
         while true do
@@ -274,6 +281,10 @@ function H.clock(st, clock)
                 if t.due <= target and (not best or t.due < best.due or (t.due == best.due and t.seq < best.seq)) then best, bi = t, i end
             end
             if not best then break end
+            if ran >= st.maxCallbacks then
+                firstErr = firstErr or ("timers ran %d times in one wait: use a shorter wait, or look for a timer that keeps making 0-second timers"):format(ran)
+                break
+            end
             table.remove(st.queue, bi)
             local h = best.handle
             if not (h and h.cancelled) then

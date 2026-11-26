@@ -1,6 +1,6 @@
 -- Builds the event manifest of one game client from Blizzard's UI source (Gethe/wow-ui-source):
 --
---   luajit tools/events_manifest.lua SOURCE_DIR CLIENT INTERFACE > tests/manifests/events-CLIENT.json
+--   luajit tools/events_manifest.lua SOURCE_DIR CLIENT INTERFACE > tools/events/CLIENT.json
 --
 -- SOURCE_DIR is a checkout of one wow-ui-source track (classic_era, forever). The manifest lists every event the
 -- generated API documentation names, with the number of payload values and how many of them are not nilable, and

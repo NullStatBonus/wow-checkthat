@@ -264,8 +264,9 @@ function Runner.run(spec, opts)
     local function fire(ev, ...)
         local fired = 0
         for _, f in ipairs(cur.st.frames) do -- ipairs: a frame a handler creates gets the event too, as before
-            local evs = rawget(f, "events")
-            if type(evs) == "table" and evs[ev] and f.scripts.OnEvent then
+            local evs, units = rawget(f, "events"), rawget(f, "units")
+            local forUnit = not (units and units[ev]) or units[ev][(...)]
+            if type(evs) == "table" and evs[ev] and forUnit and f.scripts.OnEvent then
                 local ok, err = pcall(f.scripts.OnEvent, f, ev, ...)
                 fired = fired + 1
                 if not ok then return nil, tostring(err) end
@@ -310,8 +311,14 @@ function Runner.run(spec, opts)
                     if not events[ev] then error(("Frame:RegisterEvent(): Attempt to register unknown event \"%s\""):format(tostring(ev)), 3) end
                     self.events[ev] = true
                 end
-                rawset(f, "RegisterEvent", function(self, ev) register(self, ev) end)
-                rawset(f, "RegisterUnitEvent", function(self, ev) register(self, ev) end)
+                rawset(f, "RegisterEvent", function(self, ev) register(self, ev); local u = rawget(self, "units"); if u then u[ev] = nil end end)
+                -- A unit event reaches the frame only for its units: the first value of the event names the unit.
+                rawset(f, "RegisterUnitEvent", function(self, ev, ...)
+                    register(self, ev)
+                    local units = {}
+                    for i = 1, select("#", ...) do local u = select(i, ...); if u then units[u] = true end end
+                    if next(units) then local u = rawget(self, "units") or {}; rawset(self, "units", u); u[ev] = units end
+                end)
             end
             return f
         end
@@ -482,7 +489,7 @@ function Runner.run(spec, opts)
     _G.CreateFrame = plainCreate
     -- Level 3 puts the global table back as the run found it, so a later run in the same process starts clean (its
     -- LibStub and libraries included). Levels 1 and 2 leave the fake client in place, as they always did.
-    if lifecycle and loads > 0 then restoreGlobals() end
+    if lifecycle then restoreGlobals() end
     local nilReads = {}
     for n in pairs(nilSeen) do nilReads[#nilReads + 1] = n end
     table.sort(nilReads)
