@@ -532,6 +532,17 @@ class OfflineBlock(unittest.TestCase):
         self.assertEqual(out.returncode, 1, out.stderr)
         self.assertRegex(out.stdout, r'name="forever: [^"]*"[^>]*>\s*<failure'); self.assertNotRegex(out.stdout, r'name="era: [^"]*"[^>]*>\s*<failure')
 
+    def test_the_command_runs_a_tooltip_step(self):
+        def m(o):
+            o.clear()
+            o.update(toc="MockAddon/Tip.toc", level=5, steps=[{"event": {"name": "BAG_UPDATE", "args": [0]}},
+                                                              {"label": "Tooltip names the price", "tooltip": {"contains": "Sell price"}},
+                                                              {"label": "Tooltip has two lines", "tooltip": {"lines": 2}}])
+        out = self.offline_cli(self.plan(m))
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertIn("offline: 2 passed, 1 failed", out.stderr)
+        self.assertRegex(out.stdout, r'name="Tooltip has two lines"[^>]*>\s*<failure')
+
     def test_build_cannot_go_with_both_clients(self):
         plan = self.client_plan(tocs={"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"})
         out = self.offline_cli(plan, "--client", "both", "--build", "1.15.9.70576")

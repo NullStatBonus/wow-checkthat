@@ -344,6 +344,28 @@ test("a handler that runs too long fails its event step with a budget message; a
     T.ok(run({ toc = "tests/fixtures/MockAddon/Slow.toc", steps = steps }).steps[2].ok, "and so does a plan with no level")
 end)
 
+test("a tooltip step reads the lines the addon put on GameTooltip", function()
+    local fill = { event = { name = "BAG_UPDATE", args = { 0 } } }
+    local function tip(t) return { tooltip = t } end
+    local steps = { fill, tip({ lines = 3 }), tip({ contains = "Sell price" }), tip({ line = 1, equals = "Title" }), tip({ line = 3, contains = "Right" }), tip({ equals = "Left" }),
+        tip({ lines = 2 }), tip({ line = 2, equals = "Title" }), tip({ contains = "Nowhere" }), tip({ line = 9, contains = "x" }) }
+    local r = run({ toc = "tests/fixtures/MockAddon/Tip.toc", level = 5, steps = steps })
+    local ok = {}
+    for i, s in ipairs(r.steps) do ok[i] = s.ok end
+    T.same(ok, { true, true, true, true, true, true, false, false, false, false })
+    T.ok(tostring(r.steps[7].detail):find("has 3 line(s), expected 2", 1, true), tostring(r.steps[7].detail))
+    T.ok(tostring(r.steps[9].detail):find("Sell price: 5", 1, true), "a miss lists the lines: " .. tostring(r.steps[9].detail))
+    T.ok(tostring(r.steps[10].detail):find("no line 9", 1, true), tostring(r.steps[10].detail))
+    local empty = run({ toc = "tests/fixtures/MockAddon/Tip.toc", level = 5, steps = { tip({ lines = 0 }) } })
+    T.ok(empty.steps[1].ok, "before the handler ran there are no lines")
+    local grouped = run({ toc = "tests/fixtures/MockAddon/Tip.toc", level = 4, groups = { { steps = { tip({ lines = 0 }) } } } })
+    T.ok(not grouped.ok and tostring(grouped.steps[1].detail):find("needs offline level 5", 1, true), "a tooltip step in a group below level 5: " .. tostring(grouped.steps[1].detail))
+    local replaced = run({ toc = "tests/fixtures/MockAddon/Tip.toc", level = 5, steps = { tip({ lines = 0 }) } }, function() _G.GameTooltip = { SetOwner = function() end } end)
+    T.ok(not replaced.steps[1].ok and tostring(replaced.steps[1].detail):find("replaced it", 1, true), tostring(replaced.steps[1].detail))
+    local low = run({ toc = "tests/fixtures/MockAddon/Tip.toc", level = 4, steps = { tip({ lines = 0 }) } })
+    T.ok(not low.ok and tostring(low.steps[1].detail):find("needs offline level 5", 1, true), tostring(low.steps[1].detail))
+end)
+
 test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()
     _G.CreateFrame = nil
     local mine = {}
