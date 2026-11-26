@@ -18,14 +18,18 @@ The tools root holds `tools/ct.py`, `schema/test-plan.schema.json`, `docs/test-p
 
 ## 1. Interview
 
-Ask **one question per turn** and wait for the answer. For each question say why it matters and which decision it unlocks, and offer a recommended answer where the repository supports one. Ask in this order. Skip a question when the OpenSpec change, specs or code already answer it, and say what you assumed. Code may settle facts (the addon, its slash prefix, which lines it logs). It never settles the author's choices (depth, locale, clients, roles) unless the change states them. Never answer for the author. Required before drafting: scope, addon, characters, output path, locale, depth, clients, log source.
+Ask **one question per turn** and wait for the answer. For each question say why it matters and which decision it unlocks, and offer a recommended answer where the repository supports one. Ask in this order. Skip a question when the OpenSpec change, specs or code already answer it, and say what you assumed. Code may settle facts (the addon, its slash prefix, which lines it logs). It never settles the author's choices (depth, locale, clients, roles) unless the change states them. Never answer for the author. Required before drafting: scope, addon, characters, output path, locale, depth, clients, log source, settings.
 
 1. **Scope.** "What is in scope: the current branch, a diff (which range), or this session?" Read it. In a second turn, show the list of what changed and what could break and ask the author to correct it. If an OpenSpec change exists, use its proposal, specs and tasks as the checklist.
 2. **Addon.** Which addon does the plan test, and which slash prefix does it use? Check that CheckThat supports it ("Supported addons" in `reference.md`). If not, stop: a plan for that addon needs a CheckThat change first. Say so.
 3. **Characters.** "Does any check need data or actions from more than one character?" Most scopes need one. A run belongs to the character that started it, so a check that needs several characters becomes one plan for each character role, and a comparison afterward (section 2). Ask which roles exist and what each one holds or does. Name each role in one short word. There is no limit on the number of roles; two is the usual case.
-4. **Output.** "Where should I write the plan?" Suggest `plans/` in the repository you are working in. Accept any path. Ask for the file name. Suggest `<addon>.yaml` for one plan, and `<name>.<role>.yaml` for each plan of a set (for example `keepthat-tally.bank.yaml`). Add the locale for non-English plans (for example `<addon>.deDE.yaml`).
+4. **Output.** "Where should I write the plan?" Suggest `plans/` in the repository you are working in. Accept any path. Ask for the file name. Suggest `<addon>.yaml` for one plan, `<name>.<area>.yaml` for each plan of a set by area, and `<name>.<role>.yaml` for each plan of a role set (for example `keepthat-tally.bank.yaml`). Add the locale for non-English plans (for example `<addon>.deDE.yaml`).
 5. **Locale.** Which client locale will the plan run on? Write the plan for that locale only. Authors keep one plan per locale. Do not translate. Player-visible text in the plan uses the strings that locale shows.
-6. **Depth.** Sample (a handful of steps) or release plan (full coverage)? What is the riskiest part of the scope? What must never break?
+6. **Depth.** Sample (a handful of steps) or release plan? What is the riskiest part of the scope? What must never break? Scope before you draft or convert anything, also a manual test document (`ct.py from-md`):
+   - A plan checks only what a fake game cannot prove: real game data and events, end-to-end wiring, drawing, sound, other addons, and saved variables across `/reload`. Logic that a unit test proves gets no plan step. For each candidate check, ask whether a unit test already proves it, and show the author the list.
+   - Measure, do not guess. Run the addon's unit tests with coverage when it has them, and map the scope's spec requirements to plan steps (`ct.py coverage`, section 4) and, by hand or with the addon's own coverage report, to unit tests. Base the sample-or-release answer on that map.
+   - Offer an essential draft first, never a one-for-one conversion of a manual document. Each step covers a whole feature from start to finish, not one facet.
+   - A plan has at most 25 steps and a section at most 10. A larger scope becomes a plan set by area (section 2).
 7. **Clients.** Which clients are in scope: `classic-era`, `forever-camelot`, or both? Which steps are for one client only?
 8. **Evidence.** Align with the addon's own logging; do not require a CheckThat-style log. Ask these one at a time:
    - What is the debug-log SavedVariable name, its path inside it, and its format (`strings` or `entries`)? Check the addon source first (and "Log sources" in `reference.md`), then confirm with the author.
@@ -34,7 +38,8 @@ Ask **one question per turn** and wait for the answer. For each question say why
    - If the addon has no debug log at all, say so once and recommend adding one. Point to `$CT/docs/debug-logging.md` for the pattern and what a good line looks like. Ask: add one now, or draft with player checks? Either way, draft player checks, never invent log lines, and mark each step that would become a log assertion once the log exists (`notes: Becomes a log assertion once <addon> logs <event>.`).
 9. **Human eye.** For each changed behavior with no log line: can the author accept a player check, or should the addon gain a log line or report a fact? List suggestions and let the author accept them all or decide one by one. What needs combat, a protected action, or a second client? Also ask which scope items need no client at all (classification, counts, settings state, export contents). A plan's `offline:` block calls the addon's `CheckThat.Entry` functions in the fake client (`ct.py offline`) and is cheaper than a player step. Give a new block `level: 5`, and mock only functions the TOC's client has. Use `groups` when cases need opposite mocks or a clean start, a `reload` step when state must survive `/reload`, and a `wait` step when something happens after a timer. Give an `event` step every value the event always carries. Draft those first, then ask for player steps only for what the log cannot show. See "Offline" in `$CT/docs/authoring-plans.md`.
 10. **Reload and state.** Which steps need `/reload`? Which checks survive a reload and which are per attempt or per session? What setup and cleanup does each step need?
-11. **Return path.** Remind the author the result comes back by `/ct export`, then `/reload`, then `ct.py collect`, and then the `ct-verify` skill reads it back. The tool needs the WoW SavedVariables path; ask for it only if the author wants to harvest now. The tool reads `CT_WOW` (the game folder) from `$CT_ENV`, `.ct.env` or `~/.checkthat.env`, so ask for the path once and offer to write it there.
+11. **Settings.** "Does any step depend on the addon's own settings?" A plan written for the default settings fails for a tester who changed them, and a command that sets a value overwrites the tester's own setting. If it does, recommend a test-settings mode in the addon: one command puts the character's settings aside and uses fresh defaults, a second restores them exactly, and the mode lasts across `/reload`. Then the plan's setup step runs debug on, the test-settings command and `/reload`, in that order, and its last step turns the mode off and asserts the restore line. Debug goes on first, because the addon drops lines while its log is off. Never recommend per-step setting commands that overwrite the tester's settings. The mode is addon code: offer an issue (section 5) if the addon has none. See "Test settings" in `$CT/docs/authoring-plans.md`.
+12. **Return path.** Remind the author the result comes back by `/ct export`, then `/reload`, then `ct.py collect`, and then the `ct-verify` skill reads it back. The tool needs the WoW SavedVariables path; ask for it only if the author wants to harvest now. The tool reads `CT_WOW` (the game folder) from `$CT_ENV`, `.ct.env` or `~/.checkthat.env`, so ask for the path once and offer to write it there.
 
 ## 2. Draft
 
@@ -42,7 +47,7 @@ Draft **one plan at a time and one step at a time** (section 4 reviews each step
 
 - **Simple steps by default.** Each step has one player action and one expected result, in short active sentences. When a check needs more, split it into consecutive steps. Draft a compound step (several actions, several expected results or a multi-part assertion set) only when the author asks for it, say that you did, and mark it with `notes: Compound step, drafted on request.`.
 - **Start with a version check.** The first step of every plan checks that the game loaded the version under test. A copy of an older build gives results that mean nothing. Use an `auto` step when the addon reports a `version` fact; otherwise ask the player to read the version in the AddOns list. The recipes are in "Version check" in `reference.md`.
-- Cover each changed requirement or scenario with at least one step. Add one regression step for the nearest unchanged behavior. Add negative cases, and combat cases when the scope touches them. Keep a sample to a handful of steps; a release plan can be longer.
+- Cover each changed requirement or scenario that a fake game cannot prove with at least one step. Add one regression step for the nearest unchanged behavior. Add negative cases, and combat cases when the scope touches them. Keep a sample to a handful of steps, and any plan to at most 25 steps and each section to at most 10.
 - Prefer a required `log` assertion where the addon already logs the evidence. Use `diagnostic` only for extra context. Use `absent` for "must not appear". Pick `scope` on purpose: use `attempt` for evidence expected after the step opens (attempts survive `/reload`); use `session` only for a line an earlier step wrote.
 - Where nothing is logged, use `verify: [player]` and an `expect` a player understands. Never ask the player to read a log line. A disabled button or a refusal that writes no line is a player check and a gap for section 5. Do not stand in with an unrelated `absent` line.
 - A confirmation question that the action itself raises is part of that action, not a second action.
@@ -57,6 +62,15 @@ Draft **one plan at a time and one step at a time** (section 4 reviews each step
 - Tag steps with `clients` only when they apply to one client; a step for both clients has no tag. Add `setup`, `cleanup` and `reload` where the step needs them.
 - Never put raw saved variables or real character names in the plan.
 
+### Plan sets by area
+
+When the essential steps are still more than 25, split the scope into a set of plans by area (for example core, interface, other addons). The same character runs them one after another.
+
+- Each plan has its own version step, its own setup step and a final no-Lua-error step (the quiet `errors` source, see "Unit-test checks" in `$CT/docs/authoring-plans.md`). With `scope: session` that step also sees errors from an earlier plan of the set in the same session (#161).
+- Section ids and step ids do not overlap between the plans of a set: give each plan its own section range.
+- File names are `<name>.<area>.yaml`. Each preamble names every partner plan file and says to run all of them before a release.
+- Starting a run uses the last plan imported for that addon. Tell the author to import, start and finish each plan before importing the next.
+
 ### One plan for each character role
 
 When the interview named more than one role, draft one plan for each role. See `keepthat-tally.bank.yaml` and `keepthat-tally.alt.yaml` beside this file.
@@ -70,7 +84,7 @@ When the interview named more than one role, draft one plan for each role. See `
 
 ## 3. Validate
 
-Run `$PY $CT/tools/ct.py validate <plan>` on every plan. Report every problem with its step id and fix it. `validate` fails on a step that asserts its own result line. It warns (without failing) about a slash command named in text but missing from `commands`, and about a first step with no version check; fix each warning.
+Run `$PY $CT/tools/ct.py validate <plan>` on every plan. Report every problem with its step id and fix it. `validate` fails on a step that asserts its own result line. It warns (without failing) about a slash command named in text but missing from `commands`, about a first step with no version check, and about a plan over 25 steps or a section over 10 (each case counts as a step); fix each warning.
 
 ## 4. Review
 
@@ -89,7 +103,7 @@ Then show the author:
 - For a set of plans: each preamble names every partner file, and the reviewer line names the partner files and step IDs.
 - The checklist in `reference.md`, with each finding tied to a step id.
 
-Re-run `validate` and the gate after changes, then run `compile <plan> -o <file>.ct` on every final plan. Check the text of every step the replay warns about (see "Replay a plan" in `$CT/docs/authoring-plans.md`). For a set, tell the author the import order: one role per character, each imported and started before the next import.
+Re-run `validate` and the gate after changes, then run `compile <plan> -o <file>.ct` on every final plan. Check the text of every step the replay warns about (see "Replay a plan" in `$CT/docs/authoring-plans.md`). For a set, tell the author the import order: for a role set, one role per character, each imported and started before the next import; for a set by area, each plan imported, started and finished before the next import.
 
 ## 4b. Step ids stay put
 

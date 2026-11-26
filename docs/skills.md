@@ -3,6 +3,9 @@
 Two skills help addon developers write plans and read finished runs back. They are plain `SKILL.md` folders and developer tools. They are separate from the in-game `/ct` commands.
 
 - **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time.
+  - It scopes first: a plan checks only what a fake game cannot prove, so a check a unit test proves gets no step. It drafts the essential steps first, never a one-for-one conversion of a manual document.
+  - A plan has at most 25 steps and a section at most 10. A larger scope becomes a plan set by area, run one plan at a time.
+  - A plan that depends on the addon's settings uses a test-settings mode in the addon (see [Test settings](authoring-plans.md#test-settings)).
   - By default each step has one action and one expected result. Ask for a compound step when you need one.
   - Before a plan goes to a tester it runs a gate: `validate`, `compile`, `ct.py replay-flow`, `ct.py lines`, the `offline` block, and a review against what the card shows, with every finding fixed.
   - After a run it revises the plan: it sorts each failing step into plan fault, addon fault or unknown, edits only plan faults, and says whether to `/ct rerun failed` or import the new plan.
