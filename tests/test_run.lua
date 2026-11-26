@@ -516,4 +516,56 @@ test("the timeout with the evidence missing records unverified, not a pass", fun
     T.eq(R.AutoSettle(run, ctx, "t").verdict, "unverified", "one was needed and none came")
 end)
 
+-- scope run: the lines since the run started, so a final no-error step sees errors from earlier steps but not from earlier runs.
+local function mkRun(errs)
+    local plan = { kind = "plan", ct = 1, addon = "KeepThat", title = "t",
+        logs = { errors = { global = "DB", path = "errs", format = "strings", quiet = true } },
+        sections = { { id = "s", title = "S", steps = {
+            { id = "a", title = "A", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } },
+            { id = "z", title = "Z", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player", "assertions" },
+              assertions = { { kind = "log", source = "errors", pattern = ".", absent = true, scope = "run" } } },
+        } } } }
+    local env = { DB = { errs = errs or {} } }
+    local ctx = { plan = plan, client = "classic-era", build = "1.15", character = "X", now = 100, env = env, planDigest = "d" }
+    return R.New(ctx), ctx, env
+end
+test("a run-scoped check sees an error raised in an earlier step", function()
+    local run, ctx, env = mkRun()
+    R.Begin(run, ctx, "a")
+    env.DB.errs[#env.DB.errs + 1] = "boom in step a"
+    R.Verdict(run, ctx, "a", "pass")
+    R.Begin(run, ctx, "z")
+    local z = R.Verdict(run, ctx, "z", "pass")
+    T.eq(z.verdict, "fail", "an attempt scope would have missed it"); T.eq(z.outcomes[1].since, "run"); T.eq(z.outcomes[1].scope, nil, "scope keeps its old values")
+end)
+test("a run-scoped check ignores an error from before the run", function()
+    local run, ctx, env = mkRun({ "old boom from yesterday" })
+    R.Begin(run, ctx, "a"); R.Verdict(run, ctx, "a", "pass")
+    R.Begin(run, ctx, "z")
+    T.eq(R.Verdict(run, ctx, "z", "pass").verdict, "pass")
+end)
+test("a run-scoped check reads from the run's start even when the attempt opened later and the log grew", function()
+    local run, ctx, env = mkRun({ "old" })
+    env.DB.errs[#env.DB.errs + 1] = "boom before z opened"
+    R.Begin(run, ctx, "z")
+    for i = 1, 5 do env.DB.errs[#env.DB.errs + 1] = "noise " .. i end
+    local snaps = run.steps.z.attempts[1].snapshots
+    T.eq(snaps["@run errors"].n, 1, "a copy of the run's start position")
+    T.eq(R.Verdict(run, ctx, "z", "pass").verdict, "fail")
+end)
+test("a run saved without start positions leaves a run-scoped check unverified", function()
+    local run, ctx = mkRun()
+    run.snapshots = nil -- a run started before the start positions existed
+    R.Begin(run, ctx, "z")
+    local z = R.Verdict(run, ctx, "z", "pass")
+    T.eq(z.verdict, "unverified"); T.ok(tostring(z.outcomes[1].why):find("no start position", 1, true), z.outcomes[1].why)
+end)
+test("the run's start positions stay out of the export and go when the run ends", function()
+    local run = mkRun({ "x" })
+    T.ok(run.snapshots and run.snapshots.errors, "saved at start")
+    T.eq(R.Export(run).snapshots, nil)
+    R.End(run, 200); T.eq(run.snapshots, nil)
+    local plain = mk(); T.eq(plain.snapshots, nil, "a plan with no run-scoped check saves none")
+end)
+
 finish()

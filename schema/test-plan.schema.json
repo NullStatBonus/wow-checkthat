@@ -903,7 +903,7 @@
             "value": {},
             "tolerance": { "type": "number", "minimum": 0 },
             "which": { "enum": ["last", "any", "all"] },
-            "scope": { "enum": ["attempt", "session"] },
+            "scope": { "enum": ["attempt", "run", "session"] },
             "count": { "$ref": "#/$defs/count" },
             "diagnostic": { "type": "boolean" },
             "label": { "type": "string", "description": "Player-readable name of this check, shown on the card while CheckThat watches for it." }
@@ -936,6 +936,7 @@
             "scope": {
               "enum": [
                 "attempt",
+                "run",
                 "session"
               ]
             },
@@ -979,6 +980,7 @@
             "scope": {
               "enum": [
                 "attempt",
+                "run",
                 "session"
               ]
             },

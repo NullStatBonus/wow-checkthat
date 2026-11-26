@@ -111,6 +111,7 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 | --- | --- |
 | `kind` | `log`, `log-sequence`, `fact` or `state`. |
 | `scope` | `attempt` (the lines after the step opened) or `session` (the whole retained log). Logs and facts only. |
+| `since` | `run` for a check that read the lines after the run started (a plan's `scope: run`); then `scope` is absent. |
 | `source` | The log source the check read. |
 | `label` | The label the plan gave the check, if any. |
 | `rule` | What the check required, in words, at most 120 characters: `absent: contains "FAILED"`, `count at most 1: pattern "ERR"`, `sequence of 3 lines`, `fact [KT] level eq 3, all`. It holds the plan's literals, which can be a log line. |

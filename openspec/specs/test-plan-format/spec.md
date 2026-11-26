@@ -39,7 +39,7 @@ Each step SHALL have a stable `id` independent of numbering, `title`, `action`, 
 - **THEN** validation fails
 
 ### Requirement: Assertions and probes are typed
-Assertions SHALL be `log` (named log source, one of equals, contains, pattern, with scope attempt or session, optional absent), `log-sequence` (ordered matchers), or `state` (probe from a closed registry: addon-loaded, global-value, frame-shown; operator; value). Any assertion MAY be `diagnostic`, recorded but never gating. `verify` SHALL be a set of `player`, `assertions`, `reviewer`; `assertions` requires assertions to exist and vice versa; `reviewer` requires reviewer text kept verbatim.
+Assertions SHALL be `log` (named log source, one of equals, contains, pattern, with scope attempt, run or session, optional absent), `log-sequence` (ordered matchers), or `state` (probe from a closed registry: addon-loaded, global-value, frame-shown; operator; value). Scope `attempt` reads the lines written after the step's attempt opened, `run` the lines written after the current run started (across `/reload`), and `session` the whole retained log. Any assertion MAY be `diagnostic`, recorded but never gating. `verify` SHALL be a set of `player`, `assertions`, `reviewer`; `assertions` requires assertions to exist and vice versa; `reviewer` requires reviewer text kept verbatim.
 
 #### Scenario: Unknown probe
 - **WHEN** an assertion names a probe absent from the registry
@@ -49,6 +49,13 @@ Assertions SHALL be `log` (named log source, one of equals, contains, pattern, w
 - **WHEN** a step needs "off" logged before "on"
 - **THEN** a `log-sequence` passes only if the lines appear in that order inside the attempt window
 
+#### Scenario: Run scope accepted
+- **WHEN** a log assertion sets `scope: run`
+- **THEN** `ct validate` and plan import accept it
+
+#### Scenario: Unknown scope
+- **WHEN** an assertion sets `scope: forever`
+- **THEN** validation fails with "bad scope"
 ### Requirement: Existing plans map without loss
 Each legacy checklist item SHALL map to one step whose `expect` is its `Check:` text. `Log: none` SHALL map to `verify: [player]`. Any other `Log:` text SHALL be kept verbatim as `reviewer`, and literal log lines SHALL become diagnostic assertions until a human promotes them. The plan's preamble prose SHALL map to `preamble`.
 

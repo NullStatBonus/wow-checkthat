@@ -40,7 +40,7 @@ end
 -- cap is how many lines the log keeps, when the plan says (a bounded list that drops the oldest line at the cap).
 function Evidence.NewLines(snapshot, current, cap)
     if not current then return nil end
-    if snapshot and snapshot.unavailable then return nil end -- the log could not be read when the step opened
+    if snapshot and (snapshot.unavailable or snapshot.norun) then return nil end -- unreadable when the step (or run) opened, or no run position
     if not snapshot then return current, true end
     -- A position is { n = length, tail = last lines }; runs saved before it hold the whole log as an array.
     local n = snapshot.tail and snapshot.n or #snapshot
@@ -81,9 +81,24 @@ function Evidence.NewLines(snapshot, current, cap)
     return out, exact
 end
 
+-- Where an assertion's window starts: the attempt's own position of the source, or for scope run a copy of the
+-- position the run saved when it started (Evidence.Snapshot puts it under this key when the attempt opens).
+local function posKey(a) return a.scope == "run" and ("@run " .. tostring(a.source)) or a.source end
+Evidence.PosKey = posKey
+
 -- An attempt that has positions but none for this source cannot say which lines are new.
 local function missingPosition(a, snapshots)
-    return a.scope ~= "session" and snapshots ~= nil and snapshots[a.source] == nil
+    return a.scope ~= "session" and snapshots ~= nil and snapshots[posKey(a)] == nil
+end
+
+-- Why a saved position cannot be used, or nil when it can.
+local function positionProblem(a, snapshots)
+    if missingPosition(a, snapshots) then return "log position missing (the step opened without it)" end
+    local p = snapshots and snapshots[posKey(a)]
+    if p and p.norun then return "run has no start position (it started before CheckThat saved one)" end
+    if p and p.unavailable then
+        return a.scope == "run" and "log was not readable when the run started" or "log was not readable when the step opened"
+    end
 end
 
 local function lineMatches(a, line)
@@ -105,9 +120,9 @@ local function window(a, snapshots, plan, env)
     local current = Evidence.ReadLog(src, env)
     if not current then return nil, "log not readable (is debug on and the addon loaded?)" end
     if a.scope == "session" then return current, true, src end
-    if missingPosition(a, snapshots) then return nil, "log position missing (the step opened without it)" end
-    if snapshots and snapshots[a.source] and snapshots[a.source].unavailable then return nil, "log was not readable when the step opened" end
-    local lines, exact = Evidence.NewLines(snapshots and snapshots[a.source], current, src.cap)
+    local problem = positionProblem(a, snapshots)
+    if problem then return nil, problem end
+    local lines, exact = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap)
     if not lines then return nil, "log rolled over; evidence lost" end
     return lines, exact, src
 end
@@ -184,8 +199,10 @@ local function ruleOf(a, lit)
 end
 
 local function baseDetail(a)
-    return { kind = a.kind, scope = (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and (a.scope == "session" and "session" or "attempt") or nil,
-             source = a.source, label = a.label, rule = ruleOf(a, true), shape = ruleOf(a, false) }
+    -- A run-scoped check saves since = "run" and no scope: scope is a closed list that older readers check.
+    local logish = a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact"
+    return { kind = a.kind, scope = logish and a.scope ~= "run" and (a.scope == "session" and "session" or "attempt") or nil,
+             since = logish and a.scope == "run" and "run" or nil, source = a.source, label = a.label, rule = ruleOf(a, true), shape = ruleOf(a, false) }
 end
 
 -- The first HITS entries of positions pos (a list of window positions), starting at pos[from].
@@ -322,11 +339,11 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
     if not src then return bad("unknown log source") end
     local current = Evidence.ReadLog(src, env)
     if not current then return bad("log not readable (is debug on and the addon loaded?)") end
-    if missingPosition(a, snapshots) then return bad("log position missing (the step opened without it)") end
-    if a.scope ~= "session" and snapshots and snapshots[a.source] and snapshots[a.source].unavailable then
-        return bad("log was not readable when the step opened")
+    if a.scope ~= "session" then
+        local problem = positionProblem(a, snapshots)
+        if problem then return bad(problem) end
     end
-    local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[a.source], current, src.cap)
+    local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap)
     if not lines then return bad("log rolled over; evidence lost") end
     local want, lastAt = 1, nil
     for i, l in ipairs(lines) do
@@ -470,9 +487,10 @@ function Evidence.Excerpt(step, snapshots, plan, env)
     for _, a in ipairs(step and step.assertions or {}) do
         local name = a.source
         local src = name and plan.logs and plan.logs[name]
-        if src and not out[name] and snapshots and snapshots[name] and (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and a.scope ~= "session" then
+        -- An excerpt starts where the step opened, so a run-scoped check (its window starts at the run) adds none.
+        if src and not out[name] and snapshots and snapshots[name] and (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and a.scope ~= "session" and a.scope ~= "run" then
             local current = Evidence.ReadLog(src, env)
-            local lines = current and Evidence.NewLines(snapshots and snapshots[name], current, src.cap)
+            local lines = current and Evidence.NewLines(snapshots[name], current, src.cap)
             if lines and #lines > 0 then
                 local kept = {}
                 for i = 1, math.min(#lines, Evidence.EXCERPT) do kept[i] = lines[i]:sub(1, Evidence.EXCERPT_LEN) end
@@ -483,22 +501,54 @@ function Evidence.Excerpt(step, snapshots, plan, env)
     return any and out or nil
 end
 
+local function logKind(a) return a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact" end
+
+-- Where one log stands now: { n, tail }, or { unavailable = true } when it cannot be read. An unreadable log is
+-- not an empty one: marking it keeps old lines from counting as new later.
+local function position(plan, env, name)
+    local src = plan.logs and plan.logs[name]
+    local lines = src and Evidence.ReadLog(src, env)
+    if not lines then return { unavailable = true } end
+    local tail = {}
+    for i = math.max(1, #lines - Evidence.TAIL + 1), #lines do tail[#tail + 1] = lines[i] end
+    return { n = #lines, tail = tail }
+end
+
+local function copyPos(p)
+    local o = { n = p.n, unavailable = p.unavailable }
+    if p.tail then o.tail = {}; for i, l in ipairs(p.tail) do o.tail[i] = l end end
+    return o
+end
+
 -- Where the logs a step checks stand when its attempt opens: { [source] = { n, tail } }. Only logs that an
--- attempt-scoped assertion of the step names are recorded. An unreadable log is not an empty one: marking it
--- keeps old lines from counting as new later.
-function Evidence.Snapshot(plan, env, step)
+-- attempt-scoped assertion of the step names are recorded. A run-scoped assertion gets a copy of the run's start
+-- position (runSnaps) under its own key, or { norun = true } when the run saved none (it started before 0.21.0).
+function Evidence.Snapshot(plan, env, step, runSnaps)
     local snaps = {}
     for _, a in ipairs(step and step.assertions or {}) do
         local name = a.source
-        if (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and a.scope ~= "session" and name and not snaps[name] then
-            local src = plan.logs and plan.logs[name]
-            local lines = src and Evidence.ReadLog(src, env)
-            if lines then
-                local tail = {}
-                for i = math.max(1, #lines - Evidence.TAIL + 1), #lines do tail[#tail + 1] = lines[i] end
-                snaps[name] = { n = #lines, tail = tail }
-            else
-                snaps[name] = { unavailable = true }
+        if logKind(a) and a.scope ~= "session" and name then
+            local key = posKey(a)
+            if not snaps[key] then
+                if a.scope == "run" then
+                    local p = type(runSnaps) == "table" and runSnaps[name]
+                    snaps[key] = p and copyPos(p) or { norun = true }
+                else
+                    snaps[key] = position(plan, env, name)
+                end
+            end
+        end
+    end
+    return snaps
+end
+
+-- Where the logs that a run-scoped assertion of the plan names stand when the run starts: { [source] = { n, tail } }.
+function Evidence.RunSnapshot(plan, env)
+    local snaps = {}
+    for _, sec in ipairs(plan.sections or {}) do
+        for _, st in ipairs(sec.steps or {}) do
+            for _, a in ipairs(st.assertions or {}) do
+                if logKind(a) and a.scope == "run" and a.source and not snaps[a.source] then snaps[a.source] = position(plan, env, a.source) end
             end
         end
     end

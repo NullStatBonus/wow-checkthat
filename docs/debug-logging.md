@@ -44,6 +44,7 @@ Each rule below is advice. The examples are real lines read from the addon sourc
 | Changing value | `pattern` | A Lua pattern, for example `^%[ct%] resumed run `. |
 | Must not happen | `absent` | Needs a refusal or skip line to prove the code path ran. |
 | After this step only | `scope: attempt` | Attempts survive `/reload`. Use `session` only for a line an earlier step wrote. |
+| Since the run started | `scope: run` | Survives `/reload`. Use it for a final no-Lua-error step: it sees errors from earlier steps, and none from an earlier run. |
 
 A required assertion needs an unconditional line: the code path writes it every time. Use `diagnostic` for extra context that must not fail a step.
 

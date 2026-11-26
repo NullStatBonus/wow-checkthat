@@ -373,3 +373,10 @@ In "Revise after a run" the skill SHALL run `ct.py replay <plan> --run <run id>`
 #### Scenario: A revised sequence check is wrong
 - **WHEN** a revised `log-sequence` check expects lines in an order the real log does not have
 - **THEN** the replay against the run fails it, and the skill fixes it before the next in-game run
+
+### Requirement: Skill ends a plan with a run-scoped error check
+The skill SHALL draft the final no-Lua-error step of a plan with `scope: run` on the quiet `errors` source, and SHALL NOT tell the author that the step also sees errors from earlier runs or plans.
+
+#### Scenario: Foundation plan
+- **WHEN** the skill drafts a foundation plan
+- **THEN** its last step checks the `errors` source with `scope: run`
