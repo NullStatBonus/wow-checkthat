@@ -199,6 +199,10 @@ function Runner.run(spec, opts)
     for _, g in ipairs(groups) do
         for _, s in ipairs(g.steps or {}) do if s.wait ~= nil then needs4 = "a wait step" end end
     end
+    local needs5
+    for _, g in ipairs(groups) do
+        for _, s in ipairs(g.steps or {}) do if s.tooltip ~= nil then needs5 = "a tooltip step" end end
+    end
     -- Level 5: the client's real surface (tools/clients/<client>.json): only its game functions, its build, and frames
     -- with only their widget type's methods. A mock of a function the client lacks would hide the gap: it fails the load.
     local surface, surfaceErr
@@ -399,6 +403,8 @@ function Runner.run(spec, opts)
         loadErr = ("%s needs offline level 3"):format(needs3)
     elseif needs4 and level < 4 then
         loadErr = ("%s needs offline level 4"):format(needs4)
+    elseif needs5 and level < 5 then
+        loadErr = ("%s needs offline level 5"):format(needs5)
     elseif eventsErr then
         loadErr = eventsErr
     elseif surfaceErr then
@@ -495,8 +501,32 @@ function Runner.run(spec, opts)
                         for j = i + 1, #steps do add(j, "skipped", false, "not run: the reload failed") end
                         break
                     end
+                elseif step.tooltip then
+                    local t, lines = step.tooltip, H.tooltipLines(rawget(_G, "GameTooltip"))
+                    local function has(l) -- a line matches by its left or right text
+                        for _, side in ipairs({ "left", "right" }) do
+                            local s = l[side]
+                            if s ~= nil and ((t.equals ~= nil and s == t.equals) or (t.contains ~= nil and tostring(s):find(t.contains, 1, true))) then return true end
+                        end
+                        return false
+                    end
+                    if not lines then add(i, "tooltip", false, "there is no GameTooltip from the client to read")
+                    elseif t.lines ~= nil then add(i, "tooltip", #lines == t.lines, ("the tooltip has %d line(s), expected %d"):format(#lines, t.lines))
+                    elseif t.line ~= nil then
+                        local l = lines[t.line]
+                        if not l then add(i, "tooltip", false, ("the tooltip has %d line(s), so there is no line %d"):format(#lines, t.line))
+                        elseif has(l) then add(i, "tooltip", true, ("line %d is %s"):format(t.line, show({ l.left, l.right })))
+                        else add(i, "tooltip", false, ("line %d is %s, expected %s %q"):format(t.line, show({ l.left, l.right }), t.equals ~= nil and "equals" or "contains", t.equals or t.contains)) end
+                    else
+                        local hit
+                        for n, l in ipairs(lines) do if has(l) then hit = n; break end end
+                        local shown = {}
+                        for n, l in ipairs(lines) do shown[n] = l.right and (tostring(l.left) .. " | " .. tostring(l.right)) or tostring(l.left) end
+                        if hit then add(i, "tooltip", true, ("line %d matches"):format(hit))
+                        else add(i, "tooltip", false, ("no line %s %q; the lines are %s"):format(t.equals ~= nil and "equals" or "contains", t.equals or t.contains, show(shown))) end
+                    end
                 else
-                    add(i, "unknown", false, "step has no call, event, mockCalls, wait or reload")
+                    add(i, "unknown", false, "step has no call, event, mockCalls, wait, tooltip or reload")
                 end
             end
             end, tostring)

@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon tip
+## Notes: Fixture: a handler that fills GameTooltip. Not shipped.
+Tip.lua
