@@ -5,8 +5,9 @@
 local VERSION = 3 -- v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
 local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
+local realGetTime = GetTime -- say() reads the clock through this, so a hook on GetTime from /ctp taint hookerror cannot reach the log
 local function say(msg)
-    local line = ("%.2f combat=%s %s"):format(GetTime(), tostring(InCombatLockdown()), msg)
+    local line = ("%.2f combat=%s %s"):format(realGetTime(), tostring(InCombatLockdown()), msg)
     if log then log[#log + 1] = line else early[#early + 1] = line end
     print("|cff66ccffCTProbe|r " .. line)
 end
@@ -81,8 +82,7 @@ local isLife = {}
 for _, e in ipairs(LIFE) do isLife[e] = true end
 ev:SetScript("OnEvent", function(_, e, ...)
     if e == "ADDON_LOADED" then
-        if (...) == "CTProbe" then loaded() end
-        life(e, ...)
+        if (...) == "CTProbe" then loaded(); life(e, ...) end -- the other addons' loads are not logged
     elseif isLife[e] and e ~= "PLAYER_LOGIN" then
         life(e, ...)
     elseif e == "PLAYER_LOGIN" then
@@ -156,8 +156,10 @@ local function taint(arg)
         say(("taint: the hook ran=%s with the arguments (%s); the original returned a %s. /reload to remove the hook."):format(tostring(got ~= nil), tostring(got), type(n)))
     elseif arg == "hookerror" then
         -- Does a throwing hook change what the original returns?
-        pcall(hooksecurefunc, "GetTime", function() error("CTProbe hook error, on purpose", 0) end)
+        local armed = true -- the hook stays until /reload, so it raises only for the one call below
+        pcall(hooksecurefunc, "GetTime", function() if armed then error("CTProbe hook error, on purpose", 0) end end)
         local ok, t = pcall(GetTime)
+        armed = false
         say(("taint: after a throwing hook, GetTime() ok=%s returned a %s; %s. /reload to remove the hook."):format(tostring(ok), type(t), secure("GetTime")))
     else say("taint: use /ctp taint run, or on, off, entry, hook, hookerror") end
 end
@@ -201,14 +203,14 @@ local FAMILIES = {
     { "calls", function(n) local abs, x = math.abs, 0; for i = 1, n do x = x + abs(i) end return x end },
 }
 local function budget(arg)
-    local cap = (CTProbeDB and CTProbeDB.budgetCapMs) or (arg == "force" and 30000 or 4000)
+    local cap = arg == "force" and 30000 or (CTProbeDB and CTProbeDB.budgetCapMs) or 4000 -- budgetCapMs is for the tests
     local rate = {}
     local function stage(fi, n, lastMs)
         local fam = FAMILIES[fi]
         if not fam then
             local loop, calls = rate.loop, rate.calls
-            say(("budget: done. loop %s iterations per ms, calls %s per ms%s"):format(tostring(loop), tostring(calls),
-                (loop and calls) and (", so one call costs about %.1f loop iterations"):format(loop / calls) or ""))
+            say(("budget: done. loop %s iterations per ms, calls %s per ms%s"):format(loop and tostring(loop) or "unknown", calls and tostring(calls) or "unknown",
+                (loop and calls and calls > 0) and (", so one call costs about %.1f loop iterations"):format(loop / calls) or " (no stage took a measurable time)"))
             return
         end
         if lastMs and lastMs * 2 > cap then say(("budget: %s stops at n=%d: the next stage would take over %d ms"):format(fam[1], math.floor(n / 2), cap)); return stage(fi + 1, 100000) end
@@ -265,11 +267,11 @@ local function record()
     CTProbeDB.fixtures = {}
     local good, bad = 0, 0
     for _, f in ipairs(FIXTURES) do
-        local r = { pcall(f[2]) }
+        local r = { n = select("#", pcall(f[2])), pcall(f[2]) } -- n counts the nils too, so a nil before a value is kept
         local values = {}
-        for i = 2, #r do values[#values + 1] = shape(r[i], f[3]) end
+        for i = 2, r.n do values[#values + 1] = shape(r[i], f[3]) end
         local ok = r[1]
-        CTProbeDB.fixtures[f[1]] = ok and { n = math.max(#r - 1, 0), values = values, typeOnly = f[3] or nil } or { error = tostring(r[2]) }
+        CTProbeDB.fixtures[f[1]] = ok and { n = math.max(r.n - 1, 0), values = values, typeOnly = f[3] or nil } or { error = tostring(r[2]) }
         if ok then good = good + 1 else bad = bad + 1 end
     end
     CTProbeDB.fixturesBuild = table.concat({ GetBuildInfo() }, " ")

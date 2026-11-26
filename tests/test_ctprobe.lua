@@ -36,7 +36,9 @@ test("the lifecycle events are logged in order with their arguments and IsLogged
     local st, fire = probe({})
     fire("VARIABLES_LOADED"); fire("PLAYER_LOGIN"); fire("PLAYER_ENTERING_WORLD", true, false)
     fire("PLAYER_LEAVING_WORLD"); fire("PLAYER_LOGOUT"); fire("ADDONS_UNLOADING", false)
+    fire("ADDON_LOADED", "SomeOtherAddon")
     T.ok(has("life file scope: CTProbeDB is nil"), "the line made before ADDON_LOADED reaches the log")
+    T.ok(not has("SomeOtherAddon"), "another addon's load is not logged")
     local order = {}
     for _, l in ipairs(CTProbeDB.log) do local n, e, a = l:match("life #(%d+) (%u[%u_]*)%(([^)]*)%)"); if n then order[#order + 1] = e .. "(" .. a .. ")" end end
     T.same(order, { "ADDON_LOADED(CTProbe)", "VARIABLES_LOADED()", "PLAYER_LOGIN()", "PLAYER_ENTERING_WORLD(true,false)", "PLAYER_LEAVING_WORLD()", "PLAYER_LOGOUT()", "ADDONS_UNLOADING(false)" })
@@ -47,6 +49,7 @@ end)
 
 test("/ctp record stores the read-only calls, and personal values by type only", function()
     probe({})
+    _G.GetItemInfo = function() return nil, "second" end -- an uncached item: a nil before a value
     _G.GetMoney = function() return 12345 end
     _G.UnitName = function() return "Secretname" end
     SlashCmdList.CTPROBE("record")
@@ -55,6 +58,7 @@ test("/ctp record stores the read-only calls, and personal values by type only",
     T.eq(fx["GetBuildInfo()"].values[1].type, "string")
     T.eq(fx["GetMoney()"].typeOnly, true); T.eq(fx["GetMoney()"].values[1].type, "number"); T.eq(fx["GetMoney()"].values[1].value, nil, "money is recorded by type only")
     T.eq(fx["UnitName(player)"].typeOnly, true); T.eq(fx["UnitName(player)"].values[1].value, nil, "a character name is never recorded")
+    T.eq(fx["GetItemInfo(6948)"].n, 2, "a nil first value is counted"); T.eq(fx["GetItemInfo(6948)"].values[1].type, "nil"); T.eq(fx["GetItemInfo(6948)"].values[2].value, "second")
     T.ok(has("record:") and has("calls recorded"), "the summary line")
     T.ok(CTProbeDB.fixturesBuild:find("%d+%.%d+%.%d+"), CTProbeDB.fixturesBuild)
 end)
@@ -90,6 +94,10 @@ test("/ctp taint hook measures hooksecurefunc, and a throwing hook leaves the or
     rawset(_G, "geterrorhandler", function() return function() end end)
     SlashCmdList.CTPROBE("taint hookerror")
     T.ok(has("GetTime() ok=true returned a number"), tostring(has("after a throwing hook")))
+    local handled = 0
+    rawset(_G, "geterrorhandler", function() return function() handled = handled + 1 end end)
+    SlashCmdList.CTPROBE("record"); SlashCmdList.CTPROBE("taint run")
+    T.eq(handled, 0, "the hook raised once, for the probe's own call, and not for the log lines after it")
 end)
 
 test("/ctp taint run still measures the replaced global, and the other commands do not raise", function()
