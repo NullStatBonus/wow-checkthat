@@ -153,6 +153,46 @@
             }
           },
           "then": {
+            "properties": {
+              "mocks": {
+                "additionalProperties": {
+                  "anyOf": [
+                    { "type": "object", "not": { "required": ["recording"] } },
+                    { "type": "array", "items": { "type": "object", "not": { "required": ["recording"] } } }
+                  ]
+                }
+              },
+              "groups": {
+                "items": {
+                  "properties": {
+                    "mocks": {
+                "additionalProperties": {
+                  "anyOf": [
+                    { "type": "object", "not": { "required": ["recording"] } },
+                    { "type": "array", "items": { "type": "object", "not": { "required": ["recording"] } } }
+                  ]
+                }
+              }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "minimum": 5
+                }
+              }
+            }
+          },
+          "then": {
             "not": {
               "required": [
                 "tocs"
@@ -343,7 +383,16 @@
                   },
                   "returns": {
                     "type": "array"
+                  },
+                  "recording": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Level 5. The label of a recorded call (tools/recordings/<client>.json, made from a CTProbe run), for example GetItemInfo(6948). Its arguments and return values replace args and returns, for the client the block runs on. Not with args or returns."
                   }
+                },
+                "not": {
+                  "required": ["recording"],
+                  "anyOf": [{ "required": ["args"] }, { "required": ["returns"] }]
                 }
               },
               {
@@ -357,7 +406,15 @@
                     },
                     "returns": {
                       "type": "array"
+                    },
+                    "recording": {
+                      "type": "string",
+                      "minLength": 1
                     }
+                  },
+                  "not": {
+                    "required": ["recording"],
+                    "anyOf": [{ "required": ["args"] }, { "required": ["returns"] }]
                   }
                 }
               }
