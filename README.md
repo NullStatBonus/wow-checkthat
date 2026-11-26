@@ -111,6 +111,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: docs/setup.md
 make test      # build, luajit tests, python tests
 make check     # packaging and version checks
+make mutate    # on demand: change CheckThat/ one small way at a time and list the changes the Lua tests miss (LIMIT=300, FILES='CheckThat/Core/*.lua')
 luajit tests/replay_plan.lua build/<plan>.ct   # play a compiled plan in the fake client
 .venv/bin/python tools/ct.py replay plans/<plan>.yaml --sv <fixture dir>   # judge log checks against saved variables, no game
 .venv/bin/python tools/ct.py offline plans/<plan>.yaml   # run the plan's offline block (mocks, entry calls, fake events), no game

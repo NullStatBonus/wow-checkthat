@@ -1,4 +1,4 @@
-.PHONY: test test-lua test-py build check install-skill build-plugin
+.PHONY: test test-lua test-py build check install-skill build-plugin mutate
 
 PY := .venv/bin/python
 SKILL_DIR ?= $(HOME)/.claude/skills
@@ -15,6 +15,11 @@ build:
 # luajit tests/run.lua [file-pattern [test-name]] runs a subset (an unmatched test name fails); each file also runs alone: luajit tests/test_json.lua
 test-lua:
 	@luajit tests/run.lua
+
+# On demand, never part of make test: change CheckThat/ one small way at a time and list the changes the tests miss.
+# make mutate LIMIT=300 (a seeded sample; LIMIT=0 runs every mutant, about 5500) FILES='CheckThat/Core/*.lua'
+mutate: build
+	@$(PY) tools/mutate.py --limit $(or $(LIMIT),100) $(if $(FILES),--files '$(FILES)')
 
 test-py:
 	@PYTHONDONTWRITEBYTECODE=1 $(PY) -m unittest discover -s tools -p 'test_*.py'
