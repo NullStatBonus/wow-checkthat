@@ -281,7 +281,7 @@ Validation, in the compiler and on import, SHALL reject the id `failed` as a cat
 - **THEN** validation prints a warning and exits zero
 
 ### Requirement: Plan may carry an offline block
-A plan MAY hold a top-level `offline` object with `toc`, optional `tocs` (an object with `era` and `forever` TOC paths, at least one), `mocks`, `mockAfterLoad`, `level` (1 to 5) and `savedVariables`, and either `steps` or `groups`. Each step is one of a `call` (addon, entry, literal `args`) with `returns` or `throws`, an `event` (name, literal `args`), a `mockCalls` count, `reload: true`, or `wait` (seconds, 0 to 86400). `savedVariables` maps a global name to a literal value. Each group holds `steps` and optional `label`, `mocks` and `savedVariables`. `reload`, `groups` and `savedVariables` SHALL be valid only with `level` 3 or more, `wait` only with `level: 4`, and `tocs` only with `level: 5`. `ct.py offline --client` reads `tocs`; without that option only `toc` runs, and a plan without `tocs` validates and runs as before. Validation SHALL reject any other shape. Compile SHALL remove the block, so the compiled string and its digest do not contain it.
+A plan MAY hold a top-level `offline` object with `toc`, optional `tocs` (an object with `era` and `forever` TOC paths, at least one), `mocks`, `mockAfterLoad`, `level` (1 to 5) and `savedVariables`, and either `steps` or `groups`. Each step is one of a `call` (addon, entry, literal `args`) with `returns` or `throws`, an `event` (name, literal `args`), a `mockCalls` count, `reload: true`, `wait` (seconds, 0 to 86400), or a `tooltip` check (`lines` as a count, or `equals` or `contains` text with an optional `line`). `savedVariables` maps a global name to a literal value. Each group holds `steps` and optional `label`, `mocks` and `savedVariables`. `reload`, `groups` and `savedVariables` SHALL be valid only with `level` 3 or more, `wait` only with `level: 4`, and `tocs` and `tooltip` steps only with `level: 5`. A `tooltip` step holds `lines`, or `equals` or `contains` (not both) with an optional `line`, and no other mix. `ct.py offline --client` reads `tocs`; without that option only `toc` runs, and a plan without `tocs` validates and runs as before. Validation SHALL reject any other shape. Compile SHALL remove the block, so the compiled string and its digest do not contain it.
 
 #### Scenario: Valid block
 - **WHEN** a plan holds an offline block with one call step
@@ -302,6 +302,14 @@ A plan MAY hold a top-level `offline` object with `toc`, optional `tocs` (an obj
 #### Scenario: One TOC for each client
 - **WHEN** a block at level 5 holds `tocs` with an `era` path, a `forever` path, or both, and another block holds `tocs` with a `retail` key or an empty object
 - **THEN** validation passes the first and fails the second
+
+#### Scenario: Tooltip step
+- **WHEN** a level 5 block holds a `tooltip` step with `lines: 3`, with `contains`, or with `line` and `equals`, and another holds an empty `tooltip`, `line` alone, or `lines` with `contains`
+- **THEN** validation passes the first and fails the second
+
+#### Scenario: Tooltip below level 5
+- **WHEN** a block at level 4 or below, or with no level, holds a `tooltip` step, in its steps or in a group
+- **THEN** validation fails
 
 #### Scenario: Tocs below level 5
 - **WHEN** a block at level 4 or below, or with no level, holds `tocs`

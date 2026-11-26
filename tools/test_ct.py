@@ -445,6 +445,29 @@ class OfflineBlock(unittest.TestCase):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
 
+    def test_a_tooltip_step_checks_lines_and_needs_level_5(self):
+        def with_step(step, level=5, groups=False):
+            def m(o):
+                o["level"] = level
+                if groups:
+                    o["level"] = max(level, 3); o.pop("steps"); o["groups"] = [{"steps": [step]}]
+                else:
+                    o["steps"] = [step]
+            return self.plan(m)
+        good = [{"tooltip": {"lines": 3}}, {"tooltip": {"lines": 0}}, {"tooltip": {"contains": "Sell price"}}, {"tooltip": {"equals": "Title"}},
+                {"tooltip": {"line": 2, "equals": "x"}}, {"tooltip": {"line": 1, "contains": "x"}}, {"label": "Tooltip", "tooltip": {"contains": "x"}}]
+        for step in good:
+            self.assertEqual(ct.validate(with_step(step)), [], step)
+        bad = [{"tooltip": {}}, {"tooltip": {"line": 1}}, {"tooltip": {"lines": 2, "contains": "x"}}, {"tooltip": {"equals": "a", "contains": "b"}},
+               {"tooltip": {"lines": -1}}, {"tooltip": {"line": 0, "equals": "x"}}, {"tooltip": {"contains": ""}}, {"tooltip": {"contains": "x", "color": "red"}},
+               {"tooltip": {"contains": 5}}, {"tooltip": {"contains": "x"}, "extra": 1}]
+        for step in bad:
+            self.assertNotEqual(ct.validate(with_step(step)), [], step)
+        for level in (1, 2, 3, 4):
+            self.assertNotEqual(ct.validate(with_step({"tooltip": {"lines": 1}}, level)), [], "tooltip at level %d" % level)
+        self.assertEqual(ct.validate(with_step({"tooltip": {"lines": 1}}, 5, groups=True)), [], "in a group at level 5")
+        p = with_step({"tooltip": {"lines": 1}}, 4, groups=True); self.assertNotEqual(ct.validate(p), [], "in a group below level 5")
+
     def test_tocs_name_a_toc_for_each_client_and_need_level_5(self):
         both = {"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"}
         def with_tocs(tocs, level=5):
