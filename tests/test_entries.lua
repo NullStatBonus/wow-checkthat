@@ -372,6 +372,26 @@ test("snapshot restore removes added globals and library keys and puts old value
     _G.SnapKeep = nil
 end)
 
+test("snapshot restore empties a LibStub that was loaded before the snapshot", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    local had = rawget(_G, "LibStub")
+    T.finally(function() _G.LibStub = had end)
+    _G.LibStub = nil
+    assert(loadfile("CheckThat/Libs/LibStub/LibStub.lua"))()
+    local stub = _G.LibStub
+    local before = stub:NewLibrary("SnapOld", 1); before.v = 1
+    local restore = H.snapshot()
+    stub:NewLibrary("SnapOld", 2).v = 2
+    stub:NewLibrary("SnapLib", 1).x = true
+    T.ok(stub:GetLibrary("SnapLib", true), "the library registered")
+    restore()
+    T.eq(stub:GetLibrary("SnapLib", true), nil, "the registry is back to what it was")
+    T.ok(stub:NewLibrary("SnapLib", 1), "a second load can register the same name")
+    T.eq(stub:GetLibrary("SnapOld", true), before, "a library from before stays registered")
+    T.eq(before.v, 1, "and holds what it held; an upgrade in place is undone")
+    T.eq(select(2, stub:GetLibrary("SnapOld", true)), 1, "at its old minor")
+end)
+
 local CLOCK = "tests/fixtures/MockAddon/Clock.toc"
 local function c(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
 local function allOk(r) for _, s in ipairs(r.steps) do T.ok(s.ok, ("%s %s %d: %s"):format(tostring(s.group), s.kind, s.step, tostring(s.detail))) end; T.ok(r.ok) end
