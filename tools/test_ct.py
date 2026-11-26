@@ -440,8 +440,8 @@ class OfflineBlock(unittest.TestCase):
         self.assertNotIn("matches multiple builds", out.stderr)
         self.assertEqual(self.run_cli(both, "--build", "9.9").returncode, 2)
 
-    def test_schema_accepts_levels_1_to_5_only(self):
-        for lv, ok in ((1, True), (2, True), (3, True), (4, True), (5, True), (6, False), ("2", False)):
+    def test_schema_accepts_levels_1_to_6_only(self):
+        for lv, ok in ((1, True), (2, True), (3, True), (4, True), (5, True), (6, True), (7, False), (0, False), ("2", False)):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
 
