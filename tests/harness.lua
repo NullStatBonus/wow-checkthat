@@ -24,11 +24,12 @@ local function setShown(f, v)
 end
 
 local stubFrame
--- A GameTooltip frame keeps the lines an addon adds (self.lines = { { left =, right = } }), as the game's tooltip does.
+-- A GameTooltip frame keeps the lines an addon adds (self.lines = { { left =, right =, color = {r, g, b} } }) and starts hidden,
+-- as the game's tooltip does. Not modelled: whether a Set* call shows it, argument checks, the TextLeftN regions and the hook path (#151).
 local TOOLTIP = {
-    AddLine = function(self, text) self.lines[#self.lines + 1] = { left = text } end,
-    AddDoubleLine = function(self, left, right) self.lines[#self.lines + 1] = { left = left, right = right } end,
-    SetText = function(self, text) self.lines = { { left = text } } end,
+    AddLine = function(self, text, r, g, b, wrap) self.lines[#self.lines + 1] = { left = text, color = r and { r, g, b }, wrap = wrap } end,
+    AddDoubleLine = function(self, left, right, lr, lg, lb, rr, rg, rb) self.lines[#self.lines + 1] = { left = left, right = right, color = lr and { lr, lg, lb }, rightColor = rr and { rr, rg, rb } } end,
+    SetText = function(self, text, r, g, b, _, wrap) self.lines = { { left = text, color = r and { r, g, b }, wrap = wrap } } end,
     ClearLines = function(self) self.lines = {} end,
     NumLines = function(self) return #self.lines end,
     SetOwner = function(self, owner) self.owner = owner; self.lines = {} end,
@@ -40,7 +41,7 @@ function H.tooltipLines(tip)
     local lines = type(tip) == "table" and rawget(tip, "lines")
     if not lines then return nil end
     local out = {}
-    for i, l in ipairs(lines) do out[i] = { left = l.left, right = l.right } end
+    for i, l in ipairs(lines) do out[i] = { left = l.left, right = l.right, color = l.color, rightColor = l.rightColor, wrap = l.wrap } end
     return out
 end
 
@@ -99,7 +100,7 @@ function stubFrame(frames, template, name, kind)
     local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name, kind = kind }
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
-    if kind == "GameTooltip" then f.lines = {} end
+    if type(kind) == "string" and kind:lower() == "gametooltip" then f.lines = {}; f.shown = false end
     local methods = frames.surface and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
     local keys
     if methods and template then methods, keys = H.templateMethods(frames.surface, kind, template) end
