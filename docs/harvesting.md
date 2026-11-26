@@ -77,7 +77,8 @@ Both read the newest readable revision of each collected run. Each step is judge
 
 - It prints, for each client, how many predictions the runs confirmed, and one `drift` line for each wrong one: the run, the step, what was predicted, what happened, and the offline steps. A step the run left unverified or skipped is not compared.
 - A drift line is a lead, not a verdict: the addon may have a bug the fake client cannot show, or the fake client may be wrong. A step that drifts again on the same client is a fake-client bug: reproduce it with a test in `tests/harness.lua` and add the measured behaviour to `docs/contracts.md`.
-- `--strict` exits 1 when a prediction was wrong. `--format json` gives the same data to a script.
+- `--expect-version <addon version>` leaves out runs of another addon version, which say nothing about this checkout. A partial result counts as a pass. A block that cannot run (a failed load, a mock the client does not allow) stops the command with that error instead of predicting a fail.
+- `--strict` exits 1 when a prediction was wrong or no step was compared. `--format json` gives the same data to a script.
 - `replay-flow` is not used: it writes the log lines a plan expects itself, so it proves the plan and cannot be wrong about the game.
 
 ## Browse the evidence
