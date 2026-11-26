@@ -46,7 +46,7 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 
 ## Coverage of the evidence
 
-`ct.py coverage <plan...> --addon-src <folder> --evidence` joins the newest finished run of each plan to the addon's subcommands, settings and spec requirements: `passed`, `failed` (failed or unverified) or `never-run`. See [Check what the plans cover](authoring-plans.md#check-what-the-plans-cover).
+`ct.py coverage <plan...> --addon-src <folder> --evidence` joins the newest finished run of each plan to the addon's subcommands, settings and spec requirements: `passed`, `failed` (failed or unverified) or `never-run`; the result describes plan steps, not unit tests. See [Check what the plans cover](authoring-plans.md#check-what-the-plans-cover).
 
 ## Compare runs
 

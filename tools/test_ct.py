@@ -2876,6 +2876,19 @@ class Coverage(unittest.TestCase):
         self.assertEqual(d["testAndPlan"], ["Second thing works"])
         self.assertEqual(d["unknownTests"], ["Not a requirement"])
 
+    def test_an_explicit_tests_folder_that_is_missing_is_an_error(self):
+        f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False); self.addCleanup(os.unlink, f.name)
+        import yaml
+        yaml.safe_dump(self.plan(("r1", {"kind": "manual", "text": "t"}, None)), f); f.close()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(ct.main(["coverage", f.name, "--addon-src", self.SRC, "--tests", os.path.join(self.FX, "nope")]), 2)
+        self.assertIn("is not a folder", err.getvalue())
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(ct.main(["coverage", f.name, "--addon-src", self.SRC, "--specs", os.path.join(self.FX, "nope"), "--tests", os.path.join(self.FX, "tests")]), 2)
+        self.assertIn("needs the addon's openspec specs", err.getvalue())
+
     def test_without_a_tests_folder_the_output_has_no_test_keys(self):
         d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
         shutil.copytree(self.SRC, os.path.join(d, "addon")); shutil.copytree(os.path.join(self.FX, "openspec"), os.path.join(d, "openspec"))

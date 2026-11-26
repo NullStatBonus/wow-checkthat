@@ -184,7 +184,7 @@ sections:
         covers: [The tally is saved with the character]
 ```
 
-- **Unit tests** count toward requirements. Put a `-- covers: <Requirement name>` comment above a test, one name per comment, in the `*.lua` files of the addon's `tests/` folder (next to the addon folder, or `--tests`; folders named `fixtures` are skipped). The report adds the file and line to each requirement, the counts by tests, by plans, by both and by neither, the requirements in both (a plan step there may repeat a unit test) and any name no spec has. JSON adds `tests` to each requirement, plus `testCounts`, `testAndPlan` and `unknownTests`. Without a tests folder the output stays as before.
+- **Unit tests** count toward requirements. Put a `-- covers: <Requirement name>` comment above a test, one name per comment, in the `*.lua` files of the addon's `tests/` folder (next to the addon folder, or `--tests`; folders named `fixtures` are skipped). A trailing ` -- note` on the comment line is dropped. The report adds the file and line (relative to the tests folder) to each requirement; the `--evidence` result still describes plan steps only; the counts by tests, by plans, by both and by neither, the requirements in both (a plan step there may repeat a unit test) and any name no spec has. JSON adds `tests` to each requirement, plus `testCounts`, `testAndPlan` and `unknownTests`. Without a tests folder the output stays as before.
 
 `covers` is for the tools. `validate` fails for a name that matches no heading, or when no specs folder is found (use `--specs`). Compile drops the field, so the compiled string and the plan digest do not change. The schema rejects every other unknown field. The game ignores unknown fields, so a field for the tools never stops an import.
 

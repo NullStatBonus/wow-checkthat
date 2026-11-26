@@ -2429,10 +2429,10 @@ def step_touches(plan):
             out.append((st["id"], list(sec.get("covers", [])) + list(st.get("covers", [])), cmds, names))
     return out
 
-TEST_COVERS = re.compile(r"^\s*--\s*covers:\s*(.+?)\s*$")
+TEST_COVERS = re.compile(r"^\s*--\s*covers:\s*(.+?)\s*(?:\s--.*)?$")
 
 def test_covers(tests_dir):
-    """{requirement name: ["tests/file.lua:line", ...]} from `-- covers: <Requirement name>` comments in the unit test files (*.lua) under
+    """{requirement name: ["file.lua:line", ...] (paths relative to tests_dir)} from `-- covers: <Requirement name>` comments in the unit test files (*.lua) under
     tests_dir. One name per comment. Folders named fixtures are skipped."""
     out = {}
     for root, dirs, files in os.walk(tests_dir):
@@ -2616,6 +2616,10 @@ def main(argv=None):
         plans, specs = [], a.specs or os.path.join(os.path.dirname(os.path.abspath(a.addon_src)), "openspec", "specs")
         specs = specs if os.path.isdir(specs) else None
         tdir = a.tests or os.path.join(os.path.dirname(os.path.abspath(a.addon_src)), "tests")
+        if a.tests and not os.path.isdir(tdir):
+            print("error: --tests %s is not a folder" % a.tests, file=sys.stderr); return 2
+        if a.tests and not specs:
+            print("error: --tests needs the addon's openspec specs folder (pass --specs)", file=sys.stderr); return 2
         tests = test_covers(tdir) if specs and os.path.isdir(tdir) else None
         for path in a.plans:
             plan = load_yaml(path)
