@@ -2532,7 +2532,24 @@ def test_covers(tests_dir):
                         out.setdefault(m.group(1), []).append("%s:%d" % (os.path.relpath(path, tests_dir).replace(os.sep, "/"), n))
     return out
 
-def coverage_data(plans, src, specs=None, runs=None, tests=None):
+def registry_setting_keys(src):
+    """(keys, tables): the setting keys of the options tables the addon registers with AceConfigRegistry-3.0 once its TOC is loaded under
+    the fake client (tools/dump_options.lua), and how many tables that was. None when the addon has no TOC here, the run fails or
+    luajit is missing. It runs the addon's Lua: use addons you trust."""
+    tocs = sorted(glob.glob(os.path.join(src, "*.toc")))
+    if not tocs or not os.path.exists(os.path.join(ROOT, "tools", "dump_options.lua")):
+        return None
+    toc = next((t for t in tocs if t.endswith("_Vanilla.toc")), tocs[0])
+    try:
+        r = run_luajit([os.path.join(ROOT, "tools", "dump_options.lua"), os.path.abspath(toc)], ROOT)
+        got = json.loads(r.stdout)
+    except (ValueError, OSError):
+        return None
+    if r.returncode != 0 or not isinstance(got, dict) or not isinstance(got.get("keys"), list):
+        return None
+    return sorted(str(k) for k in got["keys"]), int(got.get("tables") or 0)
+
+def coverage_data(plans, src, specs=None, runs=None, tests=None, harness=False):
     """Every subcommand, setting key and requirement name with the ids of the steps that cover it. runs ({id: run}, or None) adds a result:
     passed (a covering step passed), failed (one failed or is unverified), never-run. tests ({name: locations} from test_covers, or None)
     adds "tests" to each requirement, the names no spec has ("unknownTests") and the counts by tests, plans, both and neither ("testCounts")."""
@@ -2544,7 +2561,15 @@ def coverage_data(plans, src, specs=None, runs=None, tests=None):
     cmds = slash_commands(src)
     if not cmds:
         raise ValueError("no subcommand found in %s: looked for cmd == \"name\" in Slash*.lua files and in the Lua files its TOC lists" % src)
-    keys = setting_keys(src)
+    keys, settings_source = None, None
+    if harness:
+        reg = registry_setting_keys(src)
+        if reg and reg[0]:
+            keys, settings_source = reg[0], "registry (%d table%s)" % (reg[1], "" if reg[1] == 1 else "s")
+        else:
+            settings_source = "source (the options registry was empty, or the addon could not be loaded)"
+    if keys is None:
+        keys = setting_keys(src)
     reqs = sorted(requirement_names(specs)) if specs else None
     cover = {"commands": {c: [] for c in cmds}, "settings": {k: [] for k in keys}, "requirements": {r: [] for r in reqs or []}}
     ok = {}
@@ -2582,6 +2607,8 @@ def coverage_data(plans, src, specs=None, runs=None, tests=None):
         got = [ok.get(s) for s in steps]
         return "passed" if any(g in OK_RESULTS for g in got) else ("failed" if any(g in ("fail", "unverified") for g in got) else "never-run")
     out = {"addon": plans[0]["addon"], "plans": [p["title"] for p in plans], "evidence": runs is not None, "notes": notes}
+    if settings_source:
+        out["settingsSource"] = settings_source
     for kind, items in cover.items():
         if kind == "requirements" and reqs is None:
             continue
@@ -2598,6 +2625,8 @@ def coverage_data(plans, src, specs=None, runs=None, tests=None):
 
 def coverage_text(d):
     lines = ["Coverage of %s by %s" % (d["addon"], ", ".join(d["plans"]))] + ["evidence: " + n for n in d["notes"]]
+    if d.get("settingsSource"):
+        lines.append("settings read from: " + d["settingsSource"])
     for kind in ("commands", "settings", "requirements"):
         if kind not in d:
             continue
@@ -2652,6 +2681,7 @@ def main(argv=None):
     p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC): Slash*.lua gives the subcommands, its option tables the setting keys")
     p.add_argument("--specs", help="requirements: folder of the addon's openspec specs (default: openspec/specs next to the addon folder, when it exists)")
     p.add_argument("--tests", help="folder of the addon's unit tests: `-- covers: <Requirement name>` comments in its *.lua files count toward requirements (default: tests next to the addon folder, when it exists)")
+    p.add_argument("--harness", action="store_true", help="read the setting keys from the options tables the addon registers with AceConfigRegistry-3.0 when its TOC loads in the fake client (needs luajit; runs the addon's Lua: use addons you trust); falls back to the source when the registry is empty")
     p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
@@ -2715,7 +2745,7 @@ def main(argv=None):
                 return 2
             plans.append(plan)
         try:
-            d = coverage_data(plans, a.addon_src, specs, latest_runs(a.dest) if a.evidence else None, tests)
+            d = coverage_data(plans, a.addon_src, specs, latest_runs(a.dest) if a.evidence else None, tests, a.harness)
         except ValueError as e:
             print("error:", e, file=sys.stderr); return 2
         print(json.dumps(d, indent=1, sort_keys=True) if a.format == "json" else coverage_text(d))

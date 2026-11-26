@@ -166,12 +166,13 @@ The step needs the `facts` log source. `call` works only on an auto step. The sa
 ## Check what the plans cover
 
 ```
-.venv/bin/python tools/ct.py coverage plans/<addon>.yaml [more plans of the same addon] --addon-src <addon folder> [--specs <folder>] [--tests <folder>] [--evidence [--dest evidence]] [--format md|json]
+.venv/bin/python tools/ct.py coverage plans/<addon>.yaml [more plans of the same addon] --addon-src <addon folder> [--specs <folder>] [--tests <folder>] [--harness] [--evidence [--dest evidence]] [--format md|json]
 ```
 
 The report lists each slash subcommand, setting key and spec requirement of the addon as covered (with the ids of the steps that cover it) or unused. It reads the addon's Lua source, so a refactor can change what it finds. An extractor that finds no subcommand is an error.
 
 - **Subcommands** come from `cmd == "name"` in the addon's `Slash*.lua` files and in every Lua file its TOC lists (a `.xml` entry or `embeds.xml` is followed; `Libs` is skipped). A step covers one when its action text, `commands`, macro, setup or cleanup holds `/alias name`. An addon that registers through `SlashCmdList` another way needs its own extractor.
+- **Settings with `--harness`.** The tool loads the addon's TOC in the fake client (`tools/dump_options.lua`, needs luajit; it runs the addon's Lua, so use addons you trust) and reads the options tables the addon registered with AceConfigRegistry-3.0: every node that is not a group, header or description is a setting. The report says `settings read from: registry (N tables)`, or from the source when the registry is empty or the addon cannot load. Without `--harness` the output is as before.
 - **Settings** come from AceConfig widgets (`key = { type = "toggle" ...` or `add(group, "key", { type = "toggle" ...`) and from the dotted keys of a `Settings*.lua` table. A step covers one when a slash command in its text names the key, or when a fact check uses it as its key (or its last dotted parts), or a state probe as its name or path.
 - **Requirements** come from the `### Requirement:` headings of `openspec/specs/*/spec.md` next to the addon folder (or `--specs`). A step or section names what it covers with `covers`:
 
