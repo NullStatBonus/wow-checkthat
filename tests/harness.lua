@@ -126,6 +126,44 @@ function stubFrame(frames, template, name, kind)
     end })
 end
 
+-- Taint of global names (offline level 6, measured in game, docs/contracts.md): a game global that addon code replaces reads as
+-- insecure from then on, and putting the original back does not clear it. st.checkTaint() compares each game global with the value
+-- it had when the fake client was built and latches a change for good; issecurevariable and the runner call it, the runner
+-- also after every step. A replace and a restore inside one step, with no check between, is not seen. hooksecurefunc runs the hook
+-- after the original and leaves the name secure. A member of a table stays secure, and a protected action does not read taint
+-- yet: ADDON_ACTION_BLOCKED needs an in-game probe of a Blizzard path that reads a tainted global.
+function H.taint(st)
+    st.tainted = {}
+    _G.hooksecurefunc = function(a, b, c)
+        local tbl, name, fn = _G, a, b
+        if type(a) == "table" then tbl, name, fn = a, b, c end
+        local orig = tbl[name]
+        if type(name) ~= "string" or type(orig) ~= "function" or type(fn) ~= "function" then
+            error('Usage: hooksecurefunc([table,] "function", hookfunc)', 2)
+        end
+        local function pack(...) return { n = select("#", ...), ... } end
+        local function wrapper(...)
+            local r = pack(orig(...))
+            -- A hook that throws does not change what the original returned: the error goes to the error handler.
+            local ok, err = pcall(fn, ...)
+            if not ok then
+                st.hookErrors = st.hookErrors or {}
+                st.hookErrors[#st.hookErrors + 1] = tostring(err)
+                local handler = type(_G.geterrorhandler) == "function" and _G.geterrorhandler()
+                if type(handler) == "function" then pcall(handler, err) end
+            end
+            return unpack(r, 1, r.n)
+        end
+        rawset(tbl, name, wrapper)
+        if tbl == _G and st.secureValue and st.secureValue[name] ~= nil then st.secureValue[name] = wrapper end
+    end
+    function st.checkTaint()
+        for name, value in pairs(st.secureValue or {}) do
+            if rawget(_G, name) ~= value then st.tainted[name] = true end
+        end
+    end
+end
+
 -- A stub game client: enough API for the real Ace libraries and the addon files to load and run.
 function H.stubClient(opts)
     opts = opts or {}
@@ -183,6 +221,7 @@ _G.issecurevariable = function(t, k)
     if opts.allInsecure then return false end
     local name = t
     if type(t) == "table" then if t ~= _G then return true end; name = k end
+    if st.checkTaint then st.checkTaint(); if st.tainted[name] then return false, "Addon" end end
     if st.secure and st.secure[name] then return true end
     return false, "Addon"
 end
@@ -205,8 +244,18 @@ end
     _G.format = string.format
     _G.max, _G.min, _G.floor = math.max, math.min, math.floor
     if surface then H.applySurface(st, surface) end
+    if opts.taint then H.taint(st) end
     st.secure = {}
     for k in pairs(_G) do st.secure[k] = true end
+    if opts.taint then
+        st.secureValue = {}
+        -- Lua's own names and the libraries the runner hides or puts back while addon code runs are not the game's: leave them out.
+        local own = { string = 1, table = 1, math = 1, bit = 1, coroutine = 1, io = 1, os = 1, jit = 1, ffi = 1, debug = 1, package = 1,
+            require = 1, dofile = 1, loadfile = 1, load = 1, module = 1 }
+        for k in pairs(st.secure) do
+            if type(k) == "string" and not own[k] then st.secureValue[k] = rawget(_G, k) end
+        end
+    end
     return st
 end
 
