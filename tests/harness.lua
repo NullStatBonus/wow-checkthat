@@ -455,6 +455,10 @@ function H.snapshot()
     if type(stub) == "table" then
         libs[stub] = copy(stub)
         for _, n in ipairs({ "libs", "minors" }) do if type(stub[n]) == "table" then libs[stub[n]] = copy(stub[n]) end end
+        -- A later load of a newer minor changes a registered library in place: keep each one's fields too.
+        if type(stub.libs) == "table" then
+            for _, lib in next, stub.libs do if type(lib) == "table" and not libs[lib] then libs[lib] = copy(lib) end end
+        end
     end
     local function put(t, c)
         for k in next, copy(t) do if c[k] == nil then rawset(t, k, nil) end end
