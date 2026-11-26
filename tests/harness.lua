@@ -24,6 +24,26 @@ local function setShown(f, v)
 end
 
 local stubFrame
+-- A GameTooltip frame keeps the lines an addon adds (self.lines = { { left =, right = } }), as the game's tooltip does.
+local TOOLTIP = {
+    AddLine = function(self, text) self.lines[#self.lines + 1] = { left = text } end,
+    AddDoubleLine = function(self, left, right) self.lines[#self.lines + 1] = { left = left, right = right } end,
+    SetText = function(self, text) self.lines = { { left = text } } end,
+    ClearLines = function(self) self.lines = {} end,
+    NumLines = function(self) return #self.lines end,
+    SetOwner = function(self, owner) self.owner = owner; self.lines = {} end,
+    GetOwner = function(self) return self.owner end,
+}
+
+-- The lines of a fake GameTooltip as { { left =, right = }, ... } (a copy), or nil when it is not one.
+function H.tooltipLines(tip)
+    local lines = type(tip) == "table" and rawget(tip, "lines")
+    if not lines then return nil end
+    local out = {}
+    for i, l in ipairs(lines) do out[i] = { left = l.left, right = l.right } end
+    return out
+end
+
 local function member(frames, k)
     if k == "SetScript" then return function(self, ev, fn) self.scripts[ev] = fn end end
     if k == "HookScript" then return function(self, ev, fn) self.hooks[ev] = self.hooks[ev] or {}; table.insert(self.hooks[ev], fn) end end
@@ -79,6 +99,7 @@ function stubFrame(frames, template, name, kind)
     local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name, kind = kind }
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
+    if kind == "GameTooltip" then f.lines = {} end
     local methods = frames.surface and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
     local keys
     if methods and template then methods, keys = H.templateMethods(frames.surface, kind, template) end
@@ -89,7 +110,7 @@ function stubFrame(frames, template, name, kind)
             return child
         end
         if methods and not methods[k] then return nil end
-        local fn = member(frames, k)
+        local fn = rawget(f, "lines") and TOOLTIP[k] or member(frames, k)
         if not (f.protected and BLOCKED_IN_COMBAT[k]) then return fn end
         return function(self, ...)
             if inCombat() then
@@ -378,6 +399,8 @@ function H.applySurface(st, surface)
         for k in pairs(members) do if t[k] == nil then t[k] = generic(ns .. "." .. k) end end
         rawset(_G, ns, t)
     end
+    -- The game's own tooltip, which records the lines an addon adds (H.tooltipLines).
+    if surface.widgets.GameTooltip and rawget(_G, "GameTooltip") == nil then _G.GameTooltip = stubFrame(st.frames, nil, "GameTooltip", "GameTooltip") end
     local version, build = tostring(surface.build):match("^(%d+%.%d+%.%d+)%.(%d+)$")
     _G.GetBuildInfo = function() return version or surface.build, build or "", "", surface.interface end
 end
