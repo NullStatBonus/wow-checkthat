@@ -476,6 +476,39 @@ class OfflineBlock(unittest.TestCase):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
 
+    def test_a_mock_can_name_a_recording_at_level_5_and_not_mix_it_with_args_or_returns(self):
+        def with_mocks(mocks, level=5):
+            def m(o):
+                o["level"] = level
+                o["mocks"] = mocks
+            return self.plan(m)
+        good = [{"GetItemInfo": {"recording": "GetItemInfo(6948)"}},
+                {"GetItemInfo": [{"recording": "GetItemInfo(6948)"}, {"args": [7], "returns": ["x"]}]},
+                {"GetItemInfo": {"args": [7], "returns": ["x"]}}]
+        for mocks in good:
+            self.assertEqual(ct.validate(with_mocks(mocks)), [], mocks)
+        self.assertEqual(ct.validate(with_mocks(good[0], 6)), [], "level 6 too")
+        bad = [{"GetItemInfo": {"recording": ""}}, {"GetItemInfo": {"recording": 5}},
+               {"GetItemInfo": {"recording": "GetItemInfo(6948)", "args": [1]}}, {"GetItemInfo": {"recording": "GetItemInfo(6948)", "returns": []}},
+               {"GetItemInfo": [{"recording": "GetItemInfo(6948)", "returns": ["x"]}]}, {"GetItemInfo": {"recording": "x", "extra": 1}}]
+        for mocks in bad:
+            self.assertNotEqual(ct.validate(with_mocks(mocks)), [], mocks)
+        for level in (1, 2, 3, 4):
+            self.assertNotEqual(ct.validate(with_mocks(good[0], level)), [], "recording at level %d" % level)
+            self.assertNotEqual(ct.validate(with_mocks(good[1], level)), [], "array form at level %d" % level)
+            self.assertEqual(ct.validate(with_mocks(good[2], level)), [], "a plain mock at level %d keeps validating" % level)
+        p = with_mocks(good[0]); p["offline"].pop("level"); self.assertNotEqual(ct.validate(p), [], "no level")
+
+    def test_a_group_mock_with_a_recording_needs_level_5_too(self):
+        def grouped(level):
+            def m(o):
+                o["level"] = level
+                steps = o.pop("steps")
+                o["groups"] = [{"label": "g", "steps": steps, "mocks": {"GetItemInfo": {"recording": "GetItemInfo(6948)"}}}]
+            return self.plan(m)
+        self.assertEqual(ct.validate(grouped(5)), [])
+        self.assertNotEqual(ct.validate(grouped(4)), [])
+
     def test_a_tooltip_step_checks_lines_and_needs_level_5(self):
         def with_step(step, level=5, groups=False):
             def m(o):
