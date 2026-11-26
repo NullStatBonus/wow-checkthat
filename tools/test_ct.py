@@ -1,4 +1,4 @@
-import contextlib, glob, io, json, os, re, shutil, subprocess, sys, tempfile, unittest, zlib
+import contextlib, glob, io, json, os, re, shutil, subprocess, sys, tempfile, unittest, unittest.mock, zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ct
 
@@ -2169,6 +2169,119 @@ class ReportAuto(unittest.TestCase):
         text = ct.report_text(self.run_fixture())
         self.assertNotIn("recorded by CheckThat", text)
         self.assertNotIn("auto=", text)
+
+
+class Drift(unittest.TestCase):
+    PLAN = os.path.join(ROOT, "tests", "fixtures", "offline-plan", "plan.yaml")
+
+    def runs(self, results, client="classic-era"):
+        steps = {k: {"verdict": v, "attempts": [{"n": 1, "verdict": v}]} for k, v in results.items()}
+        return {"KeepThat-1": {"planTitle": "t", "addon": "KeepThat", "revision": 1, "client": client, "build": "1", "character": "X",
+                               "order": list(results), "steps": steps}}
+
+    def preds(self, **kw):
+        return {"era": {k: {"predicted": v, "offline": ["offline.1"], "why": "x"} for k, v in kw.items()}}
+
+    def test_matching_predictions_score_and_a_wrong_one_is_drift(self):
+        rep = ct.drift_report(self.preds(a="pass", b="pass", c="fail"), self.runs({"a": "pass", "b": "fail", "c": "fail"}))
+        self.assertEqual(rep["flavors"]["era"], {"matched": 2, "total": 3, "score": 0.667})
+        self.assertEqual([(d["step"], d["predicted"], d["actual"]) for d in rep["drift"]], [("b", "pass", "fail")])
+        self.assertIn("era: 2 of 3 predictions matched (67%)", ct.drift_text(rep))
+        self.assertIn("drift  era  KeepThat-1  b  predicted pass, the run fail", ct.drift_text(rep))
+
+    def test_a_step_the_run_did_not_judge_and_another_client_are_left_out(self):
+        rep = ct.drift_report(self.preds(a="pass", b="pass"), self.runs({"a": "unverified", "b": "skip"}))
+        self.assertEqual(rep["flavors"]["era"], {"matched": 0, "total": 0, "score": None})
+        rep = ct.drift_report(self.preds(a="pass"), self.runs({"a": "fail"}, "forever-camelot"))
+        self.assertEqual((rep["flavors"]["era"]["total"], rep["drift"]), (0, []))
+        self.assertIn("no run to compare", ct.drift_text(rep))
+
+    def test_a_run_of_another_plan_is_left_out(self):
+        rep = ct.drift_report(self.preds(a="pass"), self.runs({"a": "fail"}), "KeepThat", "other")
+        self.assertEqual(rep["flavors"]["era"]["total"], 0)
+
+    @unittest.skipUnless(shutil.which("luajit"), "needs luajit")
+    def test_predictions_come_from_the_offline_block_for_each_client(self):
+        p = ct.load_yaml(self.PLAN)
+        first = p["sections"][0]["steps"][0]["id"]
+        p["offline"].update(level=6, tocs={"era": p["offline"]["toc"], "forever": p["offline"]["toc"]}, predicts={first: ["offline.1", "offline.2"]})
+        root = os.path.dirname(os.path.dirname(self.PLAN))
+        got = ct.predictions(p, root)
+        self.assertEqual(sorted(got), ["era", "forever"])
+        self.assertEqual(got["era"][first]["predicted"], "pass")
+        p["offline"]["steps"][0]["returns"] = ["Wrong"]
+        bad = ct.predictions(p, root)["era"][first]
+        self.assertEqual(bad["predicted"], "fail")
+        self.assertIn("expected [Wrong]", bad["why"])
+
+    @unittest.skipUnless(shutil.which("luajit"), "needs luajit")
+    def test_the_command_runs_as_a_subprocess_and_json_and_errors_exit_cleanly(self):
+        p = ct.load_yaml(self.PLAN)
+        first = p["sections"][0]["steps"][0]["id"]
+        p["offline"].update(level=6, tocs={"era": p["offline"]["toc"]}, predicts={first: ["offline.1"]})
+        with tempfile.TemporaryDirectory() as d:
+            plan = os.path.join(d, "plan.yaml")
+            with open(plan, "w") as f: json.dump(p, f)
+            args = [sys.executable, os.path.join(ROOT, "tools", "ct.py"), "drift", plan, "--addons", os.path.dirname(os.path.dirname(self.PLAN)), "--dest", os.path.join(d, "none")]
+            out = subprocess.run(args + ["--strict"], capture_output=True, text=True)
+            self.assertEqual((out.returncode, out.stdout.strip()), (1, "era: no run to compare"), out.stderr)   # strict: nothing was compared
+            out = subprocess.run(args + ["--format", "json"], capture_output=True, text=True)
+            self.assertEqual(json.loads(out.stdout)["flavors"]["era"]["total"], 0)
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "drift", self.PLAN], capture_output=True, text=True)
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("no predicts", out.stderr)
+
+    def drift_cli(self, results, *extra, version="1.0", mutate=None):
+        p = ct.load_yaml(self.PLAN)
+        first = p["sections"][0]["steps"][0]["id"]
+        p["offline"].update(level=6, tocs={"era": p["offline"]["toc"]}, predicts={first: ["offline.1"]})
+        if mutate:
+            mutate(p)
+        run = {"R-1": {"planTitle": p["title"], "addon": p["addon"], "revision": 1, "client": "classic-era", "build": "1", "character": "X",
+                       "targetVersion": version, "order": [first], "steps": {first: {"verdict": results, "attempts": [{"n": 1, "verdict": results}]}}}}
+        with tempfile.TemporaryDirectory() as d:
+            plan = os.path.join(d, "plan.yaml")
+            with open(plan, "w") as f: json.dump(p, f)
+            buf = io.StringIO()
+            with unittest.mock.patch.object(ct, "latest_runs", return_value=run), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                code = ct.main(["drift", plan, "--addons", os.path.dirname(os.path.dirname(self.PLAN)), "--strict", *extra])
+        return code, buf.getvalue()
+
+    @unittest.skipUnless(shutil.which("luajit"), "needs luajit")
+    def test_strict_fails_on_a_wrong_prediction_and_prints_it(self):
+        self.assertEqual(self.drift_cli("pass")[0], 0)
+        code, text = self.drift_cli("fail")
+        self.assertEqual(code, 1)
+        self.assertIn("era: 0 of 1 predictions matched", text)
+        self.assertIn("predicted pass, the run fail (offline.1)", text)
+        self.assertEqual(json.loads(self.drift_cli("fail", "--format", "json")[1])["drift"][0]["actual"], "fail")
+
+    @unittest.skipUnless(shutil.which("luajit"), "needs luajit")
+    def test_a_run_of_another_version_is_left_out_and_strict_fails_when_nothing_was_compared(self):
+        code, text = self.drift_cli("fail", "--expect-version", "2.0", version="1.0")
+        self.assertEqual(code, 1)
+        self.assertIn("no run to compare", text)
+        self.assertIn("left out, another addon version: R-1", text)
+        self.assertEqual(self.drift_cli("fail", "--expect-version", "1.0", version="1.0")[0], 1)
+        self.assertIn("0 of 1", self.drift_cli("fail", "--expect-version", "1.0", version="1.0")[1])
+
+    @unittest.skipUnless(shutil.which("luajit"), "needs luajit")
+    def test_an_offline_block_that_did_not_run_predicts_nothing(self):
+        code, text = self.drift_cli("pass", mutate=lambda p: p["offline"]["mocks"].update(loadstring={"returns": [1]}))
+        self.assertEqual((code, text), (2, ""))
+        with self.assertRaisesRegex(RuntimeError, "did not run on era.*not on the allow list"):
+            p = ct.load_yaml(self.PLAN)
+            p["offline"].update(level=6, tocs={"era": p["offline"]["toc"]}, predicts={p["sections"][0]["steps"][0]["id"]: ["offline.1"]})
+            p["offline"]["mocks"].update(loadstring={"returns": [1]})
+            ct.predictions(p, os.path.dirname(os.path.dirname(self.PLAN)))
+
+    def test_predictions_need_predicts_and_tocs(self):
+        p = ct.load_yaml(self.PLAN)
+        with self.assertRaisesRegex(ValueError, "no predicts"):
+            ct.predictions(p, ".")
+        p["offline"]["predicts"] = {"x": ["offline.1"]}
+        with self.assertRaisesRegex(ValueError, "no tocs"):
+            ct.predictions(p, ".")
 
 
 class ReportTable(unittest.TestCase):

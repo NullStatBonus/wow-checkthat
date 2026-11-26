@@ -970,6 +970,64 @@ def offline_plan(plan, addons, requirements=None, info=None, client=None):
     return items
 
 
+FLAVOR = {"classic-era": "era", "forever-camelot": "forever"}
+
+def predictions(plan, addons, requirements=None):
+    """What the offline block predicts for each plan step it names in offline.predicts, for each client the block has a TOC for.
+    Returns {flavor: {step id: {"predicted": pass|fail, "offline": [ids], "why": text of the first failing case}}}. Needs luajit."""
+    block = plan.get("offline") or {}
+    if not block.get("predicts"):
+        raise ValueError("the offline block has no predicts: add offline.predicts to link plan steps to offline steps")
+    if not block.get("tocs"):
+        raise ValueError("the offline block has no tocs: drift is counted for each client, so name a TOC for each")
+    out = {}
+    for fl in block["tocs"]:
+        got = {i["step"]: i for i in offline_plan(plan, addons, requirements, None, fl)}
+        if "offline.0" in got:
+            raise RuntimeError("the offline block did not run on %s, so it predicts nothing: %s" % (fl, got["offline.0"]["why"] or got["offline.0"]["label"]))
+        out[fl] = {}
+        for sid, offs in block["predicts"].items():
+            bad = [got.get(o) for o in offs if not got.get(o) or got[o]["result"] != "pass"]
+            out[fl][sid] = {"predicted": "fail" if bad else "pass", "offline": list(offs), "why": (bad[0] or {}).get("why", "the offline step did not run") if bad else ""}
+    return out
+
+def drift_report(preds, runs, addon=None, title=None, version=None):
+    """Compare predictions with real runs. A run counts for a flavor by its client. Only a step the run judged (pass, partial, fail)
+    is compared: an unverified or skipped step is not a miss, and a partial counts as a pass. version, when given, leaves out a run that
+    tested another addon version (its result says nothing about this checkout). Returns {"flavors": {flavor: {matched, total, score}}, "drift": [entries], "leftOut": [run ids]}."""
+    ms = [m for m in models(runs) if (addon is None or m["addon"] == addon) and (title is None or m["plan"] == title)]
+    left = [m["runId"] for m in ms if version is not None and m["targetVersion"] != version]
+    ms = [m for m in ms if m["runId"] not in left]
+    flavors, drift = {}, []
+    for fl, steps in preds.items():
+        tot = hit = 0
+        for m in ms:
+            if FLAVOR.get(m["client"]) != fl:
+                continue
+            for s in m["steps"]:
+                p = steps.get(s["id"])
+                actual = {"pass": "pass", "partial": "pass", "fail": "fail"}.get(s["result"])
+                if not p or not actual:
+                    continue
+                tot += 1
+                if p["predicted"] == actual:
+                    hit += 1
+                else:
+                    drift.append({"flavor": fl, "run": m["runId"], "step": s["id"], "predicted": p["predicted"], "actual": actual,
+                                  "offline": p["offline"], "why": p["why"] or s["reason"]})
+        flavors[fl] = {"matched": hit, "total": tot, "score": round(hit / tot, 3) if tot else None}
+    return {"flavors": flavors, "drift": drift, "leftOut": left}
+
+def drift_text(rep):
+    out = []
+    for fl, s in sorted(rep["flavors"].items()):
+        out.append("%s: %s" % (fl, "%d of %d predictions matched (%.0f%%)" % (s["matched"], s["total"], 100 * s["score"]) if s["total"] else "no run to compare"))
+    if rep.get("leftOut"):
+        out.append("left out, another addon version: " + ", ".join(rep["leftOut"]))
+    for d in rep["drift"]:
+        out.append("  drift  %s  %s  %s  predicted %s, the run %s (%s): %s" % (d["flavor"], d["run"], d["step"], d["predicted"], d["actual"], ", ".join(d["offline"]), d["why"]))
+    return "\n".join(out)
+
 # ---------------------------------------------------------------- evidence harvest
 
 # ---------------------------------------------------------------- saved-variables reader (no luajit)
@@ -2803,6 +2861,7 @@ def main(argv=None):
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
     p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
+    p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
     p.add_argument("--strict", action="store_true", help="exit 1 when any step failed or is unverified, there are no runs, or a revision could not be read")
@@ -2985,6 +3044,14 @@ def main(argv=None):
             print("not imported: run %s revision %s is already stored with different content" % (run["runId"], run.get("revision")), file=sys.stderr)
             return 1
         print("imported" if res == "new" else "already imported", run["runId"], "rev", run.get("revision")); return 0
+    if a.cmd == "drift":
+        plan = load_yaml(a.plan)
+        try:
+            rep = drift_report(predictions(plan, a.addons, plan_requirements(plan, a.plan, a.specs)), latest_runs(a.dest), plan.get("addon"), plan.get("title"), a.expect_version)
+        except (ValueError, RuntimeError) as e:
+            print("error:", e, file=sys.stderr); return 2
+        print(json.dumps(rep, indent=1) if a.format == "json" else drift_text(rep))
+        return 1 if a.strict and (rep["drift"] or not any(s["total"] for s in rep["flavors"].values())) else 0
     if a.cmd == "report":
         skipped = []
         runs = latest_runs(a.dest, skipped)

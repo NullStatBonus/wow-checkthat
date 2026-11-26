@@ -71,6 +71,16 @@ Both read the newest readable revision of each collected run. Each step is judge
 - **Trend.** One table for each addon and plan title, so plan edits stay in one table. Columns are runs, oldest first, named 1, 2, 3 and listed above the table; `--by` adds that value of each run to its line (`version` is the CheckThat version that wrote the run, `target` is the version of the addon under test). `--last` keeps the newest runs. Cells are `P` pass, `p` partial, `F` fail, `U` unverified, `-` not run, blank for no such step. A step that passed in one run and failed or went unverified in another is marked `flaky`. It exits 2 when no run matches.
 - **Limits.** Runs that CheckThat pruned before `collect` are not there. A run saved before 0.19.0 does not record the version of the addon under test: it shows as `?` in a diff and has no label in a `--by target` trend.
 
+## Drift ledger
+
+`ct.py drift <plan> --dest evidence` shows where the fake client was wrong. Name the plan steps an offline block predicts in `offline.predicts` (see [authoring plans](authoring-plans.md)), and give the block a TOC for each client in `tocs`. The command runs the block for each client, takes a pass for a plan step when all its offline steps pass, and compares that with the same step in each collected run of that client.
+
+- It prints, for each client, how many predictions the runs confirmed, and one `drift` line for each wrong one: the run, the step, what was predicted, what happened, and the offline steps. A step the run left unverified or skipped is not compared.
+- A drift line is a lead, not a verdict: the addon may have a bug the fake client cannot show, or the fake client may be wrong. A step that drifts again on the same client is a fake-client bug: reproduce it with a test in `tests/harness.lua` and add the measured behaviour to `docs/contracts.md`.
+- `--expect-version <addon version>` leaves out runs of another addon version, which say nothing about this checkout. A partial result counts as a pass. A block that cannot run (a failed load, a mock the client does not allow) stops the command with that error instead of predicting a fail.
+- `--strict` exits 1 when a prediction was wrong or no step was compared. `--format json` gives the same data to a script.
+- `replay-flow` is not used: it writes the log lines a plan expects itself, so it proves the plan and cannot be wrong about the game.
+
 ## Browse the evidence
 
 ```
