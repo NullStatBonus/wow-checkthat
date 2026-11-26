@@ -9,6 +9,8 @@ evidence/
 evidence-src/
 
 # Raw saved variables, exports and captures stay out of Git (see AGENTS.md)
+# Census manifests hold the tester's addon list and addon globals: they stay local. Commit only a reviewed slice.
+tests/manifests/*.json
 debug.txt
 Screenshot*.png
 screenshots/
