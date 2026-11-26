@@ -264,7 +264,20 @@ def validate(plan, requirements=None):
                 own = "[ct] step %s " % sid   # the game judges a result before it writes this line
                 if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
                     errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope session" % (sid, own))
+    block = plan.get("offline") or {}
+    if block.get("predicts"):
+        have = offline_step_ids(block)
+        for sid, offs in block["predicts"].items():
+            if sid not in seen:
+                errs.append("offline.predicts: %s is not a step of the plan" % sid)
+            errs += ["offline.predicts.%s: %s is not a step of the offline block" % (sid, o) for o in offs if o not in have]
     return errs
+
+def offline_step_ids(block):
+    """The ids ct offline gives each case of a block: offline.N for a step, offline.G.N for step N of group G."""
+    if block.get("groups"):
+        return {"offline.%d.%d" % (g, i) for g, grp in enumerate(block["groups"], 1) for i in range(1, len(grp["steps"]) + 1)}
+    return {"offline.%d" % i for i in range(1, len(block.get("steps") or []) + 1)}
 
 
 def warnings(plan):

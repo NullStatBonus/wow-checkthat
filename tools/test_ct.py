@@ -417,6 +417,18 @@ class OfflineBlock(unittest.TestCase):
         self.assertTrue(ct.validate(self.plan(lambda o: o["steps"][0].update(bogus=1))))
         self.assertTrue(ct.validate(self.plan(lambda o: o["steps"].append({"label": "no action"}))))
 
+    def test_predicts_must_name_real_steps(self):
+        ok = lambda o: o.update(predicts={self.first_step(): ["offline.1", "offline.5"]})
+        self.assertEqual(ct.validate(self.plan(ok)), [])
+        errs = ct.validate(self.plan(lambda o: o.update(predicts={self.first_step(): ["offline.9"], "nope": ["offline.1"]})))
+        self.assertEqual(len(errs), 2)
+        self.assertTrue(any("offline.9 is not a step" in e for e in errs) and any("nope is not a step of the plan" in e for e in errs))
+        self.assertTrue(ct.validate(self.plan(lambda o: o.update(predicts={self.first_step(): []}))))
+        self.assertTrue(ct.validate(self.plan(lambda o: o.update(predicts={self.first_step(): ["step 1"]}))))
+
+    def first_step(self):
+        return ct.load_yaml(self.PLAN)["sections"][0]["steps"][0]["id"]
+
     def test_the_toc_cannot_leave_the_addons_folder(self):
         with self.assertRaises(ValueError):
             self.run_plan(lambda o: o.update(toc="../../../../../../etc/hosts"))
