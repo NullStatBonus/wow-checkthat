@@ -278,7 +278,7 @@
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
-          "description": "Level 5. One TOC for each client the block can run on. ct offline --client era, forever or both runs the block with the TOC for that client (both runs it twice). Without --client only toc runs. toc stays required. replay-flow does not read it yet.",
+          "description": "Level 5. One TOC for each client the block can run on. ct offline --client era, forever or both runs the block with the TOC for that client (both runs it twice). Without --client only toc runs. toc stays required. replay-flow does not run the offline block, so it does not use tocs.",
           "properties": {
             "era": {
               "type": "string",
