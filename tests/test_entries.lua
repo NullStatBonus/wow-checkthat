@@ -420,14 +420,50 @@ test("level 3 fires the lifecycle events in the order measured in game, at login
     T.ok(r.steps[3].ok and r.steps[3].detail:find(LOGIN .. " " .. RELOAD, 1, true), r.steps[3].detail)
 end)
 
-test("a mock that names a recording fails the load step until the runner can read recordings", function()
-    local steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } }
-    local r = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = steps })
-    T.ok(not r.ok and r.steps[1].detail:find("a recording is not supported", 1, true), tostring(r.steps[1].detail))
-    local arr = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { { args = { 1 }, returns = { "x" } }, { recording = "GetItemInfo(6948)" } } }, steps = steps })
-    T.ok(not arr.ok, "the array form too")
-    local ok = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { returns = { "x" } } }, steps = steps })
-    T.ok(ok.ok, "a plain mock still runs")
+local REC_ERA, REC_FOREVER = "tests/fixtures/MockAddon/Rec_Vanilla.toc", "tests/fixtures/MockAddon/Rec_Camelot.toc"
+local function recCall(entry, id, returns) return { call = { addon = "MockAddon", entry = entry, args = { id } }, returns = returns } end
+
+test("a mock can replay a call recorded in game, for the client the TOC names", function()
+    local forever = run({ toc = REC_FOREVER, level = 5, mocks = { ["C_Item.GetItemInfo"] = { recording = "C_Item.GetItemInfo(6948)" } }, steps = {
+        recCall("info_count", 6948, { 18 }), recCall("info_first", 6948, { "Hearthstone" }), recCall("info_count", 1, { 0 }),
+        { call = { addon = "MockAddon", entry = "info_type", args = { 6948, 16 } }, returns = { "nil" } },
+        { call = { addon = "MockAddon", entry = "info_type", args = { 6948, 15 } }, returns = { "number" } } } }) -- other arguments: no rule matches, the mock returns nothing
+    local ok = {}
+    for i, s in ipairs(forever.steps) do ok[i] = s.ok end
+    T.same(ok, { true, true, true, true, true }, tostring(forever.steps[4].detail) .. " / " .. tostring(forever.steps[5].detail) .. " / " .. tostring(forever.steps[3].detail))
+    local era = run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = { recCall("info_old", 6948, { "Hearthstone" }) } })
+    T.ok(era.steps[1].ok, "Era: " .. tostring(era.steps[1].detail))
+    local arr = run({ toc = REC_FOREVER, level = 6, mocks = { ["C_Item.GetItemInfo"] = { { args = { 1 }, returns = { "x" } }, { recording = "C_Item.GetItemInfo(6948)" } } },
+        steps = { recCall("info_first", 1, { "x" }), recCall("info_first", 6948, { "Hearthstone" }) } })
+    T.ok(arr.steps[1].ok and arr.steps[2].ok, "the array form, mixed with a hand-written rule")
+    local grouped = run({ toc = REC_FOREVER, level = 6, groups = { { label = "g", mocks = { ["C_Item.GetItemInfo"] = { recording = "C_Item.GetItemInfo(6948)" } }, steps = { recCall("info_count", 6948, { 18 }) } } } })
+    T.ok(grouped.steps[1].ok, "a group's mock too")
+end)
+
+test("a recording that does not fit fails the load step and says why", function()
+    local steps = { recCall("info_first", 6948, { "Hearthstone" }) }
+    local function loadError(r) return (not r.ok) and tostring(r.steps[1].detail) or "ran" end
+    T.ok(loadError(run({ toc = REC_FOREVER, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = steps })):find("no recording GetItemInfo(6948) for the forever client", 1, true), "Forever has no such recording")
+    T.ok(loadError(run({ toc = REC_ERA, level = 5, mocks = { ["C_Item.GetItemInfo"] = { recording = "GetItemInfo(6948)" } }, steps = steps })):find("is for another function", 1, true))
+    T.ok(loadError(run({ toc = REC_ERA, level = 4, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = steps })):find("needs offline level 5", 1, true), "below level 5")
+    T.ok(loadError(run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(1)" } }, steps = steps })):find("no recording GetItemInfo(1) for the era client", 1, true), "an unknown label")
+    T.ok(loadError(run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)", returns = { "x" } } }, steps = steps })):find("cannot be combined", 1, true), "a recording with returns")
+    T.ok(run({ toc = REC_ERA, level = 5, mocks = { GetItemInfo = { returns = { "x" } } }, steps = { recCall("info_old", 1, { "x" }) } }).ok, "a plain mock still runs")
+end)
+
+test("the committed recordings name no character, realm or personal value", function()
+    local jns = {}
+    assert(loadfile("CheckThat/Model/Json.lua"))("CheckThat", jns)
+    for _, client in ipairs({ "era", "forever" }) do
+        local f = assert(io.open("tools/recordings/" .. client .. ".json")); local text = f:read("*a"); f:close()
+        local rec = assert(jns.Json.Decode(text))
+        T.eq(rec.format, 1); T.eq(rec.client, client); T.ok(next(rec.calls))
+        for label, call in pairs(rec.calls) do
+            T.ok(not label:find("player", 1, true), label .. " is a call on the player")
+            for _, personal in ipairs({ "GetMoney", "GetItemCount", "UnitName", "GetRealmName", "GetTime", "GetServerTime" }) do T.ok(call.api ~= personal, call.api .. " is personal") end
+        end
+        T.ok(not text:find("|Hitem:6948::::::::10:", 1, true) and not text:find("|Hitem:%d+:[^|]*:%d+:%d+:", 1), "an item link carries no level or specialization")
+    end
 end)
 
 test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()

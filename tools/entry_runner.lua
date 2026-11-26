@@ -77,7 +77,7 @@ local function makeMock(rules, counts, api)
             for i, want in ipairs(rule.args or {}) do
                 if not deepEq(args[i], want) then ok = false; break end
             end
-            if ok then return unpack(rule.returns or {}, 1, #(rule.returns or {})) end
+            if ok then return unpack(rule.returns or {}, 1, rule.n or #(rule.returns or {})) end -- n keeps the nils of a recording
         end
     end
 end
@@ -265,16 +265,43 @@ function Runner.run(spec, opts)
     table.sort(mockNames)
     local unlisted
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
-    local pending -- a recording is in the plan format, but this runner cannot read it yet: say so instead of running with an empty mock
-    local function noRecording(mocks)
+    -- A mock entry { recording = "GetItemInfo(6948)" } takes its args and returns from tools/recordings/<client>.json (made from a CTProbe
+    -- run by ct.py recordings) for the client the TOC names. The entry is filled in place: makeMock then reads it like any other.
+    local recErr, recFileErr
+    local function fill(api, entry)
+        if type(entry) ~= "table" or not entry.recording then return end
+        local label = entry.recording
+        if entry.args ~= nil or entry.returns ~= nil then recErr = recErr or ("mock %s: a recording cannot be combined with args or returns"):format(api); return end
+        if not surface then recErr = recErr or ("mock %s: a recording needs offline level 5"):format(api); return end
+        if label:sub(1, #api + 1) ~= api .. "(" then recErr = recErr or ("mock %s: the recording %s is for another function"):format(api, label); return end
+        local call = surface.recordings and surface.recordings.calls and surface.recordings.calls[label]
+        if recFileErr then recErr = recErr or recFileErr; return end
+        if not call then
+            recErr = recErr or ("mock %s: no recording %s for the %s client (tools/recordings/%s.json)"):format(api, label, surface.client, surface.client)
+            return
+        end
+        local function copy(list) local c = {}; for i, v in pairs(list or {}) do c[i] = v end; return c end -- the recording stays as it was read
+        entry.recording, entry.args, entry.returns, entry.n = nil, copy(call.args), copy(call.returns), call.n
+        for _, i in ipairs(call.nils or {}) do entry.returns[i] = nil end -- the JSON has no null: a nil return is listed in nils
+    end
+    local function fillMocks(mocks)
         for api, v in pairs(mocks or {}) do
             if type(v) == "table" then
-                if v.recording then pending = pending or api end
-                for _, entry in ipairs(v) do if type(entry) == "table" and entry.recording then pending = pending or api end end
+                fill(api, v)
+                for _, entry in ipairs(v) do fill(api, entry) end
             end
         end
     end
-    noRecording(spec.mocks); for _, g in ipairs(groups) do noRecording(g.mocks) end
+    if surface then
+        local rf = io.open(root .. "/tools/recordings/" .. surface.client .. ".json", "r")
+        if rf then
+            local rec, derr = jns.Json.Decode(rf:read("*a")); rf:close()
+            if type(rec) ~= "table" then recFileErr = ("tools/recordings/%s.json cannot be read: %s"):format(surface.client, tostring(derr))
+            elseif rec.format ~= 1 then recFileErr = ("tools/recordings/%s.json has format %s: this runner reads format 1"):format(surface.client, tostring(rec.format))
+            else surface.recordings = rec end
+        end
+    end
+    fillMocks(spec.mocks); for _, g in ipairs(groups) do fillMocks(g.mocks) end
     local absent
     if surface then
         for _, api in ipairs(mockNames) do
@@ -424,8 +451,8 @@ function Runner.run(spec, opts)
         loadErr = surfaceErr
     elseif undeclared then
         loadErr = ("savedVariables names %s, which the TOC does not declare"):format(undeclared)
-    elseif pending then
-        loadErr = ("mock %s: a recording is not supported by this runner yet"):format(pending)
+    elseif recErr then
+        loadErr = recErr
     elseif unlisted then
         loadErr = ("mock %s is not on the allow list"):format(unlisted)
     elseif absent then

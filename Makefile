@@ -31,7 +31,7 @@ BUNDLE := tools/ct.py tools/ct schema/test-plan.schema.json docs/test-plan.md do
 # The whole addon folder: the fake client loads it for flow replay and the offline block. tools/events holds the
 # clients' event lists (offline level 4) and tools/clients their surfaces (level 5). Census manifests stay local and
 # are never bundled.
-BUNDLE_DIR := CheckThat tools/events tools/clients
+BUNDLE_DIR := CheckThat tools/events tools/clients tools/recordings
 
 install-skill:
 	@root=$$(pwd -P); mkdir -p "$(SKILL_DIR)" || exit 1; dest=$$(cd "$(SKILL_DIR)" && pwd -P); \

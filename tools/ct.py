@@ -1248,6 +1248,89 @@ def sv_json(path):
     return json.loads(sv_text(path))
 
 
+RECORDING_FORMAT = 1
+ITEM_LINK = re.compile(r"\|Hitem:([^|]*)\|h")
+
+def anonymize_link(value):
+    """An item link carries the looking player's level and specialization (fields 9 and 10 after the item id). A recording keeps the item and
+    empties those two fields, so it names no character."""
+    if not isinstance(value, str):
+        return value
+    def blank(m):
+        parts = m.group(1).split(":")
+        for i in (8, 9):
+            if i < len(parts):
+                parts[i] = ""
+        return "|Hitem:" + ":".join(parts) + "|h"
+    return ITEM_LINK.sub(blank, value)
+CALL_LABEL = re.compile(r"^([A-Za-z_][\w.]*)\((.*)\)$")
+
+def probe_recordings(sv_path):
+    """(client, recording, skipped) from the CTProbeDB.fixtures that CTProbe's /ctp record saved. recording is {format, client, build, calls}
+    with calls[label] = {api, args, returns, n, nils}: the arguments are parsed from the label (numbers and plain words), a nil return is a
+    false placeholder listed in nils (the plan JSON has no null). skipped names each call left out and why: one that raised an error, a
+    personal value (recorded by type only), a call on the player, an argument the label cannot give back exactly (a quoted string, nil),
+    and a return that is a table or a function."""
+    db = sv_json(sv_path).get("CTProbeDB")
+    if not isinstance(db, dict) or not isinstance(db.get("fixtures"), dict):
+        raise ValueError("%s holds no CTProbeDB.fixtures: run /ctp record in game, then /reload" % sv_path)
+    build_call = db["fixtures"].get("GetBuildInfo()")
+    values = [v.get("value") for v in (build_call or {}).get("values", [])]
+    if len(values) < 4 or not isinstance(values[3], (int, float)):
+        raise ValueError("%s has no GetBuildInfo() recording, so the client is unknown" % sv_path)
+    client = "forever" if values[3] >= 16000 else "era"
+    calls, skipped = {}, []
+    for label in sorted(db["fixtures"]):
+        rec = db["fixtures"][label]
+        m = CALL_LABEL.match(label)
+        if "error" in rec:
+            skipped.append((label, "the call raised an error in game: %s" % str(rec["error"])[:60])); continue
+        if rec.get("typeOnly"):
+            skipped.append((label, "a personal value, recorded by type only")); continue
+        if not m:
+            skipped.append((label, "the label is not a call")); continue
+        parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
+        if "player" in parts:
+            skipped.append((label, "a call on the player")); continue
+        if any(not re.fullmatch(r"-?\d+(\.\d+)?|true|false|[A-Za-z_]\w*", p) for p in parts) or "nil" in parts:
+            skipped.append((label, "an argument that cannot be read back exactly from the label")); continue
+        args = []
+        for part in parts:
+            args.append(True if part == "true" else False if part == "false" else int(part) if re.fullmatch(r"-?\d+", part)
+                        else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
+        returns, nils, bad = [], [], None
+        for i, v in enumerate(rec.get("values", []), 1):
+            t = v.get("type")
+            if t == "nil":
+                returns.append(False); nils.append(i)
+            elif t in ("table", "function", "userdata", "thread"):
+                bad = t
+            else:
+                returns.append(anonymize_link(v.get("value")))
+        if bad:
+            skipped.append((label, "returns a %s" % bad)); continue
+        calls[label] = {"api": m.group(1), "args": args, "returns": returns, "n": int(rec.get("n", len(returns)))}
+        if nils:
+            calls[label]["nils"] = nils
+    build = ".".join(str(x) for x in values[:2])
+    return client, {"format": RECORDING_FORMAT, "client": client, "build": build, "calls": calls}, skipped
+
+def cmd_recordings(a):
+    try:
+        client, rec, skipped = probe_recordings(a.src)
+    except (OSError, ValueError) as e:
+        print("error: %s" % e, file=sys.stderr); return 2
+    out = a.out or os.path.join(ROOT, "tools", "recordings")
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, client + ".json")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(rec, f, indent=1, sort_keys=True); f.write("\n")
+    print("recordings: %d calls for %s (build %s) -> %s" % (len(rec["calls"]), client, rec["build"], path))
+    for label, why in skipped:
+        print("  left out  %s: %s" % (label, why))
+    return 0
+
+
 WATCH = ("CheckThat", "KeepThat", "DontDoThat", "ClosestVendor")   # the files collected when no plan is given
 
 def sv_wanted(plan):
@@ -2705,6 +2788,7 @@ def main(argv=None):
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
+    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
@@ -2858,6 +2942,8 @@ def main(argv=None):
     if a.cmd == "sv2json":
         print(json.dumps(sv_json(a.file), indent=1, sort_keys=True))
         return 0
+    if a.cmd == "recordings":
+        return cmd_recordings(a)
     if a.cmd == "doctor":
         return cmd_doctor(a)
     if a.cmd == "collect":
