@@ -2429,9 +2429,29 @@ def step_touches(plan):
             out.append((st["id"], list(sec.get("covers", [])) + list(st.get("covers", [])), cmds, names))
     return out
 
-def coverage_data(plans, src, specs=None, runs=None):
+TEST_COVERS = re.compile(r"^\s*--\s*covers:\s*(.+?)\s*$")
+
+def test_covers(tests_dir):
+    """{requirement name: ["tests/file.lua:line", ...]} from `-- covers: <Requirement name>` comments in the unit test files (*.lua) under
+    tests_dir. One name per comment. Folders named fixtures are skipped."""
+    out = {}
+    for root, dirs, files in os.walk(tests_dir):
+        dirs[:] = sorted(d for d in dirs if d != "fixtures")
+        for fn in sorted(files):
+            if not fn.endswith(".lua"):
+                continue
+            path = os.path.join(root, fn)
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for n, line in enumerate(f, 1):
+                    m = TEST_COVERS.match(line)
+                    if m:
+                        out.setdefault(m.group(1), []).append("%s:%d" % (os.path.relpath(path, tests_dir).replace(os.sep, "/"), n))
+    return out
+
+def coverage_data(plans, src, specs=None, runs=None, tests=None):
     """Every subcommand, setting key and requirement name with the ids of the steps that cover it. runs ({id: run}, or None) adds a result:
-    passed (a covering step passed), failed (one failed or is unverified), never-run."""
+    passed (a covering step passed), failed (one failed or is unverified), never-run. tests ({name: locations} from test_covers, or None)
+    adds "tests" to each requirement, the names no spec has ("unknownTests") and the counts by tests, plans, both and neither ("testCounts")."""
     addons = {p["addon"] for p in plans}
     if len(addons) != 1:
         raise ValueError("the plans belong to %d addons (%s); give the plans of one addon" % (len(addons), ", ".join(sorted(addons))))
@@ -2482,6 +2502,14 @@ def coverage_data(plans, src, specs=None, runs=None):
         if kind == "requirements" and reqs is None:
             continue
         out[kind] = [{"name": n, "steps": [s for _, s in v], "result": result(v)} for n, v in items.items()]
+    if tests is not None and reqs is not None:
+        for r in out["requirements"]:
+            r["tests"] = list(tests.get(r["name"], []))
+        out["unknownTests"] = sorted(n for n in tests if n not in cover["requirements"])
+        both = [r["name"] for r in out["requirements"] if r["tests"] and r["steps"]]
+        out["testCounts"] = {"tests": sum(1 for r in out["requirements"] if r["tests"]), "plans": sum(1 for r in out["requirements"] if r["steps"]),
+                             "both": len(both), "neither": sum(1 for r in out["requirements"] if not r["tests"] and not r["steps"]), "total": len(out["requirements"])}
+        out["testAndPlan"] = both
     return out
 
 def coverage_text(d):
@@ -2493,10 +2521,17 @@ def coverage_text(d):
         used = [i for i in items if i["steps"]]
         lines += ["", "%s: %d of %d covered" % (kind, len(used), len(items))]
         for i in used:
-            lines.append("  covered  %s  %s%s" % (i["name"], ", ".join(i["steps"]), "  [%s]" % i["result"] if i["result"] else ""))
+            lines.append("  covered  %s  %s%s%s" % (i["name"], ", ".join(i["steps"]), "  [%s]" % i["result"] if i["result"] else "", "  tests: " + ", ".join(i["tests"]) if i.get("tests") else ""))
         for i in items:
             if not i["steps"]:
-                lines.append("  unused   %s" % i["name"])
+                lines.append("  %s %s%s" % ("tests   " if i.get("tests") else "unused  ", i["name"], "  " + ", ".join(i["tests"]) if i.get("tests") else ""))
+        if kind == "requirements" and "testCounts" in d:
+            c = d["testCounts"]
+            lines.append("  by unit tests %d, by plans %d, by both %d, by neither %d (of %d)" % (c["tests"], c["plans"], c["both"], c["neither"], c["total"]))
+            for n in d["testAndPlan"]:
+                lines.append("  in both, a plan step may repeat a unit test: %s" % n)
+            for n in d["unknownTests"]:
+                lines.append("  unknown requirement named by a test: %s" % n)
     return "\n".join(lines)
 
 
@@ -2532,6 +2567,7 @@ def main(argv=None):
     p = sub.add_parser("coverage", help="list the addon's slash subcommands, settings and spec requirements that the plans cover or leave unused (reads the addon's Lua source)"); p.add_argument("plans", nargs="+")
     p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC): Slash*.lua gives the subcommands, its option tables the setting keys")
     p.add_argument("--specs", help="requirements: folder of the addon's openspec specs (default: openspec/specs next to the addon folder, when it exists)")
+    p.add_argument("--tests", help="folder of the addon's unit tests: `-- covers: <Requirement name>` comments in its *.lua files count toward requirements (default: tests next to the addon folder, when it exists)")
     p.add_argument("--evidence", action="store_true", help="join the newest finished run of each plan: passed, failed or never-run"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--format", choices=("md", "json"), default="md")
     p = sub.add_parser("replay", help="judge a plan's log and fact checks against a saved-variables fixture folder (needs luajit)"); p.add_argument("plan"); p.add_argument("--sv", required=True, help="folder with the SavedVariables *.lua files and an optional fixture.json"); p.add_argument("-o")
@@ -2579,6 +2615,8 @@ def main(argv=None):
     if a.cmd == "coverage":
         plans, specs = [], a.specs or os.path.join(os.path.dirname(os.path.abspath(a.addon_src)), "openspec", "specs")
         specs = specs if os.path.isdir(specs) else None
+        tdir = a.tests or os.path.join(os.path.dirname(os.path.abspath(a.addon_src)), "tests")
+        tests = test_covers(tdir) if specs and os.path.isdir(tdir) else None
         for path in a.plans:
             plan = load_yaml(path)
             errs = validate(plan, set(requirement_names(specs)) if specs else None)
@@ -2588,7 +2626,7 @@ def main(argv=None):
                 return 2
             plans.append(plan)
         try:
-            d = coverage_data(plans, a.addon_src, specs, latest_runs(a.dest) if a.evidence else None)
+            d = coverage_data(plans, a.addon_src, specs, latest_runs(a.dest) if a.evidence else None, tests)
         except ValueError as e:
             print("error:", e, file=sys.stderr); return 2
         print(json.dumps(d, indent=1, sort_keys=True) if a.format == "json" else coverage_text(d))
