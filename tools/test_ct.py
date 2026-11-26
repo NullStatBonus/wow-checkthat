@@ -949,7 +949,8 @@ class PlanSkill(unittest.TestCase):
                        "fake game cannot prove", "at most 25 steps", "Plan sets by area", "test-settings mode", "Debug goes on first",
                        "**Purpose and depth.**", "set `purpose`", "### Foundation plans", "pillars", "**One character.**",
                        "not the release gate", "**Player language.**", "foundation plan over 12 steps",
-                       "**Name earlier steps by what the player did.**", "--addon-src <addon folder>", "older build than the addon's TOC"):
+                       "**Name earlier steps by what the player did.**", "--addon-src <addon folder>", "older build than the addon's TOC",
+                       "replay <plan> --run <run id>", "not judged offline"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -1185,6 +1186,170 @@ class PlanSkill(unittest.TestCase):
         for name in ("reference.md", "example.yaml"):
             self.assertIn(name, text)
             self.assertTrue(os.path.exists(os.path.join(self.SKILL, name)), name)
+
+
+class RunReplay(unittest.TestCase):
+    """#223: replay a plan against the saved-variable copies collected with a run."""
+    T0 = 1795600000
+
+    def setUp(self):
+        self.dest = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.dest)
+        os.makedirs(os.path.join(self.dest, "sv"))
+
+    def copy(self, path, text, t, h=None):
+        """One collected copy: path is the source path with / for separators; t is its collect time (seconds after T0)."""
+        import hashlib
+        h = h or hashlib.sha1((path + text).encode()).hexdigest()[:10]
+        p = os.path.join(self.dest, "sv", "%s.%s.lua" % (path.replace("/", "__"), h))
+        with open(p, "w") as f:
+            f.write(text)
+        os.utime(p, (self.T0 + t, self.T0 + t))
+        return os.path.basename(p)
+
+    @staticmethod
+    def checkthat(rid, rev):
+        return 'CheckThatDB = { ["global"] = { ["runs"] = { ["%s"] = { ["revision"] = %d } } } }\n' % (rid, rev)
+
+    @staticmethod
+    def keepthat(*lines):
+        return 'KeepThatDB = { ["global"] = { ["log"] = { %s } } }\n' % ", ".join('"%s"' % l for l in lines)
+
+    def store(self, rid="R-1", rev=2, character="Etock-Redmoor", client="forever-camelot"):
+        for n in range(1, rev + 1):
+            ct.write_revision(self.dest, {"runId": rid, "addon": "KeepThat", "planTitle": "Replay", "revision": n, "client": client, "build": "1",
+                                          "character": character, "order": ["r.1"], "steps": {"r.1": {"verdict": "fail", "attempts": []}}})
+
+    ACC = "_forever_/WTF/Account/ACC"
+
+    def forever(self):
+        self.store()
+        a = self.copy(self.ACC + "/SavedVariables/CheckThat", self.checkthat("R-1", 1), 0)
+        b = self.copy(self.ACC + "/SavedVariables/CheckThat", self.checkthat("R-1", 2), 100)
+        c = self.copy(self.ACC + "/SavedVariables/CheckThat", self.checkthat("R-1", 3), 200)
+        mine = [self.copy(self.ACC + "/91/Etock-Redmoor/SavedVariables/KeepThat", self.keepthat("[kt] old"), 0),
+                self.copy(self.ACC + "/91/Etock-Redmoor/SavedVariables/KeepThat", self.keepthat("[kt] second thing done"), 101),
+                self.copy(self.ACC + "/91/Etock-Redmoor/SavedVariables/KeepThat", self.keepthat("[kt] later"), 200)]
+        other = self.copy(self.ACC + "/91/Banksy-Redmoor/SavedVariables/KeepThat", self.keepthat("[kt] other character"), 101)
+        acct = self.copy(self.ACC + "/SavedVariables/DontDoThat", 'DontDoThatDB = {}\n', -5000)
+        era = self.copy("_classic_era_/WTF/Account/ACC/SavedVariables/DontDoThat", 'DontDoThatDB = {}\n', 100)
+        return {"ct": (a, b, c), "mine": mine, "other": other, "acct": acct, "era": era}
+
+    def names(self, files):
+        return [os.path.basename(f) for f in files]
+
+    def test_picks_the_collect_that_holds_the_newest_revision_and_the_runs_own_character(self):
+        c = self.forever()
+        files, notes = ct.run_sv_files(self.dest, "R-1")
+        got = self.names(files)
+        self.assertEqual(got[0], c["ct"][1], "the CheckThat copy holding revision 2, not the newer one at revision 3")
+        self.assertIn(c["mine"][1], got, "the character copy collected with it")
+        self.assertNotIn(c["mine"][0], got); self.assertNotIn(c["mine"][2], got)
+        self.assertNotIn(c["other"], got, "never another character's copy: per-character databases share a global")
+        self.assertNotIn(c["era"], got, "never another client folder")
+        self.assertIn(c["acct"], got, "an unchanged account-wide file keeps the copy of its first collect")
+        self.assertEqual(notes, [])
+
+    def test_a_file_first_collected_after_the_run_is_used_with_a_warning(self):
+        self.store()
+        self.copy(self.ACC + "/SavedVariables/CheckThat", self.checkthat("R-1", 2), 0)
+        late = self.copy(self.ACC + "/91/Etock-Redmoor/SavedVariables/KeepThat", self.keepthat("x"), 4000)
+        files, notes = ct.run_sv_files(self.dest, "R-1")
+        self.assertIn(late, self.names(files))
+        self.assertEqual(len(notes), 1); self.assertIn("first collected 1h after the CheckThat copy", notes[0])
+
+    def test_character_folders_of_both_clients(self):
+        m = ct.character_folder_matches
+        self.assertTrue(m(["91", "Etock-Redmoor"], "Etock-Redmoor"))
+        self.assertTrue(m(["Bloodsail Buccaneers", "Buradrae"], "Buradrae-BloodsailBuccaneers"))
+        self.assertFalse(m(["Bloodsail Buccaneers", "Buradrae"], "Buradrae-Firemaw"))
+        self.assertTrue(m(["91", "Etock-Redmoor"], "Etock-?"), "a realm of ? matches on the name")
+        self.assertTrue(m(["Firemaw", "Etock"], "Etock-?"))
+        self.assertFalse(m(["91", "Banksy-Redmoor"], "Etock-Redmoor"))
+        self.assertFalse(m([], "Etock-Redmoor"))
+        self.assertEqual(ct.sv_copy_parts("_classic_era___WTF__Account__ACC__Bloodsail Buccaneers__Buradrae__SavedVariables__KeepThat.0123456789.lua"),
+                         ("_classic_era___WTF__Account__ACC", ["Bloodsail Buccaneers", "Buradrae"], "KeepThat"))
+        self.assertIsNone(ct.sv_copy_parts("notes.txt"))
+
+    def test_unknown_run_or_one_no_copy_holds_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "no stored run R-9"):
+            ct.run_sv_files(self.dest, "R-9")
+        self.store(rev=5)
+        self.copy(self.ACC + "/SavedVariables/CheckThat", self.checkthat("R-1", 4), 0)
+        with self.assertRaisesRegex(ValueError, "no collected CheckThat.lua holds run R-1 at revision 5: collect again"):
+            ct.run_sv_files(self.dest, "R-1")
+
+    def run_cli(self, *args):
+        import contextlib, io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = ct.main(list(args))
+        return rc, out.getvalue(), err.getvalue()
+
+    def plan_file(self, line):
+        import yaml
+        p = ReplayFixture.plan(ReplayFixture.log(contains=line))
+        path = os.path.join(self.dest, "p.yaml")
+        with open(path, "w") as f:
+            yaml.safe_dump(p, f)
+        return path
+
+    def test_replay_run_judges_against_the_runs_own_log(self):
+        self.forever()
+        rc, out, err = self.run_cli("replay", self.plan_file("second thing done"), "--run", "R-1", "--dest", self.dest)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("replay: using sv/", err)
+        self.assertIn("1 passed, 0 failed", err)
+        rc, out, err = self.run_cli("replay", self.plan_file("other character"), "--run", "R-1", "--dest", self.dest)
+        self.assertEqual(rc, 1, "another character's line is not in this run's log")
+
+    def test_replay_needs_exactly_one_source(self):
+        path = self.plan_file("x")
+        self.assertEqual(self.run_cli("replay", path)[0], 2)
+        self.assertEqual(self.run_cli("replay", path, "--sv", self.dest, "--run", "R-1")[0], 2)
+        rc, _, err = self.run_cli("replay", path, "--run", "R-9", "--dest", self.dest)
+        self.assertEqual(rc, 2); self.assertIn("no stored run R-9", err)
+
+
+class ReportTocVersion(unittest.TestCase):
+    """#226: report's expected version defaults to the addon's TOC version."""
+    def setUp(self):
+        self.dest = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.dest)
+        ct.write_revision(self.dest, {"runId": "R-1", "addon": "KeepThat", "planTitle": "Replay", "revision": 1, "client": "forever-camelot", "build": "1",
+                                      "character": "X-Y", "targetVersion": "1.13.0", "order": ["r.1"], "steps": {"r.1": {"verdict": "pass", "attempts": []}}})
+        self.src = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.src)
+        with open(os.path.join(self.src, "KT_Vanilla.toc"), "w") as f:
+            f.write("## Version: 1.13.1\n")
+
+    def report(self, *args):
+        import contextlib, io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = ct.main(["report", "--dest", self.dest] + list(args))
+        return rc, err.getvalue()
+
+    def test_the_toc_version_is_expected_and_named(self):
+        rc, err = self.report("--addon-src", self.src)
+        self.assertIn("report: expected version 1.13.1, from KT_Vanilla.toc", err)
+        self.assertIn("tested addon version 1.13.0, not the expected 1.13.1", err)
+
+    def test_an_explicit_version_wins(self):
+        rc, err = self.report("--addon-src", self.src, "--expect-version", "1.13.0")
+        self.assertNotIn("expected version 1.13.1", err)
+        self.assertNotIn("not the expected", err)
+
+    def test_the_plan_files_offline_toc_is_the_fallback(self):
+        import yaml
+        addons = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, addons)
+        os.makedirs(os.path.join(addons, "wow-kt", "KT"))
+        shutil.copy(os.path.join(self.src, "KT_Vanilla.toc"), os.path.join(addons, "wow-kt", "KT", "KT.toc"))
+        p = dict(ReplayFixture.plan(ReplayFixture.log(contains="x")), offline={"level": 6, "toc": "wow-kt/KT/KT.toc", "steps": [{"call": "x"}]})
+        self.assertTrue(ct.plan_toc(p, None, addons).endswith("KT.toc"))
+        self.assertEqual(ct.toc_version_raw(ct.plan_toc(p, None, addons)), "1.13.1")
+
+    def test_no_toc_keeps_the_old_output(self):
+        rc, err = self.report()
+        self.assertNotIn("expected version", err)
+        self.assertNotIn("not the expected", err)
 
 
 class StepReferences(unittest.TestCase):

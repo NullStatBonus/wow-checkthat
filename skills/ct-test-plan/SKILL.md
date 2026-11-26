@@ -131,12 +131,12 @@ A step id is a key: `ct.py diff` and `trend` follow a step by its id. When you e
 
 Use this when the author has run a plan and wants it fixed. Never edit addon code unasked.
 
-1. Collect and read the run with the `ct-verify` skill's commands first: `$PY $CT/tools/ct.py report --failed-only --dest <evidence> --expect-version <addon version> --plan <plan file>`. Relay every `warning:` before anything else. A run of another build, or of an older plan file, says nothing about the current plan: stop and ask for a new run.
+1. Collect and read the run with the `ct-verify` skill's commands first: `$PY $CT/tools/ct.py report --failed-only --dest <evidence> --addon-src <addon folder> --plan <plan file>` (the expected version comes from the addon's TOC; give `--expect-version <addon version>` when the source is not at hand). Relay every `warning:` before anything else. A run of another build, or of an older plan file, says nothing about the current plan: stop and ask for a new run.
 2. Sort each failed, unverified or contradicted step with `ct.py show <run> <step>` (attempts, `rule`, `hits`, `excerpt`, error stacks):
    - **Plan fault.** The step asserts its own result line; the log was not readable (debug not on, wrong log source or path); the pattern is stricter than the line the addon writes (a hit shows a near match); `scope` is wrong; the timeout is too short; the step order or the `expect` text sends the tester the wrong way; a manual step's Run button moved the card.
    - **Addon fault.** The rule is right and the evidence contradicts it: a forbidden line appeared, a state check failed, a Lua error from the addon fell inside the step.
    - **Cannot tell.** Say so and ask the author. Do not guess.
-3. Edit only plan faults, keep every step id (section 4b), and run the handoff gate (section 4) again. Say which plan version the run used and which plan version you now hand over.
+3. Edit only plan faults, keep every step id (section 4b), and run the handoff gate (section 4) again. Then replay the revised plan against the failing run: `$PY $CT/tools/ct.py replay <plan> --run <run id> --dest <evidence>`. It judges every log and fact check against the log the game really wrote, so a wrong line order or a reworded line fails here, which `replay-flow` cannot show. Fix each failure before you ask for another in-game run. A pass proves only the checks that read the whole log: a check that needs the step's own window (`absent`, `exactly`, `max`, a `missing` fact) and a state probe are "not judged offline". Say which plan version the run used and which plan version you now hand over.
 4. Tell the author what to do next:
    - Addon faults only, plan unchanged: fix the addon, `/reload`, then `/ct rerun failed` in the same run.
    - The plan changed: import the new plan and start a new run (the old run belongs to the old plan digest). `/ct run <category>` limits it to the areas that failed.
