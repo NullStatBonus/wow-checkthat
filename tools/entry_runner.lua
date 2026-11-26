@@ -510,13 +510,16 @@ function Runner.run(spec, opts)
                         end
                         return false
                     end
-                    if not lines then add(i, "tooltip", false, "there is no GameTooltip from the client to read")
+                    local fmtLine = function(l) return ("%s | %s"):format(tostring(l.left), tostring(l.right)) end
+                    if not lines then
+                        add(i, "tooltip", false, rawget(_G, "GameTooltip") == nil and "there is no GameTooltip: the client has none at this level"
+                            or "GameTooltip is not the client's tooltip: a mock or the addon replaced it, so there are no lines to read")
                     elseif t.lines ~= nil then add(i, "tooltip", #lines == t.lines, ("the tooltip has %d line(s), expected %d"):format(#lines, t.lines))
                     elseif t.line ~= nil then
                         local l = lines[t.line]
                         if not l then add(i, "tooltip", false, ("the tooltip has %d line(s), so there is no line %d"):format(#lines, t.line))
-                        elseif has(l) then add(i, "tooltip", true, ("line %d is %s"):format(t.line, show({ l.left, l.right })))
-                        else add(i, "tooltip", false, ("line %d is %s, expected %s %q"):format(t.line, show({ l.left, l.right }), t.equals ~= nil and "equals" or "contains", t.equals or t.contains)) end
+                        elseif has(l) then add(i, "tooltip", true, ("line %d is %s"):format(t.line, fmtLine(l)))
+                        else add(i, "tooltip", false, ("line %d is %s, expected %s %q"):format(t.line, fmtLine(l), t.equals ~= nil and "equals" or "contains", t.equals or t.contains)) end
                     else
                         local hit
                         for n, l in ipairs(lines) do if has(l) then hit = n; break end end
