@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: MockAddon order
+## SavedVariables: MockOrderDB
+## Notes: Fixture: the lifecycle events a login and a reload fire, in order. Not shipped.
+Order.lua

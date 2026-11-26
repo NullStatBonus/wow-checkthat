@@ -295,10 +295,13 @@ function Runner.run(spec, opts)
         return fired
     end
     local function login(reloading)
-        local events = { { "ADDON_LOADED", name, hasBindings }, { "PLAYER_LOGIN" }, { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false } }
+        -- Measured in game on Era and Forever (docs/contracts.md): VARIABLES_LOADED comes after ADDON_LOADED and before PLAYER_LOGIN,
+        -- and SPELLS_CHANGED after PLAYER_ENTERING_WORLD. Five UPDATE_BINDINGS fire as well; they are not played.
+        local events = { { "ADDON_LOADED", name, hasBindings }, { "VARIABLES_LOADED" }, { "PLAYER_LOGIN" },
+            { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false }, { "SPELLS_CHANGED" } }
         for _, e in ipairs(events) do
             if e[1] == "PLAYER_LOGIN" then cur.st.loggedIn = true end
-            local n, err = fire(unpack(e, 1, 3))
+            local n, err = fire(unpack(e, 1, #e)) -- exactly the values the game passes: none for VARIABLES_LOADED
             if not n then return false, ("%s handler threw %s"):format(e[1], err) end
         end
         return true
@@ -486,8 +489,8 @@ function Runner.run(spec, opts)
                     else add(i, "wait", true, ("waited %ss, ran %d timer callback(s)"):format(tostring(step.wait), ran)) end
                 elseif step.reload then
                     local rok, rerr = true, nil
-                    for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "PLAYER_LOGOUT" }, { "ADDONS_UNLOADING", false } }) do
-                        local n, ferr = fire(unpack(ev, 1, 2))
+                    for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "ADDONS_UNLOADING", false }, { "PLAYER_LOGOUT" } }) do -- measured order
+                        local n, ferr = fire(unpack(ev, 1, #ev))
                         ev = ev[1]
                         if not n then rok, rerr = false, ("%s handler threw %s"):format(ev, ferr); break end
                     end

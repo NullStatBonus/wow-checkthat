@@ -595,10 +595,11 @@ end
 
 -- Script-time budget (#155). The game stops an addon script that runs too long ("script ran too long"), which a plain pcall
 -- never shows offline. H.budgeted(budget, fn, ...) is pcall with a count hook: an instruction costs 1 and a call 20, and the
--- call raises once the cost passes budget. No budget (nil or false) is a plain pcall. H.DEFAULT_BUDGET is a guess, not
--- measured in game, so only a runaway loop trips it. The offline runner uses it from level 5 on, and tests pass their own
+-- call raises once the cost passes budget. No budget (nil or false) is a plain pcall. Measured in game (docs/contracts.md): a call
+-- costs about 8 loop turns, so 20 units is near right; the game ran 1.2 billion units (3.5 s) without stopping a script, so its
+-- limit is higher than that. H.DEFAULT_BUDGET is far below the game's limit: it stops a runaway loop offline, not a slow script. The offline runner uses it from level 5 on, and tests pass their own
 -- budget to stubClient({ scriptBudget = n }) for timer callbacks. A coroutine the script starts has no hook, so its work is not counted.
-H.DEFAULT_BUDGET = 1000000
+H.DEFAULT_BUDGET = 100000000
 local CALL_COST, COUNT_STEP = 20, 100
 local budgetActive = false
 local HARNESS_SRC = debug.getinfo(1, "S").short_src

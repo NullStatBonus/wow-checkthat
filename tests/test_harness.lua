@@ -1,6 +1,7 @@
 -- The harness's own assertions and runner behavior.
 local ns, test, T, finish, H = dofile("tests/harness.lua")()
 
+local SMALL = 1000000 -- a small budget, so a runaway loop trips it in a few milliseconds
 local function msg(fn, ...) local ok, err = pcall(fn, ...); assert(not ok, "expected a failure"); return tostring(err) end
 
 -- Runs a Lua file under luajit in its own process; returns its output and exit code.
@@ -15,29 +16,36 @@ local PRE = 'local ns, test, T, finish, H = dofile("tests/harness.lua")()\n'
 
 test("H.budgeted stops a runaway script, passes a normal one and puts the JIT and the hook back", function()
     local hookBefore = debug.gethook()
-    local ok, v = H.budgeted(H.DEFAULT_BUDGET, function(a) return a + 1 end, 41)
+    local ok, v = H.budgeted(SMALL, function(a) return a + 1 end, 41)
     T.eq(ok, true); T.eq(v, 42)
-    local bad, err = H.budgeted(H.DEFAULT_BUDGET, function() while true do end end)
+    local bad, err = H.budgeted(SMALL, function() while true do end end)
     T.eq(bad, false); T.ok(tostring(err):find("script ran too long", 1, true), tostring(err))
-    local reads, rerr = H.budgeted(H.DEFAULT_BUDGET, function() for i = 1, 50000 do math.floor(i) end end)
+    local reads, rerr = H.budgeted(SMALL, function() for i = 1, 50000 do math.floor(i) end end)
     T.eq(reads, false, "50,000 calls in one script is over the budget"); T.ok(rerr)
     T.eq(debug.gethook(), hookBefore, "no hook is left behind")
     if jit then T.eq(jit.status(), true, "the JIT is back on") end
 end)
 
 test("a script that catches the budget error with pcall and loops again is stopped again; a nested call is counted by the outer one", function()
-    local ok, err = H.budgeted(H.DEFAULT_BUDGET, function()
+    local ok, err = H.budgeted(SMALL, function()
         pcall(function() while true do end end)
         while true do end
     end)
     T.eq(ok, false); T.ok(tostring(err):find("script ran too long", 1, true), tostring(err))
     local inner
-    local ok2 = H.budgeted(H.DEFAULT_BUDGET, function()
-        inner = { H.budgeted(H.DEFAULT_BUDGET, function() return "a", nil, nil end) }
+    local ok2 = H.budgeted(SMALL, function()
+        inner = { H.budgeted(SMALL, function() return "a", nil, nil end) }
     end)
     T.eq(ok2, true); T.eq(inner[1], true, "the nested call is a plain pcall"); T.eq(inner[2], "a")
-    T.eq(select("#", H.budgeted(H.DEFAULT_BUDGET, function() return 1, nil, nil end)), 4, "trailing nils are kept")
+    T.eq(select("#", H.budgeted(SMALL, function() return 1, nil, nil end)), 4, "trailing nils are kept")
     T.eq(debug.gethook(), nil, "no hook is left")
+end)
+
+test("the default budget stops a runaway loop and lets a long honest script run", function()
+    T.eq(H.DEFAULT_BUDGET, 100000000)
+    local ok, err = H.budgeted(H.DEFAULT_BUDGET, function() while true do end end)
+    T.ok(not ok and tostring(err):find("script ran too long", 1, true), tostring(err))
+    T.ok((H.budgeted(H.DEFAULT_BUDGET, function() for i = 1, 2000000 do math.floor(i) end return true end)), "2 million calls, a few ms in the game, are not a runaway")
 end)
 
 test("a budget can be small, and no budget is a plain pcall", function()
@@ -47,7 +55,7 @@ test("a budget can be small, and no budget is a plain pcall", function()
 end)
 
 test("a timer callback that runs too long reports through advance, and later timers still run", function()
-    local st = H.stubClient({ clock = {}, scriptBudget = H.DEFAULT_BUDGET })
+    local st = H.stubClient({ clock = {}, scriptBudget = SMALL })
     local ran = false
     C_Timer.After(1, function() while true do end end)
     C_Timer.After(2, function() ran = true end)
