@@ -3117,6 +3117,74 @@ class Coverage(unittest.TestCase):
         s = self.by(self.cov(p)[1], "settings")
         self.assertEqual({k: v["steps"] for k, v in s.items()}, {"verbose": ["f2"], "size": ["f1"], "quiet": []})
 
+    def registry_addon(self, register=True):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        libs = os.path.join(ROOT, "CheckThat", "Libs")
+        for src, dst in (("LibStub", "LibStub"), ("CallbackHandler-1.0", "CallbackHandler-1.0"), (os.path.join("AceConfig-3.0", "AceConfigRegistry-3.0"), "AceConfigRegistry-3.0")):
+            shutil.copytree(os.path.join(libs, src), os.path.join(d, "Libs", dst))
+        with open(os.path.join(d, "Reg.toc"), "w") as f:
+            f.write("## Interface: 11509\n## Title: Reg\nLibs\\LibStub\\LibStub.lua\nLibs\\CallbackHandler-1.0\\CallbackHandler-1.0.lua\n"
+                    "Libs\\AceConfigRegistry-3.0\\AceConfigRegistry-3.0.lua\nReg.lua\nSlash.lua\n")
+        with open(os.path.join(d, "Reg.lua"), "w") as f:
+            f.write('local opts = { type = "group", name = "Reg", args = {\n locked = { type = "toggle", name = "Locked" },\n'
+                    ' look = { type = "group", name = "Look", args = { scale = { type = "range", name = "Scale" }, hdr = { type = "header", name = "H" }, go = { type = "execute", name = "Go" } } } } }\n'
+                    + ('LibStub("AceConfigRegistry-3.0"):RegisterOptionsTable("Reg", opts)\n' if register else ""))
+        with open(os.path.join(d, "Slash.lua"), "w") as f:
+            f.write('local function h(msg) local cmd = msg\n if cmd == "go" then end end\n')
+        return d
+
+    def cov_in(self, src, *plans, **kw):
+        return ct.coverage_data(list(plans), src, **kw)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_harness_reads_the_registered_options_tables_and_keeps_the_source_as_fallback(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "Type /kt go and set scale."}, None))
+        d = self.registry_addon()
+        got = self.cov_in(d, p, harness=True)
+        self.assertEqual([s["name"] for s in got["settings"]], ["locked", "scale"], "group, header and execute nodes are not settings")
+        self.assertEqual(got["settingsSource"], "registry (1 table, Reg.toc) and the source")
+        self.assertIn("settings read from: registry (1 table, Reg.toc) and the source", ct.coverage_text(got))
+        self.assertEqual({s["name"]: s["steps"] for s in got["settings"]}["scale"], ["c1"], "a plan step still covers a registry key")
+        empty = self.cov_in(self.registry_addon(register=False), p, harness=True)
+        self.assertEqual(empty["settingsSource"], "source (the options registry was empty after Reg.toc loaded)")
+        self.assertEqual(empty["settings"], self.cov_in(self.registry_addon(register=False), p)["settings"], "the fallback is the regex result")
+
+    def test_harness_falls_back_to_the_source_with_a_reason_when_it_cannot_run(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
+        none = self.cov_in(self.SRC, p, harness=True)
+        self.assertEqual(none["settingsSource"], "source (the addon folder has no TOC)", "an addon folder with no TOC falls back")
+        self.assertEqual(none["settings"], self.cov_in(self.SRC, p)["settings"])
+        real = ct.run_luajit
+        def missing(*a, **k): raise ValueError("this command needs luajit, which is not installed")
+        ct.run_luajit = missing
+        self.addCleanup(lambda: setattr(ct, "run_luajit", real))
+        got = self.cov_in(self.registry_addon(), p, harness=True)
+        self.assertEqual(got["settingsSource"], "source (this command needs luajit, which is not installed)")
+
+    def test_without_harness_the_output_keeps_its_old_shape(self):
+        got = self.cov_in(self.registry_addon(), self.plan(("c1", {"kind": "manual", "text": "t"}, None)))
+        self.assertNotIn("settingsSource", got)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_harness_on_the_real_addon_finds_its_registered_settings(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
+        got = self.cov_in(os.path.join(ROOT, "CheckThat"), p, harness=True)
+        names = {s["name"] for s in got["settings"]}
+        self.assertTrue({"card.scale", "debug"} <= names, sorted(names)[:10])
+        self.assertTrue(got["settingsSource"].startswith("registry"))
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_the_registry_adds_to_the_source_scan_and_a_broken_load_says_why(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
+        d = self.registry_addon()
+        with open(os.path.join(d, "Slash.lua"), "a") as f:
+            f.write('local t = { fromsource = { type = "toggle", name = "S" } }\n')
+        got = self.cov_in(d, p, harness=True)
+        self.assertEqual([s["name"] for s in got["settings"]], ["fromsource", "locked", "scale"], "the source scan still adds what it finds")
+        with open(os.path.join(d, "Reg.lua"), "w") as f: f.write('error("boom at load")\n')
+        bad = self.cov_in(d, p, harness=True)
+        self.assertTrue(bad["settingsSource"].startswith("source (loading Reg.toc failed"), bad["settingsSource"])
+
     def test_unit_test_markers_count_toward_requirements(self):
         p = self.plan(("r1", {"kind": "manual", "text": "t"}, None), covers=["Second thing works"])
         code, d, _ = self.cov(p)
