@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: MockAddon lifecycle, saved variables first
+## SavedVariables: MockLifeDB
+## LoadSavedVariablesFirst: 1
+Life.lua
