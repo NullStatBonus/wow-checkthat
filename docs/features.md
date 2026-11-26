@@ -159,7 +159,7 @@ if CheckThat and CheckThat.Report then CheckThat.Report("KeepThat", "bagFull", t
 - `/ct version` prints the CheckThat version. With a run open it also reports the fact `[CheckThat] version=<major*10000 + minor*100 + patch>`, so 0.17.0 is `version=1700`. A plan starts with a step that runs it and checks `op: ge` against its own version, because a game that loads an older copy of the addon gives results that mean nothing. With no run open it only prints.
 - `/ct fact` reports the fact `[CheckThat] selftest=1` through the same call. The self-test step "Report a fact" runs it with the Run button, so a plan can test the API with one click. With no run open it says so and records nothing.
 - `CheckThat.Entry(addon, name, fn)` registers a function a plan step can call (see [Entry points](#entry-points)). It returns true when it stores the entry.
-- `CheckThat.API_VERSION` is 2. Later versions only add to the API. A call that works now keeps working.
+- `CheckThat.API_VERSION` is 3. Later versions only add to the API. A call that works now keeps working.
 - CheckThat keeps the lines in `CheckThatDB.global.facts`. A plan reads them as a log: `global: CheckThatDB`, `path: global.facts`, `format: strings`. See [Write a plan](authoring-plans.md#facts-from-the-addon-under-test).
 - A step counts only the facts reported after it opened. A fact is data and CheckThat never runs it.
 
@@ -184,6 +184,25 @@ end)
 - **Check entry points after login** (settings page, off by default) calls the entries that your imported plans name, about 3 seconds after login and never in combat. It records no fact and opens no run. It prints one chat line, such as `Self-check: 2 of 3 entry checks matched. First miss: <step>: <line>`. A step matches when it has a required `equals` or `contains` log check and all of them hold. It runs code that other addons registered, so leave it off unless you test them. The setting is in the debug report as `loginCheck`.
 
 Debug log: `self-check: <matched> of <total> entry checks matched`, `self-check skipped: in combat`, `loginCheck on` and `off`, `entries registered <addon>.<name>`, `entries called <addon>.<name>: <result>` and `entries refused ...`.
+
+### Run start and end
+
+An addon can learn when a run of its plan starts and stops, so it can set up and restore its own test state:
+
+```lua
+CheckThat.OnRun("KeepThat", function(event, info)
+    if event == "start" then --[[ put your test settings in place ]] else --[[ restore them ]] end
+end)
+```
+
+- `CheckThat.OnRun(addon, fn)` returns true when it stores `fn`. A second call for the same addon replaces the first. A bad name or a value that is not a function returns false. Call it when the player logs in.
+- `event` is `"start"` or `"end"`. `info` is a new table each time with `plan` (the plan title), `digest`, `runId` and, for `end`, `reason`. The reason is `ended` (End run or Clear plan), `replaced` (another run took the card) or `deleted`.
+- Only runs of a plan that names the addon call it, and only the open run of the current character. `end` comes before the `start` of the run that replaces it.
+- `start` also comes when the tester opens an unfinished run again, and once when the addon registers while its run is already open. After a reload it can come again for the same run, so make it safe to run twice. A reload never sends `end`.
+- CheckThat calls the function after it saves the run, in `pcall`. A Lua error in it goes to the debug log, and to the Lua error list while a run is open. The run is not changed.
+- `CheckThat.ActiveRun(addon)` returns the plan title of the open run of that addon, or nil. Use it at login to restore state that a run left behind when the addon was not loaded.
+
+Debug log: `runevents registered run callback <addon>`, `runevents called <addon> start`, `runevents called <addon> end <reason>`, `runevents failed <addon> <event>`, `runevents callback error <addon>: <text>` and `runevents refused a run callback ...`.
 
 ## Categories and the tracker
 

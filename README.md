@@ -22,6 +22,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Run button.** Runs the step's allowed commands in order. It is hidden during combat. [Details](docs/features.md#run-button)
 - **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. A failed or unverified step keeps the first new log lines for the report. [Details](docs/features.md#saved-log-positions)
 - **Automatic steps.** A step marked `auto` records its own result when the checks are met. Your click still wins. [Details](docs/features.md#automatic-steps)
+- **Run start and end.** An addon can register `CheckThat.OnRun` to set up and restore its own test state when a run starts or stops. [Details](docs/features.md#run-start-and-end)
 - **Entry points.** An addon can register a function with `CheckThat.Entry`, and an auto step calls it and checks the result. [Details](docs/features.md#entry-points)
 - **Facts from other addons.** An addon can publish a named fact with `CheckThat.Report`, and a plan checks it like a log line. [Details](docs/features.md#facts-from-other-addons)
 - **Run menu.** Import a plan, end the run or clear the plan from the card header. [Details](docs/features.md#run-menu)

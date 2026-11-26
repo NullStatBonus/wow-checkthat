@@ -17,8 +17,10 @@ What an addon that reports facts can rely on. It only grows: a released name, ar
 
 | Name | Contract | Since |
 | --- | --- | --- |
-| `CheckThat.API_VERSION` | Number, 2. Rises only when something is added. | 0.9.0 |
+| `CheckThat.API_VERSION` | Number, 3. Rises only when something is added. | 0.9.0 |
 | `CheckThat.Entry(addon, name, fn)` | Returns true when it stores the entry, false otherwise. Never raises. An auto step with `call` runs it at step open, outside combat, and records `[addon] entry.<name>=<result>`. | 0.18.0 |
+| `CheckThat.OnRun(addon, fn)` | Returns true when it stores `fn`, false otherwise. Never raises. One function per addon. Calls `fn("start" or "end", info)` in `pcall` for the open run of the current character when its plan names the addon. `info` is a new table: `plan`, `digest`, `runId`, and for `end` a `reason` of `ended`, `replaced` or `deleted`. `end` comes once per change of the open run. `start` may repeat after a reload. | unreleased |
+| `CheckThat.ActiveRun(addon)` | The plan title of the current character's open run when its plan names the addon, else nil. Never raises. | unreleased |
 | `CheckThat.Report(addon, key, value)` | Returns true when it records `[addon] key=value`, false otherwise. Never raises. Records only while a run is open. Limits: addon 32, key 48, string value 120 characters, 30 facts per addon per second, 300 lines kept. | 0.9.0 |
 | `CheckThatDB.global.facts` | Array of the recorded lines, readable as a `strings` log. | 0.9.0 |
 | `CheckThatDB.global.errors` | Array of Lua error lines recorded while a run is open, each `<time>.<counter> [<addon>] <message>` with the message cut to 200 characters, 100 kept, 30 a second. `<addon>` is read from `AddOns\<Name>\` in the message, else `?` (lines CheckThat adds itself say `CheckThat`). Readable as a quiet `strings` log. | 0.10.0, tag 0.12.0 |

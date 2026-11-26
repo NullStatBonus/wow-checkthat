@@ -179,6 +179,10 @@ Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categor
     Check: the steps list under the row, each with its result in words and a mark (passed, failed, open, not picked). The button turns into a minus. The card shows the step you clicked, and no result changes. A step of a category that is not picked shows "not picked" and a click on it does nothing. The minus button closes the list.
     Log: `[ct] tracker expand <category>`, `[ct] show step <id>` and `[ct] tracker collapse <category>`.
 
+16. **A run tells an addon when it ends.** Type `/run CheckThat.OnRun("CheckThat", function(e, i) print("run " .. e .. " " .. tostring(i.reason)) end)`. Start the self-test, then click End run on the card and accept.
+    Check: chat shows "run start nil" when the run starts and "run end ended" when you end it.
+    Log: `[runevents] called CheckThat start` and `[runevents] called CheckThat end ended`.
+
 ## 6. Plan skills (no game needed)
 
 These checks run in a coding agent, not in the game. Run `make install-skill` first. `make test` covers what code decides (bundle, `collect`, example plans, fixture data). These checks cover the conversation.

@@ -13,6 +13,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
 - See which steps CheckThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
+- An addon under test can learn when a run starts or ends, so it can restore its own test settings.
 - An addon under test can report a fact with `CheckThat.Report`, and a plan or an automatic step checks it like a log line.
 - Group a plan's steps into categories. Pick the categories to run when you start, add one later, jump to one, take one out while it has no result, or run one again. A bar and a Categories window show each category in blue, yellow, red or green, and say the result in words. Open a category in the window to see its steps and jump to one.
 - Check fact values (range, tolerance, type, list), how many times an event occurred, and that no Lua error appeared.

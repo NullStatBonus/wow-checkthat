@@ -36,6 +36,18 @@ function App.FutureCount()
     return n
 end
 
+-- The open run of this character, or nil.
+local function openRun()
+    local run = App.db and App.db.runs[App.db.currentByChar[App.Character()] or ""]
+    if run and not run.endedAt then return run end
+    return nil
+end
+
+-- Tell the addons that a change of the open run happened. Always after the state is saved.
+local function changed(before, reason)
+    if ns.RunEvents then ns.RunEvents.Changed(before, openRun(), reason) end
+end
+
 -- True while the character has an open run. The login self-check stays out of the way of a run.
 function App.RunOpen()
     local run = App.db and App.db.runs[App.db.currentByChar[App.Character()] or ""]
@@ -62,6 +74,7 @@ function App.Init(db, env, opts)
         return run ~= nil and not run.endedAt
     end
     if ns.Facts then ns.Facts.Bind(db.facts, function() return now(App) end, runOpen) end
+    if ns.RunEvents then ns.RunEvents.Bind(openRun) end
     if ns.Entries then
         -- Unknown is treated as combat: an entry never runs when the game cannot say.
         ns.Entries.Bind(function()
@@ -257,6 +270,7 @@ function App.OpenRun(id)
     local run = App.db.runs[id or ""]
     if not run then return nil, L["There is no run."] end
     local char, ui = App.Character(), App.db.ui
+    local before = openRun()
     ui.view = ui.view or {}
     if run.endedAt then
         ui.view[char] = App.db.currentByChar[char] ~= id and id or nil
@@ -271,6 +285,7 @@ function App.OpenRun(id)
     end
     ui.pendingStart = nil
     App.Log("run opened " .. id)
+    changed(before, "replaced")
     return run
 end
 
@@ -289,6 +304,7 @@ end
 
 function App.DeleteRun(id)
     if not App.db.runs[id or ""] then return nil, L["There is no run."] end
+    local before = openRun()
     App.db.runs[id] = nil
     for char, cur in pairs(App.db.currentByChar) do
         if cur == id then App.db.currentByChar[char] = nil end
@@ -298,6 +314,7 @@ function App.DeleteRun(id)
     end
     App.PrunePlans()
     App.Log("run deleted " .. id)
+    changed(before, "deleted")
     return true
 end
 
@@ -405,6 +422,7 @@ function App.Start(addon, picks)
         targetVersion = ns.Adapter.AddonVersion(rec.plan.addon) }
     local run = ns.Run.New(ctx)
     if not run then return nil, picks and L["Pick at least one category that has steps for this client."] or L["The plan has no steps for this client."] end
+    local before = openRun()
     if ns.Errors then ns.Errors.Hook(); ns.Errors.Rebase() end
     while App.db.runs[run.runId] or (App.db.future and App.db.future[run.runId]) do run.runId = run.runId .. "x" end
     App.db.runs[run.runId] = run
@@ -414,6 +432,7 @@ function App.Start(addon, picks)
     App.db.ui.pendingStart = nil
     App.PruneRuns()
     App.Log("run started " .. run.runId)
+    changed(before, "replaced")
     return run
 end
 
@@ -639,8 +658,10 @@ function App.End(runId)
     local run, err = App.CanEnd()
     if not run then return nil, err end
     if runId and run.runId ~= runId then return nil, L["There is no run."] end
+    local before = openRun()
     ns.Run.End(run, now(App))
     App.Log("run ended " .. run.runId)
+    changed(before, "ended")
     return run
 end
 
