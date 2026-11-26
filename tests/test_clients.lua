@@ -56,7 +56,7 @@ test("a frame of a listed type has only its type's methods, plus those of its li
     T.raises(function() b:SetBackdropp({}) end, "SetBackdropp", "and calling it fails")
     T.eq(type(b.SetPoint), "function", "the type's own methods stay")
     local ok = CreateFrame("Button", nil, nil, "UIPanelButtonTemplate")
-    T.eq(type(ok.SetText), "function"); T.ok(ok.Text, "a template's child key"); T.eq(ok.SetTextt, nil)
+    T.eq(type(ok.SetText), "function"); T.ok(ok.Text, "a template's child key"); ok.Text:SetText("x"); T.eq(ok.Text, ok.Text, "and it is one child, not a new one per read"); T.ok(ok.Text.SetAnything, "that takes any method"); T.eq(ok.SetTextt, nil)
     local two = CreateFrame("Frame", nil, nil, "BackdropTemplate, UICheckButtonTemplate")
     T.ok(two.SetBackdrop and two.Text, "a list of templates adds each one's names")
     T.ok(CreateFrame("Button", nil, nil, "SecureActionButtonTemplate,UIPanelButtonTemplate").AnyMethodAtAll, "a template the surface does not list lets any method through")

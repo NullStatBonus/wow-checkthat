@@ -183,6 +183,7 @@ class TemplateSlice(unittest.TestCase):
         put("a.xml", '<Ui><!-- <Frame name="Commented" virtual="true"/> -->'
                      '<Frame name="Base" virtual="true" mixin="BaseMixin"><Frames><Frame parentKey="Inner"/></Frames></Frame>'
                      '<Button name="Child" virtual="true" inherits="Base, Missing" mixin="ChildMixin"><Layers><Layer><FontString parentKey="Text"/></Layer></Layers></Button></Ui>')
+        put("b.lua", 'LateMixin = LateMixin or {}\nLateMixin.Direct = function() end\nBaseMixin = Mixin(BaseMixin, LateMixin)\n')
         put("a.lua", 'BaseMixin = {}\nfunction BaseMixin:Ping() end\nChildMixin = CreateFromMixins(BaseMixin, OtherMixin)\nfunction ChildMixin:Pong() end\nOtherMixin = {}\nfunction OtherMixin.Far() end\nfunction Unrelated:Nope() end\n')
         surface = os.path.join(d, "surface.json")
         with open(surface, "w") as f: f.write('{\n "format": 1,\n "client": "x",\n "widgets": {"Frame": ["SetPoint"]}\n}\n')
@@ -194,7 +195,7 @@ class TemplateSlice(unittest.TestCase):
         templates, mixins = template_slice.scan(os.path.join(d, "src"))
         self.assertNotIn("Commented", templates)
         methods, keys = template_slice.resolve("Child", templates, mixins)
-        self.assertEqual(sorted(methods), ["Far", "Ping", "Pong"]); self.assertEqual(sorted(keys), ["Inner", "Text"])
+        self.assertEqual(sorted(methods), ["Direct", "Far", "Ping", "Pong"], "also Name.Method = function and Mixin(Name, ...)"); self.assertEqual(sorted(keys), ["Inner", "Text"])
         self.assertNotIn("Nope", methods)
 
     def test_the_surface_file_keeps_every_other_byte_and_an_unknown_template_is_an_error(self):
@@ -205,7 +206,13 @@ class TemplateSlice(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertTrue(out.stdout.startswith(before.rstrip()[:-1].rstrip()), "the old text is the prefix")
         j = json.loads(out.stdout)
-        self.assertEqual(j["widgets"], {"Frame": ["SetPoint"]}); self.assertEqual(j["templates"]["Child"]["methods"], ["Far", "Ping", "Pong"])
+        self.assertEqual(j["widgets"], {"Frame": ["SetPoint"]}); self.assertEqual(j["templates"]["Child"]["methods"], ["Direct", "Far", "Ping", "Pong"])
+        again = os.path.join(d, "again.json")
+        with open(again, "w") as fh: fh.write(out.stdout)
+        twice = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "template_slice.py"), again, os.path.join(d, "src"), "Base", "-o", again], capture_output=True, text=True)
+        self.assertEqual(twice.returncode, 0, twice.stderr)
+        with open(again) as fh: t2 = fh.read()
+        self.assertTrue(t2.startswith(before.rstrip()[:-1].rstrip()), "a second run keeps the rest of the file"); self.assertEqual(sorted(json.loads(t2)["templates"]), ["Base", "Child"])
         bad = subprocess.run(tool + ["Nope"], capture_output=True, text=True)
         self.assertNotEqual(bad.returncode, 0); self.assertIn("no template named Nope", bad.stderr)
 

@@ -10,16 +10,22 @@ parentKey and parentArray child keys. Output is the surface with templates = { n
 added at the end; every other byte of the file stays. The source holds one definition per name for each client, but a name defined in two
 files (a Classic and a Mainline copy) takes the union, so a frame errs toward accepting a call. Only names the game
 defines are written. Nothing from the source is executed.
+
+Limits: a mixin is found by `Name = {}`, `Name = Name or {}`, `CreateFromMixins(...)` and `Mixin(Name, ...)` at the start of a line, and a
+method by `function Name:Method(`, `function Name.Method(` and `Name.Method = function`. A mixin built another way is missed, so a
+frame would take fewer names than the game gives it: review the output. A parentKey anywhere inside a template counts as a key of
+the template (a nested child's keys are included too), which errs toward accepting an access.
 """
 import json
 import os
 import re
 import sys
 
-ELEMENT = re.compile(r"<([A-Za-z]+)\b([^>]*?)(/?)>")
 ATTR = re.compile(r'([A-Za-z]+)="([^"]*)"')
-MIXIN_DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:CreateFromMixins\(([^)]*)\)|\{\s*\})", re.M)
-METHOD_DEF = re.compile(r"^function\s+([A-Za-z_][A-Za-z0-9_]*)[:.]([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.M)
+# Name = {} | Name = Name or {} | Name = CreateFromMixins(A, B) | Name = Mixin(Name, A, B)
+MIXIN_DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:\1\s+or\s+)?(?:CreateFromMixins\(([^)]*)\)|Mixin\(\s*\1\s*,([^)]*)\)|\{\s*\})", re.M)
+# function Name:Method( | function Name.Method( | Name.Method = function
+METHOD_DEF = re.compile(r"^(?:function\s+([A-Za-z_][A-Za-z0-9_]*)[:.]([A-Za-z_][A-Za-z0-9_]*)\s*\(|([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*function\b)", re.M)
 
 
 def read(path):
@@ -41,11 +47,11 @@ def scan(root):
                 scan_xml(read(path), templates)
             elif fn.endswith(".lua"):
                 text = read(path)
-                for name, parents in MIXIN_DEF.findall(text):
+                for name, parents, mixed in MIXIN_DEF.findall(text):
                     m = mixins.setdefault(name, {"parents": set(), "methods": set()})
-                    m["parents"].update(split_names(parents))
-                for owner, method in METHOD_DEF.findall(text):
-                    mixins.setdefault(owner, {"parents": set(), "methods": set()})["methods"].add(method)
+                    m["parents"].update(split_names(parents) + split_names(mixed))
+                for o1, m1, o2, m2 in METHOD_DEF.findall(text):
+                    mixins.setdefault(o1 or o2, {"parents": set(), "methods": set()})["methods"].add(m1 or m2)
     return templates, mixins
 
 
@@ -112,13 +118,15 @@ def main():
             sys.exit("no template named %s in %s" % (name, a.source))
         methods, keys = resolve(name, templates, mixins)
         out[name] = {"methods": sorted(methods), "keys": sorted(keys)}
-    body = ",\n".join('  %s: %s' % (json.dumps(k), json.dumps(v)) for k, v in sorted(out.items()))
+    block = ',\n "templates": {\n' + ",\n".join('  %s: %s' % (json.dumps(k), json.dumps(v)) for k, v in sorted(out.items())) + "\n }\n}\n"
     raw = read(a.surface)
-    if "templates" in surface:  # a surface that has them already: rewrite the whole file
-        surface["templates"] = dict(sorted(out.items()))
-        text = json.dumps(surface, indent=1) + "\n"
+    if "templates" in surface:  # replace the block this tool wrote earlier (it is the last key) and keep the rest
+        i = raw.find(',\n "templates": {')
+        if i < 0:
+            sys.exit("%s has a templates key in another layout: remove it and run again" % a.surface)
+        text = raw[:i] + block
     else:  # add the key at the end and leave the rest of the file as it was
-        text = raw.rstrip()[:-1].rstrip() + ',\n "templates": {\n' + body + "\n }\n}\n"
+        text = raw.rstrip()[:-1].rstrip() + block
     if a.o:
         with open(a.o, "w", encoding="utf-8") as f:
             f.write(text)

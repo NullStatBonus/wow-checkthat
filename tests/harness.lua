@@ -50,23 +50,26 @@ local function member(frames, k)
 end
 
 -- The names a frame of this widget type made from these templates (a comma or space list) answers to: the type's methods, and
--- the methods and child keys of each template the surface lists. A template the surface does not list (an addon's own, or one
+-- the methods and child keys of each template the surface lists. Returns the allowed names and the child keys among them. A template the surface does not list (an addon's own, or one
 -- nobody read from Blizzard's source) makes the frame take any method, so this returns nil.
 function H.templateMethods(surface, kind, template)
     local cache = surface.templateCache
     if not cache then cache = {}; surface.templateCache = cache end
     local key = kind:lower() .. "\0" .. template
-    if cache[key] ~= nil then return cache[key] or nil end
-    local set = {}
+    if cache[key] ~= nil then
+        if cache[key] == false then return nil end
+        return cache[key].methods, cache[key].keys
+    end
+    local set, keys = {}, {}
     for n in pairs(surface.widgetsByLower[kind:lower()]) do set[n] = true end
     for name in template:gmatch("[^,%s]+") do
         local t = surface.templates and surface.templates[name]
         if not t then cache[key] = false; return nil end
         for n in pairs(t.methods) do set[n] = true end
-        for n in pairs(t.keys) do set[n] = true end
+        for n in pairs(t.keys) do set[n] = true; keys[n] = true end
     end
-    cache[key] = set
-    return set
+    cache[key] = { methods = set, keys = keys }
+    return set, keys
 end
 
 -- kind is the widget type. With a client surface (frames.surface, see H.stubClient), a frame of a listed type has only that
@@ -77,8 +80,14 @@ function stubFrame(frames, template, name, kind)
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
     local methods = frames.surface and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
-    if methods and template then methods = H.templateMethods(frames.surface, kind, template) end
+    local keys
+    if methods and template then methods, keys = H.templateMethods(frames.surface, kind, template) end
     return setmetatable(f, { __index = function(t, k)
+        if keys and keys[k] then -- a child the template makes (Text, ScrollBar): a frame of its own, kept on this one
+            local child = stubFrame(frames)
+            rawset(t, k, child)
+            return child
+        end
         if methods and not methods[k] then return nil end
         local fn = member(frames, k)
         if not (f.protected and BLOCKED_IN_COMBAT[k]) then return fn end
