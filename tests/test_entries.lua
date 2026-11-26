@@ -121,9 +121,9 @@ test("without a level the run keeps level 1: interface 11507 and every name inse
 end)
 
 test("an unknown level fails the load step and runs no addon file", function()
-    local r = run({ toc = TOC, level = 6, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    local r = run({ toc = TOC, level = 7, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
     T.eq(r.ok, false)
-    T.ok(r.steps[1].detail:find("offline level 6 is not supported", 1, true), r.steps[1].detail)
+    T.ok(r.steps[1].detail:find("offline level 7 is not supported", 1, true), r.steps[1].detail)
 end)
 
 test("a file that uses goto fails the load step with file:line text", function()
@@ -364,6 +364,48 @@ test("a tooltip step reads the lines the addon put on GameTooltip", function()
     T.ok(not replaced.steps[1].ok and tostring(replaced.steps[1].detail):find("replaced it", 1, true), tostring(replaced.steps[1].detail))
     local low = run({ toc = "tests/fixtures/MockAddon/Tip.toc", level = 4, steps = { tip({ lines = 0 }) } })
     T.ok(not low.ok and tostring(low.steps[1].detail):find("needs offline level 5", 1, true), tostring(low.steps[1].detail))
+end)
+
+local function secure(name, want) return { call = { addon = "MockAddon", entry = "secure", args = { name } }, returns = { want } } end
+local function entry(name) return { call = { addon = "MockAddon", entry = name } } end
+
+test("level 6: replacing a game global taints it for good, and putting the original back does not clear it", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 6, steps = {
+        secure("GetMoney", true), entry("replace"), secure("GetMoney", false), entry("restore"), secure("GetMoney", false),
+        secure("GetTime", true), secure("MadeUpByTheAddon", false) } })
+    local ok = {}
+    for i, s in ipairs(r.steps) do ok[i] = s.ok end
+    T.same(ok, { true, true, true, true, true, true, true }, tostring(r.steps[1].detail))
+end)
+
+test("level 6: a replace in one step and a restore in the next is caught at the end of the first step", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 6, steps = { entry("replace"), entry("restore"), secure("GetMoney", false) } })
+    T.ok(r.steps[3].ok, tostring(r.steps[3].detail))
+end)
+
+test("level 6: hooksecurefunc leaves the name secure and the hook still runs", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 6, steps = { entry("hook"), secure("GetMoney", true) } })
+    T.ok(r.steps[1].ok and r.steps[2].ok, tostring(r.steps[2].detail))
+    local H = select(5, dofile("tests/harness.lua")())
+    local restore = H.snapshot()
+    T.finally(restore)
+    local st = H.stubClient({ taint = true, client = "era" })
+    local ran = {}
+    local orig = GetMoney
+    local calls = 0
+    rawset(_G, "GetMoney", function() calls = calls + 1; return 7 end)
+    st.secureValue.GetMoney = rawget(_G, "GetMoney")
+    hooksecurefunc("GetMoney", function(...) ran[#ran + 1] = select("#", ...) end)
+    T.eq(GetMoney(1, 2), 7); T.eq(calls, 1); T.same(ran, { 2 }, "the hook gets the call's arguments after the original")
+    T.raises(function() hooksecurefunc("NotAFunction", function() end) end, "Usage", "a name that is no function is a usage error")
+    st.checkTaint(); T.eq(st.tainted.GetMoney, nil)
+end)
+
+test("level 6: a replace and a restore inside one step is not seen, and levels 5 and below keep the old answer", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 6, steps = { entry("replace_and_restore"), secure("GetMoney", true) } })
+    T.ok(r.steps[2].ok, "the limit is documented: " .. tostring(r.steps[2].detail))
+    local old = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 5, steps = { entry("replace"), secure("GetMoney", true) } })
+    T.ok(old.steps[2].ok, "at level 5 a replaced game global still reads secure: " .. tostring(old.steps[2].detail))
 end)
 
 test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()

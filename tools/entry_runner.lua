@@ -19,7 +19,7 @@
 local Runner = {}
 
 -- The newest offline level. A plan without a level runs at level 1, so its results do not change.
-Runner.LEVEL = 5
+Runner.LEVEL = 6
 
 -- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
 Runner.MOCKABLE = {}
@@ -306,7 +306,7 @@ function Runner.run(spec, opts)
 
     local clockStart -- GetTime goes on across a reload; a group starts again at 1
     local function client()
-        local st = H.stubClient({ scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
+        local st = H.stubClient({ taint = level >= 6, scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
             clock = timed and { start = clockStart } or nil, client = surface })
         interface = select(4, _G.GetBuildInfo())
         return st
@@ -429,6 +429,7 @@ function Runner.run(spec, opts)
     if loadErr and #groups == 0 then groups = { {} } end -- one load result says why
     for gi, g in ipairs(groups) do
         local function add(i, kind, ok, detail)
+            if cur.st and cur.st.checkTaint then cur.st.checkTaint() end -- level 6: a replaced game global latches at the end of a step
             results[#results + 1] = { step = i, group = grouped and gi or nil, kind = kind, ok = ok and true or false,
                 detail = detail, mocked = next(cur.mocks or {}) ~= nil }
         end

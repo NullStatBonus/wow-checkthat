@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon taint
+## Notes: Fixture: entries that replace and hook a game global. Not shipped.
+Taint.lua
