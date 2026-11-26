@@ -335,7 +335,7 @@ test("an event reaches a frame that a handler created while the event ran, as be
 end)
 
 test("a handler that runs too long fails its event step with a budget message; a quick one passes", function()
-    local steps = { { event = { name = "BAG_UPDATE", args = { 100 } } }, { event = { name = "BAG_UPDATE", args = { 50000 } } } }
+    local steps = { { event = { name = "BAG_UPDATE", args = { 100 } } }, { event = { name = "BAG_UPDATE", args = { 6000000 } } } }
     local r = run({ toc = "tests/fixtures/MockAddon/Slow.toc", level = 5, steps = steps })
     T.ok(r.steps[1].ok, "100 reads are fine: " .. tostring(r.steps[1].detail))
     T.ok(not r.steps[2].ok and tostring(r.steps[2].detail):find("script ran too long", 1, true), tostring(r.steps[2].detail))
@@ -410,6 +410,14 @@ test("level 6: a replace and a restore inside one step is not seen, and levels 5
     T.ok(r.steps[2].ok, "the limit is documented: " .. tostring(r.steps[2].detail))
     local old = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 5, steps = { entry("replace"), secure("GetMoney", true) } })
     T.ok(old.steps[2].ok, "at level 5 a replaced game global still reads secure: " .. tostring(old.steps[2].detail))
+end)
+
+test("level 3 fires the lifecycle events in the order measured in game, at login and at a reload", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/Order.toc", level = 3, steps = { { call = { addon = "MockAddon", entry = "order" } }, { reload = true }, { call = { addon = "MockAddon", entry = "order" } } } })
+    local LOGIN = "ADDON_LOADED(MockAddon,false) VARIABLES_LOADED() PLAYER_LOGIN() PLAYER_ENTERING_WORLD(true,false) SPELLS_CHANGED()"
+    T.ok(r.steps[1].ok and r.steps[1].detail:find(LOGIN, 1, true), r.steps[1].detail)
+    local RELOAD = "PLAYER_LEAVING_WORLD() ADDONS_UNLOADING(false) PLAYER_LOGOUT() ADDON_LOADED(MockAddon,false) VARIABLES_LOADED() PLAYER_LOGIN() PLAYER_ENTERING_WORLD(false,true) SPELLS_CHANGED()"
+    T.ok(r.steps[3].ok and r.steps[3].detail:find(LOGIN .. " " .. RELOAD, 1, true), r.steps[3].detail)
 end)
 
 test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()
