@@ -1,0 +1,47 @@
+name: Python tools on Windows
+
+# The Python tools (tools/ct.py) run on the testers' Windows PCs: paths, file times and text encoding differ there. Linux runs the
+# whole suite in ci.yml, and macOS adds nothing Linux does not cover, so only Windows runs here. It runs when something the tools
+# read or write changes, not for a change to the addon or its Lua tests alone.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - 'schema/**'
+      - 'plans/**'
+      - 'skills/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'tests/fixtures/**'
+      - 'openspec/specs/**'
+      - 'requirements*.txt'
+      - '.github/workflows/python-tools.yml'
+  pull_request:
+    paths:
+      - 'tools/**'
+      - 'schema/**'
+      - 'plans/**'
+      - 'skills/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'tests/fixtures/**'
+      - 'openspec/specs/**'
+      - 'requirements*.txt'
+      - '.github/workflows/python-tools.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python-tools:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt -r requirements-tui.txt
+      - run: python -m unittest discover -s tools -p "test_ct.py"
+        env:
+          PYTHONUTF8: '1'
