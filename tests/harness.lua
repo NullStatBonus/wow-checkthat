@@ -3,6 +3,9 @@
 -- and ends with finish(). Run one file with: luajit tests/test_json.lua   (from the repository root).
 local H = {}
 local rawprint = print
+-- Read once: a strict client (H.applySurface) removes loadfile and dofile, as the game has neither.
+local loadfile = loadfile
+local osdate, osclock, ostime0 = os.date, os.clock, os.time
 
 -- A frame made from a Secure*Template is protected. Insecure code may not change it in combat, and the game
 -- refuses to anchor it to anything but the screen (measured on Forever, docs/contracts.md).
@@ -35,7 +38,9 @@ local function member(frames, k)
     if k == "SetText" then return function(self, v) self.text = v end end
     if k == "SetShown" then return function(self, v) setShown(self, v) end end
     if k == "GetWidth" or k == "GetHeight" then return function() return 100 end end
-    if k == "CreateFontString" or k == "CreateTexture" or k == "CreateAnimationGroup" then return function() return stubFrame(frames) end end
+    if k == "CreateFontString" then return function() return stubFrame(frames, nil, nil, "FontString") end end
+    if k == "CreateTexture" then return function() return stubFrame(frames, nil, nil, "Texture") end end
+    if k == "CreateAnimationGroup" then return function() return stubFrame(frames) end end
     -- chainable: GetNormalTexture():SetTexCoord() works. The last arguments of each call are kept in .calls.
     return function(self, ...)
         rawset(self, "calls", rawget(self, "calls") or {})
@@ -44,11 +49,16 @@ local function member(frames, k)
     end
 end
 
-function stubFrame(frames, template, name)
-    local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name }
+-- kind is the widget type. With a client surface (frames.surface, see H.stubClient), a frame of a listed type without a
+-- template has only that type's methods: any other name reads nil, so a call to it fails as in the game. A frame from a
+-- template, or of a type the surface does not list, takes any method (templates add methods the census does not see).
+function stubFrame(frames, template, name, kind)
+    local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name, kind = kind }
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
+    local methods = frames.surface and not template and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
     return setmetatable(f, { __index = function(t, k)
+        if methods and not methods[k] then return nil end
         local fn = member(frames, k)
         if not (f.protected and BLOCKED_IN_COMBAT[k]) then return fn end
         return function(self, ...)
@@ -68,8 +78,11 @@ end
 function H.stubClient(opts)
     opts = opts or {}
     local st = { frames = {}, said = {}, combat = false, macros = {} }
-    _G.CreateFrame = function(_, name, _, template) local f = stubFrame(st.frames, template, name); if name then _G[name] = f end; return f end
-    _G.UIParent = stubFrame(st.frames)
+    local surface = opts.client
+    if type(surface) == "string" then surface = assert(H.clientSurface(surface)) end
+    st.frames.surface, st.surface = surface, surface
+    _G.CreateFrame = function(kind, name, _, template) local f = stubFrame(st.frames, template, name, kind); if name then _G[name] = f end; return f end
+    _G.UIParent = stubFrame(st.frames, nil, nil, "Frame")
     _G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) st.said[#st.said + 1] = m end }
     _G.InCombatLockdown = function() return st.combat end
     _G.GetBuildInfo = function() return "1.15.7", "63000", "x", opts.toc or 11507 end
@@ -138,6 +151,7 @@ end
     _G.tinsert, _G.tremove = table.insert, table.remove
     _G.format = string.format
     _G.max, _G.min, _G.floor = math.max, math.min, math.floor
+    if surface then H.applySurface(st, surface) end
     st.secure = {}
     for k in pairs(_G) do st.secure[k] = true end
     return st
@@ -234,6 +248,104 @@ function H.recordNilReads(prefixes, excludes)
         table.sort(list)
         return list
     end
+end
+
+-- A client surface: what one game client defines, from tools/clients/<client>.json (made by tools/client_slice.py from
+-- an in-game census). Returns { client, build, interface, functions = set, namespaces = {C_X = set}, widgets = {Type = set} }.
+function H.clientSurface(client, root)
+    root = root or "."
+    local jns = {}
+    assert(loadfile(root .. "/CheckThat/Model/Json.lua"))("CheckThat", jns)
+    local f = io.open(root .. "/tools/clients/" .. client .. ".json", "r")
+    if not f then return nil, "no client surface for " .. client .. " (tools/clients/" .. client .. ".json)" end
+    local m, err = jns.Json.Decode(f:read("*a")); f:close()
+    if not m then return nil, err end
+    if m.client ~= client then return nil, ("no client surface for %s (the file says %s)"):format(client, tostring(m.client)) end -- a case-blind file system
+    local function set(list) local s = {}; for _, n in ipairs(list) do s[n] = true end; return s end
+    local s = { client = m.client, build = m.build, interface = m.interface, functions = set(m.functions), namespaces = {}, widgets = {} }
+    s.lacksBase = {}
+    for _, n in ipairs({ "dofile", "load", "loadfile", "module", "require" }) do if not s.functions[n] then s.lacksBase[n] = true end end
+    for ns, list in pairs(m.namespaces) do s.namespaces[ns] = set(list) end
+    s.widgetsByLower = {}
+    for w, list in pairs(m.widgets) do s.widgets[w] = set(list); s.widgetsByLower[w:lower()] = s.widgets[w] end -- CreateFrame("frame") works
+    return s
+end
+
+-- Plain helpers the game defines in Lua and addons rely on: a stub that returns nothing would break them.
+local function copyTable(t, seen)
+    if type(t) ~= "table" then return t end
+    seen = seen or {}
+    if seen[t] then return seen[t] end
+    local c = {}; seen[t] = c
+    for k, v in pairs(t) do c[k] = copyTable(v, seen) end
+    return c
+end
+local HELPERS = {
+    Mixin = function(o, ...) for i = 1, select("#", ...) do for k, v in pairs((select(i, ...))) do o[k] = v end end; return o end,
+    CopyTable = function(t) return copyTable(t) end,
+    tContains = function(t, v) for _, x in pairs(t) do if x == v then return true end end; return false end,
+    strtrim = function(s, chars)
+        chars = chars and ("[" .. chars:gsub("[%]%^%-%%]", "%%%0") .. "]") or "%s"
+        return (s:gsub("^" .. chars .. "+", ""):gsub(chars .. "+$", ""))
+    end,
+    strjoin = function(sep, ...) return table.concat({ ... }, sep) end,
+    tostringall = function(...) local t = { n = select("#", ...), ... }; for i = 1, t.n do t[i] = tostring(t[i]) end; return unpack(t, 1, t.n) end,
+    date = function(...) return osdate(...) end,
+    debugstack = function() return debug.traceback("", 2) end,
+    GetTimePreciseSec = function() return osclock() end,
+    debugprofilestop = function() return osclock() * 1000 end,
+    -- The game's trig functions work in degrees.
+    sin = function(d) return math.sin(math.rad(d)) end, cos = function(d) return math.cos(math.rad(d)) end,
+    tan = function(d) return math.tan(math.rad(d)) end, asin = function(x) return math.deg(math.asin(x)) end,
+    acos = function(x) return math.deg(math.acos(x)) end, atan = function(x) return math.deg(math.atan(x)) end,
+    atan2 = function(y, x) return math.deg(math.atan2(y, x)) end,
+}
+HELPERS.CreateFromMixins = function(...) return HELPERS.Mixin({}, ...) end
+
+-- What the game's own Lua aliases are: strsub is string.sub, tinsert is table.insert, floor is math.floor, mod is math.fmod.
+local function luaAlias(name)
+    if HELPERS[name] then return HELPERS[name] end
+    if name == "mod" then return math.fmod end
+    if name == "strrev" then return string.reverse end
+    if name == "getn" then return table.getn end
+    for _, lib in ipairs({ string, table, math }) do if type(lib[name]) == "function" then return lib[name] end end
+    local s = name:match("^str(%l+)$")
+    if s and type(string[s]) == "function" then return string[s] end
+    local t = name:match("^t(%l+)$")
+    if t and type(table[t]) == "function" then return table[t] end
+    return nil
+end
+
+-- Makes the global table look like the client's: every global function the client lacks becomes nil, every function the
+-- client has that nothing set becomes a stub that returns nothing (st.generated names them), and the C_ namespaces get
+-- the same treatment member by member. GetBuildInfo gives the client's real build. Lua's base functions and library
+-- tables are left alone.
+local LUA_BASE = {}
+for n in ("assert collectgarbage dofile error gcinfo getfenv getmetatable ipairs load loadfile loadstring module newproxy next "
+    .. "pairs pcall print rawequal rawget rawset require select setfenv setmetatable tonumber tostring type unpack xpcall"):gmatch("%S+") do
+    LUA_BASE[n] = true
+end
+function H.applySurface(st, surface)
+    st.generated = {}
+    local function generic(name) st.generated[name] = true; return function() end end
+    for k, v in pairs(_G) do -- also what an earlier fake client or load in this process left behind
+        -- Lua's base functions stay unless the client lacks them too (dofile, load, loadfile, module, require).
+        local base = LUA_BASE[k] and not surface.lacksBase[k]
+        if type(k) == "string" and type(v) == "function" and not base and not surface.functions[k] then rawset(_G, k, nil) end
+        if type(k) == "string" and type(v) == "table" and k:match("^C_") and not surface.namespaces[k] then rawset(_G, k, nil) end
+    end
+    for name in pairs(surface.functions) do
+        if rawget(_G, name) == nil then rawset(_G, name, luaAlias(name) or generic(name)) end
+    end
+    for ns, members in pairs(surface.namespaces) do
+        -- A new table: the one an earlier fake client made stays as it was, so H.snapshot can put it back.
+        local old, t = rawget(_G, ns), {}
+        if type(old) == "table" then for k, v in pairs(old) do if type(v) ~= "function" or members[k] then t[k] = v end end end
+        for k in pairs(members) do if t[k] == nil then t[k] = generic(ns .. "." .. k) end end
+        rawset(_G, ns, t)
+    end
+    local version, build = tostring(surface.build):match("^(%d+%.%d+%.%d+)%.(%d+)$")
+    _G.GetBuildInfo = function() return version or surface.build, build or "", "", surface.interface end
 end
 
 -- A virtual clock (offline level 4). GetTime, time and C_Timer read it; st.advance(seconds) moves it on and runs each

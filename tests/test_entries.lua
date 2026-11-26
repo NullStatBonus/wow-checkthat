@@ -121,9 +121,9 @@ test("without a level the run keeps level 1: interface 11507 and every name inse
 end)
 
 test("an unknown level fails the load step and runs no addon file", function()
-    local r = run({ toc = TOC, level = 5, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    local r = run({ toc = TOC, level = 6, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
     T.eq(r.ok, false)
-    T.ok(r.steps[1].detail:find("offline level 5 is not supported", 1, true), r.steps[1].detail)
+    T.ok(r.steps[1].detail:find("offline level 6 is not supported", 1, true), r.steps[1].detail)
 end)
 
 test("a file that uses goto fails the load step with file:line text", function()
@@ -453,6 +453,22 @@ test("level 4: a run that fails before load puts the global table back", functio
     _G.time = nil
     run({ toc = CLOCK, level = 4, steps = { { event = { name = "NOPE" } } } })
     T.eq(rawget(_G, "time"), nil)
+end)
+
+test("level 5: the client's real surface, picked by the TOC's interface", function()
+    allOk(run({ toc = CLOCK, level = 5, steps = { c("typo", nil, { true, "70576" }), c("has", { "GetItemInfo" }, { "function" }) } }))
+    allOk(run({ toc = CLOCK, level = 4, steps = { c("typo", nil, { false, "63000" }) } }))
+    local r = run({ toc = HIDDEN_TOC, level = 5, steps = {} })
+    T.ok(r.ok); T.eq(r.interface, 16001)
+end)
+
+test("level 5: a mock of a function the client lacks fails the load", function()
+    local r = run({ toc = HIDDEN_TOC, level = 5, mocks = { GetItemInfo = { returns = { "x" } } }, steps = {} })
+    T.eq(r.ok, false); T.ok(r.steps[1].detail:find("mock GetItemInfo: the forever client has no such function", 1, true), r.steps[1].detail)
+    r = run({ toc = HIDDEN_TOC, level = 5, mocks = { ["C_Item.GetItemInfo"] = { returns = { "x" } } }, steps = {} })
+    T.ok(r.ok, r.steps[1] and r.steps[1].detail)
+    r = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { returns = { "x" } } }, steps = { { call = { addon = "MockAddon", entry = "captured_name", args = { 1 } }, returns = { "x" } } } })
+    T.ok(r.ok, r.steps[1].detail)
 end)
 
 test("levels 1 to 3 keep GetTime at 1 and timers queued, check no event list, and refuse a wait step", function()

@@ -19,7 +19,7 @@
 local Runner = {}
 
 -- The newest offline level. A plan without a level runs at level 1, so its results do not change.
-Runner.LEVEL = 4
+Runner.LEVEL = 5
 
 -- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
 Runner.MOCKABLE = {}
@@ -186,6 +186,7 @@ function Runner.run(spec, opts)
     if badLevel then level = 1 end
     local lifecycle = level >= 3
     local timed = level >= 4
+    local strict = level >= 5
     local groups = spec.groups or { { steps = spec.steps } }
     local grouped = spec.groups ~= nil
     local needs3
@@ -197,6 +198,13 @@ function Runner.run(spec, opts)
     local needs4
     for _, g in ipairs(groups) do
         for _, s in ipairs(g.steps or {}) do if s.wait ~= nil then needs4 = "a wait step" end end
+    end
+    -- Level 5: the client's real surface (tools/clients/<client>.json): only its game functions, its build, and frames
+    -- with only their widget type's methods. A mock of a function the client lacks would hide the gap: it fails the load.
+    local surface, surfaceErr
+    if strict then
+        local n = tocInterface(tocPath) or 11507
+        surface, surfaceErr = H.clientSurface(n >= 16000 and "forever" or "era", root)
     end
     -- Level 4: the events of the client the TOC names (below interface 16000 Era, from 16000 Forever), from Blizzard's
     -- generated API documentation and the events Blizzard's own code registers. An event step is checked before load.
@@ -253,6 +261,14 @@ function Runner.run(spec, opts)
     table.sort(mockNames)
     local unlisted
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
+    local absent
+    if surface then
+        for _, api in ipairs(mockNames) do
+            local ns, member = api:match("^([^%.]+)%.(.+)$")
+            local has = ns and surface.namespaces[ns] and surface.namespaces[ns][member] or (not ns and surface.functions[api])
+            if not has then absent = api; break end
+        end
+    end
 
     local function stopLoad()
         if cur.unhide then cur.unhide(); cur.unhide = nil end
@@ -287,7 +303,7 @@ function Runner.run(spec, opts)
     local clockStart -- GetTime goes on across a reload; a group starts again at 1
     local function client()
         local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
-            clock = timed and { start = clockStart } or nil })
+            clock = timed and { start = clockStart } or nil, client = surface })
         interface = select(4, _G.GetBuildInfo())
         return st
     end
@@ -385,10 +401,14 @@ function Runner.run(spec, opts)
         loadErr = ("%s needs offline level 4"):format(needs4)
     elseif eventsErr then
         loadErr = eventsErr
+    elseif surfaceErr then
+        loadErr = surfaceErr
     elseif undeclared then
         loadErr = ("savedVariables names %s, which the TOC does not declare"):format(undeclared)
     elseif unlisted then
         loadErr = ("mock %s is not on the allow list"):format(unlisted)
+    elseif absent then
+        loadErr = ("mock %s: the %s client has no such function"):format(absent, surface.client)
     else
         chunks, loadErr = compileToc(Lua51, H, tocPath)
     end

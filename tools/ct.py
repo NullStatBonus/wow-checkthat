@@ -881,9 +881,9 @@ def nil_read_report(interface, names, manifests, build=None):
 
 
 OFFLINE_LEVEL_WARNING = ("warning: the offline block has no level, so it runs at level 1 (interface 11507, issecurevariable false). "
-                         "Add level: 4 to answer with the TOC interface and the game's secure names, to load the addon "
-                         "as the game does (saved variables, login events, reload), and to check events against the client and "
-                         "run timers on a virtual clock (wait steps).")
+                         "Add level: 5 for the newer answers: the client's real build and secure names, its own functions and "
+                         "frame methods, the game's load order (saved variables, login events, reload), its event list, and "
+                         "timers on a virtual clock (wait steps).")
 
 
 def offline_plan(plan, addons, requirements=None, info=None):
@@ -1348,7 +1348,8 @@ def census_manifest(rec):
             "tables": {k: dict_of(v) for k, v in dict_of(rec.get("tables")).items() if not own(k)},
             "widgets": {k: sorted(v) for k, v in dict_of(rec.get("widgets")).items() if isinstance(v, list)},
             "unavailable": sorted(rec["unavailable"]) if isinstance(rec.get("unavailable"), list) else [],
-            "truncated": sorted(x for x in rec["truncated"] if isinstance(x, str)) if isinstance(rec.get("truncated"), list) else []}
+            "truncated": sorted(x for x in rec["truncated"] if isinstance(x, str)) if isinstance(rec.get("truncated"), list) else [],
+            **({"unfiltered": True} if rec.get("unfiltered") else {})}
 
 def census_records(files):
     """{build: record} from the CheckThat saved-variables files, each holding one census (the newest of its client).

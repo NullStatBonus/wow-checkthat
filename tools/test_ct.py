@@ -375,8 +375,8 @@ class OfflineBlock(unittest.TestCase):
         self.assertNotIn("matches multiple builds", out.stderr)
         self.assertEqual(self.run_cli(both, "--build", "9.9").returncode, 2)
 
-    def test_schema_accepts_levels_1_to_4_only(self):
-        for lv, ok in ((1, True), (2, True), (3, True), (4, True), (5, False), ("2", False)):
+    def test_schema_accepts_levels_1_to_5_only(self):
+        for lv, ok in ((1, True), (2, True), (3, True), (4, True), (5, True), (6, False), ("2", False)):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
 
@@ -730,12 +730,60 @@ class PlanSkill(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(self.SKILL, name)), name)
 
 
+class ClientSlice(unittest.TestCase):
+    """tools/clients/*.json are committed slices of a census: game-defined names only (see tools/client_slice.py)."""
+    KEYS = ["format", "client", "build", "interface", "source", "functions", "namespaces", "widgets"]
+
+    def test_committed_slices_hold_only_the_reviewed_keys(self):
+        for client, interface in (("era", 11509), ("forever", 16001)):
+            with open(os.path.join(ROOT, "tools", "clients", client + ".json"), encoding="utf-8") as f:
+                s = json.load(f)
+            self.assertEqual(list(s), self.KEYS, client)
+            self.assertEqual((s["format"], s["client"], s["interface"]), (1, client, interface))
+            self.assertTrue(all(isinstance(n, str) for n in s["functions"]))
+            self.assertTrue(all(k.startswith("C_") and all(isinstance(n, str) for n in v) for k, v in s["namespaces"].items()))
+            self.assertTrue(all(isinstance(v, list) for v in s["widgets"].values()))
+
+    def test_the_slice_leaves_out_tester_data(self):
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import client_slice
+        m = {"format": 1, "client": "era", "build": "1.15.9.1", "interface": 11509, "date": "2026-01-01",
+             "addons": ["Private"], "globals": {"GetMoney": "function", "SOME_TEXT": "string", "SomeFrame": "table"},
+             "insecure": {"PrivateAddonFunc": "function", "HookedBlizzard": "function"},
+             "tables": {"C_Item": {"GetItemInfo": "function", "flag": "boolean"}, "PrivateTable": {"x": "function"}},
+             "widgets": {"Frame": ["SetPoint", "Show"]}}
+        text = client_slice.render(m, client_slice.build(m, {"HookedBlizzard"}))
+        s = json.loads(text)
+        self.assertEqual(list(s), self.KEYS)
+        self.assertEqual(s["functions"], ["GetMoney", "HookedBlizzard"])
+        self.assertEqual(s["namespaces"], {"C_Item": ["GetItemInfo"]})
+        for private in ("Private", "PrivateAddonFunc", "PrivateTable", "SOME_TEXT"):
+            self.assertNotIn(private, text)
+
+    def test_an_unfiltered_census_needs_unfiltered_ok(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = {"format": 1, "client": "era", "build": "1.15.9.1", "interface": 11509, "date": "2026-01-01", "unfiltered": True,
+                 "globals": {"GetMoney": "function"}, "tables": {}, "widgets": {}}
+            path = os.path.join(d, "m.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(m, f)
+            os.makedirs(os.path.join(d, "src"))
+            tool = [sys.executable, os.path.join(ROOT, "tools", "client_slice.py"), path, os.path.join(d, "src")]
+            r = subprocess.run(tool, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0); self.assertIn("unfiltered", r.stderr)
+            r = subprocess.run(tool + ["--unfiltered-ok", "--review", os.path.join(d, "r.json")], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(json.loads(r.stdout)["functions"], ["GetMoney"])
+            with open(os.path.join(d, "r.json"), encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["functions not named in Blizzard source"], ["GetMoney"])
+
+
 class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "CheckThat/UI/Card.lua", "CheckThat/CheckThat_Vanilla.toc", "tools/sv2json.lua", "tools/replay_sv.lua",
               "tools/ct", "tools/entry_runner.lua", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
-              "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt", "tools/events/era.json", "tools/events/forever.json",
+              "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt", "tools/events/era.json", "tools/events/forever.json", "tools/clients/era.json", "tools/clients/forever.json",
               "tests/manifests/README.md")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
 
