@@ -19,6 +19,7 @@ import concurrent.futures
 import fnmatch
 import json
 import os
+import queue
 import random
 import re
 import shutil
@@ -119,32 +120,41 @@ def prepare(root, dest):
     for d in COPY:
         src = os.path.join(root, d)
         if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(dest, d), ignore=shutil.ignore_patterns("evidence", "__pycache__", "manifests"))
+            shutil.copytree(src, os.path.join(dest, d), ignore=shutil.ignore_patterns("__pycache__"))
         elif os.path.isfile(src):
             shutil.copy(src, os.path.join(dest, d))
 
 
-def run_one(root, mu, timeout, runner):
-    """True when the suite noticed the mutant (a failing file, a crash or a hang)."""
-    with tempfile.TemporaryDirectory() as d:
-        prepare(root, d)
-        with open(os.path.join(d, mu["file"]), "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+def run_one(work, original, mu, timeout, runner):
+    """"killed" when the suite noticed the mutant (a failing file, a crash or a hang), "survived" when every test passed, and
+    "invalid" when luajit cannot compile the mutant (a multi-line return cut in two): that says nothing about the tests.
+    work is this worker's copy of the project; the mutated file is put back before the call returns."""
+    path = os.path.join(work, mu["file"])
+    try:
+        with open(path, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
             f.write(mu["text"])
+        if subprocess.run(["luajit", "-bl", path], capture_output=True, timeout=timeout).returncode != 0:
+            return "invalid"
         try:
-            r = subprocess.run(runner, cwd=d, capture_output=True, text=True, timeout=timeout)
+            r = subprocess.run(runner, cwd=work, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
-            return True
-        return r.returncode != 0
+            return "killed"
+        return "killed" if r.returncode != 0 else "survived"
+    finally:
+        with open(path, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
+            f.write(original[mu["file"]])
 
 
 def report(results, fmt):
-    killed = [r for r in results if r["killed"]]
-    survivors = [r for r in results if not r["killed"]]
+    invalid = [r for r in results if r["state"] == "invalid"]
+    results = [r for r in results if r["state"] != "invalid"]
+    killed = [r for r in results if r["state"] == "killed"]
+    survivors = [r for r in results if r["state"] == "survived"]
     score = (100.0 * len(killed) / len(results)) if results else 0.0
     if fmt == "json":
-        return json.dumps({"run": len(results), "killed": len(killed), "survived": len(survivors), "score": round(score, 1),
+        return json.dumps({"run": len(results), "killed": len(killed), "survived": len(survivors), "invalid": len(invalid), "score": round(score, 1),
                            "survivors": [{k: r[k] for k in ("file", "line", "op", "before", "after")} for r in survivors]}, indent=1)
-    lines = ["Mutation score: %.1f%% (%d killed of %d run, %d survived)" % (score, len(killed), len(results), len(survivors))]
+    lines = ["Mutation score: %.1f%% (%d killed of %d run, %d survived%s)" % (score, len(killed), len(results), len(survivors), ", %d skipped: did not compile" % len(invalid) if invalid else "")]
     if survivors:
         lines += ["", "Survivors (the tests passed with this change):"]
         for r in sorted(survivors, key=lambda r: (r["file"], r["line"])):
@@ -175,17 +185,36 @@ def main(argv=None):
     if not ms:
         print("no mutants for these files", file=sys.stderr); return 2
     runner = a.runner.split()
-    with tempfile.TemporaryDirectory() as d:  # the suite must pass on an unchanged copy, or every mutant would count as killed
-        prepare(a.root, d)
+    jobs = max(1, min(a.jobs, len(ms)))
+    original = {m["file"]: None for m in ms}
+    for rel in original:
+        with open(os.path.join(a.root, rel), encoding="utf-8", errors="surrogateescape", newline="") as f:
+            original[rel] = f.read()
+    with tempfile.TemporaryDirectory() as tmp:
+        works = []
         try:
-            base = subprocess.run(runner, cwd=d, capture_output=True, text=True, timeout=a.timeout * 4)
+            for n in range(jobs):  # one copy of the project for each worker; a mutant replaces one file in it and puts it back
+                w = os.path.join(tmp, "w%d" % n); os.makedirs(w); prepare(a.root, w); works.append(w)
+            for attempt in (1, 2):  # the suite must pass on an unchanged copy, twice (a flaky test would hide survivors as kills)
+                base = subprocess.run(runner, cwd=works[0], capture_output=True, text=True, timeout=a.timeout * 4)
+                if base.returncode != 0:
+                    print("error: the suite fails on an unmutated copy (run make build first?):\n" + base.stdout[-1500:] + base.stderr[-500:], file=sys.stderr); return 2
         except subprocess.TimeoutExpired:
             print("error: the unmutated suite timed out", file=sys.stderr); return 2
-        if base.returncode != 0:
-            print("error: the suite fails on an unmutated copy (run make build first?):\n" + base.stdout[-1500:] + base.stderr[-500:], file=sys.stderr); return 2
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, a.jobs)) as ex:
-        kills = list(ex.map(lambda m: run_one(a.root, m, a.timeout, runner), ms))
-    print(report([dict(m, killed=k) for m, k in zip(ms, kills)], a.format))
+        except OSError as e:
+            print("error: cannot run %s: %s" % (runner[0], e), file=sys.stderr); return 2
+        free = queue.Queue()
+        for w in works:
+            free.put(w)
+        def job(m):
+            w = free.get()
+            try:
+                return run_one(w, original, m, a.timeout, runner)
+            finally:
+                free.put(w)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as ex:
+            states = list(ex.map(job, ms))
+    print(report([dict(m, state=s) for m, s in zip(ms, states)], a.format))
     return 0
 
 
