@@ -2,11 +2,12 @@
 -- The game runs this file first and loads the saved variables afterwards, then fires ADDON_LOADED. A CTProbeDB made here
 -- would be replaced by the table from disk, and every line written to the old one would be lost. So the saved table is
 -- only touched in ADDON_LOADED (see the event handler below).
-local VERSION = 2 -- taint probe (issue 98). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
+local VERSION = 3 -- v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
+local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
 local function say(msg)
     local line = ("%.2f combat=%s %s"):format(GetTime(), tostring(InCombatLockdown()), msg)
-    if log then log[#log + 1] = line end
+    if log then log[#log + 1] = line else early[#early + 1] = line end
     print("|cff66ccffCTProbe|r " .. line)
 end
 local function loaded()
@@ -15,7 +16,26 @@ local function loaded()
     CTProbeDB.log = CTProbeDB.log or {} -- kept across reloads, so a second reload cannot erase earlier lines
     log = CTProbeDB.log
     log[#log + 1] = "---- session start v" .. VERSION
+    for _, line in ipairs(early) do log[#log + 1] = line end
+    early = {}
 end
+
+-- Issue 163: the order of the lifecycle events and what the game passes. Every event below is logged with its arguments,
+-- IsLoggedIn() and the order number of the session; do a login, a /reload and a logout, then read CTProbeDB.log (or /ctp life).
+-- At file scope the saved variables are not loaded yet: the first line says whether CTProbeDB exists then.
+local lifeSeq = 0
+local LIFE = { "ADDON_LOADED", "VARIABLES_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_LEAVING_WORLD", "PLAYER_LOGOUT",
+    "ADDONS_UNLOADING", "SPELLS_CHANGED", "UPDATE_BINDINGS", "PLAYER_ALIVE" }
+local function args(...)
+    local t = {}
+    for i = 1, select("#", ...) do t[i] = tostring((select(i, ...))) end
+    return table.concat(t, ",")
+end
+local function life(e, ...)
+    lifeSeq = lifeSeq + 1
+    say(("life #%d %s(%s) IsLoggedIn=%s"):format(lifeSeq, e, args(...), tostring(IsLoggedIn and IsLoggedIn())))
+end
+say(("life file scope: CTProbeDB is %s; IsLoggedIn=%s"):format(type(rawget(_G, "CTProbeDB")), tostring(IsLoggedIn and IsLoggedIn())))
 
 local b, shows, plain = nil, 0, nil
 local function build()
@@ -51,15 +71,24 @@ local function probe()
 end
 
 local ev = CreateFrame("Frame")
-for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
-    pcall(ev.RegisterEvent, ev, e)
+local watched = {}
+for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN",
+    "VARIABLES_LOADED", "PLAYER_ENTERING_WORLD", "PLAYER_LEAVING_WORLD", "PLAYER_LOGOUT", "ADDONS_UNLOADING", "SPELLS_CHANGED", "UPDATE_BINDINGS", "PLAYER_ALIVE" }) do
+    local ok = pcall(ev.RegisterEvent, ev, e)
+    watched[e] = ok
 end
+local isLife = {}
+for _, e in ipairs(LIFE) do isLife[e] = true end
 ev:SetScript("OnEvent", function(_, e, ...)
     if e == "ADDON_LOADED" then
         if (...) == "CTProbe" then loaded() end
+        life(e, ...)
+    elseif isLife[e] and e ~= "PLAYER_LOGIN" then
+        life(e, ...)
     elseif e == "PLAYER_LOGIN" then
+        life(e, ...)
         build()
-        say("v" .. VERSION .. " loaded. Type /ctp taint run")
+        say("v" .. VERSION .. " loaded. /ctp taint run, tooltip, budget, record, life")
     elseif e == "PLAYER_REGEN_DISABLED" then
         shows = 0
         say("event PLAYER_REGEN_DISABLED; button shown=" .. tostring(b and b:IsShown()))
@@ -113,10 +142,138 @@ local function taint(arg)
         if replace() then restore() end
         say("taint: run end. Type /reload now: a global that addon code wrote stays tainted until then.")
     elseif arg == "on" then
-        if replace() then say("taint: now open the vendor or cast a spell, then /ctp taint off") end
+        if replace() then say("taint: GetMoney is replaced. Now open a vendor and buy something (or cast a spell), out of combat and then in combat; ADDON_ACTION_BLOCKED lines show here (issue 154). Then /ctp taint off") end
     elseif arg == "off" then restore()
     elseif arg == "entry" then entry()
-    else say("taint: use /ctp taint run, or on, off, entry") end
+    elseif arg == "hook" then
+        -- Issue 154: does hooksecurefunc taint the name it hooks? UnitName is hooked because it takes an argument.
+        say("taint: UnitName before hooking: " .. secure("UnitName"))
+        local got
+        local ok, err = pcall(hooksecurefunc, "UnitName", function(...) got = args(...) end)
+        say("taint: hooksecurefunc ok=" .. tostring(ok) .. (ok and "" or " " .. tostring(err)))
+        say("taint: UnitName after hooking: " .. secure("UnitName"))
+        local n = UnitName("player")
+        say(("taint: the hook ran=%s with the arguments (%s); the original returned a %s. /reload to remove the hook."):format(tostring(got ~= nil), tostring(got), type(n)))
+    elseif arg == "hookerror" then
+        -- Does a throwing hook change what the original returns?
+        pcall(hooksecurefunc, "GetTime", function() error("CTProbe hook error, on purpose", 0) end)
+        local ok, t = pcall(GetTime)
+        say(("taint: after a throwing hook, GetTime() ok=%s returned a %s; %s. /reload to remove the hook."):format(tostring(ok), type(t), secure("GetTime")))
+    else say("taint: use /ctp taint run, or on, off, entry, hook, hookerror") end
+end
+
+-- Issue 151: which tooltip hook path does this client run? The OnTooltipSetItem script, TooltipDataProcessor.AddTooltipPostCall,
+-- both or neither. Both are registered at file scope, then /ctp tooltip sets the tooltip to an item and counts what fired. It also
+-- logs whether the tooltip is shown after SetOwner, SetText and AddLine (CheckThat's fake tooltip starts hidden and does not show it).
+local tipFired, tipHooks = { script = 0, processor = 0 }, {}
+if GameTooltip and GameTooltip.HookScript then
+    tipHooks.script = pcall(GameTooltip.HookScript, GameTooltip, "OnTooltipSetItem", function() tipFired.script = tipFired.script + 1 end)
+end
+if rawget(_G, "TooltipDataProcessor") and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+    tipHooks.processor = pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Item, function() tipFired.processor = tipFired.processor + 1 end)
+end
+local function tooltip()
+    local tip = GameTooltip
+    if not (tip and tip.SetOwner) then say("tooltip: this client has no GameTooltip") return end
+    say(("tooltip: OnTooltipSetItem hook registered=%s; TooltipDataProcessor is a %s, Enum.TooltipDataType is a %s, post call registered=%s"):format(
+        tostring(tipHooks.script), type(rawget(_G, "TooltipDataProcessor")), type(Enum and Enum.TooltipDataType), tostring(tipHooks.processor)))
+    local function state(what) say(("tooltip: %s: IsShown=%s NumLines=%s"):format(what, tostring(tip:IsShown()), tostring(tip:NumLines()))) end
+    state("before SetOwner"); tip:SetOwner(UIParent, "ANCHOR_CURSOR"); state("after SetOwner")
+    tip:SetText("CTProbe title"); state("after SetText"); tip:AddLine("CTProbe line"); state("after AddLine")
+    tip:Show(); state("after Show")
+    tipFired.script, tipFired.processor = 0, 0
+    local ok, err = pcall(tip.SetHyperlink, tip, "item:6948")
+    say(("tooltip: SetHyperlink item:6948 ok=%s%s; hooks fired at once: script=%d post call=%d; NumLines=%s"):format(
+        tostring(ok), ok and "" or " " .. tostring(err), tipFired.script, tipFired.processor, tostring(tip:NumLines())))
+    C_Timer.After(0.5, function()
+        say(("tooltip: 0.5 s later: script=%d post call=%d; line 1 is %s"):format(tipFired.script, tipFired.processor, tostring(_G.GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText())))
+        tip:Hide()
+    end)
+end
+
+-- Issue 190: how much work can one script do before the game stops it? Each stage runs in its own timer callback, in doubling sizes,
+-- for a plain loop and for a loop that makes a call each turn. It stops a family when the next stage would take longer than the cap
+-- (4 s; /ctp budget force raises it to 30 s: the game may freeze for that long). The log gives n and milliseconds for each stage,
+-- and the error when the game stops a script.
+local clock = debugprofilestop or function() return GetTime() * 1000 end
+local FAMILIES = {
+    { "loop", function(n) local x = 0; for i = 1, n do x = x + i end return x end },
+    { "calls", function(n) local abs, x = math.abs, 0; for i = 1, n do x = x + abs(i) end return x end },
+}
+local function budget(arg)
+    local cap = (CTProbeDB and CTProbeDB.budgetCapMs) or (arg == "force" and 30000 or 4000)
+    local rate = {}
+    local function stage(fi, n, lastMs)
+        local fam = FAMILIES[fi]
+        if not fam then
+            local loop, calls = rate.loop, rate.calls
+            say(("budget: done. loop %s iterations per ms, calls %s per ms%s"):format(tostring(loop), tostring(calls),
+                (loop and calls) and (", so one call costs about %.1f loop iterations"):format(loop / calls) or ""))
+            return
+        end
+        if lastMs and lastMs * 2 > cap then say(("budget: %s stops at n=%d: the next stage would take over %d ms"):format(fam[1], math.floor(n / 2), cap)); return stage(fi + 1, 100000) end
+        local t0 = clock()
+        local ok, err = pcall(fam[2], n)
+        local ms = clock() - t0
+        say(("budget: %s n=%d ok=%s %.0f ms%s"):format(fam[1], n, tostring(ok), ms, ok and "" or " " .. tostring(err)))
+        if ok and ms > 0 then rate[fam[1]] = math.floor(n / ms) end
+        if not ok then return C_Timer.After(0.2, function() stage(fi + 1, 100000) end) end
+        C_Timer.After(0.2, function() stage(fi, n * 2, ms) end)
+    end
+    say("budget: start, cap " .. cap .. " ms per stage")
+    stage(1, 100000)
+end
+
+-- Issue 153: what do read-only calls return in this client? /ctp record writes CTProbeDB.fixtures[label] = { n, values }. A value
+-- that is personal (money, names, counts) is recorded by its type only.
+local FIXTURES = {
+    { "GetBuildInfo()", function() return GetBuildInfo() end },
+    { "GetLocale()", function() return GetLocale() end },
+    { "GetCurrentRegion()", function() return GetCurrentRegion() end },
+    { "GetItemInfo(6948)", function() return GetItemInfo(6948) end },
+    { "C_Item.GetItemInfo(6948)", function() return C_Item.GetItemInfo(6948) end },
+    { "GetContainerNumSlots(0)", function() return GetContainerNumSlots(0) end },
+    { "C_Container.GetContainerNumSlots(0)", function() return C_Container.GetContainerNumSlots(0) end },
+    { "UnitClass(player)", function() return UnitClass("player") end },
+    { "UnitRace(player)", function() return UnitRace("player") end },
+    { "UnitFactionGroup(player)", function() return UnitFactionGroup("player") end },
+    { "IsLoggedIn()", function() return IsLoggedIn() end },
+    { "InCombatLockdown()", function() return InCombatLockdown() end },
+    { "GetMoney()", function() return GetMoney() end, true },
+    { "GetItemCount(6948)", function() return GetItemCount(6948) end, true },
+    { "GetTime()", function() return GetTime() end, true },
+    { "GetServerTime()", function() return GetServerTime() end, true },
+    { "UnitName(player)", function() return UnitName("player") end, true },
+    { "GetRealmName()", function() return GetRealmName() end, true },
+}
+local function shape(v, typeOnly)
+    local t = type(v)
+    if typeOnly or t == "function" or t == "userdata" or t == "thread" then return { type = t } end
+    if t == "table" then
+        local copy, n = {}, 0
+        for k, x in pairs(v) do
+            n = n + 1
+            if n > 8 then break end
+            copy[tostring(k)] = type(x) == "table" and { type = "table" } or { type = type(x), value = x }
+        end
+        return { type = t, value = copy }
+    end
+    return { type = t, value = v }
+end
+local function record()
+    if not CTProbeDB then say("record: saved variables are not loaded yet") return end
+    CTProbeDB.fixtures = {}
+    local good, bad = 0, 0
+    for _, f in ipairs(FIXTURES) do
+        local r = { pcall(f[2]) }
+        local values = {}
+        for i = 2, #r do values[#values + 1] = shape(r[i], f[3]) end
+        local ok = r[1]
+        CTProbeDB.fixtures[f[1]] = ok and { n = math.max(#r - 1, 0), values = values, typeOnly = f[3] or nil } or { error = tostring(r[2]) }
+        if ok then good = good + 1 else bad = bad + 1 end
+    end
+    CTProbeDB.fixturesBuild = table.concat({ GetBuildInfo() }, " ")
+    say(("record: %d calls recorded, %d raised an error (see CTProbeDB.fixtures); build %s"):format(good, bad, CTProbeDB.fixturesBuild))
 end
 
 SLASH_CTPROBE1 = "/ctp"
@@ -124,6 +281,11 @@ SlashCmdList.CTPROBE = function(msg)
     if msg == "build" then build()
     elseif msg == "clear" then if log then wipe(log) end; say("cleared")
     elseif msg == "now" then probe()
+    elseif msg == "tooltip" then tooltip()
+    elseif msg == "record" then record()
+    elseif msg:match("^budget") then budget(msg:match("^budget%s*(%S*)"))
+    elseif msg == "life" then
+        for _, l in ipairs(log or early) do if l:find("life", 1, true) then print(l) end end -- the whole log, all sessions
     elseif msg:match("^taint") then taint(msg:match("^taint%s*(%S*)"))
-    else say("button=" .. tostring(b and b:IsShown()) .. "; /ctp now to probe, /ctp clear to reset") end
+    else say("button=" .. tostring(b and b:IsShown()) .. "; /ctp now, taint, tooltip, budget, record, life, clear") end
 end

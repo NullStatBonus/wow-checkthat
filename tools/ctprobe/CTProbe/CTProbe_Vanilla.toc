@@ -1,6 +1,6 @@
 ## Interface: 11509
 ## Title: CTProbe
-## Notes: v2 taint probe (issue 98). /ctp taint run. Development probe for CheckThat, not shipped.
+## Notes: v3 probe for CheckThat (issues 98, 151, 153, 154, 163, 190). /ctp. Development probe, not shipped.
 ## SavedVariables: CTProbeDB
 
 CTProbe.lua

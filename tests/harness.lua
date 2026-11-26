@@ -119,7 +119,8 @@ function stubFrame(frames, template, name, kind)
             end
             if k == "SetPoint" then
                 local rel = select(2, ...)
-                if rel ~= nil and rel ~= _G.UIParent then error("Cannot anchor protected frames to regions", 2) end
+                if type(rel) == "string" then rel = rawget(_G, rel) end -- a frame name; SetPoint(point, x, y) has no relative frame
+                if type(rel) == "table" and rel ~= _G.UIParent then error("Cannot anchor protected frames to regions", 2) end
             end
             return fn(self, ...)
         end
