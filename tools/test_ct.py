@@ -445,6 +445,30 @@ class OfflineBlock(unittest.TestCase):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
 
+    def test_tocs_name_a_toc_for_each_client_and_need_level_5(self):
+        both = {"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"}
+        def with_tocs(tocs, level=5):
+            def m(o):
+                o["level"] = level
+                if tocs is not None: o["tocs"] = tocs
+            return self.plan(m)
+        self.assertEqual(ct.validate(with_tocs(both)), [])
+        self.assertEqual(ct.validate(with_tocs({"era": "MockAddon/MockAddon_Vanilla.toc"})), [], "one client is enough")
+        self.assertEqual(ct.validate(with_tocs(None)), [], "tocs is optional: a plan without it keeps validating")
+        for bad, why in (({}, "empty"), ({"retail": "x.toc"}, "unknown client"), ({"era": ""}, "empty path"), ({"era": 5}, "not a string")):
+            self.assertNotEqual(ct.validate(with_tocs(bad)), [], why)
+        for level in (1, 2, 3, 4):
+            self.assertNotEqual(ct.validate(with_tocs(both, level)), [], "tocs at level %d" % level)
+        p = self.plan(lambda o: o.update(tocs=both)); p["offline"].pop("level", None)
+        self.assertNotEqual(ct.validate(p), [], "tocs with no level")
+
+    def test_compile_still_drops_a_block_that_holds_tocs(self):
+        both = {"era": "MockAddon/MockAddon_Vanilla.toc"}
+        with_block = self.plan(lambda o: o.update(level=5, tocs=both))
+        without = self.plan(); del without["offline"]
+        self.assertNotIn("offline", ct.merge_sections(with_block))
+        self.assertEqual(ct.encode(ct.merge_sections(with_block)), ct.encode(ct.merge_sections(without)))
+
     def life(self, o, level=3, **extra):
         o.clear(); o.update(toc="MockAddon/Life.toc", level=level, **extra)
 

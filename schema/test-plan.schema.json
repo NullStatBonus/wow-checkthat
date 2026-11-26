@@ -147,6 +147,27 @@
               ],
               "properties": {
                 "level": {
+                  "minimum": 5
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "tocs"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
                   "minimum": 4
                 }
               }
@@ -198,6 +219,22 @@
         "toc": {
           "type": "string",
           "minLength": 1
+        },
+        "tocs": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "Level 5. One TOC for each client the block can run on, read when ct offline or replay-flow is asked for that client (--client era, forever or both). toc stays required and is the one a run without --client uses.",
+          "properties": {
+            "era": {
+              "type": "string",
+              "minLength": 1
+            },
+            "forever": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
         "mockAfterLoad": {
           "type": "boolean"
