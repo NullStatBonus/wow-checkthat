@@ -37,6 +37,12 @@ end
 local toc = arg[1]
 if not toc then io.stderr:write("usage: luajit tools/dump_options.lua TOC\n"); os.exit(2) end
 local result, Json = Runner.run({ toc = toc, level = 5, steps = {} }, { root = here, loaded = read })
+if not result.ok then -- the addon did not load: say why and let ct.py fall back to the source
+    local why = "the run failed"
+    for _, s in ipairs(result.steps) do if not s.ok then why = tostring(s.detail); break end end
+    io.stderr:write(why:gsub("\n.*", ""), "\n")
+    os.exit(1)
+end
 local keys = {}
 for k in pairs(found.keys) do keys[#keys + 1] = k end
 table.sort(keys)
