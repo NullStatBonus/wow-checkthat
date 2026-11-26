@@ -897,9 +897,9 @@ def nil_read_report(interface, names, manifests, build=None):
 
 
 OFFLINE_LEVEL_WARNING = ("warning: the offline block has no level, so it runs at level 1 (interface 11507, issecurevariable false). "
-                         "Add level: 5 for the newer answers: the client's real build and secure names, its own functions and "
-                         "frame methods, the game's load order (saved variables, login events, reload), its event list, and "
-                         "timers on a virtual clock (wait steps).")
+                         "Add level: 6 for the newer answers: the client's real build and secure names, its own functions and "
+                         "frame methods, the game's load order (saved variables, login events, reload), its event list, "
+                         "timers on a virtual clock (wait steps), and the taint of game globals.")
 
 
 def offline_plan(plan, addons, requirements=None, info=None, client=None):
