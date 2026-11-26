@@ -44,7 +44,15 @@ Judge each log assertion against `docs/debug-logging.md`.
 - A `reviewer` line names the partner files, the step IDs to compare and the relationship that must hold. A step ID is always paired with a file name.
 - Each role plan is compiled and validated. The import order is one role per character.
 
+## Foundation and feature plans
+- Every plan sets `purpose: foundation` or `purpose: feature`.
+- A foundation plan names its pillars, has one section per pillar with one step (at most about two), and has 8 to 12 steps (`validate` warns above 12).
+- One stated character runs every step of a foundation plan: any class, any level, no profession, in one place. The preamble lists those assumptions and names each step that left the gate and where it went.
+- A foundation plan has at least one step that crosses a real threshold end to end, and no step that only puts a setting back.
+- A feature plan's preamble says when it needs a staged character, and the author has said whether it is retired or kept as a regression plan.
+
 ## Plan sets
+- A set by area is a feature scope, never the release gate.
 - Each plan of a set by area has its own version step, setup step and final no-Lua-error step.
 - Section and step ids do not overlap between the plans.
 - Each preamble names every partner plan file. The import order is one plan at a time: import, start and finish it before the next import.
@@ -60,7 +68,8 @@ Judge each log assertion against `docs/debug-logging.md`.
 
 ## Shape and wording
 - One action and one expected result per step. A step with several actions or results exists only because the author asked for it, and carries `notes: Compound step, drafted on request.`
-- A sample plan has a handful of steps. Any plan has at most 25 steps and each section at most 10 (`validate` warns above that); a larger scope is a plan set by area.
+- A foundation plan has about one step per pillar. Any plan has at most 25 steps and each section at most 10 (`validate` warns above that); a larger feature scope is a plan set by area.
+- Action text is one player sentence; commands sit only in `commands`, behind Run. Expect says what is on screen, never what is logged (`validate` warns when the plan sets `purpose`).
 - No step checks logic a unit test already proves.
 - Each step covers a whole feature from start to finish, not one facet.
 - Native color codes only. No backticks or `**`.

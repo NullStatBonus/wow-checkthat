@@ -946,7 +946,9 @@ class PlanSkill(unittest.TestCase):
             text = f.read()
         for needle in ("auto or manual", "end its `expect` text with the press it needs", "`timeout` to 120",
                        "own result press writes", "replay-flow", "stale", "make install-skill",
-                       "fake game cannot prove", "at most 25 steps", "Plan sets by area", "test-settings mode", "Debug goes on first"):
+                       "fake game cannot prove", "at most 25 steps", "Plan sets by area", "test-settings mode", "Debug goes on first",
+                       "**Purpose and depth.**", "set `purpose`", "### Foundation plans", "pillars", "**One character.**",
+                       "not the release gate", "**Player language.**", "foundation plan over 12 steps"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -1009,6 +1011,72 @@ class PlanSkill(unittest.TestCase):
                 rc = ct.main(["validate", path])
         self.assertEqual(rc, 0)
         self.assertIn("warning: the plan has 30 steps (more than 25)", out.getvalue())
+
+    def test_purpose_is_tools_only_and_takes_two_values(self):
+        p = good()
+        for v in ("foundation", "feature"):
+            self.assertEqual(ct.validate(dict(p, purpose=v)), [], v)
+        self.assertTrue(any("purpose" in e for e in ct.validate(dict(p, purpose="release"))))
+        self.assertEqual(ct.encode(ct.merge_sections(p)), ct.encode(ct.merge_sections(dict(p, purpose="foundation"))))
+        self.assertNotIn("purpose", json.dumps(ct.merge_sections(dict(p, purpose="feature"))))
+
+    @staticmethod
+    def worded(text=None, expect=None, kind="manual", purpose="feature"):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        if text is not None:
+            st["action"] = {"kind": kind, "text": text}
+        if expect is not None:
+            st["expect"] = expect
+        if purpose:
+            p["purpose"] = purpose
+        return p
+
+    def test_wording_warns_about_a_command_in_action_text_or_expect(self):
+        for text in ("Enter |cff99ccff/kt debug on|r.", "Enter /kt debug on."):
+            got = ct.wording_warnings(self.worded(text=text))
+            self.assertEqual(got, ["a.2: the action text shows /kt debug on: write what the player does, and keep the command behind Run"], text)
+        got = ct.wording_warnings(self.worded(expect="you typed /kt debug on."))
+        self.assertEqual(got, ["a.2: expect shows /kt debug on: say what the player sees on screen"])
+        self.assertEqual(ct.wording_warnings(self.worded(text="/kt debug on", kind="copy-slash")), [], "a copy-slash text is the command")
+
+    def test_wording_warns_about_the_log_in_expect_but_not_logging_in(self):
+        for expect in ("the addon logs the route.", "a line is logged.", "it shows in the debug log.", "logging starts."):
+            self.assertEqual(len(ct.wording_warnings(self.worded(expect=expect))), 1, expect)
+            self.assertIn("expect speaks of the log", ct.wording_warnings(self.worded(expect=expect))[0])
+        for expect in ("you log in without an error.", "you Log out and back in.", "you log on again.", "the catalog shows."):
+            self.assertEqual(ct.wording_warnings(self.worded(expect=expect)), [], expect)
+
+    def test_wording_warnings_need_a_purpose(self):
+        p = self.worded(text="Enter /kt debug on.", expect="the addon logs it.", purpose=None)
+        self.assertEqual(ct.wording_warnings(p), [], "a plan without purpose keeps its old warnings")
+        self.assertEqual(len(ct.wording_warnings(dict(p, purpose="foundation"))), 2)
+
+    def test_a_foundation_plan_over_12_steps_warns(self):
+        def plan(n, purpose):
+            return dict(self.sized([n] if n <= 10 else [10, n - 10]), purpose=purpose)
+        self.assertEqual(ct.wording_warnings(plan(12, "foundation")), [])
+        got = ct.wording_warnings(plan(13, "foundation"))
+        self.assertEqual(len(got), 1)
+        self.assertIn("the foundation plan has 13 steps (more than 12)", got[0])
+        self.assertIn("feature plan", got[0])
+        self.assertEqual(ct.wording_warnings(plan(13, "feature")), [])
+        p = plan(11, "foundation")
+        p["sections"][0]["steps"][0].update({"title": "{{n}}", "cases": [{"id": c, "vars": {"n": c}} for c in ("x", "y", "z")]})
+        self.assertIn("has 13 steps", ct.wording_warnings(p)[0], "cases count")
+
+    def test_wording_and_foundation_warnings_print_and_validate_succeeds(self):
+        import yaml
+        p = dict(self.sized([10, 3]), purpose="foundation")
+        p["sections"][0]["steps"][1]["expect"] = "the addon logs it."
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.yaml")
+            with open(path, "w") as f:
+                yaml.safe_dump(p, f)
+            rc, out = self.run_cli(["validate", path])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("warning: s0.1: expect speaks of the log", out)
+        self.assertIn("warning: the foundation plan has 13 steps (more than 12)", out)
 
     def run_cli(self, args):
         import contextlib, io
@@ -1771,6 +1839,8 @@ class GoldenPlans(unittest.TestCase):
             self.assertEqual(ct.card_move_warnings(plan), [], path)
             self.assertEqual(ct.warnings(plan), [], path)
             self.assertEqual(ct.size_warnings(plan), [], path)
+            self.assertIn(plan.get("purpose"), ("foundation", "feature"), path + ": the skill sets purpose on every plan")
+            self.assertEqual(ct.wording_warnings(plan), [], path)
             self.assertIn("!CT1!", ct.encode(ct.merge_sections(plan)), path)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")

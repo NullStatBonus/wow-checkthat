@@ -208,6 +208,9 @@ These checks run in a coding agent, not in the game. Run `make install-skill` fi
 7. **Offer at apply.** Finish the tasks of an OpenSpec change that alters a setting. Run `/opsx:apply` on it.
    Check: the agent offers the plan skill once and waits. It starts nothing if you decline.
    Log: none; read the transcript.
+8. **Foundation plan.** Ask the plan skill for a plan to run before each release of an addon.
+   Check: the agent asks "foundation or feature?" first, then asks for the pillars before it drafts a step. Every step suits one character of any class in one place. Steps that need more are named in the preamble.
+   Log: `ct.py validate` on the plan prints ok and no wording warning; the plan has `purpose: foundation`.
 
 ## 7. Client census
 

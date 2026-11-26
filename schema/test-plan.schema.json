@@ -41,6 +41,13 @@
       "type": "string",
       "description": "What to do after the last step."
     },
+    "purpose": {
+      "enum": [
+        "foundation",
+        "feature"
+      ],
+      "description": "Tools only: foundation is the release gate (the systems every feature depends on, one character, one run per client); feature goes deep on one feature. ct.py validate adds wording warnings, and a size warning for foundation, when it is set. The compiler drops it; the game never sees it."
+    },
     "logs": {
       "type": "object",
       "additionalProperties": {

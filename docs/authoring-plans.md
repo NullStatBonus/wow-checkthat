@@ -11,7 +11,7 @@ A plan is a YAML file in `plans/` that follows `schema/test-plan.schema.json`. C
    ```
 
    Or ask the [plan skill](skills.md) to interview you and draft it. A conversion is a list to cut, not a plan to run: see [Keep a plan short](#keep-a-plan-short).
-2. **Validate.** `.venv/bin/python tools/ct.py validate plans/<addon>.yaml`. It fails on a step that asserts its own result line. It warns when the first step does not check the version, and when the plan has more than 25 steps or a section more than 10 (each case counts as a step).
+2. **Validate.** `.venv/bin/python tools/ct.py validate plans/<addon>.yaml`. It fails on a step that asserts its own result line. It warns when the first step does not check the version, and when the plan has more than 25 steps or a section more than 10 (each case counts as a step). A plan that sets `purpose` also gets the wording warnings and, for a foundation plan, a warning above 12 steps (see [Foundation and feature plans](#foundation-and-feature-plans)).
 3. **Compile.** `make build` writes `build/*.ct`. Compile one plan with `.venv/bin/python tools/ct.py compile plans/<name>.yaml -o build/<name>.ct`.
 4. **Import and run.** In game, `/ct import`, paste, then `/ct start <addon>`.
 
@@ -22,13 +22,32 @@ The plan format is specified in `openspec/specs/test-plan-format/`. Rules for au
 A plan is for what a fake game cannot prove: real game data and events, end-to-end wiring, drawing, sound, other addons, and saved variables across `/reload`. Logic that a unit test proves gets no step.
 
 - Each step covers a whole feature from start to finish, not one facet.
-- A plan has at most 25 steps, and a section at most 10. A tester runs all of a release's plans before each release.
+- A plan has at most 25 steps, and a section at most 10. Before each release a tester runs the foundation plan, not every plan.
 - Measure coverage, do not guess it: map each spec requirement to the plan steps that cover it ([Check what the plans cover](#check-what-the-plans-cover)) and, by hand or with the addon's own coverage report, to unit tests. List the rest.
 - A long plan also fills the addon's debug log during a run, so a late absence check or count cannot be proven, and state carried along a long chain of steps gives false results.
 
+## Foundation and feature plans
+
+Every plan says what it is for with `purpose`. The field is for the tools only; the compiler drops it.
+
+- **`purpose: foundation`** is the release gate. It answers "do the systems that everything else depends on work in the real game?" Find the pillars first: the systems that, if they fail, make every feature fail. Name each with its real-game risk only, such as a game call missing on one client, a real event that never reaches the decision, or saved data lost on `/reload`.
+  - One character runs it: any class, any level, no profession, in one stated place. One run per client. The preamble lists these assumptions.
+  - A step that needs a class, a profession, a place, a fight or another addon moves to a feature plan, the offline block or a unit test. The preamble names it and where it went.
+  - One section per pillar, one step per pillar (at most about two), 8 to 12 steps. At least one step crosses a real threshold end to end. No step exists only to put a setting back.
+- **`purpose: feature`** goes deep on one feature: edge and negative cases, each client, one plan per character role, combat or instances when the feature touches them. It runs when the feature changes, not before every release. After the feature ships, retire it or keep it as a regression plan.
+
+Write both in player language. Action text is one sentence about what the player does, and commands sit only in `commands`, behind Run. Expect says what is on screen, never what is logged.
+
+When a plan sets `purpose`, `validate` warns, without failing, about:
+- a slash command in action text or Expect (not in a `copy-slash` step's text, which is the command);
+- "log", "logs", "logged" or "logging" in Expect ("log in", "log out" and "log on" are fine);
+- a foundation plan over 12 steps, each case counted as a step.
+
+A plan without `purpose` keeps its old warnings.
+
 ## Plan sets
 
-Split a larger scope into a set of plans by area, for example `<name>.core.yaml`, `<name>.ui.yaml` and `<name>.addons.yaml`. One character runs them one after another.
+Split a larger feature scope into a set of plans by area, for example `<name>.core.yaml`, `<name>.ui.yaml` and `<name>.addons.yaml`. One character runs them one after another. A set by area is not the release gate: the foundation plan is.
 
 - Each plan has its own version step, setup step and final no-Lua-error step (the quiet errors source, see [Unit-test checks](#unit-test-checks)). With `scope: session` that step also sees errors from an earlier plan of the set in the same session (#161).
 - Give each plan its own section range, so no section id or step id appears in two plans.

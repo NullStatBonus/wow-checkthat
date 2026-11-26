@@ -317,6 +317,38 @@ def size_warnings(plan):
                    "into a plan set (see \"Plan sets\" in docs/authoring-plans.md)" % (n, PLAN_STEPS_MAX))
     return out
 
+FOUNDATION_STEPS_MAX = 12  # about one step per pillar (#219)
+LOG_WORDS = re.compile(r"\blog(?:s|ged|ging)?\b(?!\s+(?:in|out|on)\b)", re.I)
+
+def wording_warnings(plan):
+    """Messages for technical wording, only in a plan that declares a purpose (opt-in, #219): a slash command in action text
+    (not a copy-slash step, whose text is the command) or in expect, and log words in expect. A foundation plan also warns
+    above FOUNDATION_STEPS_MAX steps, counted after cases expand."""
+    purpose = plan.get("purpose")
+    if not purpose:
+        return []
+    known = set(SLASH.get(plan.get("addon"), [c for cmds in SLASH.values() for c in cmds])) | set(BUILTIN) | {"/console"}
+    def commands(text):
+        text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", text or "")
+        return [m.group(1) for m in re.finditer(r"(?<![\w/])(/[A-Za-z]+(?: [A-Za-z0-9]+)*)", text) if m.group(1).split(" ")[0].lower() in known]
+    out = []
+    secs = expand_cases(plan)["sections"]
+    for sec in secs:
+        for st in sec["steps"]:
+            act = st.get("action") or {}
+            if act.get("kind") != "copy-slash":
+                for c in commands(act.get("text")):
+                    out.append("%s: the action text shows %s: write what the player does, and keep the command behind Run" % (st["id"], c))
+            for c in commands(st.get("expect")):
+                out.append("%s: expect shows %s: say what the player sees on screen" % (st["id"], c))
+            if LOG_WORDS.search(st.get("expect") or ""):
+                out.append("%s: expect speaks of the log: say what the player sees on screen, and leave the log to assertions" % st["id"])
+    n = sum(len(sec["steps"]) for sec in secs)
+    if purpose == "foundation" and n > FOUNDATION_STEPS_MAX:
+        out.append("the foundation plan has %d steps (more than %d): keep about one step per pillar, and move the rest to a feature plan "
+                   "(see \"Foundation and feature plans\" in docs/authoring-plans.md)" % (n, FOUNDATION_STEPS_MAX))
+    return out
+
 CARD_MOVES = re.compile(r"^/(ct|checkthat)\s+(pass|partial|fail|skip|undo|back|next|run|rerun|end|start|import)\b", re.I)
 
 def card_move_warnings(plan):
@@ -345,7 +377,7 @@ def print_warnings(plan):
     w = version_warning(plan)
     if w:
         print("warning: " + w)
-    for w in size_warnings(plan):
+    for w in size_warnings(plan) + wording_warnings(plan):
         print("warning: " + w)
 
 def merge_sections(plan):
@@ -353,6 +385,7 @@ def merge_sections(plan):
     out = expand_cases(plan)
     out["kind"], out["ct"] = "plan", 1
     out.pop("offline", None)  # tools only: the game never receives it
+    out.pop("purpose", None)  # tools only, like offline
     for sec in out["sections"]:
         sec.pop("covers", None)  # tools only, like offline
         for st in sec["steps"]:

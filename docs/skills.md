@@ -4,7 +4,9 @@ Two skills help addon developers write plans and read finished runs back. They a
 
 - **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time. For an offline block it prefers a mock replayed from a call recorded in game (`tools/recordings/`) to a hand-written return value.
   - It scopes first: a plan checks only what a fake game cannot prove, so a check a unit test proves gets no step. It drafts the essential steps first, never a one-for-one conversion of a manual document.
-  - A plan has at most 25 steps and a section at most 10. A larger scope becomes a plan set by area, run one plan at a time.
+  - It asks first what the plan is for. A foundation plan is the release gate: one step per pillar, about 8 to 12 steps, for one character of any class in one place. A feature plan goes deep on one feature and runs when that feature changes. It sets `purpose` on the plan.
+  - Steps are in player language: commands only behind Run, and Expect says what is on screen, never what is logged.
+  - A plan has at most 25 steps and a section at most 10. A larger feature scope becomes a plan set by area, run one plan at a time.
   - A plan that depends on the addon's settings uses a test-settings mode in the addon (see [Test settings](authoring-plans.md#test-settings)).
   - By default each step has one action and one expected result. Ask for a compound step when you need one.
   - Before a plan goes to a tester it runs a gate: `validate`, `compile`, `ct.py replay-flow`, `ct.py lines`, the `offline` block, and a review against what the card shows, with every finding fixed.
