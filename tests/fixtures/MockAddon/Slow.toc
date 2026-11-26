@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon slow
+## Notes: Fixture: a handler that runs too long on one event. Not shipped.
+Slow.lua
