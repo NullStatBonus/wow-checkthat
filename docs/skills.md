@@ -2,7 +2,7 @@
 
 Two skills help addon developers write plans and read finished runs back. They are plain `SKILL.md` folders and developer tools. They are separate from the in-game `/ct` commands.
 
-- **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time.
+- **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time. For an offline block it prefers a mock replayed from a call recorded in game (`tools/recordings/`) to a hand-written return value.
   - It scopes first: a plan checks only what a fake game cannot prove, so a check a unit test proves gets no step. It drafts the essential steps first, never a one-for-one conversion of a manual document.
   - A plan has at most 25 steps and a section at most 10. A larger scope becomes a plan set by area, run one plan at a time.
   - A plan that depends on the addon's settings uses a test-settings mode in the addon (see [Test settings](authoring-plans.md#test-settings)).
