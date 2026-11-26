@@ -1,0 +1,4 @@
+## Interface: 16001
+## Title: MockAddon rec
+## Notes: Fixture: the same on the Forever interface. Not shipped.
+Rec.lua

@@ -255,6 +255,64 @@ class TemplateSlice(unittest.TestCase):
                 self.assertIn(n, t, client)
             self.assertIn("SetBackdrop", t["BackdropTemplate"]["methods"], client)
 
+class Recordings(unittest.TestCase):
+    """ct.py recordings: CTProbe's saved variables become tools/recordings/<client>.json."""
+    SV = '''CTProbeDB = {
+["fixturesBuild"] = "1.60.1 71139",
+["version"] = 3,
+["fixtures"] = {
+["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.60.1" }, { ["type"] = "string", ["value"] = "71139" }, { ["type"] = "string", ["value"] = "Nov 24 2026" }, { ["type"] = "number", ["value"] = 16001 } } },
+["C_Item.GetItemInfo(6948)"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "Hearthstone" }, { ["type"] = "string", ["value"] = "|cnIQ1:|Hitem:6948::::::::10:1482:::::|h[Hearthstone]|h|r" }, { ["type"] = "nil" }, { ["type"] = "number", ["value"] = 1 } } },
+["C_Container.GetContainerNumSlots(0)"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 20 } } },
+["GetMoney()"] = { ["n"] = 1, ["typeOnly"] = true, ["values"] = { { ["type"] = "number" } } },
+["UnitClass(player)"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Mage" } } },
+["GetItemInfo(6948)"] = { ["error"] = "attempt to call a nil value" },
+["C_Container.GetContainerItemInfo(0, 1)"] = { ["n"] = 1, ["values"] = { { ["type"] = "table", ["value"] = {} } } },
+},
+}
+'''
+
+    def make(self, text=None):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "CTProbe.lua")
+        with open(path, "w") as f: f.write(text or self.SV)
+        return d, path
+
+    def test_calls_become_a_recording_and_personal_ones_are_left_out(self):
+        d, path = self.make()
+        client, rec, skipped = ct.probe_recordings(path)
+        self.assertEqual((client, rec["format"], rec["build"]), ("forever", 1, "1.60.1.71139"))
+        self.assertEqual(sorted(rec["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetBuildInfo()"])
+        c = rec["calls"]["C_Item.GetItemInfo(6948)"]
+        self.assertEqual((c["api"], c["args"], c["n"], c["nils"]), ("C_Item.GetItemInfo", [6948], 4, [3]))
+        self.assertEqual(c["returns"][2], False, "a nil is a placeholder listed in nils")
+        self.assertEqual(rec["calls"]["C_Container.GetContainerNumSlots(0)"]["args"], [0])
+        self.assertEqual(rec["calls"]["GetBuildInfo()"]["args"], [])
+        why = dict(skipped)
+        self.assertIn("personal", why["GetMoney()"]); self.assertIn("player", why["UnitClass(player)"])
+        self.assertIn("error", why["GetItemInfo(6948)"]); self.assertIn("table", why["C_Container.GetContainerItemInfo(0, 1)"])
+
+    def test_an_item_link_keeps_the_item_and_loses_the_level_and_specialization(self):
+        _, path = self.make()
+        link = ct.probe_recordings(path)[1]["calls"]["C_Item.GetItemInfo(6948)"]["returns"][1]
+        self.assertEqual(link, "|cnIQ1:|Hitem:6948::::::::::::::|h[Hearthstone]|h|r")
+        self.assertEqual(ct.anonymize_link("|Hitem:19019:0:0:0:0:0:0:0:60:261|h[x]|h"), "|Hitem:19019:0:0:0:0:0:0:0::|h[x]|h")
+        self.assertEqual(ct.anonymize_link(5), 5); self.assertEqual(ct.anonymize_link("plain"), "plain")
+
+    def test_the_command_writes_the_client_file_and_a_file_with_no_fixtures_is_an_error(self):
+        d, path = self.make()
+        out = os.path.join(d, "out")
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            self.assertEqual(ct.main(["recordings", "--src", path, "-o", out]), 0)
+        with open(os.path.join(out, "forever.json")) as f: self.assertEqual(json.load(f)["client"], "forever")
+        self.assertIn("left out", o.getvalue())
+        _, bare = self.make('CTProbeDB = { ["version"] = 3 }\n')
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(ct.main(["recordings", "--src", bare, "-o", out]), 2)
+        self.assertIn("/ctp record", err.getvalue())
+
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
         plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))

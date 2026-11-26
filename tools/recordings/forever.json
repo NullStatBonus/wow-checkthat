@@ -1,0 +1,92 @@
+{
+ "build": "1.60.1.71139",
+ "calls": {
+  "C_Container.GetContainerNumSlots(0)": {
+   "api": "C_Container.GetContainerNumSlots",
+   "args": [
+    0
+   ],
+   "n": 1,
+   "returns": [
+    20
+   ]
+  },
+  "C_Item.GetItemInfo(6948)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    6948
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Hearthstone",
+    "|cnIQ1:|Hitem:6948::::::::::::::::::|h[Hearthstone]|h|r",
+    1,
+    1,
+    0,
+    "Miscellaneous",
+    "Junk",
+    1,
+    "INVTYPE_NON_EQUIP_IGNORE",
+    134414,
+    0,
+    15,
+    0,
+    1,
+    0,
+    false,
+    false,
+    ""
+   ]
+  },
+  "GetBuildInfo()": {
+   "api": "GetBuildInfo",
+   "args": [],
+   "n": 6,
+   "returns": [
+    "1.60.1",
+    "71139",
+    "Nov 24 2026",
+    16001,
+    "",
+    " "
+   ]
+  },
+  "GetCurrentRegion()": {
+   "api": "GetCurrentRegion",
+   "args": [],
+   "n": 1,
+   "returns": [
+    1
+   ]
+  },
+  "GetLocale()": {
+   "api": "GetLocale",
+   "args": [],
+   "n": 1,
+   "returns": [
+    "enUS"
+   ]
+  },
+  "InCombatLockdown()": {
+   "api": "InCombatLockdown",
+   "args": [],
+   "n": 1,
+   "returns": [
+    false
+   ]
+  },
+  "IsLoggedIn()": {
+   "api": "IsLoggedIn",
+   "args": [],
+   "n": 1,
+   "returns": [
+    true
+   ]
+  }
+ },
+ "client": "forever",
+ "format": 1
+}

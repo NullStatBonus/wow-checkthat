@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon rec
+## Notes: Fixture: calls a game function a plan mocks from a recording. Not shipped.
+Rec.lua

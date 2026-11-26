@@ -49,6 +49,10 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 
 `ct.py coverage <plan...> --addon-src <folder> --evidence` joins the newest finished run of each plan to the addon's subcommands, settings and spec requirements: `passed`, `failed` (failed or unverified) or `never-run`; the result describes plan steps, not unit tests. See [Check what the plans cover](authoring-plans.md#check-what-the-plans-cover).
 
+## Record calls for plan mocks
+
+`ct.py recordings --src <CTProbe.lua>` turns the CTProbe saved variables into `tools/recordings/<client>.json`. In game, run `/ctp record` on a client, then `/reload` and log out so the game saves the file, and point `--src` at `CTProbe.lua` in that client's `WTF/Account/<account>/SavedVariables`. The client comes from the recorded `GetBuildInfo()`. The recording keeps each call's api, arguments (read from its label), return values and count; a `nil` return is listed in `nils`. It leaves out a call that raised an error, a call on the player, a value CTProbe recorded by type only (money, item counts, names, the realm) and a return that is a table or a function. It empties the level and specialization fields of an item link. The file names no character or realm, and a test checks that. A plan then mocks from it with `{ recording: "GetItemInfo(6948)" }` ([Write a plan](authoring-plans.md)).
+
 ## Compare runs
 
 ```
