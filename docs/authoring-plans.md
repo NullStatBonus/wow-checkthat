@@ -10,19 +10,50 @@ A plan is a YAML file in `plans/` that follows `schema/test-plan.schema.json`. C
    .venv/bin/python tools/ct.py from-md ../wow-keepthat/docs/test-plan.md --addon KeepThat -o plans/keepthat.yaml
    ```
 
-   Or ask the [plan skill](skills.md) to interview you and draft it.
-2. **Validate.** `.venv/bin/python tools/ct.py validate plans/<addon>.yaml`. It fails on a step that asserts its own result line, and warns when the first step does not check the version.
+   Or ask the [plan skill](skills.md) to interview you and draft it. A conversion is a list to cut, not a plan to run: see [Keep a plan short](#keep-a-plan-short).
+2. **Validate.** `.venv/bin/python tools/ct.py validate plans/<addon>.yaml`. It fails on a step that asserts its own result line. It warns when the first step does not check the version, and when the plan has more than 25 steps or a section more than 10 (each case counts as a step).
 3. **Compile.** `make build` writes `build/*.ct`. Compile one plan with `.venv/bin/python tools/ct.py compile plans/<name>.yaml -o build/<name>.ct`.
 4. **Import and run.** In game, `/ct import`, paste, then `/ct start <addon>`.
 
 The plan format is specified in `openspec/specs/test-plan-format/`. Rules for automatic steps are in the [feature reference](features.md#automatic-steps). Screenshots are in [Collect evidence](harvesting.md#screenshots).
 
+## Keep a plan short
+
+A plan is for what a fake game cannot prove: real game data and events, end-to-end wiring, drawing, sound, other addons, and saved variables across `/reload`. Logic that a unit test proves gets no step.
+
+- Each step covers a whole feature from start to finish, not one facet.
+- A plan has at most 25 steps, and a section at most 10. A tester runs all of a release's plans before each release.
+- Measure coverage, do not guess it: map each spec requirement to the plan steps that cover it ([Check what the plans cover](#check-what-the-plans-cover)) and, by hand or with the addon's own coverage report, to unit tests. List the rest.
+- A long plan also fills the addon's debug log during a run, so a late absence check or count cannot be proven, and state carried along a long chain of steps gives false results.
+
+## Plan sets
+
+Split a larger scope into a set of plans by area, for example `<name>.core.yaml`, `<name>.ui.yaml` and `<name>.addons.yaml`. One character runs them one after another.
+
+- Each plan has its own version step, setup step and final no-Lua-error step (the quiet errors source, see [Unit-test checks](#unit-test-checks)). With `scope: session` that step also sees errors from an earlier plan of the set in the same session (#161).
+- Give each plan its own section range, so no section id or step id appears in two plans.
+- Each preamble names every partner plan file.
+- CheckThat keeps one plan for each addon, and a run starts from the last plan imported. Import, start and finish one plan before you import the next.
+
+A check that needs several characters is a different set: one plan for each character role. See the [plan skill](skills.md).
+
+## Test settings
+
+A plan written for the default settings fails for a tester who changed them. A step command that sets a value also overwrites the tester's own setting. When a plan depends on the addon's settings, give the addon a test-settings mode:
+
+- One command (for example `/<prefix> testsettings on`) puts the character's settings and frame positions aside and uses fresh defaults in place. `off` restores them exactly. The mode lasts across `/reload`, and a chat line at login says that it is on.
+- Before the swap, the addon ends anything that still holds the old settings (open questions, previews, pending callbacks). It logs the swap as one line, not as one change for each setting.
+- The plan's setup step runs, in this order: debug on, `testsettings on`, `/reload`. It asserts that the debug log is on, then the login line, then that test settings are on at login. Debug goes on first, because the addon drops lines while its log is off.
+- The plan's last step runs `testsettings off` and asserts the restore line in that attempt.
+
+A subcommand after the addon's slash prefix needs no CheckThat change: the allow list holds the prefix. A plan has no run-level setup or teardown, so a run that a tester abandons leaves the mode on until `off` (#171).
+
 ## Plans in this repository
 
-- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. ClosestVendor keeps its own plan in its own repository, so none is kept here. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 15 steps (16 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`.
-- `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
+- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. ClosestVendor keeps its own plan in its own repository, so none is kept here. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 15 steps (16 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`. Its one section gets the size warning, because it checks the runner, not a feature.
+- `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. `plans/full/keepthat.yaml` (31 steps) gets the size warning: it is a conversion to cut, not a plan to run. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-0.16.yaml` tests Remove from run and the result keys on its own run, in forever-camelot only.
-- `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen.
+- `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen (so it gets the size warning).
 - `plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account. The owner leaves a run open. The viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill.
 
 ## First live run

@@ -630,7 +630,8 @@ class PlanSkill(unittest.TestCase):
         with open(os.path.join(ROOT, "skills", "ct-test-plan", "SKILL.md"), encoding="utf-8") as f:
             text = f.read()
         for needle in ("auto or manual", "end its `expect` text with the press it needs", "`timeout` to 120",
-                       "own result press writes", "replay-flow", "stale", "make install-skill"):
+                       "own result press writes", "replay-flow", "stale", "make install-skill",
+                       "fake game cannot prove", "at most 25 steps", "Plan sets by area", "test-settings mode", "Debug goes on first"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -649,6 +650,78 @@ class PlanSkill(unittest.TestCase):
         self.assertIsNone(ct.version_warning(p))
         p = good(); p["sections"][0]["steps"][0]["title"] = "Check the version"
         self.assertIsNone(ct.version_warning(p))
+
+    @staticmethod
+    def sized(sections):
+        """A valid plan with sections of the given step counts (ids s0, s1, ...)."""
+        p = good()
+        step = p["sections"][0]["steps"][1]
+        p["sections"] = [dict(p["sections"][0], id="s%d" % i, steps=[dict(step, id="s%d.%d" % (i, j)) for j in range(n)])
+                         for i, n in enumerate(sections)]
+        return p
+
+    def test_a_plan_over_25_steps_or_a_section_over_10_warns(self):
+        self.assertEqual(ct.size_warnings(self.sized([10, 10, 5])), [], "25 steps and sections of 10 are the limit")
+        got = ct.size_warnings(self.sized([10, 10, 6]))
+        self.assertEqual(len(got), 1)
+        self.assertIn("the plan has 26 steps (more than 25)", got[0])
+        self.assertIn("Plan sets", got[0])
+        got = ct.size_warnings(self.sized([11, 10, 5]))
+        self.assertEqual(len(got), 2, "a long section and a long plan are both reported")
+        self.assertIn("section s0 has 11 steps", got[0])
+        self.assertIn("the plan has 26 steps", got[1])
+        got = ct.size_warnings(self.sized([11, 2]))
+        self.assertEqual(got, ["section s0 has 11 steps (more than 10): split it, or move steps a unit test already proves out of the plan"])
+
+    def test_size_counts_each_case_as_a_step(self):
+        def with_cases(n):
+            p = self.sized([n])
+            p["sections"][0]["steps"][0].update({"title": "{{n}}", "cases": [{"id": c, "vars": {"n": c}} for c in ("x", "y")]})
+            self.assertEqual(ct.validate(p), [])
+            return p
+        self.assertEqual(ct.size_warnings(with_cases(9)), [], "9 steps, one of them 2 cases, are 10 on the card")
+        self.assertEqual(ct.size_warnings(with_cases(10)),
+                         ["section s0 has 11 steps (more than 10): split it, or move steps a unit test already proves out of the plan"])
+
+    def test_size_warning_prints_and_validate_still_succeeds(self):
+        import contextlib, io, yaml
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.yaml")
+            with open(path, "w") as f:
+                yaml.safe_dump(self.sized([10, 10, 10]), f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = ct.main(["validate", path])
+        self.assertEqual(rc, 0)
+        self.assertIn("warning: the plan has 30 steps (more than 25)", out.getvalue())
+
+    def run_cli(self, args):
+        import contextlib, io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = ct.main(args)
+        return rc, out.getvalue()
+
+    def test_size_warning_waits_for_the_errors_to_be_fixed(self):
+        import yaml
+        p = self.sized([10, 10, 10])
+        p["sections"][0]["steps"][0]["bogus"] = 1
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.yaml")
+            with open(path, "w") as f:
+                yaml.safe_dump(p, f)
+            rc, out = self.run_cli(["validate", path])
+        self.assertEqual(rc, 1)
+        self.assertNotIn("more than 25", out)
+
+    def test_from_md_prints_the_size_warning(self):
+        with tempfile.TemporaryDirectory() as d:
+            md = os.path.join(d, "p.md")
+            with open(md, "w") as fh:
+                fh.write("# T\n\n## 1. Sec\n\n" + "".join("- [ ] Do %d.\n  Check: it works.\n  Log: none.\n" % i for i in range(11)))
+            rc, out = self.run_cli(["from-md", md, "--addon", "KeepThat", "-o", os.path.join(d, "p.yaml")])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("has 11 steps (more than 10)", out)
 
     @staticmethod
     def partner_problems(paths):
@@ -1304,6 +1377,7 @@ class GoldenPlans(unittest.TestCase):
             self.assertIsNone(ct.version_warning(plan), path)
             self.assertEqual(ct.card_move_warnings(plan), [], path)
             self.assertEqual(ct.warnings(plan), [], path)
+            self.assertEqual(ct.size_warnings(plan), [], path)
             self.assertIn("!CT1!", ct.encode(ct.merge_sections(plan)), path)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")

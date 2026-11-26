@@ -290,6 +290,20 @@ def version_warning(plan):
     if "version" not in text.lower():
         return "%s: the first step does not check the version under test (a run on another build wastes the tester's time)" % st["id"]
 
+PLAN_STEPS_MAX, SECTION_STEPS_MAX = 25, 10  # what one tester runs in one sitting (#162)
+
+def size_warnings(plan):
+    """Messages for a plan or section longer than a tester runs before a release. Steps are counted after cases expand,
+    because the card shows each case as a step."""
+    secs = expand_cases(plan)["sections"]
+    out = ["section %s has %d steps (more than %d): split it, or move steps a unit test already proves out of the plan"
+           % (sec.get("id"), len(sec["steps"]), SECTION_STEPS_MAX) for sec in secs if len(sec["steps"]) > SECTION_STEPS_MAX]
+    n = sum(len(sec["steps"]) for sec in secs)
+    if n > PLAN_STEPS_MAX:
+        out.append("the plan has %d steps (more than %d): keep only what a fake game cannot prove, and split a larger scope "
+                   "into a plan set (see \"Plan sets\" in docs/authoring-plans.md)" % (n, PLAN_STEPS_MAX))
+    return out
+
 CARD_MOVES = re.compile(r"^/(ct|checkthat)\s+(pass|partial|fail|skip|undo|back|next|run|rerun|end|start|import)\b", re.I)
 
 def card_move_warnings(plan):
@@ -317,6 +331,8 @@ def print_warnings(plan):
         print("warning: %s: command named in text but not in commands: %s" % (sid, cmd))
     w = version_warning(plan)
     if w:
+        print("warning: " + w)
+    for w in size_warnings(plan):
         print("warning: " + w)
 
 def merge_sections(plan):

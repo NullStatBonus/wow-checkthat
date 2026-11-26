@@ -44,13 +44,25 @@ Judge each log assertion against `docs/debug-logging.md`.
 - A `reviewer` line names the partner files, the step IDs to compare and the relationship that must hold. A step ID is always paired with a file name.
 - Each role plan is compiled and validated. The import order is one role per character.
 
+## Plan sets
+- Each plan of a set by area has its own version step, setup step and final no-Lua-error step.
+- Section and step ids do not overlap between the plans.
+- Each preamble names every partner plan file. The import order is one plan at a time: import, start and finish it before the next import.
+
+## Settings
+- A plan that depends on the addon's settings uses the addon's test-settings mode, not per-step setting commands.
+- The setup step runs debug on, the test-settings command and `/reload`, in that order, and asserts each line.
+- The last step turns test settings off and asserts the restore line.
+
 ## Facts
 - A step that asserts on a fact lists the `facts` log source (`global: CheckThatDB`, `path: global.facts`, `format: strings`) in the plan's `logs`.
 - The asserted line is `[addon] key=value`, the same text the addon's `CheckThat.Report` call produces. The plan notes which addon change adds the call until it ships.
 
 ## Shape and wording
 - One action and one expected result per step. A step with several actions or results exists only because the author asked for it, and carries `notes: Compound step, drafted on request.`
-- A sample plan has a handful of steps; a release plan has more.
+- A sample plan has a handful of steps. Any plan has at most 25 steps and each section at most 10 (`validate` warns above that); a larger scope is a plan set by area.
+- No step checks logic a unit test already proves.
+- Each step covers a whole feature from start to finish, not one facet.
 - Native color codes only. No backticks or `**`.
 - Short sentences, active voice, one fact each.
 - `setup` and `cleanup` exist where a step changes state. Shared `requires`, `setup` and `clients` sit on the section.
