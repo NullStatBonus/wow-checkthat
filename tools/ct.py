@@ -808,12 +808,14 @@ def lines_check(plan, src):
             return True
         m = re.match(r"^\[([^\]]+)\] ?(.*)$", text, re.S)
         if not m:
-            # built at run time, such as "test command: " .. kind: drop trailing words down to a prefix of 8 characters
+            # built at run time, such as "test command: " .. kind or "%d items found": try runs of words of 8 characters or more,
+            # longest first, so a prefix (the old rule) is tried before a run that starts later
             words = text.split(" ")
             for n in range(len(words) - 1, 0, -1):
-                prefix = " ".join(words[:n]).rstrip(" :=,")
-                if len(prefix) >= 8 and any(prefix in f for f in files):
-                    return True
+                for i in range(len(words) - n + 1):
+                    run = " ".join(words[i:i + n]).strip(" :=,")
+                    if len(run) >= 8 and any(run in f for f in files):
+                        return True
             return False
         tag, rest = m.group(1), m.group(2).strip()
         words = re.findall(r"[A-Za-z]{4,}", rest)
@@ -2324,13 +2326,42 @@ def lua_files(src):
             if f.endswith(".lua"):
                 yield os.path.join(root, f)
 
+def toc_lua_files(src):
+    """The Lua files the addon's TOC files list, in order, following Script and Include entries of the XML files they list (embeds.xml).
+    A file that does not exist is skipped, and so is anything under Libs. Paths use / or \\ ."""
+    seen, out = set(), []
+    def add(path):
+        path = os.path.normpath(path.strip().replace("\\", "/"))
+        if path in seen or not os.path.isfile(path):
+            return
+        seen.add(path)
+        if "libs" in [x.lower() for x in os.path.relpath(path, src).split(os.sep)]:
+            return
+        if path.lower().endswith(".lua"):
+            out.append(path)
+        elif path.lower().endswith(".xml"):
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = re.sub(r"<!--.*?-->", "", f.read(), flags=re.S)
+            for m in re.finditer(r'<(?:Script|Include)\b[^>]*?\bfile\s*=\s*"([^"]+)"', text, re.I):
+                add(os.path.join(os.path.dirname(path), m.group(1)))
+    for root, dirs, files in os.walk(src):
+        dirs[:] = sorted(d for d in dirs if d.lower() != "libs")
+        for f in sorted(files):
+            if f.lower().endswith(".toc"):
+                with open(os.path.join(root, f), encoding="utf-8", errors="replace") as h:
+                    for line in h:
+                        line = line.strip()
+                        if line and not line.startswith("#") and line.lower().endswith((".lua", ".xml")):
+                            add(os.path.join(root, line))
+    return out
+
 def slash_commands(src):
-    """Subcommand names an addon handles: cmd == "name" in its Slash*.lua files."""
+    """Subcommand names an addon handles: cmd == "name" in its Slash*.lua files and in every Lua file its TOC lists."""
     out = set()
-    for p in lua_files(src):
-        if os.path.basename(p).startswith("Slash"):
-            with open(p, encoding="utf-8", errors="replace") as f:
-                out.update(SLASH_CMD.findall(f.read()))
+    paths = [p for p in lua_files(src) if os.path.basename(p).startswith("Slash")] + toc_lua_files(src)
+    for p in dict.fromkeys(paths):
+        with open(p, encoding="utf-8", errors="replace") as f:
+            out.update(SLASH_CMD.findall(f.read()))
     return sorted(out)
 
 def setting_keys(src):
@@ -2381,7 +2412,7 @@ def coverage_data(plans, src, specs=None, runs=None):
         raise ValueError("unknown addon %s: no slash aliases known" % plans[0]["addon"])
     cmds = slash_commands(src)
     if not cmds:
-        raise ValueError("no subcommand found in %s: the extractor reads cmd == \"name\" in Slash*.lua" % src)
+        raise ValueError("no subcommand found in %s: looked for cmd == \"name\" in Slash*.lua files and in the Lua files its TOC lists" % src)
     keys = setting_keys(src)
     reqs = sorted(requirement_names(specs)) if specs else None
     cover = {"commands": {c: [] for c in cmds}, "settings": {k: [] for k in keys}, "requirements": {r: [] for r in reqs or []}}
