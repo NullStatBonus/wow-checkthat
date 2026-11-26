@@ -7,7 +7,7 @@ A plan is a YAML file in `plans/` that follows `schema/test-plan.schema.json`. C
 1. **Write or convert.** Draft a plan from an existing manual test document:
 
    ```
-   .venv/bin/python tools/ct.py from-md ../wow-keepthat/docs/test-plan.md --addon KeepThat -o plans/keepthat.yaml
+   .venv/bin/python tools/ct.py from-md ../wow-dontdothat/docs/test-plan.md --addon DontDoThat -o plans/dontdothat.yaml
    ```
 
    Or ask the [plan skill](skills.md) to interview you and draft it. A conversion is a list to cut, not a plan to run: see [Keep a plan short](#keep-a-plan-short).
@@ -50,8 +50,8 @@ A subcommand after the addon's slash prefix needs no CheckThat change: the allow
 
 ## Plans in this repository
 
-- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. ClosestVendor keeps its own plan in its own repository, so none is kept here. `plans/selftest.yaml` is the runner's own plan, not a sample. It has 15 steps (16 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`. Its one section gets the size warning, because it checks the runner, not a feature.
-- `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. `plans/full/keepthat.yaml` (31 steps) gets the size warning: it is a conversion to cut, not a plan to run. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
+- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. KeepThat and ClosestVendor keep their plans in their own repositories, so none is kept here (`tests/fixtures/keepthat.yaml` is a short fixture for the tests, not the plan of record; the tests validate the KeepThat plan from `../wow-keepthat/plans/` when that checkout is present). `plans/selftest.yaml` is the runner's own plan, not a sample. It has 15 steps (16 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`. Its one section gets the size warning, because it checks the runner, not a feature.
+- `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-0.16.yaml` tests Remove from run and the result keys on its own run, in forever-camelot only.
 - `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen (so it gets the size warning).
 - `plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account. The owner leaves a run open. The viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill.

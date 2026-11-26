@@ -2,8 +2,8 @@ ct: 1
 kind: plan
 addon: KeepThat
 title: KeepThat sample test plan
-preamble: A short sample of the KeepThat plan. Run it on WoW Forever and Classic Era; some steps are for
-  one client. Type /kt debug on, then /reload, before the checks. The full plan is in plans/full/keepthat.yaml.
+preamble: A short sample of the KeepThat plan, kept here as a test fixture. Run it on WoW Forever and Classic Era; some steps are for
+  one client. Type /kt debug on, then /reload, before the checks. KeepThat keeps the plan of record in its own repository.
 logs:
   debug:
     global: KeepThatDB
