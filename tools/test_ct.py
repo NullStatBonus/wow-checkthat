@@ -1211,6 +1211,59 @@ class Census(unittest.TestCase):
         self.assertEqual(code, 1); self.assertIn("cannot read a manifest", err)
 
 
+class Doctor(unittest.TestCase):
+    """ct.py doctor: where collect looks and why it may find nothing."""
+    def game(self, clients=("_classic_era_",), sv=("_classic_era_",), extra=()):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        for c in clients:
+            os.makedirs(os.path.join(d, c, "WTF", "Account", "A", "SavedVariables"))
+        for c in sv:
+            with open(os.path.join(d, c, "WTF", "Account", "A", "SavedVariables", "CheckThat.lua"), "w") as f: f.write("CheckThatDB = {}\n")
+        for c in extra:
+            os.makedirs(os.path.join(d, c, "WTF"))
+        return d
+
+    def test_a_game_folder_lists_each_client_its_files_and_the_ones_it_does_not_read(self):
+        d = self.game(clients=("_classic_era_", "_forever_"), sv=("_classic_era_",), extra=("_retail_",))
+        lines, found = ct.doctor_report(wow=d, env={})
+        text = "\n".join(lines)
+        self.assertEqual(found, 1)
+        self.assertIn("found " + os.path.join("_classic_era_", "WTF", "Account", "A", "SavedVariables", "CheckThat.lua"), text)
+        self.assertRegex(text, r"_forever_: [^\n]+\n  no saved-variables file named", "a client with a WTF folder and no file")
+        self.assertIn("_retail_: has a WTF folder, but collect does not read it", text)
+        self.assertIn("result: collect would read 1 saved-variables file(s)", text)
+
+    def test_a_missing_client_folder_and_a_missing_game_folder_say_why(self):
+        d = self.game(clients=("_classic_era_",), sv=())
+        text = "\n".join(ct.doctor_report(wow=d, env={})[0])
+        self.assertIn("_forever_: no WTF folder at", text); self.assertIn("result: collect would find nothing", text)
+        self.assertIn("only after /reload or logout", text)
+        lines, found = ct.doctor_report(wow=os.path.join(d, "missing"), env={})
+        self.assertEqual(found, 0); self.assertIn("is not a folder", "\n".join(lines))
+
+    def test_src_wins_over_wow_and_the_environment_is_read(self):
+        d = self.game()
+        wtf = os.path.join(d, "_classic_era_", "WTF")
+        lines, found = ct.doctor_report(src=wtf, wow="/nowhere", env={})
+        self.assertEqual(found, 1); self.assertIn("wins over the game folder", lines[0]); self.assertNotIn("/nowhere", "\n".join(lines))
+        lines, found = ct.doctor_report(env={"CT_WOW": d})
+        self.assertEqual(found, 1); self.assertIn("--wow or CT_WOW", lines[0])
+
+    def test_with_nothing_set_it_names_the_options(self):
+        old = (ct.default_src, ct.find_wow)
+        ct.default_src, ct.find_wow = (lambda: "/no/default"), (lambda: None)
+        self.addCleanup(lambda: setattr(ct, "default_src", old[0])); self.addCleanup(lambda: setattr(ct, "find_wow", old[1]))
+        lines, found = ct.doctor_report(env={})
+        self.assertEqual(found, 0); self.assertIn("pass --wow <game folder>", "\n".join(lines))
+
+    def test_the_command_exits_1_when_nothing_is_found(self):
+        d = self.game(sv=())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(ct.main(["doctor", "--wow", d]), 1)
+            self.assertEqual(ct.main(["doctor", "--wow", self.game()]), 0)
+        self.assertIn("collect would find nothing", out.getvalue())
+
 class Collect(unittest.TestCase):
     def test_sv2json_and_collect_dedupe(self):
         with tempfile.TemporaryDirectory() as d:

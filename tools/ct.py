@@ -1344,6 +1344,67 @@ def default_src():
     return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
 
 
+def doctor_report(src=None, wow=None, env=None):
+    """Lines that say where collect looks, what it finds there and the likely reason for a miss. Returns (lines, found): found is the
+    number of saved-variables files collect would read. It reads nothing but folder listings and file times."""
+    env = os.environ if env is None else env
+    src, wow = src or env.get("CT_WTF"), wow or env.get("CT_WOW")
+    lines, found = [], 0
+    def report_src(label, folder, base):
+        nonlocal found
+        files = find_sv(folder, WATCH, ())
+        lines.append("%s: %s" % (label, folder))
+        if not os.path.isdir(folder):
+            lines.append("  not a folder: check the path (a typo, a drive that is not mounted, or a Wine prefix on another path)")
+            return
+        if not files:
+            lines.append("  no saved-variables file named %s under it: the addon writes one only after /reload or logout, and only for a character that logged in" % ", ".join(WATCH))
+        for f in files:
+            mt = os.path.getmtime(f)
+            lines.append("  found %s, modified %s, %s ago" % (os.path.relpath(f, base), time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mt)), age(time.time() - mt)))
+            found += 1
+    if src:
+        lines.append("--src or CT_WTF is set: it wins over the game folder")
+        report_src("WTF folder", src, src)
+    else:
+        if wow:
+            lines.append("game folder from --wow or CT_WOW: %s" % wow)
+        elif os.path.isdir(default_src()):
+            lines.append("default folder %s exists, so collect reads it as a WTF folder" % default_src())
+            report_src("WTF folder", default_src(), default_src())
+            return lines, found
+        else:
+            wow = find_wow()
+            lines.append("no --src, --wow, CT_WTF or CT_WOW, and no default folder: %s" % (("found a game folder in a usual place: %s" % wow) if wow else "no game folder in a usual install place for this OS"))
+        if not wow:
+            lines.append("  pass --wow <game folder> (it holds _classic_era_ or _forever_) or --src <WTF folder>, or set CT_WOW or CT_WTF in .ct.env (docs/harvesting.md)")
+        elif not os.path.isdir(wow):
+            lines.append("  %s is not a folder: check the path, a mounted drive or a Wine prefix" % wow)
+        else:
+            for c in WOW_CLIENTS:
+                wtf = os.path.join(wow, c, "WTF")
+                if os.path.isdir(wtf):
+                    report_src(c, wtf, wow)
+                    shots = os.path.join(wow, c, "Screenshots")
+                    lines.append("  screenshots: %s" % (("%d file(s) in %s" % (len(os.listdir(shots)), shots)) if os.path.isdir(shots) else "no Screenshots folder (collect skips it)"))
+                else:
+                    lines.append("%s: no WTF folder at %s (this client is not installed or never started here)" % (c, wtf))
+            others = sorted(d for d in os.listdir(wow) if d.startswith("_") and d.endswith("_") and d not in WOW_CLIENTS and os.path.isdir(os.path.join(wow, d, "WTF")))
+            for d in others:
+                lines.append("%s: has a WTF folder, but collect does not read it (only %s are measured layouts); pass --src %s to read it" % (d, " and ".join(WOW_CLIENTS), os.path.join(wow, d, "WTF")))
+    if not found:
+        lines.append("result: collect would find nothing")
+    else:
+        lines.append("result: collect would read %d saved-variables file(s)" % found)
+    return lines, found
+
+
+def cmd_doctor(a):
+    lines, found = doctor_report(getattr(a, "src", None), getattr(a, "wow", None))
+    print("\n".join(lines))
+    return 0 if found else 1
+
+
 CENSUS_MISSING = "no census in the saved variables. Run /ct census, wait for completion, type /reload, then copy SavedVariables again."
 
 def census_manifest(rec):
@@ -2583,6 +2644,7 @@ def main(argv=None):
     p.add_argument("--shot-slack", dest="shot_slack", type=float, default=2, help="seconds a screenshot may lie outside an attempt's window and still match it (default 2)")
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
+    p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
@@ -2723,6 +2785,8 @@ def main(argv=None):
     if a.cmd == "sv2json":
         print(json.dumps(sv_json(a.file), indent=1, sort_keys=True))
         return 0
+    if a.cmd == "doctor":
+        return cmd_doctor(a)
     if a.cmd == "collect":
         if not a.shots and (a.src or not a.wow):
             guess = os.path.join(os.path.dirname(os.path.abspath(a.src or default_src())), "Screenshots")
