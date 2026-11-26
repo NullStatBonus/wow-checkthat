@@ -214,6 +214,7 @@ local function budget(arg)
             return
         end
         if lastMs and lastMs * 2 > cap then say(("budget: %s stops at n=%d: the next stage would take over %d ms"):format(fam[1], math.floor(n / 2), cap)); return stage(fi + 1, 100000) end
+        say(("budget: starting %s n=%d"):format(fam[1], n)) -- a stage the game aborts writes no result line: this one shows where it stopped
         local t0 = clock()
         local ok, err = pcall(fam[2], n)
         local ms = clock() - t0

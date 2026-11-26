@@ -79,6 +79,7 @@ test("/ctp budget runs its stages in separate timers, stops at the cap and repor
     SlashCmdList.CTPROBE("budget")
     T.ok(has("budget: start"))
     for _ = 1, 60 do st.advance(1); if has("budget: done") then break end end
+    T.ok(has("budget: starting loop n=100000"), "a line is written before each stage, so an aborted stage shows")
     T.ok(has("budget: loop n=100000 ok=true"), "the first stage of the loop family")
     T.ok(has("budget: calls n=100000 ok=true"), "the first stage of the calls family")
     T.ok(has("stops at n="), "a family stops when the next stage would pass the cap")
