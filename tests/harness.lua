@@ -523,27 +523,38 @@ end
 -- never shows offline. H.budgeted(budget, fn, ...) is pcall with a count hook: an instruction costs 1 and a call 20, and the
 -- call raises once the cost passes budget. No budget (nil or false) is a plain pcall. H.DEFAULT_BUDGET is a guess, not
 -- measured in game, so only a runaway loop trips it. The offline runner uses it from level 5 on, and tests pass their own
--- budget to stubClient({ scriptBudget = n }) for timer callbacks. A coroutine the script starts has no hook, so it is not counted.
+-- budget to stubClient({ scriptBudget = n }) for timer callbacks. A coroutine the script starts has no hook, so its work is not counted.
 H.DEFAULT_BUDGET = 1000000
 local CALL_COST, COUNT_STEP = 20, 100
+local budgetActive = false
+local HARNESS_SRC = debug.getinfo(1, "S").short_src
 function H.budgeted(budget, fn, ...)
-    if not budget or not debug.sethook then return pcall(fn, ...) end
+    -- A nested call (a handler that fires another budgeted callback) is counted by the outer call, so it is a plain pcall.
+    if not budget or not debug.sethook or budgetActive then return pcall(fn, ...) end
     local oldHook, oldMask, oldCount = debug.gethook()
     local jitWasOn = jit and jit.status and jit.status()
     if jit then jit.off() end -- compiled loops skip the hook
     local spent = 0
+    budgetActive = true
+    -- The hook stays on once it trips, so a script that catches the error with pcall and loops again is stopped again.
+    -- It never raises in this file's own code or in a C function, so it cannot fire after fn returns, while the hook is
+    -- being taken off: the error always lands inside the script.
     debug.sethook(function(ev)
         spent = spent + (ev == "count" and COUNT_STEP or CALL_COST)
         if spent > budget then
-            debug.sethook()
+            local where = debug.getinfo(2, "S")
+            if where and (where.short_src == HARNESS_SRC or where.what == "C") then return end
             error(("script ran too long: it used more than %d units of work (an instruction counts 1, a call 20); the game stops a script that runs too long"):format(budget), 0)
         end
     end, "c", COUNT_STEP)
-    local r = table.pack and table.pack(pcall(fn, ...)) or { pcall(fn, ...) }
-    debug.sethook()
-    if oldHook then debug.sethook(oldHook, oldMask, oldCount) end
-    if jitWasOn then jit.on() end
-    return unpack(r, 1, r.n or #r)
+    local function done(...)
+        debug.sethook()
+        if oldHook then debug.sethook(oldHook, oldMask, oldCount) end
+        if jitWasOn then jit.on() end
+        budgetActive = false
+        return ...
+    end
+    return done(pcall(fn, ...))
 end
 
 -- Exit code of a file whose name filter matched no test; tests/run.lua reads it.

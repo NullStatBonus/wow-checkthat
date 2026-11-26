@@ -25,6 +25,21 @@ test("H.budgeted stops a runaway script, passes a normal one and puts the JIT an
     if jit then T.eq(jit.status(), true, "the JIT is back on") end
 end)
 
+test("a script that catches the budget error with pcall and loops again is stopped again; a nested call is counted by the outer one", function()
+    local ok, err = H.budgeted(H.DEFAULT_BUDGET, function()
+        pcall(function() while true do end end)
+        while true do end
+    end)
+    T.eq(ok, false); T.ok(tostring(err):find("script ran too long", 1, true), tostring(err))
+    local inner
+    local ok2 = H.budgeted(H.DEFAULT_BUDGET, function()
+        inner = { H.budgeted(H.DEFAULT_BUDGET, function() return "a", nil, nil end) }
+    end)
+    T.eq(ok2, true); T.eq(inner[1], true, "the nested call is a plain pcall"); T.eq(inner[2], "a")
+    T.eq(select("#", H.budgeted(H.DEFAULT_BUDGET, function() return 1, nil, nil end)), 4, "trailing nils are kept")
+    T.eq(debug.gethook(), nil, "no hook is left")
+end)
+
 test("a budget can be small, and no budget is a plain pcall", function()
     T.eq((H.budgeted(100, function() for i = 1, 1000 do end end)), false)
     T.eq((H.budgeted(false, function() for i = 1, 3000000 do end return true end)), true)
