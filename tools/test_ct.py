@@ -1293,11 +1293,12 @@ class RunReplay(unittest.TestCase):
             yaml.safe_dump(p, f)
         return path
 
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_replay_run_judges_against_the_runs_own_log(self):
         self.forever()
         rc, out, err = self.run_cli("replay", self.plan_file("second thing done"), "--run", "R-1", "--dest", self.dest)
         self.assertEqual(rc, 0, err)
-        self.assertIn("replay: using sv/", err)
+        self.assertIn("replay: using " + os.path.join("sv", ""), err)
         self.assertIn("1 passed, 0 failed", err)
         rc, out, err = self.run_cli("replay", self.plan_file("other character"), "--run", "R-1", "--dest", self.dest)
         self.assertEqual(rc, 1, "another character's line is not in this run's log")
