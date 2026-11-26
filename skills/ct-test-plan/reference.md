@@ -69,6 +69,8 @@ Judge each log assertion against `docs/debug-logging.md`.
 ## Shape and wording
 - One action and one expected result per step. A step with several actions or results exists only because the author asked for it, and carries `notes: Compound step, drafted on request.`
 - A foundation plan has about one step per pillar. Any plan has at most 25 steps and each section at most 10 (`validate` warns above that); a larger feature scope is a plan set by area.
+- Player text never names a step by number or id; it says what the player did in that step.
+- The version step's value matches the addon's TOC version (`validate --addon-src` warns when it accepts an older build).
 - Action text is one player sentence; commands sit only in `commands`, behind Run. Expect says what is on screen, never what is logged (`validate` warns when the plan sets `purpose`).
 - No step checks logic a unit test already proves.
 - Each step covers a whole feature from start to finish, not one facet.

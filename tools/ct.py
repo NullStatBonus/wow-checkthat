@@ -303,6 +303,69 @@ def version_warning(plan):
     if "version" not in text.lower():
         return "%s: the first step does not check the version under test (a run on another build wastes the tester's time)" % st["id"]
 
+STEP_NUMBER = re.compile(r"\b(?:check|step)\s+\d+(?:\.\d+)+\b", re.I)
+
+def reference_warnings(plan):
+    """Messages for player text (action text, setup, expect) that cites a step by number or by one of the plan's own dotted ids (#222).
+    The card shows step titles, not ids. notes and reviewer are for the reviewer and are not read. A step whose notes say "on purpose" is
+    left out, for text where the game shows the id (CheckThat's own chat lines)."""
+    secs = expand_cases(plan)["sections"]
+    ids = sorted({st["id"] for sec in secs for st in sec["steps"] if "." in st["id"]}, key=len, reverse=True)
+    own = re.compile(r"(?<![\w.])(?:%s)(?![\w.]|\.\w)" % "|".join(map(re.escape, ids))) if ids else None
+    out = []
+    for sec in secs:
+        for st in sec["steps"]:
+            if "on purpose" in (st.get("notes") or "").lower():
+                continue  # the game itself shows the id there, as CheckThat's own chat lines do
+            for field, text in (("action text", (st.get("action") or {}).get("text")), ("setup", st.get("setup")), ("expect", st.get("expect"))):
+                m = STEP_NUMBER.search(text or "") or (own and own.search(text or ""))
+                if m:
+                    out.append("%s: %s cites %r, but the card shows step titles, not numbers: say what the player did in that step" % (st["id"], field, m.group(0)))
+    return out
+
+def toc_version(path):
+    """(text, number) from a TOC's ## Version: line, number = major*10000 + minor*100 + patch, or None when the file or line is
+    missing or does not parse."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            m = re.search(r"^## Version:\s*(\d+)\.(\d+)(?:\.(\d+))?", f.read(), re.M)
+    except OSError:
+        return None
+    if not m:
+        return None
+    major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
+    return "%d.%d.%d" % (major, minor, patch), major * 10000 + minor * 100 + patch
+
+def plan_toc(plan, addon_src=None, addons=None):
+    """The addon's TOC for version checks: the folder's *_Vanilla.toc (else its first TOC) with addon_src, else the plan's offline.toc
+    (or its first offline.tocs entry) under the addons folder when that file exists. None when neither is known."""
+    if addon_src:
+        tocs = sorted(glob.glob(os.path.join(addon_src, "*.toc")))
+        return next((t for t in tocs if t.endswith("_Vanilla.toc")), tocs[0] if tocs else None)
+    block = plan.get("offline") or {}
+    rel = block.get("toc") or next(iter((block.get("tocs") or {}).values()), None)
+    path = rel and os.path.join(addons or default_addons(), rel)
+    return path if path and os.path.isfile(path) else None
+
+def version_text(n):
+    return "%d.%d.%d" % (n // 10000, n // 100 % 100, n % 100)
+
+def version_lag_warning(plan, toc):
+    """A message when the first step's version fact (key version or entry.version, numeric) accepts an older build than the TOC says
+    (#221), else None. ge and gt warn when the value is lower than the TOC's, eq when it differs."""
+    have = toc and toc_version(toc)
+    if not have:
+        return None
+    st = plan["sections"][0]["steps"][0]
+    for a in st.get("assertions") or []:
+        v = a.get("value")
+        if a.get("kind") != "fact" or a.get("key") not in ("version", "entry.version") or isinstance(v, bool) or not isinstance(v, int):
+            continue
+        op = a.get("op")
+        if (op in ("ge", "gt") and v < have[1]) or (op == "eq" and v != have[1]):
+            return "%s: accepts %s; the addon is %s (%s): raise the version step's value to %d" % (st["id"], version_text(v), have[0], os.path.basename(toc), have[1])
+    return None
+
 PLAN_STEPS_MAX, SECTION_STEPS_MAX = 25, 10  # what one tester runs in one sitting (#162)
 
 def size_warnings(plan):
@@ -369,7 +432,10 @@ def card_move_warnings(plan):
                     out.append((st["id"], l.strip()))
     return out
 
-def print_warnings(plan):
+def print_warnings(plan, toc=None):
+    w = version_lag_warning(plan, toc)
+    if w:
+        print("warning: " + w)
     for sid, cmd in card_move_warnings(plan):
         print("warning: %s: the Run button sends %s, which moves the card or records a result. Say so in notes (on purpose) or take it out of commands" % (sid, cmd))
     for sid, cmd in warnings(plan):
@@ -377,7 +443,7 @@ def print_warnings(plan):
     w = version_warning(plan)
     if w:
         print("warning: " + w)
-    for w in size_warnings(plan) + wording_warnings(plan):
+    for w in size_warnings(plan) + wording_warnings(plan) + reference_warnings(plan):
         print("warning: " + w)
 
 def merge_sections(plan):
@@ -856,17 +922,68 @@ def addon_source(src):
     return [b.replace('\\"', '"') for b in blob]
 
 
+FORMAT_CONV = re.compile(r"%%|%[-+ #0]*\d*(?:\.\d+)?[cdiouxXeEfgGqsaA]")
+LUA_STRING = re.compile(r'"((?:[^"\\\n]|\\.)*)"|' + r"'((?:[^'\\\n]|\\.)*)'")
+
+def format_tokens(files):
+    """Each quoted Lua string with a string.format conversion, as a list of characters and None for each conversion (any text);
+    %% becomes a percent sign."""
+    out = []
+    for f in files:
+        for m in LUA_STRING.finditer(f):
+            s = m.group(1) if m.group(1) is not None else m.group(2)
+            if not FORMAT_CONV.search(s.replace("%%", "")):
+                continue
+            toks, last = [], 0
+            for c in FORMAT_CONV.finditer(s):
+                toks += list(s[last:c.start()])
+                if c.group(0) == "%%":
+                    toks.append("%")
+                elif not toks or toks[-1] is not None:
+                    toks.append(None)
+                last = c.end()
+            out.append(toks + list(s[last:]))
+    return out
+
+FORMAT_LITERAL_MIN = 8  # the same floor as the word-run rule
+
+def format_match(text, toks):
+    """True when text is part of some string the format string toks can produce, with at least FORMAT_LITERAL_MIN of its characters,
+    and at least half of them, taken from the format string's own literal text (so one placeholder cannot swallow the rest). A small automaton: a state is the next token, with the most literal
+    characters matched on any path to it; it may start at any token and stop at any token."""
+    n = len(toks)
+    def close(states):
+        for p in range(n):  # a conversion may also stand for no text
+            if p in states and toks[p] is None and states.get(p + 1, -1) < states[p]:
+                states[p + 1] = states[p]
+        return states
+    states = close({p: 0 for p in range(n + 1)})
+    for ch in text:
+        nxt = {}
+        for p, k in states.items():
+            if p < n and toks[p] is None and nxt.get(p, -1) < k:
+                nxt[p] = k
+            elif p < n and toks[p] == ch and nxt.get(p + 1, -1) < k + 1:
+                nxt[p + 1] = k + 1
+        if not nxt:
+            return False
+        states = close(nxt)
+    return max(states.values()) >= max(FORMAT_LITERAL_MIN, (len(text) + 1) // 2)
+
 def lines_check(plan, src):
     """Which asserted log lines and fact keys no Lua file of the addon contains. The whole line is tried first. A line built from a
     format string, a concatenation or two strings (a log tag and its message) matches when the tag sits in quotes in a file that holds most of the
     message's words, so a miss is a warning to check by hand, not proof. Returns (found, missing)."""
     files = addon_source(src)
+    formats = format_tokens(files)
     found, missing = [], []
     def present(text):
         text = text.strip()
         if text.startswith("entry."):  # an entry registered by name is reported as entry.<name>
             text = text[len("entry."):]
         if len(text) >= 3 and any(text in f for f in files):
+            return True
+        if any(format_match(text, t) for t in formats):  # built with string.format around a placeholder (#224)
             return True
         m = re.match(r"^\[([^\]]+)\] ?(.*)$", text, re.S)
         if not m:
@@ -2869,8 +2986,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="ct")
     sub = ap.add_subparsers(dest="cmd", required=True)
     specs_help = "folder of the addon's openspec specs that covers names are checked against (default: the nearest openspec/specs above the plan)"
-    p = sub.add_parser("validate"); p.add_argument("plan"); p.add_argument("--specs", help=specs_help)
-    p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help)
+    toc_help = "the addon's folder (the one with its TOC): warn when the version step accepts an older build than its ## Version:. Without it the plan's offline.toc is read when that file exists"
+    p = sub.add_parser("validate"); p.add_argument("plan"); p.add_argument("--specs", help=specs_help); p.add_argument("--addon-src", dest="addon_src", help=toc_help)
+    p = sub.add_parser("compile"); p.add_argument("plan"); p.add_argument("-o"); p.add_argument("--specs", help=specs_help); p.add_argument("--addon-src", dest="addon_src", help=toc_help)
     p = sub.add_parser("coverage", help="list the addon's slash subcommands, settings and spec requirements that the plans cover or leave unused (reads the addon's Lua source)"); p.add_argument("plans", nargs="+")
     p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC): Slash*.lua gives the subcommands, its option tables the setting keys")
     p.add_argument("--specs", help="requirements: folder of the addon's openspec specs (default: openspec/specs next to the addon folder, when it exists)")
@@ -2920,7 +3038,7 @@ def main(argv=None):
         for e in errs:
             print("error:", e)
         if not errs:
-            print_warnings(plan)
+            print_warnings(plan, plan_toc(plan, a.addon_src))
         print("ok" if not errs else "%d errors" % len(errs))
         return 1 if errs else 0
     if a.cmd == "coverage":
@@ -2953,6 +3071,9 @@ def main(argv=None):
             for e in errs:
                 print("error:", e, file=sys.stderr)
             return 1
+        w = version_lag_warning(plan, plan_toc(plan, a.addon_src))
+        if w:
+            print("warning: " + w, file=sys.stderr)  # stdout may be the compiled string
         s = encode(merge_sections(plan))
         if a.o:
             open(a.o, "w", encoding="utf-8").write(s + "\n")

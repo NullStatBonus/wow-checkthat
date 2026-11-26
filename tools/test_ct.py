@@ -948,7 +948,8 @@ class PlanSkill(unittest.TestCase):
                        "own result press writes", "replay-flow", "stale", "make install-skill",
                        "fake game cannot prove", "at most 25 steps", "Plan sets by area", "test-settings mode", "Debug goes on first",
                        "**Purpose and depth.**", "set `purpose`", "### Foundation plans", "pillars", "**One character.**",
-                       "not the release gate", "**Player language.**", "foundation plan over 12 steps"):
+                       "not the release gate", "**Player language.**", "foundation plan over 12 steps",
+                       "**Name earlier steps by what the player did.**", "--addon-src <addon folder>", "older build than the addon's TOC"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -1184,6 +1185,136 @@ class PlanSkill(unittest.TestCase):
         for name in ("reference.md", "example.yaml"):
             self.assertIn(name, text)
             self.assertTrue(os.path.exists(os.path.join(self.SKILL, name)), name)
+
+
+class StepReferences(unittest.TestCase):
+    """#222: the card shows titles, not ids, so player text that cites a step number cannot be followed."""
+    @staticmethod
+    def with_text(field, text):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        if field == "action":
+            st["action"]["text"] = text
+        else:
+            st[field] = text
+        return p
+
+    def test_check_and_step_numbers_and_own_ids_warn_in_player_text(self):
+        for field in ("action", "setup", "expect"):
+            for text, cited in (("Open the vendor you opened in check 1.3.", "check 1.3"), ("As in Step 2.1.4, wait.", "Step 2.1.4"),
+                                ("Repeat a.1 here.", "a.1")):
+                got = ct.reference_warnings(self.with_text(field, text))
+                self.assertEqual(len(got), 1, (field, text))
+                self.assertIn("cites %r" % cited, got[0])
+                self.assertTrue(got[0].startswith("a.2: "), got[0])
+
+    def test_notes_reviewer_and_plain_numbers_do_not_warn(self):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        st["notes"] = "Same window as a.1 and check 1.3."
+        st["reviewer"] = "Compare with step a.1."
+        self.assertEqual(ct.reference_warnings(p), [])
+        for text in ("Wait 1.5 seconds.", "Version 1.13.1 shows.", "Open the a.1x window.", "Type a.1.5 in the box."):
+            self.assertEqual(ct.reference_warnings(self.with_text("expect", text)), [], text)
+
+    def test_validate_prints_it_and_exits_zero(self):
+        import contextlib, io, yaml
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.yaml")
+            with open(path, "w") as f:
+                yaml.safe_dump(self.with_text("expect", "the vendor from check 1.3 shows."), f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = ct.main(["validate", path])
+        self.assertEqual(rc, 0)
+        self.assertIn("warning: a.2: expect cites 'check 1.3'", out.getvalue())
+
+    def test_on_purpose_in_notes_leaves_the_step_out(self):
+        p = self.with_text("expect", "Chat says the macro is for step a.1.")
+        p["sections"][0]["steps"][1]["notes"] = "The chat line names the id on purpose."
+        self.assertEqual(ct.reference_warnings(p), [])
+
+    # CheckThat's own 0.20 plan checks a chat line that prints step ids; it predates the warning and keeps its digest.
+    KNOWN = {"checkthat-0.20.yaml": ["ct20.afteroff"]}
+
+    def test_repository_and_skill_plans_cite_no_step_number(self):
+        for path in sorted(glob.glob(os.path.join(ROOT, "plans", "*.yaml")) + glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml"))
+                           + glob.glob(os.path.join(ROOT, "skills", "ct-test-plan", "*.yaml"))):
+            got = [w.split(":")[0] for w in ct.reference_warnings(ct.load_yaml(path))]
+            self.assertEqual(got, self.KNOWN.get(os.path.basename(path), []), path)
+
+
+class VersionLag(unittest.TestCase):
+    """#221: a version step that accepts an older build than the addon's TOC lets the old build pass."""
+    def addon(self, version, name="CV_Vanilla.toc"):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, name), "w") as f:
+            f.write("## Interface: 11507\n## Version: %s\nCV.lua\n" % version)
+        return d
+
+    @staticmethod
+    def plan(op="ge", value=11300, key="version"):
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "fact", "source": "debug", "addon": "KeepThat", "key": key, "op": op, "value": value}]
+        return p
+
+    def warn(self, plan, version):
+        return ct.version_lag_warning(plan, ct.plan_toc(plan, self.addon(version)))
+
+    def test_toc_version_parses_major_minor_patch(self):
+        self.assertEqual(ct.toc_version(os.path.join(self.addon("1.13.1"), "CV_Vanilla.toc")), ("1.13.1", 11301))
+        self.assertEqual(ct.toc_version(os.path.join(self.addon("0.21"), "CV_Vanilla.toc")), ("0.21.0", 2100))
+        self.assertIsNone(ct.toc_version(os.path.join(self.addon("dev"), "CV_Vanilla.toc")))
+        self.assertIsNone(ct.toc_version("/nonexistent.toc"))
+
+    def test_ge_behind_the_toc_warns_and_equal_does_not(self):
+        self.assertEqual(self.warn(self.plan(), "1.13.1"),
+                         "a.1: accepts 1.13.0; the addon is 1.13.1 (CV_Vanilla.toc): raise the version step's value to 11301")
+        self.assertIsNone(self.warn(self.plan(value=11301), "1.13.1"))
+        self.assertIsNone(self.warn(self.plan(value=11400), "1.13.1"), "a newer floor is the author's choice")
+        self.assertIn("accepts 1.13.0", self.warn(self.plan(key="entry.version"), "1.13.1"))
+        self.assertIn("accepts 1.13.0", self.warn(self.plan(op="gt"), "1.13.1"))
+
+    def test_eq_warns_when_it_differs(self):
+        self.assertIn("accepts 1.14.0", self.warn(self.plan(op="eq", value=11400), "1.13.1"))
+        self.assertIsNone(self.warn(self.plan(op="eq", value=11301), "1.13.1"))
+
+    def test_no_warning_without_a_toc_or_a_numeric_version_fact(self):
+        self.assertIsNone(ct.version_lag_warning(self.plan(), None))
+        self.assertIsNone(self.warn(self.plan(value="1.13.0"), "1.13.1"))
+        self.assertIsNone(self.warn(good(), "1.13.1"), "a manual version step has no fact to compare")
+
+    def test_vanilla_toc_first_then_offline_toc_under_the_addons_folder(self):
+        d = self.addon("1.13.1", "CV_Mainline.toc")
+        with open(os.path.join(d, "CV_Vanilla.toc"), "w") as f:
+            f.write("## Version: 1.12.0\n")
+        self.assertTrue(ct.plan_toc(self.plan(), d).endswith("CV_Vanilla.toc"))
+        addons = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, addons)
+        os.makedirs(os.path.join(addons, "wow-cv", "CV"))
+        shutil.copy(os.path.join(self.addon("1.13.1"), "CV_Vanilla.toc"), os.path.join(addons, "wow-cv", "CV", "CV.toc"))
+        p = dict(self.plan(), offline={"toc": "wow-cv/CV/CV.toc"})
+        self.assertIn("accepts 1.13.0", ct.version_lag_warning(p, ct.plan_toc(p, None, addons)))
+        self.assertIsNone(ct.plan_toc(dict(self.plan(), offline={"toc": "wow-cv/CV/Missing.toc"}), None, addons))
+        self.assertIsNone(ct.plan_toc(self.plan(), None, addons))
+
+    def test_validate_and_compile_print_it_and_exit_zero(self):
+        import contextlib, io, yaml
+        src = self.addon("1.13.1")
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.yaml")
+            with open(path, "w") as f:
+                yaml.safe_dump(self.plan(), f)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = ct.main(["validate", path, "--addon-src", src])
+            self.assertEqual(rc, 0)
+            self.assertIn("warning: a.1: accepts 1.13.0; the addon is 1.13.1", out.getvalue())
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = ct.main(["compile", path, "--addon-src", src])
+            self.assertEqual(rc, 0)
+            self.assertTrue(out.getvalue().startswith("!CT1!"), "stdout holds only the compiled string")
+            self.assertIn("accepts 1.13.0", err.getvalue())
 
 
 class ClientSlice(unittest.TestCase):
@@ -1972,6 +2103,25 @@ class LinesCheck(unittest.TestCase):
             found, missing = ct.lines_check(plan, d)
             self.assertEqual([m[2] for m in missing], ["[toast] vanished", "toast.nope"])
             self.assertEqual(len(found), 2)
+
+    def test_a_line_built_from_a_format_string_is_found_across_its_placeholders(self):
+        src = self.src(**{"A.lua": 'log(("trigger %s%s%s (bags=%s free)"):format(a, b, c, d))\n'
+                                     "log(('cost %5.2f%% of %d'):format(x, y))\nlog((\"%s %s\"):format(a, b))\n"})
+        plan = self.plan_for({"kind": "log", "source": "debug", "contains": "trigger go sell (bags="},
+                             {"kind": "log", "source": "debug", "contains": "trigger clear (bags=3 free)"},
+                             {"kind": "log", "source": "debug", "contains": "cost 12.50% of 7"},
+                             {"kind": "log", "source": "debug", "contains": "go sell bags full"},
+                             {"kind": "log", "source": "debug", "contains": "abc (bags"})
+        found, missing = ct.lines_check(plan, src)
+        self.assertEqual([m[2] for m in missing], ["go sell bags full", "abc (bags"],
+                         "placeholders alone match nothing, and 6 literal characters are under the floor")
+        self.assertEqual(len(found), 3)
+
+    def test_format_tokens_and_match(self):
+        toks = ct.format_tokens(['x = ("a%sb%%c%d")'])
+        self.assertEqual(toks, [["a", None, "b", "%", "c", None]])
+        self.assertTrue(ct.format_match("trigger go sell (bags=", ct.format_tokens(['("trigger %s%s%s (bags=%s")'])[0]))
+        self.assertFalse(ct.format_match("trigger go sell (bags=", ct.format_tokens(['("trigger %s%s%s (boxes=%s")'])[0]))
 
     def plan_for(self, *assertions):
         return {"logs": {"debug": {"global": "G"}, "facts": {"global": "CheckThatDB"}}, "sections": [{"steps": [{"id": "s.1", "assertions": list(assertions)}]}]}
