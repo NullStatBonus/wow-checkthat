@@ -22,15 +22,19 @@ The census from #146 records each client's game-defined names. The raw manifests
 
 ### D2. Absent becomes nil, present but not modelled becomes a stub
 
-Every global function the client lacks is removed, also one an earlier fake client in the same process left, except Lua's base functions. A listed function the fake client does not model returns nothing (`st.generated` names them), so the Adapter takes the "present" path, as in the game. A Lua alias (`strsub`, `tinsert`, `mod`, `floor`) is the Lua function, because addons depend on its result.
+Every global function the client lacks is removed, also one an earlier fake client in the same process left. Lua's base functions stay, except the five the game lacks too: `dofile`, `load`, `loadfile`, `module` and `require`. The harness keeps its own `loadfile`. A listed function the fake client does not model returns nothing (`st.generated` names them), so the Adapter takes the "present" path, as in the game. A Lua alias (`strsub`, `tinsert`, `mod`, `floor`) is the Lua function, because addons depend on its result. The trig functions work in degrees, as the game's do. Plain helpers the game defines in Lua get a working version: `Mixin`, `CreateFromMixins`, `CopyTable`, `tContains`, `strtrim`, `strjoin`, `tostringall`, `date`, `debugstack`, `GetTimePreciseSec` and `debugprofilestop`. A `C_` table is rebuilt as a new table, so one an earlier fake client made is not changed and `H.snapshot` puts it back as it was.
 
 ### D3. Frames
 
-A frame records its widget type (`CreateFrame`'s first argument, `FontString` for `CreateFontString`, `Texture` for `CreateTexture`). With a surface, a frame of a listed type without a template reads nil for any name its type lacks. Raw fields (`scripts`, `events`, the runner's `RegisterEvent`) are unaffected.
+A frame records its widget type (`CreateFrame`'s first argument, `FontString` for `CreateFontString`, `Texture` for `CreateTexture`). With a surface, a frame of a listed type without a template reads nil for any name its type lacks. The type is matched without regard to case, as `CreateFrame("frame")` works in the game. Objects other calls return (`GetParent`, `GetNormalTexture`, `CreateAnimationGroup`) take any method. Raw fields (`scripts`, `events`, the runner's `RegisterEvent`) are unaffected.
 
 ### D4. Level 5 and mocks
 
 Level 5 picks the surface by the TOC's interface, as level 4 picks the event list. A mock of a function the surface lacks fails the load step: it would hide exactly the gap level 5 exists to show.
+
+### D5. The slice tool's safeguards
+
+`tools/client_slice.py` refuses a manifest marked `unfiltered` unless `--unfiltered-ok` says its review lists were read, and `--review FILE` writes them. `ct.py census` now writes `unfiltered: true` into such a manifest, an added key. An addon-replaced function is kept only when Blizzard's source calls, assigns or documents it, not when it merely names it. Both committed slices regenerate byte for byte.
 
 ## Risks / Trade-offs
 

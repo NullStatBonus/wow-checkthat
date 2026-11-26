@@ -757,8 +757,25 @@ class ClientSlice(unittest.TestCase):
         self.assertEqual(list(s), self.KEYS)
         self.assertEqual(s["functions"], ["GetMoney", "HookedBlizzard"])
         self.assertEqual(s["namespaces"], {"C_Item": ["GetItemInfo"]})
-        for private in ("Private", "PrivateAddonFunc", "PrivateTable", "SOME_TEXT", "2026-01-01\""):
-            self.assertNotIn(private, text.replace("in-game census of 2026-01-01", ""))
+        for private in ("Private", "PrivateAddonFunc", "PrivateTable", "SOME_TEXT"):
+            self.assertNotIn(private, text)
+
+    def test_an_unfiltered_census_needs_unfiltered_ok(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = {"format": 1, "client": "era", "build": "1.15.9.1", "interface": 11509, "date": "2026-01-01", "unfiltered": True,
+                 "globals": {"GetMoney": "function"}, "tables": {}, "widgets": {}}
+            path = os.path.join(d, "m.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(m, f)
+            os.makedirs(os.path.join(d, "src"))
+            tool = [sys.executable, os.path.join(ROOT, "tools", "client_slice.py"), path, os.path.join(d, "src")]
+            r = subprocess.run(tool, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0); self.assertIn("unfiltered", r.stderr)
+            r = subprocess.run(tool + ["--unfiltered-ok", "--review", os.path.join(d, "r.json")], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(json.loads(r.stdout)["functions"], ["GetMoney"])
+            with open(os.path.join(d, "r.json"), encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["functions not named in Blizzard source"], ["GetMoney"])
 
 
 class InstallSkill(unittest.TestCase):

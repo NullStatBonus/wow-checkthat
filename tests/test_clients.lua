@@ -63,6 +63,45 @@ test("Lua aliases are the real functions, and other missing functions are stubs 
     T.eq(st.generated.UnitName, nil, "hand-written behaviour stays")
 end)
 
+test("the client lacks what the game lacks: dofile, load, loadfile, module and require", function()
+    restore()
+    H.stubClient({ client = "era" })
+    for _, n in ipairs({ "dofile", "load", "loadfile", "module", "require" }) do T.eq(rawget(_G, n), nil, n) end
+    T.eq(type(pcall), "function"); T.eq(type(setmetatable), "function")
+    restore()
+    T.eq(type(loadfile), "function", "restore brings them back")
+end)
+
+test("a C_ table an earlier fake client made is not changed in place", function()
+    restore()
+    local mine = { GetItemCount = function() return 7 end }
+    _G.C_Item = mine
+    local snap = H.snapshot()
+    H.stubClient({ client = "era" })
+    T.ok(C_Item ~= mine and type(C_Item.GetItemInfo) == "function")
+    snap()
+    T.eq(C_Item, mine); T.eq(mine.GetItemInfo, nil, "the earlier table keeps only its own members")
+    T.eq(mine.GetItemCount(), 7)
+end)
+
+test("game helpers work: degrees for trig, Mixin, CopyTable, strtrim, strjoin, tContains", function()
+    restore()
+    H.stubClient({ client = "forever" })
+    T.ok(math.abs(sin(90) - 1) < 1e-9); T.ok(math.abs(atan2(1, 1) - 45) < 1e-9)
+    local o = CreateFromMixins({ a = 1 }, { b = 2 }); T.eq(o.a + o.b, 3)
+    local t = { x = { 1 } }; local c = CopyTable(t); T.ok(c.x ~= t.x and c.x[1] == 1)
+    T.eq(strtrim("  hi  "), "hi"); T.eq(strtrim("xxhixx", "x"), "hi"); T.eq(strjoin(",", "a", "b"), "a,b")
+    T.eq(tContains({ "a" }, "a"), true); T.eq(type(date("%Y")), "string")
+end)
+
+test("CreateFrame types are matched without regard to case, and a misspelled client fails", function()
+    restore()
+    H.stubClient({ client = "era" })
+    T.eq(CreateFrame("frame").SetPointt, nil)
+    restore()
+    T.ok(not pcall(H.stubClient, { client = "Era" }), "a client name with no surface is an error")
+end)
+
 test("without a client the fake client is unchanged", function()
     restore()
     H.stubClient()

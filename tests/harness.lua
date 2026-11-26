@@ -3,6 +3,9 @@
 -- and ends with finish(). Run one file with: luajit tests/test_json.lua   (from the repository root).
 local H = {}
 local rawprint = print
+-- Read once: a strict client (H.applySurface) removes loadfile and dofile, as the game has neither.
+local loadfile = loadfile
+local osdate, osclock, ostime0 = os.date, os.clock, os.time
 
 -- A frame made from a Secure*Template is protected. Insecure code may not change it in combat, and the game
 -- refuses to anchor it to anything but the screen (measured on Forever, docs/contracts.md).
@@ -53,7 +56,7 @@ function stubFrame(frames, template, name, kind)
     local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name, kind = kind }
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
-    local methods = frames.surface and not template and kind and frames.surface.widgets[kind]
+    local methods = frames.surface and not template and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
     return setmetatable(f, { __index = function(t, k)
         if methods and not methods[k] then return nil end
         local fn = member(frames, k)
@@ -76,7 +79,7 @@ function H.stubClient(opts)
     opts = opts or {}
     local st = { frames = {}, said = {}, combat = false, macros = {} }
     local surface = opts.client
-    if type(surface) == "string" then surface = H.clientSurface(surface) end
+    if type(surface) == "string" then surface = assert(H.clientSurface(surface)) end
     st.frames.surface, st.surface = surface, surface
     _G.CreateFrame = function(kind, name, _, template) local f = stubFrame(st.frames, template, name, kind); if name then _G[name] = f end; return f end
     _G.UIParent = stubFrame(st.frames, nil, nil, "Frame")
@@ -257,15 +260,51 @@ function H.clientSurface(client, root)
     if not f then return nil, "no client surface for " .. client .. " (tools/clients/" .. client .. ".json)" end
     local m, err = jns.Json.Decode(f:read("*a")); f:close()
     if not m then return nil, err end
+    if m.client ~= client then return nil, ("no client surface for %s (the file says %s)"):format(client, tostring(m.client)) end -- a case-blind file system
     local function set(list) local s = {}; for _, n in ipairs(list) do s[n] = true end; return s end
     local s = { client = m.client, build = m.build, interface = m.interface, functions = set(m.functions), namespaces = {}, widgets = {} }
+    s.lacksBase = {}
+    for _, n in ipairs({ "dofile", "load", "loadfile", "module", "require" }) do if not s.functions[n] then s.lacksBase[n] = true end end
     for ns, list in pairs(m.namespaces) do s.namespaces[ns] = set(list) end
-    for w, list in pairs(m.widgets) do s.widgets[w] = set(list) end
+    s.widgetsByLower = {}
+    for w, list in pairs(m.widgets) do s.widgets[w] = set(list); s.widgetsByLower[w:lower()] = s.widgets[w] end -- CreateFrame("frame") works
     return s
 end
 
+-- Plain helpers the game defines in Lua and addons rely on: a stub that returns nothing would break them.
+local function copyTable(t, seen)
+    if type(t) ~= "table" then return t end
+    seen = seen or {}
+    if seen[t] then return seen[t] end
+    local c = {}; seen[t] = c
+    for k, v in pairs(t) do c[k] = copyTable(v, seen) end
+    return c
+end
+local HELPERS = {
+    Mixin = function(o, ...) for i = 1, select("#", ...) do for k, v in pairs((select(i, ...))) do o[k] = v end end; return o end,
+    CopyTable = function(t) return copyTable(t) end,
+    tContains = function(t, v) for _, x in pairs(t) do if x == v then return true end end; return false end,
+    strtrim = function(s, chars)
+        chars = chars and ("[" .. chars:gsub("[%]%^%-%%]", "%%%0") .. "]") or "%s"
+        return (s:gsub("^" .. chars .. "+", ""):gsub(chars .. "+$", ""))
+    end,
+    strjoin = function(sep, ...) return table.concat({ ... }, sep) end,
+    tostringall = function(...) local t = { n = select("#", ...), ... }; for i = 1, t.n do t[i] = tostring(t[i]) end; return unpack(t, 1, t.n) end,
+    date = function(...) return osdate(...) end,
+    debugstack = function() return debug.traceback("", 2) end,
+    GetTimePreciseSec = function() return osclock() end,
+    debugprofilestop = function() return osclock() * 1000 end,
+    -- The game's trig functions work in degrees.
+    sin = function(d) return math.sin(math.rad(d)) end, cos = function(d) return math.cos(math.rad(d)) end,
+    tan = function(d) return math.tan(math.rad(d)) end, asin = function(x) return math.deg(math.asin(x)) end,
+    acos = function(x) return math.deg(math.acos(x)) end, atan = function(x) return math.deg(math.atan(x)) end,
+    atan2 = function(y, x) return math.deg(math.atan2(y, x)) end,
+}
+HELPERS.CreateFromMixins = function(...) return HELPERS.Mixin({}, ...) end
+
 -- What the game's own Lua aliases are: strsub is string.sub, tinsert is table.insert, floor is math.floor, mod is math.fmod.
 local function luaAlias(name)
+    if HELPERS[name] then return HELPERS[name] end
     if name == "mod" then return math.fmod end
     if name == "strrev" then return string.reverse end
     if name == "getn" then return table.getn end
@@ -290,17 +329,20 @@ function H.applySurface(st, surface)
     st.generated = {}
     local function generic(name) st.generated[name] = true; return function() end end
     for k, v in pairs(_G) do -- also what an earlier fake client or load in this process left behind
-        if type(k) == "string" and type(v) == "function" and not LUA_BASE[k] and not surface.functions[k] then rawset(_G, k, nil) end
+        -- Lua's base functions stay unless the client lacks them too (dofile, load, loadfile, module, require).
+        local base = LUA_BASE[k] and not surface.lacksBase[k]
+        if type(k) == "string" and type(v) == "function" and not base and not surface.functions[k] then rawset(_G, k, nil) end
         if type(k) == "string" and type(v) == "table" and k:match("^C_") and not surface.namespaces[k] then rawset(_G, k, nil) end
     end
     for name in pairs(surface.functions) do
         if rawget(_G, name) == nil then rawset(_G, name, luaAlias(name) or generic(name)) end
     end
     for ns, members in pairs(surface.namespaces) do
-        local t = rawget(_G, ns)
-        if type(t) ~= "table" then t = {}; rawset(_G, ns, t) end
-        for k, v in pairs(t) do if type(v) == "function" and not members[k] then t[k] = nil end end
+        -- A new table: the one an earlier fake client made stays as it was, so H.snapshot can put it back.
+        local old, t = rawget(_G, ns), {}
+        if type(old) == "table" then for k, v in pairs(old) do if type(v) ~= "function" or members[k] then t[k] = v end end end
         for k in pairs(members) do if t[k] == nil then t[k] = generic(ns .. "." .. k) end end
+        rawset(_G, ns, t)
     end
     local version, build = tostring(surface.build):match("^(%d+%.%d+%.%d+)%.(%d+)$")
     _G.GetBuildInfo = function() return version or surface.build, build or "", "", surface.interface end
