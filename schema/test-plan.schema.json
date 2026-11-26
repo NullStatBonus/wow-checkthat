@@ -224,7 +224,7 @@
           "type": "object",
           "additionalProperties": false,
           "minProperties": 1,
-          "description": "Level 5. One TOC for each client the block can run on, read when ct offline or replay-flow is asked for that client (--client era, forever or both). toc stays required and is the one a run without --client uses.",
+          "description": "Level 5. One TOC for each client the block can run on. Accepted and validated, but no tool reads it yet: a later option of ct offline and replay-flow will run the block for each client. Until then only toc runs. toc stays required.",
           "properties": {
             "era": {
               "type": "string",
