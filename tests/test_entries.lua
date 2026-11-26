@@ -263,13 +263,22 @@ end)
 
 test("level 3: ADDON_LOADED with the folder name while logged out, then PLAYER_LOGIN and PLAYER_ENTERING_WORLD", function()
     local r = run({ toc = LIFE, level = 3, steps = { call("seen", nil,
-        { "ADDON_LOADED MockAddon nil false; PLAYER_LOGIN nil nil true; PLAYER_ENTERING_WORLD true false true" }) } })
+        { "ADDON_LOADED MockAddon false false; PLAYER_LOGIN nil nil true; PLAYER_ENTERING_WORLD true false true" }) } })
     T.ok(r.ok, r.steps[1].detail)
 end)
 
 test("level 3: a frame that unregistered an event no longer gets it", function()
     local r = run({ toc = LIFE, level = 3, steps = { { event = { name = "ADDON_LOADED", args = { "MockAddon" } } } } })
     T.eq(r.ok, false); T.ok(r.steps[1].detail:find("no frame registered ADDON_LOADED", 1, true), r.steps[1].detail)
+end)
+
+test("level 3: ADDON_LOADED says whether the folder holds Bindings.xml, and ADDONS_UNLOADING that the client stays open", function()
+    _G.MockBindUnloading = nil
+    local r = run({ toc = "tests/fixtures/MockBind/MockBind.toc", level = 3, steps = {
+        { call = { addon = "MockBind", entry = "loaded" }, returns = { "MockBind true", "nil" } },
+        { reload = true },
+        { call = { addon = "MockBind", entry = "loaded" }, returns = { "MockBind true", "false" } } } })
+    for _, s in ipairs(r.steps) do T.ok(s.ok, s.step .. ": " .. tostring(s.detail)) end
 end)
 
 test("level 2 sends no login events: an ADDON_LOADED step fires once and IsLoggedIn is true", function()

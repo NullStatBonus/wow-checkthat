@@ -204,6 +204,9 @@ function Runner.run(spec, opts)
     local plainCreate, oldCT -- what the run puts back at the end: the stub client's CreateFrame and CheckThat after prepare
     local name = spec.toc:match("([^/]+)/[^/]+%.toc$") or spec.toc:match("([^/]+)%.toc$") or "Addon" -- the game passes the folder name
     local folder = tocPath:match("^(.*)/[^/]+$") or "."
+    -- ADDON_LOADED's second value: whether the addon folder holds Bindings.xml. ADDONS_UNLOADING gets closingClient false.
+    local hasBindings = false
+    do local f = io.open(folder .. "/Bindings.xml"); if f then f:close(); hasBindings = true end end
     local reports, results, nilSeen = {}, {}, {}
     local interface
     local cur = {} -- the current load: st, entries, saved mocks, counts, unhide, stopNil
@@ -238,7 +241,7 @@ function Runner.run(spec, opts)
         return fired
     end
     local function login(reloading)
-        local events = { { "ADDON_LOADED", name }, { "PLAYER_LOGIN" }, { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false } }
+        local events = { { "ADDON_LOADED", name, hasBindings }, { "PLAYER_LOGIN" }, { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false } }
         for _, e in ipairs(events) do
             if e[1] == "PLAYER_LOGIN" then cur.st.loggedIn = true end
             local n, err = fire(unpack(e, 1, 3))
@@ -397,8 +400,9 @@ function Runner.run(spec, opts)
                     add(i, "mockCalls", n == step.mockCalls.count, ("%s called %d time(s), expected %d"):format(step.mockCalls.api, n, step.mockCalls.count))
                 elseif step.reload then
                     local rok, rerr = true, nil
-                    for _, ev in ipairs({ "PLAYER_LEAVING_WORLD", "PLAYER_LOGOUT", "ADDONS_UNLOADING" }) do
-                        local n, ferr = fire(ev)
+                    for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "PLAYER_LOGOUT" }, { "ADDONS_UNLOADING", false } }) do
+                        local n, ferr = fire(unpack(ev, 1, 2))
+                        ev = ev[1]
                         if not n then rok, rerr = false, ("%s handler threw %s"):format(ev, ferr); break end
                     end
                     if rok then

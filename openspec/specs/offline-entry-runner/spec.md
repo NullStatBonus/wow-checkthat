@@ -169,7 +169,7 @@ After its summary, `ct.py offline` SHALL print the report of nil reads to stderr
 - **THEN** `make check` fails and names the file and the global
 
 ### Requirement: Level 3 loads the addon as the game does
-At level 3 the runner SHALL read the names on the TOC's `## SavedVariables` and `## SavedVariablesPerCharacter` lines and set each to nil before the files run. After the last file it SHALL assign each name that `savedVariables` holds, and leave the others as the files set them. With `## LoadSavedVariablesFirst: 1` it SHALL assign them before the first file. A `savedVariables` name the TOC does not declare SHALL fail the load step. It SHALL then fire ADDON_LOADED with the addon's folder name, PLAYER_LOGIN, and PLAYER_ENTERING_WORLD with `true, false`, at each frame that registered the event. An event that no frame registered SHALL NOT fail the run. A handler that throws SHALL fail the load step with the event's name. `IsLoggedIn()` SHALL return false until PLAYER_LOGIN fires.
+At level 3 the runner SHALL read the names on the TOC's `## SavedVariables` and `## SavedVariablesPerCharacter` lines and set each to nil before the files run. After the last file it SHALL assign each name that `savedVariables` holds, and leave the others as the files set them. With `## LoadSavedVariablesFirst: 1` it SHALL assign them before the first file. A `savedVariables` name the TOC does not declare SHALL fail the load step. It SHALL then fire ADDON_LOADED with the addon's folder name and whether the folder holds `Bindings.xml`, PLAYER_LOGIN, and PLAYER_ENTERING_WORLD with `true, false`, at each frame that registered the event. An event that no frame registered SHALL NOT fail the run. A handler that throws SHALL fail the load step with the event's name. `IsLoggedIn()` SHALL return false until PLAYER_LOGIN fires.
 
 #### Scenario: File-scope write is lost
 - **WHEN** an addon sets its saved variable at file scope and `savedVariables` holds a value for it
@@ -181,10 +181,10 @@ At level 3 the runner SHALL read the names on the TOC's `## SavedVariables` and 
 
 #### Scenario: Login order
 - **WHEN** an addon records the events it receives and `IsLoggedIn()` at each
-- **THEN** it saw ADDON_LOADED with its folder name and `IsLoggedIn()` false, then PLAYER_LOGIN, then PLAYER_ENTERING_WORLD with `true, false`
+- **THEN** it saw ADDON_LOADED with its folder name and `false` (no `Bindings.xml`) and `IsLoggedIn()` false, then PLAYER_LOGIN, then PLAYER_ENTERING_WORLD with `true, false`
 
 ### Requirement: Reload step loads the addon fresh
-A `reload` step SHALL fire PLAYER_LEAVING_WORLD, PLAYER_LOGOUT and ADDONS_UNLOADING, then copy each declared saved variable as the game saves it: strings, numbers, booleans and tables with string, number or boolean keys, without functions, userdata, threads or metatables. Two references to one table SHALL come back as two tables, and a reference to a table that holds it SHALL be dropped. A nil name SHALL not be written. The runner SHALL then load the addon fresh: globals the addon set, its frames, its registered entries and its upvalues SHALL be gone. It SHALL assign the copies and fire the login events with PLAYER_ENTERING_WORLD `false, true`. Mocks SHALL be set again, and their counts SHALL go on.
+A `reload` step SHALL fire PLAYER_LEAVING_WORLD, PLAYER_LOGOUT and ADDONS_UNLOADING with `false` (the client is not closing), then copy each declared saved variable as the game saves it: strings, numbers, booleans and tables with string, number or boolean keys, without functions, userdata, threads or metatables. Two references to one table SHALL come back as two tables, and a reference to a table that holds it SHALL be dropped. A nil name SHALL not be written. The runner SHALL then load the addon fresh: globals the addon set, its frames, its registered entries and its upvalues SHALL be gone. It SHALL assign the copies and fire the login events with PLAYER_ENTERING_WORLD `false, true`. Mocks SHALL be set again, and their counts SHALL go on.
 
 #### Scenario: State survives only in saved variables
 - **WHEN** an entry sets a saved variable and a local upvalue, and a reload step follows

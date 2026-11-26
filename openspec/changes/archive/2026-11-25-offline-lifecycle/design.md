@@ -34,8 +34,9 @@ Source: warcraft.wiki.gg, "AddOn loading process" and "Saving variables between 
 
 ### D3. Events and their arguments
 
-- Login: ADDON_LOADED (folder name), then PLAYER_LOGIN, then PLAYER_ENTERING_WORLD (true, false).
-- Reload: PLAYER_LEAVING_WORLD, PLAYER_LOGOUT and ADDONS_UNLOADING. Then the fresh load, the copied saved variables, and the same login events with PLAYER_ENTERING_WORLD (false, true).
+- Payloads follow the generated API documentation of both clients (`Blizzard_APIDocumentationGenerated/AddOnsDocumentation.lua`).
+- Login: ADDON_LOADED (folder name, and `containsBindings`: whether the folder holds `Bindings.xml`), then PLAYER_LOGIN, then PLAYER_ENTERING_WORLD (true, false).
+- Reload: PLAYER_LEAVING_WORLD, PLAYER_LOGOUT and ADDONS_UNLOADING (`closingClient` false). Then the fresh load, the copied saved variables, and the same login events with PLAYER_ENTERING_WORLD (false, true).
 - An event that no frame registered is not an error. A handler that throws fails the load step or the reload step, with the event's name.
 - `IsLoggedIn()` is false from the start of a load until PLAYER_LOGIN.
 

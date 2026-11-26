@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: MockBind
+## Notes: Fixture: an addon folder with Bindings.xml. Not shipped.
+## SavedVariables: MockBindUnloading
+Bind.lua
