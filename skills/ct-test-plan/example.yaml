@@ -1,5 +1,6 @@
 ct: 1
 kind: plan
+purpose: feature
 addon: ClosestVendor
 title: Example plan for a small change
 preamble: Example only. Type |cff99ccff/cvn debug on|r, then |cff99ccff/reload|r, before the checks.
@@ -24,7 +25,7 @@ sections:
     title: Sell test question
     action:
       kind: manual
-      text: Enter |cff99ccff/cvn test sell|r.
+      text: Press Run to show a test sell question.
       commands:
       - /cvn test sell
     expect: a question shows a vendor name and a zone.
@@ -48,7 +49,7 @@ sections:
     - forever-camelot
     action:
       kind: manual
-      text: Enter |cff99ccff/cvn test sell|r.
+      text: Press Run to ask for a test sell question.
       commands:
       - /cvn test sell
     setup: Turn the addon off in its settings.

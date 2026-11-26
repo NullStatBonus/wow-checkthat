@@ -1,5 +1,6 @@
 ct: 1
 kind: plan
+purpose: feature
 addon: KeepThat
 title: Example tally plan, bank character
 preamble: Example only. Run this plan on the character that keeps Arcanite Bar in the bank. Run the partner

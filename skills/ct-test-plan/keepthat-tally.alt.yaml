@@ -1,5 +1,6 @@
 ct: 1
 kind: plan
+purpose: feature
 addon: KeepThat
 title: Example tally plan, second character
 preamble: Example only. Run this plan on a second character that carries Arcanite Bar in the bags. Run the

@@ -25,11 +25,15 @@ Ask **one question per turn** and wait for the answer. For each question say why
 3. **Characters.** "Does any check need data or actions from more than one character?" Most scopes need one. A run belongs to the character that started it, so a check that needs several characters becomes one plan for each character role, and a comparison afterward (section 2). Ask which roles exist and what each one holds or does. Name each role in one short word. There is no limit on the number of roles; two is the usual case.
 4. **Output.** "Where should I write the plan?" Suggest `plans/` in the repository you are working in. Accept any path. Ask for the file name. Suggest `<addon>.yaml` for one plan, `<name>.<area>.yaml` for each plan of a set by area, and `<name>.<role>.yaml` for each plan of a role set (for example `keepthat-tally.bank.yaml`). Add the locale for non-English plans (for example `<addon>.deDE.yaml`).
 5. **Locale.** Which client locale will the plan run on? Write the plan for that locale only. Authors keep one plan per locale. Do not translate. Player-visible text in the plan uses the strings that locale shows.
-6. **Depth.** Sample (a handful of steps) or release plan? What is the riskiest part of the scope? What must never break? Scope before you draft or convert anything, also a manual test document (`ct.py from-md`):
+6. **Purpose and depth.** Ask first what the plan is for, and set `purpose` on the plan to the answer:
+   - **Foundation** (the release gate): "Do the systems that everything else depends on work in the real game?" Interview for the pillars before any step: which systems, if they fail, make every feature fail? Name each pillar with its real-game risk only, the thing a unit test or the offline block cannot catch: a game call that is missing or shaped differently on one client, a real event that never reaches the decision, shipped data or the player's position that is wrong, a call that succeeds but draws nothing, a window that gives no id or position, saved data lost on `/reload`, a Lua error on either TOC. Confirm the pillars with the author. Ask which surface they find critical. Draft it as in "Foundation plans" (section 2).
+   - **Feature** (go deep): "Does this feature work in every case the real game can produce?" Interview for the cases: edge and negative cases, each client, the roles it needs (item 3), and combat or instances when the feature touches them. It runs when the feature is developed or changed, not before every release. Ask whether it is retired or kept as a regression plan after the feature ships. When it needs a staged character (a class, a profession, a place), the preamble says so.
+
+   Then ask: what is the riskiest part of the scope? What must never break? Scope before you draft or convert anything, also a manual test document (`ct.py from-md`):
    - A plan checks only what a fake game cannot prove: real game data and events, end-to-end wiring, drawing, sound, other addons, and saved variables across `/reload`. Logic that a unit test proves gets no plan step. For each candidate check, ask whether a unit test already proves it, and show the author the list.
-   - Measure, do not guess. Run the addon's unit tests with coverage when it has them, and map the scope's spec requirements to plan steps (`ct.py coverage`, section 4) and to unit tests (`-- covers: <Requirement name>` comments, read by the same command). Base the sample-or-release answer on that map.
+   - Measure, do not guess. Run the addon's unit tests with coverage when it has them, and map the scope's spec requirements to plan steps (`ct.py coverage`, section 4) and to unit tests (`-- covers: <Requirement name>` comments, read by the same command). Base the purpose and depth answer on that map.
    - Offer an essential draft first, never a one-for-one conversion of a manual document. Each step covers a whole feature from start to finish, not one facet.
-   - A plan has at most 25 steps and a section at most 10. A larger scope becomes a plan set by area (section 2).
+   - A foundation plan has about one step per pillar, 8 to 12 steps. Any plan has at most 25 steps and a section at most 10. A larger feature scope becomes a plan set by area (section 2).
 7. **Clients.** Which clients are in scope: `classic-era`, `forever-camelot`, or both? Which steps are for one client only?
 8. **Evidence.** Align with the addon's own logging; do not require a CheckThat-style log. Ask these one at a time:
    - What is the debug-log SavedVariable name, its path inside it, and its format (`strings` or `entries`)? Check the addon source first (and "Log sources" in `reference.md`), then confirm with the author.
@@ -47,7 +51,7 @@ Draft **one plan at a time and one step at a time** (section 4 reviews each step
 
 - **Simple steps by default.** Each step has one player action and one expected result, in short active sentences. When a check needs more, split it into consecutive steps. Draft a compound step (several actions, several expected results or a multi-part assertion set) only when the author asks for it, say that you did, and mark it with `notes: Compound step, drafted on request.`.
 - **Start with a version check.** The first step of every plan checks that the game loaded the version under test. A copy of an older build gives results that mean nothing. Use an `auto` step when the addon reports a `version` fact; otherwise ask the player to read the version in the AddOns list. The recipes are in "Version check" in `reference.md`.
-- Cover each changed requirement or scenario that a fake game cannot prove with at least one step. Add one regression step for the nearest unchanged behavior. Add negative cases, and combat cases when the scope touches them. Keep a sample to a handful of steps, and any plan to at most 25 steps and each section to at most 10.
+- Cover each changed requirement or scenario that a fake game cannot prove with at least one step. Add one regression step for the nearest unchanged behavior. Add negative cases, and combat cases when the scope touches them. Keep a foundation plan to about one step per pillar, and any plan to at most 25 steps and each section to at most 10.
 - Prefer a required `log` assertion where the addon already logs the evidence. Use `diagnostic` only for extra context. Use `absent` for "must not appear". Pick `scope` on purpose: use `attempt` for evidence expected after the step opens (attempts survive `/reload`); use `session` only for a line an earlier step wrote.
 - Where nothing is logged, use `verify: [player]` and an `expect` a player understands. Never ask the player to read a log line. A disabled button or a refusal that writes no line is a player check and a gap for section 5. Do not stand in with an unrelated `absent` line.
 - A confirmation question that the action itself raises is part of that action, not a second action.
@@ -58,17 +62,29 @@ Draft **one plan at a time and one step at a time** (section 4 reviews each step
 - Never assert the line a step's own result press writes (`[ct] step <its id> <verdict>`). CheckThat judges the result before it writes that line, so the step stays unverified. Put such a check on a later step with `scope: session`.
 - A check for new UI says what the tester should see: where it appears, which way it grows, what it shows. "It shows" is not enough.
 - Every slash command named in step text goes in that step's `action.commands`, and only from the addon's allow list plus `/reload`, `/reloadui` and `/console scriptErrors 0|1`. No `/script`, `/run` or `/dump`. The card shows four command lines, so keep a step to four.
-- Text uses native color codes (`|cff99ccffcommand|r`), never Markdown. Sentences are short, active voice, one fact each.
+- **Player language.** Action text is one sentence about what the player does. Commands sit only in `action.commands`, behind Run: write "Press Run to show a test question.", not the command itself. Expect states what is on screen, never what is logged. Flag any step whose action text or Expect shows a slash command, or whose Expect speaks of the log; `validate` warns about both when the plan sets `purpose`.
+- Text uses native color codes (for example `|cffffd100Pass|r` for a button name), never Markdown. Sentences are short, active voice, one fact each.
 - Tag steps with `clients` only when they apply to one client; a step for both clients has no tag. Add `setup`, `cleanup` and `reload` where the step needs them.
 - Never put raw saved variables or real character names in the plan.
 
+### Foundation plans
+
+A foundation plan (`purpose: foundation`) is the release gate: a tester runs it on each client before each release.
+
+- **One character.** Any class, any level, no profession, in one stated place (for example a capital). One run per client. The preamble lists these assumptions.
+- **What leaves the gate.** A step that needs a class, a profession, a place, a dungeon, a fight or another addon is not foundation. Move it to a feature plan, the offline block (a recorded call) or a unit test. The preamble names each one and where it went, so the author accepts the gap knowingly.
+- **One step per pillar.** One section per pillar, titled with the pillar's name, with one step (at most about two). Prefer automatic steps. Keep a player step only for what is drawn or heard, and for the surface the author named as critical.
+- **Settings are mocked, the game is not.** Use the addon's test-settings mode (interview item 11) and push real thresholds to their limits. At least one step crosses a real threshold end to end, because a "test now" command skips the wiring. Mocks stay in the offline block.
+- **No restore steps.** No step exists only to put one setting back: the step that turns test settings off (interview item 11) restores them all.
+- The plan keeps its version step first. It ends with the test-settings off step, when the plan uses the mode, and a no-Lua-error step (the quiet `errors` source, `scope: session` until #161 adds a run scope).
+
 ### Plan sets by area
 
-When the essential steps are still more than 25, split the scope into a set of plans by area (for example core, interface, other addons). The same character runs them one after another.
+When the essential steps of a feature plan are still more than 25, split the scope into a set of plans by area (for example core, interface, other addons). The same character runs them one after another. A set by area is not the release gate: the foundation plan is.
 
 - Each plan has its own version step, its own setup step and a final no-Lua-error step (the quiet `errors` source, see "Unit-test checks" in `$CT/docs/authoring-plans.md`). With `scope: session` that step also sees errors from an earlier plan of the set in the same session (#161).
 - Section ids and step ids do not overlap between the plans of a set: give each plan its own section range.
-- File names are `<name>.<area>.yaml`. Each preamble names every partner plan file and says to run all of them before a release.
+- File names are `<name>.<area>.yaml`. Each preamble names every partner plan file and says to run all of them when the feature changes. Say "before each release" only when the author asks for it.
 - Starting a run uses the last plan imported for that addon. Tell the author to import, start and finish each plan before importing the next.
 
 ### One plan for each character role
@@ -84,7 +100,7 @@ When the interview named more than one role, draft one plan for each role. See `
 
 ## 3. Validate
 
-Run `$PY $CT/tools/ct.py validate <plan>` on every plan. Report every problem with its step id and fix it. `validate` fails on a step that asserts its own result line. It warns (without failing) about a slash command named in text but missing from `commands`, about a first step with no version check, and about a plan over 25 steps or a section over 10 (each case counts as a step); fix each warning.
+Run `$PY $CT/tools/ct.py validate <plan>` on every plan. Report every problem with its step id and fix it. `validate` fails on a step that asserts its own result line. It warns (without failing) about a slash command named in text but missing from `commands`, about a first step with no version check, and about a plan over 25 steps or a section over 10 (each case counts as a step). When the plan sets `purpose`, it also warns about a slash command in action text or Expect, about the log in Expect, and about a foundation plan over 12 steps. Fix each warning.
 
 ## 4. Review
 
@@ -99,6 +115,7 @@ After the last step, run the handoff gate. Do every part, in this order, and fix
 6. Tell the author which plan version any earlier in-game run used, and what changed since. Never claim a later edit was tested by an earlier run.
 
 Then show the author:
+- For a foundation plan: every step the stated character cannot do (it needs a class, a profession, a place, a fight or another addon), every pillar with no step, and every pillar with more than about two steps. Move each such step out and name it in the preamble.
 - Coverage: each scope item and the step(s) that cover it; gaps in bold. When `$CT` and the addon source are at hand, `$PY $CT/tools/ct.py coverage <plan...> --addon-src <addon folder>` lists the subcommands, settings and spec requirements no step touches, and which requirements unit tests already cover (a plan step on those may repeat a test); a step or section names a requirement with `covers: [heading text]`.
 - For a set of plans: each preamble names every partner file, and the reviewer line names the partner files and step IDs.
 - The checklist in `reference.md`, with each finding tied to a step id.
