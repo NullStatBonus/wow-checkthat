@@ -27,6 +27,9 @@ test("combat: the harness refuses protected changes in combat and anchors to the
     local plain = CreateFrame("Frame", "TestPlain", UIParent)
     b:SetPoint("LEFT", UIParent, "LEFT", 0, 0)
     T.raises(function() b:SetPoint("LEFT", plain, "RIGHT") end, "Cannot anchor protected frames", "no anchor to another frame")
+    b:SetPoint("CENTER", 0, -120) -- offsets only: no relative frame, so it anchors to the screen
+    b:SetPoint("CENTER", "UIParent", "CENTER", 0, 0)
+    T.raises(function() b:SetPoint("CENTER", "TestPlain", "CENTER", 0, 0) end, "Cannot anchor protected frames", "a frame given by name")
     st.setCombat(true)
     for _, m in ipairs({ "Show", "Hide", "SetAttribute", "SetPoint", "ClearAllPoints" }) do
         T.raises(function() b[m](b, "type", "macro") end, m .. " on protected frame", m .. " on a protected frame in combat raises")
