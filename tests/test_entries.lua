@@ -2,7 +2,7 @@
 local ns, test, T, finish = dofile("tests/harness.lua")()
 local Runner = dofile("tools/entry_runner.lua")
 
-local function same(a, b) T.ok(T.deepEq(a, b), "lists differ") end
+local function same(a, b) T.same(a, b, "lists") end
 local TOC = "tests/fixtures/MockAddon/MockAddon_Vanilla.toc"
 local function real(H, st) _G.GetItemInfo = function() return "Real Item" end end
 local function run(spec, prepare) return (Runner.run(spec, { prepare = prepare or real })) end

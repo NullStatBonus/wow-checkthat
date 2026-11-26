@@ -464,30 +464,97 @@ function H.loadToc(ns, toc)
     for _, path in ipairs(assert(H.tocFiles(toc))) do assert(loadfile(path))("CheckThat", ns) end
 end
 
+-- Undo list for the running test: H.stub and T.finally push here, test() unwinds it after the test, pass or fail.
+local undo = {}
+
+-- Sets t[key] = value and restores the old value (nil too) after the test, also when the test fails.
+function H.stub(t, key, value)
+    local old = rawget(t, key)
+    undo[#undo + 1] = function() rawset(t, key, old) end
+    rawset(t, key, value)
+end
+
+-- Exit code of a file whose name filter matched no test; tests/run.lua reads it.
+H.NO_MATCH = 3
+
+-- A value as the failure message shows it: strings quoted, tables one level deep, so "nil" and nil differ.
+local function fmt(v)
+    local ty = type(v)
+    if ty == "string" then return ("%q"):format(v) end
+    if ty ~= "table" then return ty == "nil" and "nil" or ("%s %s"):format(ty, tostring(v)) end
+    local keys = {}
+    for k in pairs(v) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local parts = {}
+    for i, k in ipairs(keys) do
+        if i > 8 then parts[#parts + 1] = "..."; break end
+        local x = v[k]
+        parts[#parts + 1] = ("%s=%s"):format(tostring(k), type(x) == "table" and "{...}" or fmt(x))
+    end
+    return "{" .. table.concat(parts, ", ") .. "}"
+end
+
+-- The first path where a and b differ, with both values, or nil when they are equal.
+local function firstDiff(a, b, path)
+    if type(a) ~= "table" or type(b) ~= "table" then
+        if a == b then return nil end
+        return path, a, b
+    end
+    local keys, seen = {}, {}
+    for k in pairs(a) do keys[#keys + 1] = k; seen[k] = true end
+    for k in pairs(b) do if not seen[k] then keys[#keys + 1] = k end end
+    table.sort(keys, function(x, y) return tostring(x) < tostring(y) end)
+    for _, k in ipairs(keys) do
+        local p, x, y = firstDiff(a[k], b[k], path .. "." .. tostring(k))
+        if p then return p, x, y end
+    end
+    return nil
+end
+
 return function()
     local ns = {}
     local T, fails, pass = {}, 0, 0
     function T.eq(a, b, msg)
-        if a ~= b then error(("%s: expected %s, got %s"):format(msg or "eq", tostring(b), tostring(a)), 2) end
+        if a ~= b then error(("%s: expected %s, got %s"):format(msg or "eq", fmt(b), fmt(a)), 2) end
     end
     function T.ok(v, msg) if not v then error(msg or "expected truthy", 2) end end
-    local function deepEq(a, b)
-        if type(a) ~= type(b) then return false end
-        if type(a) ~= "table" then return a == b end
-        for k, v in pairs(a) do if not deepEq(v, b[k]) then return false end end
-        for k in pairs(b) do if a[k] == nil then return false end end
-        return true
-    end
+    local function deepEq(a, b) return firstDiff(a, b, "") == nil end
     T.deepEq = deepEq
+    -- Deep compare that names the first differing path.
+    function T.same(a, b, msg)
+        local path, x, y = firstDiff(a, b, "")
+        if path then
+            error(("%s: differs at %s: expected %s, got %s"):format(msg or "same", path == "" and "<root>" or path:sub(2), fmt(y), fmt(x)), 2)
+        end
+    end
+    -- fn must raise, and the message must contain the plain text pattern.
+    function T.raises(fn, pat, msg)
+        local ok, err = pcall(fn)
+        if ok then error((msg or "raises") .. ": expected an error, the call succeeded", 2) end
+        if pat and not tostring(err):find(pat, 1, true) then
+            error(("%s: expected an error containing %s, got %s"):format(msg or "raises", fmt(pat), fmt(tostring(err))), 2)
+        end
+    end
+    function T.finally(fn) undo[#undo + 1] = fn end
     local pattern = arg and arg[1]
+    local function trace(e)
+        local tb = debug.traceback(tostring(e), 2)
+        return (tb:gsub("\n[^\n]*tests/harness%.lua[^\n]*", ""))
+    end
     local function test(name, fn)
         if pattern and not name:find(pattern, 1, true) then return end
-        local ok, err = pcall(fn)
+        local ok, err = xpcall(fn, trace)
+        for i = #undo, 1, -1 do
+            local uok, uerr = pcall(undo[i])
+            if not uok and ok then ok, err = false, "cleanup failed: " .. tostring(uerr) end
+            undo[i] = nil
+        end
         if ok then pass = pass + 1 else fails = fails + 1; rawprint("FAIL " .. name .. ": " .. tostring(err)) end
     end
     local function finish()
         rawprint(("%d passed, %d failed"):format(pass, fails))
-        os.exit(fails == 0 and 0 or 1)
+        if fails > 0 then os.exit(1) end
+        os.exit((pattern and pass == 0) and H.NO_MATCH or 0)
     end
     ns.__plain = function() H.plain(ns) end
     return ns, test, T, finish, H

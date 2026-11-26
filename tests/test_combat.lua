@@ -26,10 +26,10 @@ test("combat: the harness refuses protected changes in combat and anchors to the
     local b = CreateFrame("Button", "TestSecure", UIParent, "SecureActionButtonTemplate,UIPanelButtonTemplate")
     local plain = CreateFrame("Frame", "TestPlain", UIParent)
     b:SetPoint("LEFT", UIParent, "LEFT", 0, 0)
-    T.ok(not pcall(b.SetPoint, b, "LEFT", plain, "RIGHT"), "no anchor to another frame")
+    T.raises(function() b:SetPoint("LEFT", plain, "RIGHT") end, "Cannot anchor protected frames", "no anchor to another frame")
     st.setCombat(true)
     for _, m in ipairs({ "Show", "Hide", "SetAttribute", "SetPoint", "ClearAllPoints" }) do
-        T.ok(not pcall(b[m], b, "type", "macro"), m .. " on a protected frame in combat raises")
+        T.raises(function() b[m](b, "type", "macro") end, m .. " on protected frame", m .. " on a protected frame in combat raises")
     end
     T.ok(pcall(plain.Hide, plain), "a plain frame changes in combat")
     st.setCombat(false)
