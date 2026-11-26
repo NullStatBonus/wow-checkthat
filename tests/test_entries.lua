@@ -372,10 +372,10 @@ local function entry(name) return { call = { addon = "MockAddon", entry = name }
 test("level 6: replacing a game global taints it for good, and putting the original back does not clear it", function()
     local r = run({ toc = "tests/fixtures/MockAddon/Taint.toc", level = 6, steps = {
         secure("GetMoney", true), entry("replace"), secure("GetMoney", false), entry("restore"), secure("GetMoney", false),
-        secure("GetTime", true), secure("MadeUpByTheAddon", false) } })
+        secure("GetTime", true), secure("MadeUpByTheAddon", false), secure("string", true), secure("os", true) } })
     local ok = {}
     for i, s in ipairs(r.steps) do ok[i] = s.ok end
-    T.same(ok, { true, true, true, true, true, true, true }, tostring(r.steps[1].detail))
+    T.same(ok, { true, true, true, true, true, true, true, true, true }, "the runner's own hiding of io and os is not taint: " .. tostring(r.steps[8].detail))
 end)
 
 test("level 6: a replace in one step and a restore in the next is caught at the end of the first step", function()
@@ -391,13 +391,17 @@ test("level 6: hooksecurefunc leaves the name secure and the hook still runs", f
     T.finally(restore)
     local st = H.stubClient({ taint = true, client = "era" })
     local ran = {}
-    local orig = GetMoney
     local calls = 0
     rawset(_G, "GetMoney", function() calls = calls + 1; return 7 end)
     st.secureValue.GetMoney = rawget(_G, "GetMoney")
     hooksecurefunc("GetMoney", function(...) ran[#ran + 1] = select("#", ...) end)
     T.eq(GetMoney(1, 2), 7); T.eq(calls, 1); T.same(ran, { 2 }, "the hook gets the call's arguments after the original")
     T.raises(function() hooksecurefunc("NotAFunction", function() end) end, "Usage", "a name that is no function is a usage error")
+    rawset(_G, "GetCoinage", function() return 3, nil, 5 end); st.secureValue.GetCoinage = rawget(_G, "GetCoinage")
+    local handled = {}
+    rawset(_G, "geterrorhandler", function() return function(e) handled[#handled + 1] = e end end)
+    hooksecurefunc("GetCoinage", function() error("hook broke", 0) end)
+    T.eq(select("#", GetCoinage()), 3, "the original's results survive, trailing nils too"); T.eq(handled[1], "hook broke", "the error goes to the error handler")
     st.checkTaint(); T.eq(st.tainted.GetMoney, nil)
 end)
 

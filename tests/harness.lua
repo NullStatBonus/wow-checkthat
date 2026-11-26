@@ -144,7 +144,14 @@ function H.taint(st)
         local function pack(...) return { n = select("#", ...), ... } end
         local function wrapper(...)
             local r = pack(orig(...))
-            fn(...)
+            -- A hook that throws does not change what the original returned: the error goes to the error handler.
+            local ok, err = pcall(fn, ...)
+            if not ok then
+                st.hookErrors = st.hookErrors or {}
+                st.hookErrors[#st.hookErrors + 1] = tostring(err)
+                local handler = type(_G.geterrorhandler) == "function" and _G.geterrorhandler()
+                if type(handler) == "function" then pcall(handler, err) end
+            end
             return unpack(r, 1, r.n)
         end
         rawset(tbl, name, wrapper)
@@ -242,7 +249,12 @@ end
     for k in pairs(_G) do st.secure[k] = true end
     if opts.taint then
         st.secureValue = {}
-        for k in pairs(st.secure) do if type(k) == "string" then st.secureValue[k] = rawget(_G, k) end end
+        -- Lua's own names and the libraries the runner hides or puts back while addon code runs are not the game's: leave them out.
+        local own = { string = 1, table = 1, math = 1, bit = 1, coroutine = 1, io = 1, os = 1, jit = 1, ffi = 1, debug = 1, package = 1,
+            require = 1, dofile = 1, loadfile = 1, load = 1, module = 1 }
+        for k in pairs(st.secure) do
+            if type(k) == "string" and not own[k] then st.secureValue[k] = rawget(_G, k) end
+        end
     end
     return st
 end
