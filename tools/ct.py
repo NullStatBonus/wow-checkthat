@@ -881,8 +881,9 @@ def nil_read_report(interface, names, manifests, build=None):
 
 
 OFFLINE_LEVEL_WARNING = ("warning: the offline block has no level, so it runs at level 1 (interface 11507, issecurevariable false). "
-                         "Add level: 3 to answer with the TOC interface and the game's secure names, and to load the addon "
-                         "as the game does (saved variables, login events, reload).")
+                         "Add level: 4 to answer with the TOC interface and the game's secure names, to load the addon "
+                         "as the game does (saved variables, login events, reload), and to check events against the client and "
+                         "run timers on a virtual clock (wait steps).")
 
 
 def offline_plan(plan, addons, requirements=None, info=None):

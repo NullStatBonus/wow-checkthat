@@ -375,8 +375,8 @@ class OfflineBlock(unittest.TestCase):
         self.assertNotIn("matches multiple builds", out.stderr)
         self.assertEqual(self.run_cli(both, "--build", "9.9").returncode, 2)
 
-    def test_schema_accepts_levels_1_to_3_only(self):
-        for lv, ok in ((1, True), (2, True), (3, True), (4, False), ("2", False)):
+    def test_schema_accepts_levels_1_to_4_only(self):
+        for lv, ok in ((1, True), (2, True), (3, True), (4, True), (5, False), ("2", False)):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
 
@@ -414,6 +414,26 @@ class OfflineBlock(unittest.TestCase):
         self.assertEqual(suite.get("failures"), "1")
         self.assertEqual([(c.get("classname"), c.get("name")) for c in suite.iter("testcase")],
                          [("offline.1.1", "A: call 1"), ("offline.2.1", "B: reload 1"), ("offline.2.2", "B: call 2")])
+
+    def test_a_wait_step_needs_level_4(self):
+        wait = [{"wait": 2}]
+        self.assertEqual(ct.validate(self.plan(lambda o: self.life(o, 4, steps=wait))), [])
+        self.assertEqual(ct.validate(self.plan(lambda o: self.life(o, 4, groups=[{"steps": wait}]))), [])
+        for lv in (1, 2, 3):
+            self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, lv, steps=wait))), lv)
+        self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 3, groups=[{"steps": wait}]))))
+        self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 4, steps=[{"wait": -1}]))))
+        self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 4, steps=[{"wait": "2"}]))))
+
+    def test_the_command_runs_a_level_4_block_with_a_wait(self):
+        steps = [{"call": {"addon": "MockAddon", "entry": "after", "args": [2]}, "returns": [True]}, {"wait": 2},
+                 {"call": {"addon": "MockAddon", "entry": "fired"}, "returns": [3]}, {"event": {"name": "BAG_UPDATE", "args": [0]}}]
+        items = self.run_plan(lambda o: (o.clear(), o.update(toc="MockAddon/Clock.toc", level=4, steps=steps)))
+        self.assertEqual([(i["step"], i["label"], i["result"]) for i in items],
+                         [("offline.1", "call 1", "pass"), ("offline.2", "wait 2", "pass"), ("offline.3", "call 3", "pass"), ("offline.4", "event 4", "pass")])
+        bad = self.run_plan(lambda o: (o.clear(), o.update(toc="MockAddon/Clock.toc", level=4, steps=[{"event": {"name": "NOT_AN_EVENT"}}])))
+        self.assertEqual([(i["step"], i["result"]) for i in bad], [("offline.0", "fail")])
+        self.assertIn("the client has no event NOT_AN_EVENT", bad[0]["why"])
 
     def test_a_block_without_groups_keeps_its_step_ids(self):
         self.assertEqual([i["step"] for i in self.run_plan()], ["offline.%d" % n for n in range(1, 6)])
@@ -715,7 +735,8 @@ class InstallSkill(unittest.TestCase):
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "CheckThat/UI/Card.lua", "CheckThat/CheckThat_Vanilla.toc", "tools/sv2json.lua", "tools/replay_sv.lua",
               "tools/ct", "tools/entry_runner.lua", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
-              "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt")
+              "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt", "tools/events/era.json", "tools/events/forever.json",
+              "tests/manifests/README.md")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
 
     def make(self, dest, **env):
@@ -745,6 +766,21 @@ class InstallSkill(unittest.TestCase):
             for name in os.listdir(self.VERIFY):
                 with open(os.path.join(self.VERIFY, name), "rb") as a, open(os.path.join(d, "ct-verify", name), "rb") as b:
                     self.assertEqual(a.read(), b.read(), name)
+
+    def test_census_manifests_are_never_bundled(self):
+        planted = os.path.join(ROOT, "tests", "manifests", "zz-bundle-test.json")  # ignored by Git, removed below
+        with open(planted, "w", encoding="utf-8") as f:
+            f.write('{"format": 1, "addons": ["Private"]}')
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self.assertEqual(self.make(d, SKILL_NO_VENV="1").returncode, 0)
+                self.assertEqual(os.listdir(os.path.join(d, "ct-test-plan", "ct", "tests", "manifests")), ["README.md"])
+            with tempfile.TemporaryDirectory() as d:
+                r = subprocess.run(["make", "build-plugin", "PLUGIN_DIR=" + d], cwd=ROOT, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(os.listdir(os.path.join(d, "skills", "plan", "ct", "tests", "manifests")), ["README.md"])
+        finally:
+            os.remove(planted)
 
     def write_sv(self, root, body):
         sv = os.path.join(root, "src", "Account", "A", "SavedVariables"); os.makedirs(sv, exist_ok=True)
