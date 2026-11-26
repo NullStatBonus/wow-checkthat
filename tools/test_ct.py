@@ -219,7 +219,7 @@ class NativeText(unittest.TestCase):
 
     def test_shipped_plans_have_no_markdown(self):
         import glob
-        for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True):
+        for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]:
             d = ct.load_yaml(path)
             for box, key, _ in ct.display_fields(d):
                 self.assertNotRegex(box[key], r"`|\*\*", path + " " + key)
@@ -585,7 +585,7 @@ class LogCaps(unittest.TestCase):
         import glob
         for addon, logs in ct.LOGS.items():
             self.assertIsInstance(logs["debug"].get("cap"), int, addon)
-        paths = glob.glob(os.path.join(ROOT, "plans", "*.yaml")) + glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml"))
+        paths = glob.glob(os.path.join(ROOT, "plans", "*.yaml")) + glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml")) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]
         checked = 0
         for path in paths:
             plan = ct.load_yaml(path)

@@ -4,7 +4,7 @@ CheckThat (`/ct`) is an in-game test runner for World of Warcraft Classic Era an
 
 CheckThat never plays for you. Every game action stays a real click or keypress. The runner shows text to copy, a button you click, and reads logs and state.
 
-This repository holds the addon (`CheckThat/`), the plans for KeepThat and DontDoThat (`plans/`), and the tools and coding-agent skills that write plans and read finished runs back.
+This repository holds the addon (`CheckThat/`), the DontDoThat plan (`plans/`; KeepThat keeps its own), and the tools and coding-agent skills that write plans and read finished runs back.
 
 ## Quick start
 

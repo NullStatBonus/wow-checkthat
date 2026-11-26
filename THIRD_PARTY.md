@@ -13,4 +13,4 @@ CheckThat's code is MIT licensed (see `LICENSE`).
 
 ## Other
 
-World of Warcraft is the property of Blizzard Entertainment. Test plans in `plans/` are converted from the in-game test plans of KeepThat, DontDoThat and ClosestVendor, by the same author.
+World of Warcraft is the property of Blizzard Entertainment. Test plans in `plans/` are converted from the in-game test plans of DontDoThat and ClosestVendor, by the same author. The KeepThat test fixture is a short copy of the KeepThat sample plan.

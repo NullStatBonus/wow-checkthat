@@ -9,6 +9,7 @@ test: build test-lua test-py
 build:
 	@mkdir -p build
 	@for p in dontdothat selftest checkthat-0.8 checkthat-0.16 checkthat-0.17 checkthat-0.20 checkthat-0.20.1 checkthat-0.16-picker checkthat-picker-fixture checkthat-openrun.owner checkthat-openrun.viewer; do $(PY) tools/ct.py compile plans/$$p.yaml -o build/$$p.ct || exit 1; done
+	@# the Lua tests open build/keepthat.ct, built from a fixture because KeepThat owns its plan
 	@$(PY) tools/ct.py compile tests/fixtures/keepthat.yaml -o build/keepthat.ct
 
 # luajit tests/run.lua [file-pattern [test-name]] runs a subset (an unmatched test name fails); each file also runs alone: luajit tests/test_json.lua
