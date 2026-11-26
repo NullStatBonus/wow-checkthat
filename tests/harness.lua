@@ -44,12 +44,21 @@ local TOOLTIP = {
 function H.itemTooltipSet(tip)
     local frames = rawget(tip, "_frames")
     local mode = frames and frames.surface and frames.surface.tooltipHooks
+    -- A throwing script, hook or post call goes to the error handler and does not stop the tooltip call or the others.
+    local function run(fn, ...)
+        local ok, err = pcall(fn, ...)
+        if not ok then
+            local handler = type(_G.geterrorhandler) == "function" and _G.geterrorhandler()
+            if type(handler) == "function" then pcall(handler, err) end
+        end
+    end
     if mode == "script" or mode == nil then
-        for _, fn in ipairs(tip.hooks.OnTooltipSetItem or {}) do fn(tip) end
+        if tip.scripts.OnTooltipSetItem then run(tip.scripts.OnTooltipSetItem, tip) end
+        for _, fn in ipairs(tip.hooks.OnTooltipSetItem or {}) do run(fn, tip) end
     end
     if mode == "processor" then
         for _, call in ipairs(frames.postCalls or {}) do
-            if call.kind == "item" then call.fn(tip, { type = "item" }) end
+            if call.kind == "item" then run(call.fn, tip, { type = "item" }) end
         end
     end
 end
@@ -480,7 +489,8 @@ function H.applySurface(st, surface)
     -- A client on the processor path (surface.tooltipHooks) has TooltipDataProcessor; one on the script path has none (measured).
     if surface.tooltipHooks == "processor" then
         st.frames.postCalls = {}
-        local enum = rawget(_G, "Enum") or {}
+        local enum = {} -- a new table: an Enum an earlier client made stays as it was, so H.snapshot can put it back
+        for k, v in pairs(rawget(_G, "Enum") or {}) do enum[k] = v end
         enum.TooltipDataType = enum.TooltipDataType or { Item = 0 }
         rawset(_G, "Enum", enum)
         rawset(_G, "TooltipDataProcessor", {

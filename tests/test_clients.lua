@@ -92,6 +92,19 @@ test("the tooltip hook path follows the client: Era runs the OnTooltipSetItem sc
     T.eq(calls, 1, "the item post call runs at once, and a call for another type does not"); T.eq(data.type, "item")
     GameTooltip:SetHyperlink("spell:2061"); T.eq(calls, 1)
     T.raises(function() TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, "no") end, "Usage")
+    local handled = {}
+    rawset(_G, "geterrorhandler", function() return function(e) handled[#handled + 1] = e end end)
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function() error("post call broke", 0) end)
+    local ranAfter = 0
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function() ranAfter = ranAfter + 1 end)
+    GameTooltip:SetHyperlink("item:6948")
+    T.eq(handled[1], "post call broke", "a throwing post call goes to the error handler"); T.ok(ranAfter >= 1, "and the next one still runs")
+    restore()
+    T.eq(rawget(_G, "TooltipDataProcessor"), nil, "restore removes it"); T.eq(rawget(_G, "Enum"), nil, "and the Enum table the client made")
+    H.stubClient({ client = "era" })
+    local scripted = 0
+    GameTooltip:SetScript("OnTooltipSetItem", function() scripted = scripted + 1 end)
+    GameTooltip:SetHyperlink("item:6948"); T.eq(scripted, 1, "a script set with SetScript runs too")
     restore()
     local old = H.clientSurface("era"); old.tooltipHooks = nil -- a surface file from before the key: the script path, no processor
     H.stubClient({ client = old })
