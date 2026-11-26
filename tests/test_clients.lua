@@ -47,7 +47,7 @@ test("a frame of a listed type has only its type's methods; a frame from a templ
     H.stubClient({ client = "era" })
     local f = CreateFrame("Frame")
     T.eq(f.SetPointt, nil, "a typo reads nil")
-    T.ok(not pcall(function() f:SetPointt("CENTER") end), "and calling it fails")
+    T.raises(function() f:SetPointt("CENTER") end, "SetPointt", "and calling it fails")
     T.eq(type(f.SetPoint), "function")
     T.eq(type(CreateFrame("Button").SetText), "function")
     T.eq(CreateFrame("Frame").SetText, nil, "a plain Frame has no SetText")
@@ -99,7 +99,7 @@ test("CreateFrame types are matched without regard to case, and a misspelled cli
     H.stubClient({ client = "era" })
     T.eq(CreateFrame("frame").SetPointt, nil)
     restore()
-    T.ok(not pcall(H.stubClient, { client = "Era" }), "a client name with no surface is an error")
+    T.raises(function() H.stubClient({ client = "Era" }) end, "no client surface for Era", "a client name with no surface is an error")
 end)
 
 test("without a client the fake client is unchanged", function()

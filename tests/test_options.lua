@@ -49,8 +49,7 @@ test("home start button needs an imported plan", function()
 end)
 test("home lists past runs with open, export and delete; hidden when there are none", function()
     local App, Options = ns.App, ns.Options
-    local saved = App.db.runs
-    App.db.runs = {}; App.db.currentByChar = {}
+    H.stub(App.db, "runs", {}); H.stub(App.db, "currentByChar", {})
     local g = Options.Home(1)
     T.ok(g.args.runPick.hidden() and g.args.runOpen.hidden() and g.args.h_runs.hidden(), "nothing stored, nothing drawn")
     if ns.App.db.plans.DontDoThat == nil then
@@ -94,12 +93,9 @@ test("home lists past runs with open, export and delete; hidden when there are n
     g.args.runDelete.func()
     T.eq(App.db.runs[first.runId], nil); T.eq(Options.state.run, nil)
     g.args.runPick.set(nil, live2.runId)
-    local other = App.Character
-    App.Character = function() return "Someone-Else" end
+    H.stub(App, "Character", function() return "Someone-Else" end)
     T.ok(g.args.runOpen.disabled(), "an unfinished run of another character cannot open")
     T.ok(not g.args.runExport.disabled() and not g.args.runDelete.disabled())
-    App.Character = other
-    App.db.runs = saved
 end)
 test("advanced run limit sets and prunes; default is 20", function()
     local App = ns.App
@@ -108,8 +104,7 @@ test("advanced run limit sets and prunes; default is 20", function()
     T.eq(r.min, 5); T.eq(r.max, 100); T.eq(r.width, 1.5)
     App.db.runLimit = nil
     T.eq(r.get(), 20)
-    local saved, cur = App.db.runs, App.db.currentByChar
-    App.db.runs, App.db.currentByChar = {}, {}
+    H.stub(App.db, "runs", {}); H.stub(App.db, "currentByChar", {})
     for i = 1, 8 do App.db.runs["r" .. i] = { started = i, steps = {}, runId = "r" .. i } end
     r.set(nil, 7); T.eq(App.db.runLimit, 7); T.eq(r.get(), 7)
     local function count() local n = 0; for _ in pairs(App.db.runs) do n = n + 1 end return n end
@@ -118,7 +113,6 @@ test("advanced run limit sets and prunes; default is 20", function()
     T.eq(count(), 8, "not even when the drag passes a low value")
     App.PruneRuns()
     T.eq(count(), 7, "the limit applies when a run starts"); T.eq(App.db.runs.r1, nil, "the oldest went")
-    App.db.runs, App.db.currentByChar = saved, cur
     T.eq(ns.defaults.global.runLimit, 20)
 end)
 test("no control uses a string confirm, which AceConfigDialog reads as a handler method name", function()
@@ -133,11 +127,9 @@ test("no control uses a string confirm, which AceConfigDialog reads as a handler
 end)
 test("past runs spacing hides with the list", function()
     local App = ns.App
-    local saved = App.db.runs
-    App.db.runs = {}
+    H.stub(App.db, "runs", {})
     local g = ns.Options.Home(1)
     T.ok(g.args.g3.hidden(), "no gap after an empty list")
-    App.db.runs = saved
 end)
 test("about lists the commands", function()
     local g = ns.Options.About(5)

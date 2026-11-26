@@ -4,7 +4,7 @@ test("json round trip with unicode and escapes", function()
     local v = { a = "x\n\"y\\", b = { 1, 2, 3 }, c = { d = true, e = 1.5 }, u = "caf\195\169 \240\159\152\128" }
     local s = assert(ns.Json.Encode(v))
     T.ok(not s:find("[\128-\255]"), "ascii only")
-    T.ok(T.deepEq(assert(ns.Json.Decode(s)), v), "round trip")
+    T.same(assert(ns.Json.Decode(s)), v, "round trip")
 end)
 test("json canonical key order", function()
     T.eq(ns.Json.Encode({ b = 1, a = 2 }), '{"a":2,"b":1}')

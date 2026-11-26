@@ -13,7 +13,7 @@ for _, n in ipairs(names) do
         T.eq(#errs, 0, table.concat(errs, "; "):sub(1, 400))
         -- and Lua re-encodes to something Lua decodes to the same table
         local again = assert(ns.Codec.Decode(assert(ns.Codec.Encode(plan))))
-        T.ok(T.deepEq(plan, again), "re-encode round trip")
+        T.same(plan, again, "re-encode round trip")
     end)
 end
 finish()

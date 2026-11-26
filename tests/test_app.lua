@@ -33,10 +33,10 @@ test("app import stores plan, rejects bad ones without state change", function()
     T.ok(r == nil and e2:find("results"))
 end)
 test("a started run records the tested addon's version from the client, and none when the client cannot say", function()
-    local saved = { C = _G.C_AddOns, G = _G.GetAddOnMetadata }
+    H.stub(_G, "GetAddOnMetadata", _G.GetAddOnMetadata)
     local asked
-    _G.C_AddOns = { GetAddOnMetadata = function(name, field) asked = { name, field }; if name == "KeepThat" then return "2.5.1" end end }
-    local ok, err = pcall(function()
+    H.stub(_G, "C_AddOns", { GetAddOnMetadata = function(name, field) asked = { name, field }; if name == "KeepThat" then return "2.5.1" end end })
+    do
         boot(); App.ImportPlan(assert(ns.Codec.Encode(plan())))
         T.eq(App.Start("KeepThat").targetVersion, "2.5.1"); T.eq(asked[1], "KeepThat"); T.eq(asked[2], "Version", "the plan's addon, not CheckThat")
         T.eq(ns.Adapter.AddonVersion("Missing"), nil, "an addon the client does not know")
@@ -44,13 +44,11 @@ test("a started run records the tested addon's version from the client, and none
         T.eq(ns.Adapter.AddonVersion("KeepThat"), nil, "a failing call is caught")
         _G.C_AddOns.GetAddOnMetadata = function() return "" end
         T.eq(ns.Adapter.AddonVersion("KeepThat"), nil, "an empty version is unknown")
-        _G.C_AddOns, _G.GetAddOnMetadata = nil, nil
+        H.stub(_G, "C_AddOns", nil); H.stub(_G, "GetAddOnMetadata", nil)
         T.eq(ns.Adapter.AddonVersion("KeepThat"), nil, "a client with no metadata call")
         boot(); App.ImportPlan(assert(ns.Codec.Encode(plan())))
         T.eq(App.Start("KeepThat").targetVersion, nil, "the key is absent, never 'unknown'")
-    end)
-    _G.C_AddOns, _G.GetAddOnMetadata = saved.C, saved.G
-    assert(ok, err)
+    end
 end)
 test("a step that is already open keeps one error stack, a new attempt wants another", function()
     local db = boot()
@@ -74,10 +72,9 @@ test("a run of a newer major format is kept aside untouched, and comes back when
     for k, v in pairs(copy) do T.eq(future[k], v, k) end
     T.eq(App.FutureCount(), 1); T.eq(#App.Runs(), 0)
     T.eq(App.Current(), nil, "it is not the current run")
-    local oldMin = App.RUN_LIMIT.min; App.RUN_LIMIT.min = 1; db.runLimit = 1
+    H.stub(App.RUN_LIMIT, "min", 1); db.runLimit = 1
     for i = 1, 4 do db.runs["Old-" .. i] = { kind = "results", ct = 1, runId = "Old-" .. i, started = i, steps = {}, order = {}, character = "X" } end
     App.PruneRuns()
-    App.RUN_LIMIT.min = oldMin
     T.ok(db.future["Future-1"] == future, "pruning does not touch it, and it takes no place in the limit")
     T.ok(db.planStore.futuredigest, "its plan stays")
     db.runs["Odd-1"] = { ct = 3 }  -- a run with no plan digest: the plans stored now stay
@@ -89,9 +86,8 @@ test("a run of a newer major format is kept aside untouched, and comes back when
     App.PrunePlans()
     T.eq(db.planStore.later, nil, "a plan stored later is pruned as usual")
     db.future["Odd-1"] = nil
-    local saved = ns.Run.MAJOR; ns.Run.MAJOR = 2
+    H.stub(ns.Run, "MAJOR", 2)
     App.SplitFuture(db)
-    ns.Run.MAJOR = saved
     T.ok(db.runs["Future-1"] == future, "it returns when this version reads its format"); T.eq(db.future, nil, "nothing is left aside")
 end)
 test("a ct that is not a whole number up to the known major is a run this version cannot read", function()
@@ -106,9 +102,8 @@ test("a run set aside keeps its id: a new run never takes it, and a restore neve
     local future = db.future["KeepThat-1000-X"]
     db.runs["KeepThat-1000-X"] = { ct = 1, runId = "KeepThat-1000-X", steps = {}, order = {} }   -- a readable namesake appears
     local mine = db.runs["KeepThat-1000-X"]
-    local saved = ns.Run.MAJOR; ns.Run.MAJOR = 2
+    H.stub(ns.Run, "MAJOR", 2)
     App.SplitFuture(db)
-    ns.Run.MAJOR = saved
     T.ok(db.runs["KeepThat-1000-X"] == mine, "the readable run is not overwritten")
     T.ok(db.future["KeepThat-1000-X"] == future, "both entries stay")
 end)
@@ -427,7 +422,7 @@ test("context menu: MenuUtil, then UIDropDownMenu, then false", function()
     local Ad = ns.Adapter
     local clicked
     local items = { { "End run...", function() clicked = true end } }
-    local saved = { MenuUtil = _G.MenuUtil, UDM_I = _G.UIDropDownMenu_Initialize }
+    for _, k in ipairs({ "MenuUtil", "UIDropDownMenu_Initialize", "ToggleDropDownMenu", "UIDropDownMenu_CreateInfo", "UIDropDownMenu_AddButton", "CreateFrame", "UIParent", "CheckThatMenu" }) do H.stub(_G, k, _G[k]) end
     _G.MenuUtil, _G.UIDropDownMenu_Initialize = nil, nil
     T.eq(Ad.ContextMenu({}, items), false, "no menu API")
     local made
@@ -441,13 +436,9 @@ test("context menu: MenuUtil, then UIDropDownMenu, then false", function()
     _G.ToggleDropDownMenu = function() end
     _G.UIDropDownMenu_CreateInfo = function() return {} end
     _G.UIDropDownMenu_AddButton = function(info) added[#added + 1] = info end
-    local cf, up = _G.CreateFrame, _G.UIParent
     _G.CreateFrame, _G.UIParent = function() return {} end, {}
     T.eq(Ad.ContextMenu({}, items), true, "a failing MenuUtil falls through to the dropdown")
     T.eq(#added, #items)
-    _G.CreateFrame, _G.UIParent, _G.CheckThatMenu = cf, up, nil
-    _G.UIDropDownMenu_Initialize, _G.ToggleDropDownMenu, _G.UIDropDownMenu_CreateInfo, _G.UIDropDownMenu_AddButton = nil, nil, nil, nil
-    _G.MenuUtil, _G.UIDropDownMenu_Initialize = saved.MenuUtil, saved.UDM_I
 end)
 -- Run history, run limit and plan pruning
 local function withRuns(n, char)
@@ -669,13 +660,12 @@ test("select adds a category and leaves the viewed step", function()
 end)
 test("a verdict that opens its own attempt asks for an error stack once, as the card does", function()
     local db, env, run = started()
-    local n, orig = 0, ns.Errors.StepStarted
-    ns.Errors.StepStarted = function() n = n + 1 end
+    local n = 0
+    H.stub(ns.Errors, "StepStarted", function() n = n + 1 end)
     App.Verdict("pass")                      -- a slash verdict: no App.Begin before it
     T.eq(n, 1, "the attempt it opened asked for a stack")
     App.Begin(); T.eq(n, 2); App.Begin(); T.eq(n, 2, "an open attempt asks once")
     App.Verdict("pass"); T.eq(n, 2, "closing the open attempt asks for nothing")
-    ns.Errors.StepStarted = orig
 end)
 test("deselect removes a clean category and says why it cannot", function()
     local db, env, run = started()
@@ -688,12 +678,10 @@ test("deselect removes a clean category and says why it cannot", function()
 end)
 test("a slash verdict arms the stack before the errors are read", function()
     local db, env, run = started()
-    local order, orig = {}, ns.Errors.Check
-    local origStart = ns.Errors.StepStarted
-    ns.Errors.StepStarted = function() order[#order + 1] = "armed" end
-    ns.Errors.Check = function() order[#order + 1] = "check" end
+    local order = {}
+    H.stub(ns.Errors, "StepStarted", function() order[#order + 1] = "armed" end)
+    H.stub(ns.Errors, "Check", function() order[#order + 1] = "check" end)
     App.Verdict("pass")
-    ns.Errors.StepStarted, ns.Errors.Check = origStart, orig
     T.eq(order[1], "armed"); T.eq(order[2], "check")
 end)
 test("deselect refuses the last category", function()

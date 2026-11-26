@@ -97,9 +97,9 @@ test("the walk records globals, tables and widgets, and stores them by build", f
     T.eq(c.tables.MenuUtil.CreateContextMenu, "function")
     T.eq(c.tables.Enum.ItemQuality, "table")
     table.sort(c.widgets.Frame) -- the game does not sort; ct.py does
-    T.ok(T.deepEq(c.widgets.Frame, { "ClearAllPoints", "SetPoint" }), "c.widgets.Frame differs")
-    T.ok(T.deepEq(c.widgets.FontString, { "SetText" }), "c.widgets.FontString differs")
-    T.ok(T.deepEq(c.unavailable, { "Cooldown" }), "c.unavailable differs")
+    T.same(c.widgets.Frame, { "ClearAllPoints", "SetPoint" }, "c.widgets.Frame differs")
+    T.same(c.widgets.FontString, { "SetText" }, "c.widgets.FontString differs")
+    T.same(c.unavailable, { "Cooldown" }, "c.unavailable differs")
     T.ok(not ns.Census.Running(), "finished")
 end)
 
@@ -107,7 +107,7 @@ test("member rules: capital names only, no frames, only identifier keys", functi
     local t = fake(world())
     ns.Census.Start(); t.pump()
     local c = t.db.census
-    T.ok(T.deepEq(c.tables.C_AddOns, { GetAddOnMetadata = "function", IsAddOnLoaded = "function" }), "c.tables.C_AddOns differs")
+    T.same(c.tables.C_AddOns, { GetAddOnMetadata = "function", IsAddOnLoaded = "function" }, "c.tables.C_AddOns differs")
     T.eq(c.tables.UIParent, nil, "a frame has no member list")
     T.eq(c.tables.someLower, nil, "a lower-case table is not a public table")
     T.eq(c.tables.CheckThatDB, nil, "an empty table is not listed")
@@ -222,7 +222,7 @@ test("a table that was cut at the member cap is recorded as truncated", function
     local t = fake(world())
     ns.Census.Start(); t.pump()
     ns.Census.MEMBER_CAP = cap
-    T.ok(T.deepEq(t.db.census.truncated, { "C_AddOns" }), "only the table over the cap is cut")
+    T.same(t.db.census.truncated, { "C_AddOns" }, "only the table over the cap is cut")
     local t2 = fake(world()); ns.Census.Start(); t2.pump()
     T.eq(t2.db.census.truncated, nil)
 end)
@@ -309,7 +309,7 @@ test("reads are counted: no frame reads more than the budget, whatever the table
     end
     T.ok(worst <= ns.Census.BUDGET_READS, "reads in one frame: " .. worst)
     T.ok(t.db.census, "stored")
-    T.ok(T.deepEq(t.db.census.truncated, { "Huge" }), "cut at the member cap")
+    T.same(t.db.census.truncated, { "Huge" }, "cut at the member cap")
     local n = 0; for _ in pairs(t.db.census.tables.Huge) do n = n + 1 end
     T.eq(n, ns.Census.MEMBER_CAP)
 end)
