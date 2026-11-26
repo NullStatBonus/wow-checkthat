@@ -686,9 +686,9 @@ def default_addons():
     return os.path.dirname(ROOT) if os.path.exists(os.path.join(ROOT, ".git")) else os.path.dirname(os.getcwd())
 
 
-def run_luajit(cmd, cwd=None):
+def run_luajit(cmd, cwd=None, timeout=None):
     try:
-        return subprocess.run(["luajit"] + cmd, capture_output=True, text=True, cwd=cwd)
+        return subprocess.run(["luajit"] + cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout)
     except FileNotFoundError:
         raise ValueError("this command needs luajit, which is not installed")
 
@@ -2533,21 +2533,29 @@ def test_covers(tests_dir):
     return out
 
 def registry_setting_keys(src):
-    """(keys, tables): the setting keys of the options tables the addon registers with AceConfigRegistry-3.0 once its TOC is loaded under
-    the fake client (tools/dump_options.lua), and how many tables that was. None when the addon has no TOC here, the run fails or
-    luajit is missing. It runs the addon's Lua: use addons you trust."""
+    """(keys, tables, toc, error): the setting keys of the options tables the addon registers with AceConfigRegistry-3.0 once its TOC
+    is loaded under the fake client (tools/dump_options.lua), how many tables that was, and the TOC it read. error is a short text
+    (and keys is empty) when the addon has no TOC here, the run fails or times out, or luajit is missing. It runs the addon's Lua:
+    use addons you trust."""
     tocs = sorted(glob.glob(os.path.join(src, "*.toc")))
     if not tocs or not os.path.exists(os.path.join(ROOT, "tools", "dump_options.lua")):
-        return None
+        return [], 0, None, "the addon folder has no TOC"
     toc = next((t for t in tocs if t.endswith("_Vanilla.toc")), tocs[0])
+    name = os.path.basename(toc)
     try:
-        r = run_luajit([os.path.join(ROOT, "tools", "dump_options.lua"), os.path.abspath(toc)], ROOT)
+        r = run_luajit([os.path.join(ROOT, "tools", "dump_options.lua"), os.path.abspath(toc)], ROOT, timeout=60)
+    except subprocess.TimeoutExpired:
+        return [], 0, name, "loading %s took over 60 seconds" % name
+    except ValueError as e:
+        return [], 0, name, str(e)
+    try:
         got = json.loads(r.stdout)
-    except (ValueError, OSError):
-        return None
+    except ValueError:
+        got = None
     if r.returncode != 0 or not isinstance(got, dict) or not isinstance(got.get("keys"), list):
-        return None
-    return sorted(str(k) for k in got["keys"]), int(got.get("tables") or 0)
+        why = (r.stderr or r.stdout).strip().splitlines()
+        return [], 0, name, "loading %s failed%s" % (name, ": " + why[0][:120] if why else "")
+    return sorted(str(k) for k in got["keys"]), int(got.get("tables") or 0), name, None
 
 def coverage_data(plans, src, specs=None, runs=None, tests=None, harness=False):
     """Every subcommand, setting key and requirement name with the ids of the steps that cover it. runs ({id: run}, or None) adds a result:
@@ -2561,15 +2569,14 @@ def coverage_data(plans, src, specs=None, runs=None, tests=None, harness=False):
     cmds = slash_commands(src)
     if not cmds:
         raise ValueError("no subcommand found in %s: looked for cmd == \"name\" in Slash*.lua files and in the Lua files its TOC lists" % src)
-    keys, settings_source = None, None
+    keys, settings_source = setting_keys(src), None
     if harness:
-        reg = registry_setting_keys(src)
-        if reg and reg[0]:
-            keys, settings_source = reg[0], "registry (%d table%s)" % (reg[1], "" if reg[1] == 1 else "s")
+        reg_keys, tables, toc_name, err = registry_setting_keys(src)
+        if reg_keys:  # the registry may hold only the tables made at load: the source scan still adds what it finds
+            keys = sorted(set(reg_keys) | set(keys))
+            settings_source = "registry (%d table%s, %s) and the source" % (tables, "" if tables == 1 else "s", toc_name)
         else:
-            settings_source = "source (the options registry was empty, or the addon could not be loaded)"
-    if keys is None:
-        keys = setting_keys(src)
+            settings_source = "source (%s)" % (err or "the options registry was empty after %s loaded" % toc_name)
     reqs = sorted(requirement_names(specs)) if specs else None
     cover = {"commands": {c: [] for c in cmds}, "settings": {k: [] for k in keys}, "requirements": {r: [] for r in reqs or []}}
     ok = {}

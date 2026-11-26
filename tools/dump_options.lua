@@ -1,13 +1,15 @@
 -- Usage: luajit tools/dump_options.lua TOC
 -- Loads an addon's TOC under the fake client (offline level 5: the client's real surface, the login events fired) and reads the
 -- options tables the addon registered with AceConfigRegistry-3.0. Prints JSON: { "tables": N, "keys": [setting keys] }. A key is
--- the name of a node of an options tree that is not a group, header or description. An addon that registers its options later
+-- the name of a node of an options tree that holds a value (toggle, range, select, multiselect, input, color or keybinding). Two
+-- settings with the same name in different groups count once. An addon that registers its options later
 -- (when its settings panel opens) leaves the registry empty: tables is 0 and ct.py coverage falls back to the source.
 -- It runs the addon's Lua: use addons you trust.
 local here = arg[0]:match("^(.*)/tools/[^/]*$") or "."
 local Runner = dofile(here .. "/tools/entry_runner.lua")
 
 local found = { tables = 0, keys = {} }
+local VALUE = { toggle = true, range = true, select = true, multiselect = true, input = true, color = true, keybinding = true } -- not group, header, description or execute
 
 local function walk(node, seen)
     if type(node) ~= "table" or seen[node] then return end
@@ -15,7 +17,7 @@ local function walk(node, seen)
     for key, child in pairs(type(node.args) == "table" and node.args or {}) do
         if type(child) == "table" then
             if child.type == "group" then walk(child, seen)
-            elseif type(child.type) == "string" and child.type ~= "header" and child.type ~= "description" then
+            elseif VALUE[child.type] then
                 found.keys[tostring(key)] = true
             end
         end
