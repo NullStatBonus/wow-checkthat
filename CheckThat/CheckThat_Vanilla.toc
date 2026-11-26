@@ -26,6 +26,7 @@ Model\Plan.lua
 Model\Evidence.lua
 Model\Facts.lua
 Model\Entries.lua
+Model\RunEvents.lua
 Model\Errors.lua
 Model\Run.lua
 Model\Census.lua

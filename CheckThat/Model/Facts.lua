@@ -64,11 +64,21 @@ end
 -- line format stay as they are, and API_VERSION rises only when something is added.
 function Facts.API()
     return {
-        API_VERSION = 2,
+        API_VERSION = 3,
         Entry = function(addon, name, fn)
             if not ns.Entries then return false end
             local ok, stored = pcall(ns.Entries.Register, addon, name, fn)
             return ok and stored == true
+        end,
+        OnRun = function(addon, fn)
+            if not ns.RunEvents then return false end
+            local ok, stored = pcall(ns.RunEvents.Register, addon, fn)
+            return ok and stored == true
+        end,
+        ActiveRun = function(addon)
+            if not ns.RunEvents then return nil end
+            local ok, plan = pcall(ns.RunEvents.Active, addon)
+            return ok and plan or nil
         end,
         Report = function(addon, key, value)
             local ok, recorded = pcall(Facts.Report, addon, key, value)

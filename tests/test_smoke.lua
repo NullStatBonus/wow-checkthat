@@ -13,7 +13,7 @@ test("smoke: enable, import, run, export and settings through the real addon", f
     addon:OnInitialize()
     addon:OnEnable()
     T.ok(addon.db.profile.card.scale == 100)
-    T.eq(type(_G.CheckThat), "table"); T.eq(_G.CheckThat.API_VERSION, 2)
+    T.eq(type(_G.CheckThat), "table"); T.eq(_G.CheckThat.API_VERSION, 3)
     T.eq(type(addon.db.global.facts), "table", "a save from before facts gets an empty list")
     local f = io.open("build/keepthat.ct"); local s = f:read("*a"); f:close()
     local plan, err = ns.App.ImportPlan(s)

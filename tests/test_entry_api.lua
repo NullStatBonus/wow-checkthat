@@ -37,10 +37,10 @@ local function register()
     return api
 end
 
-test("the public table has Entry and API version 2, and Entry refuses bad input", function()
+test("the public table has Entry and API version 3, and Entry refuses bad input", function()
     local db = boot(plan({ addon = "KeepThat", entry = "add" }, "x"))
     local api = ns.Facts.API()
-    T.eq(api.API_VERSION, 2)
+    T.eq(api.API_VERSION, 3)
     T.eq(api.Entry("A B", "x", function() end), false)
     T.eq(api.Entry("A", "x", "not a function"), false)
     T.eq(api.Entry("A", ("n"):rep(49), function() end), false)
