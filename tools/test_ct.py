@@ -3136,6 +3136,7 @@ class Coverage(unittest.TestCase):
     def cov_in(self, src, *plans, **kw):
         return ct.coverage_data(list(plans), src, **kw)
 
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_harness_reads_the_registered_options_tables_and_keeps_the_source_as_fallback(self):
         p = self.plan(("c1", {"kind": "manual", "text": "Type /kt go and set scale."}, None))
         d = self.registry_addon()
@@ -3147,13 +3148,24 @@ class Coverage(unittest.TestCase):
         empty = self.cov_in(self.registry_addon(register=False), p, harness=True)
         self.assertEqual(empty["settingsSource"], "source (the options registry was empty after Reg.toc loaded)")
         self.assertEqual(empty["settings"], self.cov_in(self.registry_addon(register=False), p)["settings"], "the fallback is the regex result")
-        none = self.cov_in(self.SRC, self.plan(("c1", {"kind": "manual", "text": "t"}, None)), harness=True)
+
+    def test_harness_falls_back_to_the_source_with_a_reason_when_it_cannot_run(self):
+        p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
+        none = self.cov_in(self.SRC, p, harness=True)
         self.assertEqual(none["settingsSource"], "source (the addon folder has no TOC)", "an addon folder with no TOC falls back")
+        self.assertEqual(none["settings"], self.cov_in(self.SRC, p)["settings"])
+        real = ct.run_luajit
+        def missing(*a, **k): raise ValueError("this command needs luajit, which is not installed")
+        ct.run_luajit = missing
+        self.addCleanup(lambda: setattr(ct, "run_luajit", real))
+        got = self.cov_in(self.registry_addon(), p, harness=True)
+        self.assertEqual(got["settingsSource"], "source (this command needs luajit, which is not installed)")
 
     def test_without_harness_the_output_keeps_its_old_shape(self):
         got = self.cov_in(self.registry_addon(), self.plan(("c1", {"kind": "manual", "text": "t"}, None)))
         self.assertNotIn("settingsSource", got)
 
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_harness_on_the_real_addon_finds_its_registered_settings(self):
         p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
         got = self.cov_in(os.path.join(ROOT, "CheckThat"), p, harness=True)
@@ -3161,6 +3173,7 @@ class Coverage(unittest.TestCase):
         self.assertTrue({"card.scale", "debug"} <= names, sorted(names)[:10])
         self.assertTrue(got["settingsSource"].startswith("registry"))
 
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_the_registry_adds_to_the_source_scan_and_a_broken_load_says_why(self):
         p = self.plan(("c1", {"kind": "manual", "text": "t"}, None))
         d = self.registry_addon()
