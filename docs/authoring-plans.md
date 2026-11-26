@@ -67,7 +67,7 @@ A plan may hold a top-level `offline` block. `.venv/bin/python tools/ct.py offli
 ```yaml
 offline:
   toc: wow-keepthat/KeepThat/KeepThat_Vanilla.toc   # inside the folder you pass as --addons
-  level: 2                                        # newest offline level; see Level below
+  level: 3                                        # newest offline level; see Level below
   mocks:                                          # set before the addon loads
     GetItemInfo:
     - { args: [7], returns: [Mocked Seven] }
@@ -80,7 +80,26 @@ offline:
   - { mockCalls: { api: GetItemInfo, count: 1 } }
 ```
 
-- **Level.** `level: 2` opts in to the newest fake-client answers. `GetBuildInfo` gives the number from the TOC's `## Interface:` line (the first number when the line lists several; the key counts at the start of a line only), so the addon sees the client its TOC names; a TOC with no such line gets 11507. `issecurevariable` is true for the names the fake client defines and false for names addon code set. A block without `level` runs at level 1, as before: interface 11507 and `issecurevariable` false for every name. `ct.py offline` then prints a warning. New plans declare `level: 2`. A stricter check comes as a new level, so an existing plan keeps its result.
+- **Level.** `level: 2` and above give the newer fake-client answers. `GetBuildInfo` gives the number from the TOC's `## Interface:` line (the first number when the line lists several; the key counts at the start of a line only), so the addon sees the client its TOC names; a TOC with no such line gets 11507. `issecurevariable` is true for the names the fake client defines and false for names addon code set. A block without `level` runs at level 1, as before: interface 11507 and `issecurevariable` false for every name. `ct.py offline` then prints a warning. `level: 3` adds the game's load order (see Load order below). New plans declare `level: 3`. A stricter check comes as a new level, so an existing plan keeps its result.
+- **Load order (level 3).** The runner reads `## SavedVariables` and `## SavedVariablesPerCharacter` from the TOC. Those names are nil while the files run. After the last file it assigns what `savedVariables` holds, so a value the addon set at file scope is replaced, as in the game. A name with no saved value keeps what the file set, as on a first login. With `## LoadSavedVariablesFirst: 1` the values are assigned before the first file. Then ADDON_LOADED (the folder name), PLAYER_LOGIN and PLAYER_ENTERING_WORLD (`true, false`) fire at the frames that registered them, and `IsLoggedIn()` is false until PLAYER_LOGIN. An entry registered at PLAYER_LOGIN can then be called with no `event` step. `UnregisterEvent` works. A `savedVariables` name the TOC does not declare fails the load step. JSON keys are strings: use a `reload` to test number keys.
+- **Reload (level 3).** A `{ reload: true }` step fires PLAYER_LEAVING_WORLD, PLAYER_LOGOUT and ADDONS_UNLOADING. It then keeps each saved variable as the game writes it: strings, numbers, booleans and tables, without functions or metatables. Two references to one table come back as two tables, and a reference to a table it is inside is dropped. Then the addon loads fresh: its other globals, frames, entries and upvalues are gone. The saved values come back and the login events fire with PLAYER_ENTERING_WORLD `false, true`. Mocks are set again and their counts go on. The fresh load runs in the same Lua process. It puts back the global table and the `string`, `table`, `math`, `bit` and `coroutine` tables, so a change an addon makes elsewhere, such as to a metatable, can still leak.
+- **Groups (level 3).** Put `groups` in place of `steps` to give each case its own load:
+
+  ```yaml
+  offline:
+    toc: wow-keepthat/KeepThat/KeepThat_Vanilla.toc
+    level: 3
+    mocks: { GetMoney: { returns: [0] } }           # every group
+    groups:
+    - label: Rich
+      mocks: { GetMoney: { returns: [100000] } }    # over the block's mocks
+      savedVariables: { KeepThatDB: { global: { log: [] } } }
+      steps: [ { call: { addon: KeepThat, entry: can_buy }, returns: [true] } ]
+    - label: Poor
+      steps: [ { call: { addon: KeepThat, entry: can_buy }, returns: [false] } ]
+  ```
+
+  Each group starts from a fresh load, with its own `savedVariables` or else the block's, never the previous group's. Mock counts start at zero in each group. JUnit names a group's steps `offline.G.N` and labels them `group label: step label`. A block without groups keeps `offline.N`.
 - **Lua 5.1 check.** The game runs Lua 5.1 and the tests run LuaJIT. Before anything loads, `tools/lua51_check.lua` scans every file the TOC loads, XML and libraries included. A finding stops the run at the load step with `file:line: message`. It finds `goto` and `::labels::` (Lua 5.1 rejects them), the `\x`, `\z` and `\u{` escapes in a string the `LL`, `ULL` and `i` number suffixes, hex fractions and `p` exponents, `0b1010` and `1_000` (Lua 5.1 rejects or reads them differently) and a `[[` inside a `[[ ]]` string or comment (Lua 5.1 rejects it; `[=[ ]=]` is fine). `goto` as a name, as in `local goto = 1`, passes. Run it alone with `luajit tools/lua51_check.lua <files or TOC>`.
 - **Hidden globals.** While the addon's code runs, `io`, `os`, `jit`, `ffi`, `require`, `package`, `loadfile` and `dofile` are nil, as in the game. A guard such as `if io then` sees nil and a call fails with Lua's own file and line. They come back when the run ends, nil ones too (an addon that assigns `ffi` does not leak it), also when a step fails in an unexpected way: the run then fails with a step of kind `error`.
 - **Nil-read report.** The runner records each global that the addon's own files (not a `Libs/` or `Libraries/` folder, any letter case) read as nil, and `ct.py offline` prints them after the summary and in the JUnit `<system-out>`, with the interface and build in `<properties>`. The fake client lacks many names the game has, so this list shows where the run may have taken a branch the game does not take. With a census manifest for the interface (`tests/manifests/*.json`) it splits the names into present in that build's census, set by addon code in that census session, and absent from it. When several builds share the interface, it says so and lists the names unclassified: pick one with `--build <build>`. The report is advisory: counts and exit codes do not change. It does not prove that a present name behaves as in the game, and it sees only reads of nil, not a name the fake defines wrongly.

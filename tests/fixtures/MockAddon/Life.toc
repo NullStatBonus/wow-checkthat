@@ -1,0 +1,6 @@
+## Interface: 11509
+## Title: MockAddon lifecycle
+## Notes: Fixture for offline level 3. Not shipped.
+## SavedVariables: MockLifeDB
+## SavedVariablesPerCharacter: MockLifeChar
+Life.lua

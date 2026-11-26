@@ -121,9 +121,9 @@ test("without a level the run keeps level 1: interface 11507 and every name inse
 end)
 
 test("an unknown level fails the load step and runs no addon file", function()
-    local r = run({ toc = TOC, level = 3, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    local r = run({ toc = TOC, level = 4, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
     T.eq(r.ok, false)
-    T.ok(r.steps[1].detail:find("offline level 3 is not supported", 1, true), r.steps[1].detail)
+    T.ok(r.steps[1].detail:find("offline level 4 is not supported", 1, true), r.steps[1].detail)
 end)
 
 test("a file that uses goto fails the load step with file:line text", function()
@@ -238,6 +238,95 @@ test("the fake client's issecurevariable: names set up before addon code are sec
     T.eq(issecurevariable(_G, "SomeAddonGlobal_X"), false)
     T.eq(issecurevariable({}, "k"), true)
     _G.SomeAddonGlobal_X = nil
+end)
+
+local LIFE = "tests/fixtures/MockAddon/Life.toc"
+local function call(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
+
+test("level 3: a saved value replaces the value the file set", function()
+    local r = run({ toc = LIFE, level = 3, savedVariables = { MockLifeDB = { from = "saved" } }, steps = { call("db", nil, { "saved" }) } })
+    T.ok(r.ok, r.steps[1].detail)
+end)
+
+test("level 3: with no saved value the file's default is kept, and saved names are nil while the files run", function()
+    _G.MockLifeDB = { from = "left over" }
+    local r = run({ toc = LIFE, level = 3, steps = { call("db", nil, { "file" }), call("db_at_load", nil, { "nil" }) } })
+    T.ok(r.ok, r.steps[1].detail .. " / " .. r.steps[2].detail)
+    T.ok(r.ok, r.steps[1].detail)
+end)
+
+test("level 3: LoadSavedVariablesFirst assigns before the files, so the file's value wins", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/LifeFirst.toc", level = 3, savedVariables = { MockLifeDB = { from = "saved" } },
+        steps = { call("db", nil, { "file" }), call("db_at_load", nil, { "saved" }) } })
+    T.ok(r.ok, r.steps[1].detail .. " / " .. r.steps[2].detail)
+end)
+
+test("level 3: ADDON_LOADED with the folder name while logged out, then PLAYER_LOGIN and PLAYER_ENTERING_WORLD", function()
+    local r = run({ toc = LIFE, level = 3, steps = { call("seen", nil,
+        { "ADDON_LOADED MockAddon nil false; PLAYER_LOGIN nil nil true; PLAYER_ENTERING_WORLD true false true" }) } })
+    T.ok(r.ok, r.steps[1].detail)
+end)
+
+test("level 3: a frame that unregistered an event no longer gets it", function()
+    local r = run({ toc = LIFE, level = 3, steps = { { event = { name = "ADDON_LOADED", args = { "MockAddon" } } } } })
+    T.eq(r.ok, false); T.ok(r.steps[1].detail:find("no frame registered ADDON_LOADED", 1, true), r.steps[1].detail)
+end)
+
+test("level 2 sends no login events: an ADDON_LOADED step fires once and IsLoggedIn is true", function()
+    local r = run({ toc = LIFE, level = 2, steps = { { event = { name = "ADDON_LOADED", args = { "MockAddon" } } },
+        call("seen", nil, { "ADDON_LOADED MockAddon nil true" }) } })
+    T.ok(r.ok, r.steps[2].detail)
+end)
+
+test("reload keeps only saved variables, as the game saves them, and logs in again", function()
+    _G.MockLifeLoose = nil -- left by an earlier run in this process
+    local r = run({ toc = LIFE, level = 3, steps = {
+        call("set", { "changed" }, { 1 }), call("shape", nil, { true }), { reload = true },
+        call("db", nil, { "changed" }), call("logouts", nil, { 1 }), call("upvalue", nil, { 0 }), call("loose", nil, { 1 }), call("logins", nil, { 2 }),
+        call("shape_after", nil, { true, true, true, true }),
+    } })
+    for _, s in ipairs(r.steps) do T.ok(s.ok, s.kind .. " " .. s.step .. ": " .. tostring(s.detail)) end
+    T.eq(#r.steps, 9)
+    local seen = run({ toc = LIFE, level = 3, steps = { { reload = true }, call("seen") } })
+    T.ok(seen.steps[2].detail:find("PLAYER_ENTERING_WORLD false true true", 1, true), seen.steps[2].detail)
+end)
+
+test("reload, groups and savedVariables need level 3, and a saved name must be declared", function()
+    for _, spec in ipairs({ { toc = LIFE, level = 2, steps = { { reload = true } } },
+        { toc = LIFE, level = 2, savedVariables = { MockLifeDB = {} }, steps = {} },
+        { toc = LIFE, groups = { { steps = {} } } } }) do
+        _G.MockLifeLoose = nil
+        local r = run(spec)
+        T.eq(r.ok, false); T.eq(r.steps[1].step, 0)
+        T.ok(r.steps[1].detail:find("needs offline level 3", 1, true), r.steps[1].detail)
+        T.eq(rawget(_G, "MockLifeLoose"), nil, "no addon file ran")
+    end
+    local r = run({ toc = LIFE, level = 3, savedVariables = { OtherDB = {} }, steps = {} })
+    T.ok(r.steps[1].detail:find("savedVariables names OtherDB, which the TOC does not declare", 1, true), r.steps[1].detail)
+end)
+
+test("groups: each starts from a fresh load with its own mocks", function()
+    _G.MockLifeLoose, _G.MockLifeFlag = nil, nil
+    local r = run({ toc = LIFE, level = 3, mocks = { GetItemInfo = { returns = { "Block" } } }, groups = {
+        { label = "a", mocks = { GetItemInfo = { returns = { "A" } } }, steps = { call("item", nil, { "A" }), call("flag", { "set" }, { "set" }),
+            { mockCalls = { api = "GetItemInfo", count = 1 } } } },
+        { label = "b", mocks = { GetItemInfo = { returns = { "B" } } }, steps = { call("item", nil, { "B" }), call("flag", nil, { "none" }), call("loose", nil, { 1 }),
+            { mockCalls = { api = "GetItemInfo", count = 1 } } } },
+        { steps = { call("item", nil, { "Block" }) } },
+    } })
+    for _, s in ipairs(r.steps) do T.ok(s.ok, ("group %s step %d: %s"):format(tostring(s.group), s.step, tostring(s.detail))) end
+    T.eq(#r.steps, 8); T.eq(r.steps[4].group, 2); T.eq(r.steps[4].step, 1)
+    T.ok(r.ok)
+end)
+
+test("snapshot restore removes added globals and library keys and puts old values back", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    _G.SnapKeep = 1
+    local restore = H.snapshot()
+    _G.SnapAdded, _G.SnapKeep, string.snapAdded = true, 2, true
+    restore()
+    T.eq(rawget(_G, "SnapAdded"), nil); T.eq(_G.SnapKeep, 1); T.eq(string.snapAdded, nil)
+    _G.SnapKeep = nil
 end)
 
 finish()

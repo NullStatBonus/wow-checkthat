@@ -132,7 +132,8 @@ end
     _G.GetCurrentRegionName = function() return "US" end
     _G.UnitNameUnmodified = function() return opts.name or "Tester", nil end
     _G.GetNormalizedRealmName = function() return "Realm" end
-    _G.IsLoggedIn = function() return true end
+    st.loggedIn = opts.loggedIn ~= false -- offline level 3 starts logged out and logs in at PLAYER_LOGIN
+    _G.IsLoggedIn = function() return st.loggedIn end
     _G.tinsert, _G.tremove = table.insert, table.remove
     _G.format = string.format
     _G.max, _G.min, _G.floor = math.max, math.min, math.floor
@@ -231,6 +232,45 @@ function H.recordNilReads(prefixes, excludes)
         for k in pairs(seen) do list[#list + 1] = k end
         table.sort(list)
         return list
+    end
+end
+
+-- What a TOC says about saved variables: the names on its SavedVariables and SavedVariablesPerCharacter lines, in order,
+-- and whether LoadSavedVariablesFirst is 1. Returns nil when the file cannot be read.
+function H.tocMeta(toc)
+    local f = io.open(toc, "r")
+    if not f then return nil end
+    local text = f:read("*a"); f:close()
+    local meta, seen = { savedVariables = {}, savedVariablesFirst = false }, {}
+    for l in (text .. "\n"):gmatch("([^\r\n]*)[\r\n]") do
+        local key, value = l:match("^%s*##%s*([%w]+)%s*:%s*(.-)%s*$")
+        if key == "SavedVariables" or key == "SavedVariablesPerCharacter" then
+            for n in value:gmatch("[^,%s]+") do
+                if not seen[n] then seen[n] = true; meta.savedVariables[#meta.savedVariables + 1] = n end
+            end
+        elseif key == "LoadSavedVariablesFirst" then
+            meta.savedVariablesFirst = value == "1"
+        end
+    end
+    return meta
+end
+
+-- Takes a copy of the global table and of the standard library tables. restore() removes every key added since and
+-- puts the old values back, so the next load starts as the first did: an addon's globals, LibStub and its libraries
+-- are gone. It works in one Lua state, so a change elsewhere (such as a type's metatable) is not undone.
+local LIBRARY_TABLES = { "string", "table", "math", "bit", "coroutine" }
+function H.snapshot()
+    local function copy(t) local c = {}; for k, v in next, t do c[k] = v end; return c end
+    local g = copy(_G)
+    local libs = {}
+    for _, n in ipairs(LIBRARY_TABLES) do if type(g[n]) == "table" then libs[g[n]] = copy(g[n]) end end
+    local function put(t, c)
+        for k in next, copy(t) do if c[k] == nil then rawset(t, k, nil) end end
+        for k, v in next, c do rawset(t, k, v) end
+    end
+    return function()
+        put(_G, g)
+        for t, c in pairs(libs) do put(t, c) end
     end
 end
 

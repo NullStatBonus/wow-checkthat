@@ -879,7 +879,8 @@ def nil_read_report(interface, names, manifests, build=None):
 
 
 OFFLINE_LEVEL_WARNING = ("warning: the offline block has no level, so it runs at level 1 (interface 11507, issecurevariable false). "
-                         "Add level: 2 to answer with the TOC interface and the game's secure names.")
+                         "Add level: 3 to answer with the TOC interface and the game's secure names, and to load the addon "
+                         "as the game does (saved variables, login events, reload).")
 
 
 def offline_plan(plan, addons, requirements=None, info=None):
@@ -915,9 +916,17 @@ def offline_plan(plan, addons, requirements=None, info=None):
         info["nilReads"] = list((res.get("nilReads") or {}).values()) if isinstance(res.get("nilReads"), dict) else list(res.get("nilReads") or [])
     items = []
     for s in res["steps"]:
-        given = block["steps"][s["step"] - 1].get("label") if s["step"] else None
-        items.append({"step": "offline.%d" % s["step"], "label": given or "%s %d" % (s["kind"], s["step"]),
-                      "result": "pass" if s["ok"] else "fail", "why": s.get("detail") or ""})
+        g = s.get("group")
+        if g:  # a step of a group: offline.G.N, labelled "group label: step label"
+            group = block["groups"][g - 1]
+            given = group["steps"][s["step"] - 1].get("label") if s["step"] else None
+            label = "%s: %s" % (group.get("label") or "group %d" % g, given or "%s %d" % (s["kind"], s["step"]))
+            step_id = "offline.%d.%d" % (g, s["step"])
+        else:
+            given = block["steps"][s["step"] - 1].get("label") if s["step"] else None
+            label = given or "%s %d" % (s["kind"], s["step"])
+            step_id = "offline.%d" % s["step"]
+        items.append({"step": step_id, "label": label, "result": "pass" if s["ok"] else "fail", "why": s.get("detail") or ""})
     if not res["ok"] and not any(i["result"] == "fail" for i in items):
         items.append({"step": "offline.0", "label": "run", "result": "fail", "why": "a step produced no result"})
     return items

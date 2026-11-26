@@ -375,10 +375,44 @@ class OfflineBlock(unittest.TestCase):
         self.assertNotIn("matches multiple builds", out.stderr)
         self.assertEqual(self.run_cli(both, "--build", "9.9").returncode, 2)
 
-    def test_schema_accepts_levels_1_and_2_only(self):
-        for lv, ok in ((1, True), (2, True), (3, False), ("2", False)):
+    def test_schema_accepts_levels_1_to_3_only(self):
+        for lv, ok in ((1, True), (2, True), (3, True), (4, False), ("2", False)):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
+
+    def life(self, o, level=3, **extra):
+        o.clear(); o.update(toc="MockAddon/Life.toc", level=level, **extra)
+
+    def test_reload_groups_and_saved_variables_need_level_3(self):
+        reload = {"steps": [{"reload": True}]}
+        groups = {"groups": [{"steps": [{"reload": True}]}]}
+        saved = {"savedVariables": {"MockLifeDB": {"from": "saved"}}, "steps": []}
+        for extra in (reload, groups, saved):
+            self.assertEqual(ct.validate(self.plan(lambda o: self.life(o, 3, **extra))), [], extra)
+            self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 2, **extra))), extra)
+            no_level = lambda o: (self.life(o, 3, **extra), o.pop("level"))
+            self.assertTrue(ct.validate(self.plan(no_level)), extra)
+        self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 3, steps=[], groups=[{"steps": []}]))), "steps and groups")
+        self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 3))), "neither steps nor groups")
+        self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 3, steps=[{"reload": False}]))))
+
+    def test_a_block_without_groups_keeps_its_step_ids(self):
+        self.assertEqual([i["step"] for i in self.run_plan()], ["offline.%d" % n for n in range(1, 6)])
+
+    def test_groups_get_their_own_load_and_ids(self):
+        call = lambda entry, ret, label=None, args=None: dict({"call": {"addon": "MockAddon", "entry": entry, "args": args or []}, "returns": ret},
+                                                             **({"label": label} if label else {}))
+        groups = [{"label": "Mocked A", "mocks": {"GetItemInfo": {"returns": ["A"]}},
+                   "steps": [call("item", ["A"], "Item is A"), call("flag", ["set"], args=["set"])]},
+                  {"savedVariables": {"MockLifeDB": {"from": "saved"}},
+                   "steps": [call("flag", ["none"]), call("db", ["saved"]), {"reload": True}, call("db", ["saved"])]}]
+        items = self.run_plan(lambda o: self.life(o, 3, mocks={"GetItemInfo": {"returns": ["Block"]}}, groups=groups))
+        self.assertEqual([(i["step"], i["result"]) for i in items],
+                         [("offline.1.1", "pass"), ("offline.1.2", "pass"), ("offline.2.1", "pass"), ("offline.2.2", "pass"),
+                          ("offline.2.3", "pass"), ("offline.2.4", "pass")], items)
+        self.assertEqual(items[0]["label"], "Mocked A: Item is A")
+        self.assertEqual(items[2]["label"], "group 2: call 1")
+        self.assertEqual(items[4]["label"], "group 2: reload 3")
 
     def test_build_never_picks_a_manifest_of_another_interface(self):
         era = {"format": 1, "client": "era", "build": "1.15.9.1", "interface": 11509, "globals": {"io": "table"}}

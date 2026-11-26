@@ -2,21 +2,24 @@
 --
 --   luajit tools/entry_runner.lua SPEC.json      (from the repository root; prints the result as JSON)
 --
--- SPEC.json: { "toc": "path/Addon.toc", "level": 2,
+-- SPEC.json: { "toc": "path/Addon.toc", "level": 3,
 --              "mocks": { "GetItemInfo": [ {"args": [1], "returns": ["A"]}, {"returns": ["Z"]} ],
 --                         "C_Item.GetItemCount": {"returns": [3]} },
 --              "mockAfterLoad": false,
 --              "steps": [ {"call": {"addon": "A", "entry": "add", "args": [1, 2]}, "returns": [3]},
 --                         {"call": {"addon": "A", "entry": "boom"}, "throws": "bad input"},
 --                         {"event": {"name": "MERCHANT_SHOW", "args": []}},
---                         {"mockCalls": {"api": "GetItemInfo", "count": 2}} ] }
+--                         {"mockCalls": {"api": "GetItemInfo", "count": 2}},
+--                         {"reload": true} ] }
+-- Level 3 also takes "savedVariables": {"AddonDB": {...}}, and "groups": [{"label", "mocks", "savedVariables", "steps"}]
+-- in place of "steps": each group gets a fresh load.
 -- Everything in a spec is data. A step can only call an entry the addon registered through CheckThat.Entry.
 -- Mocks are set before the addon loads (a file-scope "local f = f" then sees them) unless mockAfterLoad is set,
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
 
 -- The newest offline level. A plan without a level runs at level 1, so its results do not change.
-Runner.LEVEL = 2
+Runner.LEVEL = 3
 
 -- The APIs a spec may mock. The runner owns this list; a spec cannot add to it. A name here needs a test.
 Runner.MOCKABLE = {}
@@ -139,8 +142,33 @@ local function tocInterface(path)
     return nil
 end
 
+-- What the game writes for a saved variable: strings, numbers, booleans and tables with such keys. Functions, userdata
+-- and threads are dropped, two references to one table come back as two tables, and a reference to a table the copy is
+-- already inside is dropped.
+local function savedCopy(v, inside)
+    local t = type(v)
+    if t == "string" or t == "number" or t == "boolean" then return v end
+    if t ~= "table" then return nil end
+    inside = inside or {}
+    if inside[v] then return nil end
+    inside[v] = true
+    local out = {}
+    for k, x in next, v do
+        local kt = type(k)
+        if kt == "string" or kt == "number" or kt == "boolean" then out[k] = savedCopy(x, inside) end
+    end
+    inside[v] = nil
+    return out
+end
+
+local function hasReload(steps)
+    for _, s in ipairs(steps or {}) do if s.reload then return true end end
+    return false
+end
+
 -- spec is a decoded table. opts.root is the repository root (default "."); opts.prepare(H, st) runs after the
--- fake client is built, so a test can add the "real" values a mock will replace.
+-- fake client is built, so a test can add the "real" values a mock will replace. opts.loaded(ns, st, n) runs after
+-- load n of the addon (1 for the first, then once for each reload or group), so a test can drive the addon's own code.
 function Runner.run(spec, opts)
     opts = opts or {}
     local root = opts.root or "."
@@ -151,139 +179,256 @@ function Runner.run(spec, opts)
     local tocPath = pathJoin(root, spec.toc)
     -- Offline level: what a plan opted in to. Level 1 (no level) keeps the fake client's first answers: interface 11507
     -- and issecurevariable false for every name. Level 2 answers with the TOC's interface and the secure game names.
+    -- Level 3 adds the game's load order: saved variables, login events, reload and groups.
     local level = spec.level or 1
     local badLevel = type(level) ~= "number" or level % 1 ~= 0 or level < 1 or level > Runner.LEVEL
     if badLevel then level = 1 end
-    local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2 })
-    local interface = select(4, _G.GetBuildInfo())
-    -- What the shared fake client lacked: a record of the events a frame registered.
-    local plainCreate = _G.CreateFrame
-    _G.CreateFrame = function(...)
-        local f = plainCreate(...)
-        f.events = {}
-        rawset(f, "RegisterEvent", function(self, ev) self.events[ev] = true end)
-        return f
+    local lifecycle = level >= 3
+    local groups = spec.groups or { { steps = spec.steps } }
+    local grouped = spec.groups ~= nil
+    local needs3
+    if spec.groups then needs3 = "groups" elseif spec.savedVariables then needs3 = "savedVariables" end
+    for _, g in ipairs(groups) do
+        if not needs3 and g.savedVariables then needs3 = "savedVariables" end
+        if not needs3 and hasReload(g.steps) then needs3 = "a reload step" end
     end
-    if opts.prepare then opts.prepare(H, st) end
+    local meta = lifecycle and H.tocMeta(tocPath) or { savedVariables = {} }
+    local declared = {}
+    for _, n in ipairs(meta and meta.savedVariables or {}) do declared[n] = true end
+    local undeclared
+    local function checkDeclared(sv) for n in pairs(sv or {}) do if not undeclared and not declared[n] then undeclared = n end end end
+    checkDeclared(spec.savedVariables)
+    for _, g in ipairs(groups) do checkDeclared(g.savedVariables) end
 
-    local entries, reports = {}, {}
-    local oldCT = _G.CheckThat
-    _G.CheckThat = {
-        PROTOTYPE = true,
-        Entry = function(addon, name, fn)
-            -- The same rules as CheckThat.Entry in the game (CheckThat/Model/Entries.lua).
-            if type(addon) ~= "string" or #addon < 1 or #addon > 32 or addon:find("[^%w_%-]")
-                or type(name) ~= "string" or #name < 1 or #name > 42 or name:find("[^%w_%.%-]") or type(fn) ~= "function" then return false end
-            entries[addon] = entries[addon] or {}
-            entries[addon][name] = fn
-            return true
-        end,
-        API_VERSION = 2,
-        Report = function(addon, key, value) reports[#reports + 1] = ("[%s] %s=%s"):format(addon, key, tostring(value)); return true end,
-    }
-
-    local counts, saved, results = {}, {}, {}
-    local mockNames = {}
-    for api in pairs(spec.mocks or {}) do mockNames[#mockNames + 1] = api end
-    table.sort(mockNames)
-    local hasMocks = #mockNames > 0
-
+    local restoreGlobals = H.snapshot()
+    local plainCreate, oldCT = _G.CreateFrame, _G.CheckThat
     local name = spec.toc:match("([^/]+)/[^/]+%.toc$") or spec.toc:match("([^/]+)%.toc$") or "Addon" -- the game passes the folder name
-    local ns = {}
-    local loaded, loadErr
-    local unlisted
     local folder = tocPath:match("^(.*)/[^/]+$") or "."
-    local stopNil, unhide
+    local reports, results, nilSeen = {}, {}, {}
+    local interface
+    local cur = {} -- the current load: st, entries, saved mocks, counts, unhide, stopNil
+    local loads = 0
+
+    local allMocks = {}
+    for api in pairs(spec.mocks or {}) do allMocks[api] = true end
+    for _, g in ipairs(groups) do for api in pairs(g.mocks or {}) do allMocks[api] = true end end
+    local mockNames = {}
+    for api in pairs(allMocks) do mockNames[#mockNames + 1] = api end
+    table.sort(mockNames)
+    local unlisted
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
-    if badLevel then
-        loaded, loadErr = false, ("offline level %s is not supported (this runner knows 1 to %d)"):format(tostring(spec.level), Runner.LEVEL)
-    elseif unlisted then
-        loaded, loadErr = false, ("mock %s is not on the allow list"):format(unlisted)
-    else
-        local chunks, cerr = compileToc(Lua51, H, tocPath)
-        if not chunks then
-            loaded, loadErr = false, cerr
-        else
-            stopNil = H.recordNilReads({ "@" .. folder .. "/" }, { "/libs/", "/libraries/" })
-            unhide = hideGlobals()
-            local lok, lerr = xpcall(function()
-                if spec.mockAfterLoad then
-                    loaded, loadErr = runChunks(chunks, name, ns)
-                    applyMocks(spec.mocks, counts, saved)
-                else
-                    applyMocks(spec.mocks, counts, saved)
-                    loaded, loadErr = runChunks(chunks, name, ns)
-                end
-            end, tostring)
-            if not lok then loaded, loadErr = false, "the runner failed while loading: " .. lerr end
-        end
+
+    local function stopLoad()
+        if cur.unhide then cur.unhide(); cur.unhide = nil end
+        if cur.stopNil then for _, n in ipairs(cur.stopNil()) do nilSeen[n] = true end; cur.stopNil = nil end
+        if cur.saved then restoreMocks(cur.saved); cur.saved = nil end
     end
 
-    local function add(i, kind, ok, detail)
-        results[#results + 1] = { step = i, kind = kind, ok = ok and true or false, detail = detail, mocked = hasMocks }
-    end
-
-    if not loaded then
-        add(0, "load", false, loadErr)
-    else
-        local cur = 0
-        local sok, serr = xpcall(function()
-        for i, step in ipairs(spec.steps or {}) do
-            cur = i
-            if step.call then
-                local fn = entries[step.call.addon] and entries[step.call.addon][step.call.entry]
-                if not fn then
-                    add(i, "call", false, ("entry %s.%s is not registered"):format(tostring(step.call.addon), tostring(step.call.entry)))
-                else
-                    local args = step.call.args or {}
-                    local r = pack(pcall(fn, unpack(args, 1, #args)))
-                    if step.throws ~= nil then
-                        if r[1] then add(i, "call", false, "expected a throw, got " .. show({ n = r.n - 1, unpack(r, 2, r.n) }))
-                        elseif tostring(r[2]):find(step.throws, 1, true) then add(i, "call", true, tostring(r[2]))
-                        else add(i, "call", false, ("threw %q, expected text %q"):format(tostring(r[2]), step.throws)) end
-                    elseif not r[1] then
-                        add(i, "call", false, "threw " .. tostring(r[2]))
-                    else
-                        local got = { n = r.n - 1, unpack(r, 2, r.n) }
-                        if step.returns == nil then add(i, "call", true, "returned " .. show(got))
-                        elseif sameList(got, step.returns) then add(i, "call", true, "returned " .. show(got))
-                        else add(i, "call", false, ("returned %s, expected %s"):format(show(got), show(step.returns))) end
-                    end
-                end
-            elseif step.event then
-                local fired = 0
-                for _, f in ipairs(st.frames) do
-                    local evs = rawget(f, "events")
-                    if type(evs) == "table" and evs[step.event.name] and f.scripts.OnEvent then
-                        local ev = step.event
-                        local ok, err = pcall(f.scripts.OnEvent, f, ev.name, unpack(ev.args or {}, 1, #(ev.args or {})))
-                        fired = fired + 1
-                        if not ok then add(i, "event", false, "handler threw " .. tostring(err)); fired = -1; break end
-                    end
-                end
-                if fired == 0 then add(i, "event", false, "no frame registered " .. tostring(step.event.name))
-                elseif fired > 0 then add(i, "event", true, ("fired at %d frame(s)"):format(fired)) end
-            elseif step.mockCalls then
-                local n = counts[step.mockCalls.api] or 0
-                add(i, "mockCalls", n == step.mockCalls.count, ("%s called %d time(s), expected %d"):format(step.mockCalls.api, n, step.mockCalls.count))
-            else
-                add(i, "unknown", false, "step has no call, event or mockCalls")
+    -- Fires an event at each frame that registered it. Returns the number of frames, or nil and the error.
+    local function fire(ev, ...)
+        local fired = 0
+        local frames = cur.st.frames
+        for i = 1, #frames do
+            local f = frames[i]
+            local evs = rawget(f, "events")
+            if type(evs) == "table" and evs[ev] and f.scripts.OnEvent then
+                local ok, err = pcall(f.scripts.OnEvent, f, ev, ...)
+                fired = fired + 1
+                if not ok then return nil, tostring(err) end
             end
         end
-        end, tostring)
-        if not sok then add(cur, "error", false, "the runner failed: " .. serr) end
+        return fired
+    end
+    local function login(reloading)
+        local events = { { "ADDON_LOADED", name }, { "PLAYER_LOGIN" }, { "PLAYER_ENTERING_WORLD", not reloading, reloading and true or false } }
+        for _, e in ipairs(events) do
+            if e[1] == "PLAYER_LOGIN" then cur.st.loggedIn = true end
+            local n, err = fire(unpack(e, 1, 3))
+            if not n then return false, ("%s handler threw %s"):format(e[1], err) end
+        end
+        return true
     end
 
-    if unhide then unhide() end
-    local nilReads = stopNil and stopNil() or {}
-    restoreMocks(saved)
+    local function client()
+        local st = H.stubClient({ toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle })
+        interface = select(4, _G.GetBuildInfo())
+        return st
+    end
+
+    -- One load of the addon. sv is what the saved-variables file holds; mocks and counts belong to the group.
+    local function load(chunks, mocks, counts, sv, reloading)
+        if loads > 0 then stopLoad(); restoreGlobals() end
+        loads = loads + 1
+        local st = client()
+        cur = { st = st, entries = {}, counts = counts, saved = {} }
+        -- What the shared fake client lacked: a record of the events a frame registered.
+        local create = _G.CreateFrame
+        _G.CreateFrame = function(...)
+            local f = create(...)
+            f.events = {}
+            rawset(f, "RegisterEvent", function(self, ev) self.events[ev] = true end)
+            if lifecycle then rawset(f, "UnregisterEvent", function(self, ev) self.events[ev] = nil end) end
+            return f
+        end
+        if opts.prepare then opts.prepare(H, st) end
+        local entries = cur.entries
+        _G.CheckThat = {
+            PROTOTYPE = true,
+            Entry = function(addon, ename, fn)
+                -- The same rules as CheckThat.Entry in the game (CheckThat/Model/Entries.lua).
+                if type(addon) ~= "string" or #addon < 1 or #addon > 32 or addon:find("[^%w_%-]")
+                    or type(ename) ~= "string" or #ename < 1 or #ename > 42 or ename:find("[^%w_%.%-]") or type(fn) ~= "function" then return false end
+                entries[addon] = entries[addon] or {}
+                entries[addon][ename] = fn
+                return true
+            end,
+            API_VERSION = 2,
+            Report = function(addon, key, value) reports[#reports + 1] = ("[%s] %s=%s"):format(addon, key, tostring(value)); return true end,
+        }
+        local function assign()
+            for n, v in pairs(sv or {}) do rawset(_G, n, savedCopy(v)) end
+        end
+        if lifecycle then
+            for n in pairs(declared) do rawset(_G, n, nil) end
+            if meta.savedVariablesFirst then assign() end
+        end
+        cur.stopNil = H.recordNilReads({ "@" .. folder .. "/" }, { "/libs/", "/libraries/" })
+        cur.unhide = hideGlobals()
+        local ns = {}
+        local ok, err
+        local lok, lerr = xpcall(function()
+            if spec.mockAfterLoad then
+                ok, err = runChunks(chunks, name, ns)
+                applyMocks(mocks, counts, cur.saved)
+            else
+                applyMocks(mocks, counts, cur.saved)
+                ok, err = runChunks(chunks, name, ns)
+            end
+            if ok and lifecycle then
+                if not meta.savedVariablesFirst then assign() end
+                ok, err = login(reloading)
+            end
+        end, tostring)
+        if not lok then return false, "the runner failed while loading: " .. lerr end
+        if ok and opts.loaded then -- test code: it runs with the hidden globals back, and its error fails the load
+            cur.unhide()
+            local cok, cerr = xpcall(function() opts.loaded(ns, st, loads) end, debug.traceback)
+            cur.unhide = hideGlobals()
+            if not cok then return false, "opts.loaded failed: " .. tostring(cerr) end
+        end
+        return ok, err
+    end
+
+    local chunks, loadErr
+    if badLevel then
+        loadErr = ("offline level %s is not supported (this runner knows 1 to %d)"):format(tostring(spec.level), Runner.LEVEL)
+    elseif needs3 and level < 3 then
+        loadErr = ("%s needs offline level 3"):format(needs3)
+    elseif undeclared then
+        loadErr = ("savedVariables names %s, which the TOC does not declare"):format(undeclared)
+    elseif unlisted then
+        loadErr = ("mock %s is not on the allow list"):format(unlisted)
+    else
+        chunks, loadErr = compileToc(Lua51, H, tocPath)
+    end
+    if not chunks then -- no load: the fake client is still built once, as before, for the caller's prepare
+        cur = { st = client() }
+        if opts.prepare then opts.prepare(H, cur.st) end
+    end
+
+    local mockCalls = {}
+    for gi, g in ipairs(groups) do
+        local function add(i, kind, ok, detail)
+            results[#results + 1] = { step = i, group = grouped and gi or nil, kind = kind, ok = ok and true or false,
+                detail = detail, mocked = next(cur.mocks or {}) ~= nil }
+        end
+        local mocks = {}
+        for api, r in pairs(spec.mocks or {}) do mocks[api] = r end
+        for api, r in pairs(g.mocks or {}) do mocks[api] = r end
+        local counts = {}
+        mockCalls[gi] = counts
+        local ok, err = false, loadErr
+        if chunks then ok, err = load(chunks, mocks, counts, g.savedVariables or spec.savedVariables, false) end
+        cur.mocks = mocks
+        if not ok then
+            add(0, "load", false, err)
+            if not chunks then break end
+        else
+            local at = 0
+            local sok, serr = xpcall(function()
+            local steps = g.steps or {}
+            for i, step in ipairs(steps) do
+                at = i
+                if step.call then
+                    local entries = cur.entries
+                    local fn = entries[step.call.addon] and entries[step.call.addon][step.call.entry]
+                    if not fn then
+                        add(i, "call", false, ("entry %s.%s is not registered"):format(tostring(step.call.addon), tostring(step.call.entry)))
+                    else
+                        local args = step.call.args or {}
+                        local r = pack(pcall(fn, unpack(args, 1, #args)))
+                        if step.throws ~= nil then
+                            if r[1] then add(i, "call", false, "expected a throw, got " .. show({ n = r.n - 1, unpack(r, 2, r.n) }))
+                            elseif tostring(r[2]):find(step.throws, 1, true) then add(i, "call", true, tostring(r[2]))
+                            else add(i, "call", false, ("threw %q, expected text %q"):format(tostring(r[2]), step.throws)) end
+                        elseif not r[1] then
+                            add(i, "call", false, "threw " .. tostring(r[2]))
+                        else
+                            local got = { n = r.n - 1, unpack(r, 2, r.n) }
+                            if step.returns == nil then add(i, "call", true, "returned " .. show(got))
+                            elseif sameList(got, step.returns) then add(i, "call", true, "returned " .. show(got))
+                            else add(i, "call", false, ("returned %s, expected %s"):format(show(got), show(step.returns))) end
+                        end
+                    end
+                elseif step.event then
+                    local ev = step.event
+                    local fired, ferr = fire(ev.name, unpack(ev.args or {}, 1, #(ev.args or {})))
+                    if not fired then add(i, "event", false, "handler threw " .. ferr)
+                    elseif fired == 0 then add(i, "event", false, "no frame registered " .. tostring(ev.name))
+                    else add(i, "event", true, ("fired at %d frame(s)"):format(fired)) end
+                elseif step.mockCalls then
+                    local n = counts[step.mockCalls.api] or 0
+                    add(i, "mockCalls", n == step.mockCalls.count, ("%s called %d time(s), expected %d"):format(step.mockCalls.api, n, step.mockCalls.count))
+                elseif step.reload then
+                    local rok, rerr = true, nil
+                    for _, ev in ipairs({ "PLAYER_LEAVING_WORLD", "PLAYER_LOGOUT", "ADDONS_UNLOADING" }) do
+                        local n, ferr = fire(ev)
+                        if not n then rok, rerr = false, ("%s handler threw %s"):format(ev, ferr); break end
+                    end
+                    if rok then
+                        local saved = {}
+                        for n in pairs(declared) do saved[n] = savedCopy(rawget(_G, n)) end
+                        rok, rerr = load(chunks, mocks, counts, saved, true)
+                    end
+                    add(i, "reload", rok, rok and "reloaded" or rerr)
+                    if not rok then
+                        for j = i + 1, #steps do add(j, "skipped", false, "not run: the reload failed") end
+                        break
+                    end
+                else
+                    add(i, "unknown", false, "step has no call, event, mockCalls or reload")
+                end
+            end
+            end, tostring)
+            if not sok then add(at, "error", false, "the runner failed: " .. serr) end
+        end
+    end
+
+    stopLoad()
     _G.CheckThat = oldCT
     _G.CreateFrame = plainCreate
+    local nilReads = {}
+    for n in pairs(nilSeen) do nilReads[#nilReads + 1] = n end
+    table.sort(nilReads)
     local ok = true
     for _, r in ipairs(results) do if not r.ok then ok = false end end
-    local nsteps = #(spec.steps or {})
-    if loaded and #results ~= nsteps then ok = false end
-    return { ok = ok, level = level, interface = interface, nilReads = nilReads, mocks = mockNames, mockCalls = counts, reports = reports, steps = results }, jns.Json
+    local want = 0
+    for _, g in ipairs(groups) do want = want + math.max(#(g.steps or {}), 0) end
+    local steps = 0
+    for _, r in ipairs(results) do if r.step > 0 then steps = steps + 1 end end
+    if chunks and steps ~= want then ok = false end
+    return { ok = ok, level = level, interface = interface or select(4, _G.GetBuildInfo()), nilReads = nilReads, mocks = mockNames,
+        mockCalls = grouped and mockCalls or mockCalls[1] or {}, reports = reports, steps = results }, jns.Json
 end
 
 local function main()
