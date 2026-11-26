@@ -203,8 +203,8 @@
           "type": "boolean"
         },
         "level": {
-          "enum": [1, 2, 3, 4],
-          "description": "Offline level the plan opts in to. No level is level 1, the first fake-client answers. Level 2: GetBuildInfo gives the TOC interface and issecurevariable knows the game names. Level 3: the game's load order (saved variables, ADDON_LOADED, PLAYER_LOGIN, PLAYER_ENTERING_WORLD), reload steps, groups and savedVariables. Level 4: the client's event list (RegisterEvent and event steps) and a virtual clock (GetTime, time, C_Timer) with wait steps."
+          "enum": [1, 2, 3, 4, 5],
+          "description": "Offline level the plan opts in to. No level is level 1, the first fake-client answers. Level 2: GetBuildInfo gives the TOC interface and issecurevariable knows the game names. Level 3: the game's load order (saved variables, ADDON_LOADED, PLAYER_LOGIN, PLAYER_ENTERING_WORLD), reload steps, groups and savedVariables. Level 4: the client's event list (RegisterEvent and event steps) and a virtual clock (GetTime, time, C_Timer) with wait steps. Level 5: the client's real surface (only its game functions, its build, frames with only their type's methods)."
         },
         "savedVariables": {
           "type": "object",

@@ -22,6 +22,8 @@ CheckThat.Entry(addonName, "order", function()
     C_Timer.After(2, function() order[#order + 1] = "c" end)
     return true
 end)
+CheckThat.Entry(addonName, "typo", function() return frame.SetPointt == nil, (select(2, GetBuildInfo())) end)
+CheckThat.Entry(addonName, "has", function(name) return type(_G[name]) end)
 CheckThat.Entry(addonName, "seen", function() return table.concat(order, ",") end)
 CheckThat.Entry(addonName, "boom_later", function() C_Timer.After(1, function() error("late boom", 0) end); return true end)
 CheckThat.Entry(addonName, "poll_forever", function() local function poll() C_Timer.After(0, poll) end; poll(); return true end)
