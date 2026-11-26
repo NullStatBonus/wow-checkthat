@@ -14,4 +14,6 @@ Install by copying `tools/ctprobe/CTProbe` into the game's `Interface/AddOns` fo
 | `/ctp record` | 153 | What a list of read-only calls returns, in `CTProbeDB.fixtures`. Money, item counts, names and the realm are recorded by type only. |
 | `/ctp taint run`, `now`, `build` | 98 | The v2 probes. |
 
+CTProbe is not published and is not in the skill bundle: the maintainer runs it and commits the results. Plan authors use the recordings already in `tools/recordings/`. Making the probe available to authors, and recording any read-only call, is a backlog item (#214).
+
 `tests/test_ctprobe.lua` runs every command in the fake client, so the probe itself is tested; it does not test what the game answers. `../wow-ctprobe/CTProbe` is an installed copy: copy the folder again after a change.

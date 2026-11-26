@@ -51,6 +51,8 @@ After a run, `/reload` or log out so the game writes the saved variables. Then r
 
 ## Record calls for plan mocks
 
+Plan authors use the recordings already in `tools/recordings/`. Making a new one is the maintainer's job for now: CTProbe is not published, and the calls it records are fixed in its source (#214 tracks opening this up).
+
 `ct.py recordings --src <CTProbe.lua>` turns the CTProbe saved variables into `tools/recordings/<client>.json`. In game, run `/ctp record` on a client, then `/reload` and log out so the game saves the file, and point `--src` at `CTProbe.lua` in that client's `WTF/Account/<account>/SavedVariables`. The client comes from the recorded `GetBuildInfo()`. The recording keeps each call's api, arguments (read from its label), return values and count; a `nil` return is listed in `nils`. It leaves out a call that raised an error, a call on the player, a value CTProbe recorded by type only (money, item counts, names, the realm) and a return that is a table or a function. It empties the level and specialization fields of an item link. The file names no character or realm, and a test checks that. A plan then mocks from it with `{ recording: "GetItemInfo(6948)" }` ([Write a plan](authoring-plans.md)).
 
 ## Compare runs
