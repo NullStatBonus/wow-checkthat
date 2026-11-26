@@ -1,7 +1,7 @@
 ## Interface: 11509
 ## Title: CheckThat
 ## Notes: Walks you through the in-game test plans for KeepThat, DontDoThat and ClosestVendor and records evidence for review.
-## Version: 0.20.1
+## Version: 0.21.0
 ## Author: NullStatBonus
 ## SavedVariables: CheckThatDB
 ## OptionalDeps: KeepThat, DontDoThat, ClosestVendor
@@ -28,6 +28,7 @@ Model\Facts.lua
 Model\Entries.lua
 Model\Errors.lua
 Model\Run.lua
+Model\Census.lua
 Model\App.lua
 
 Core\Settings.lua

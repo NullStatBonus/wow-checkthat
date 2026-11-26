@@ -102,4 +102,142 @@ test("a step without a mock says so", function()
     T.eq(r.steps[1].mocked, false); same(r.mocks, {})
 end)
 
+local HIDDEN_TOC = "tests/fixtures/MockAddon/Hidden.toc"
+
+test("at level 2 GetBuildInfo answers with the interface number from the TOC", function()
+    local r = run({ toc = TOC, level = 2, steps = {} }, function() end)
+    T.eq(r.interface, 11509); T.eq(r.level, 2)
+    local r2 = run({ toc = HIDDEN_TOC, level = 2, steps = {} }, function() end)
+    T.eq(r2.interface, 16001)
+    T.eq(select(4, GetBuildInfo()), 16001, "the fake client keeps the last interface it was given")
+end)
+
+test("without a level the run keeps level 1: interface 11507 and every name insecure", function()
+    local r = run({ toc = TOC, steps = {} }, function() end)
+    T.eq(r.level, 1); T.eq(r.interface, 11507)
+    T.eq(issecurevariable("CreateFrame"), false, "level 1 issecurevariable answers false")
+    run({ toc = TOC, level = 2, steps = {} }, function() end)
+    T.eq(issecurevariable("CreateFrame"), true, "level 2 knows the game names")
+end)
+
+test("an unknown level fails the load step and runs no addon file", function()
+    local r = run({ toc = TOC, level = 3, steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } } })
+    T.eq(r.ok, false)
+    T.ok(r.steps[1].detail:find("offline level 3 is not supported", 1, true), r.steps[1].detail)
+end)
+
+test("a file that uses goto fails the load step with file:line text", function()
+    local r = run({ toc = "tests/fixtures/MockAddon/Goto.toc", steps = {} })
+    T.eq(r.ok, false); T.eq(r.steps[1].kind, "load")
+    T.ok(r.steps[1].detail:find("Goto.lua:3: Lua 5.1 rejects goto", 1, true), r.steps[1].detail)
+end)
+
+test("io is hidden from addon code: a guard sees nil, a call fails, and the globals come back", function()
+    local realIo, realOs = io, os
+    local r = run({ toc = HIDDEN_TOC, steps = {
+        { call = { addon = "MockAddon", entry = "guard_io" }, returns = { true, false } },
+        { call = { addon = "MockAddon", entry = "call_io" }, throws = "attempt to index global 'io'" },
+    } })
+    same(names(r), { true, true })
+    T.ok(io == realIo and os == realOs, "io and os are back after the run")
+    T.ok(type(jit) == "table" and type(require) == "function", "jit and require are back")
+end)
+
+test("the result lists globals the addon folder read as nil, and leaves Libs out", function()
+    local r = run({ toc = HIDDEN_TOC, steps = {
+        { call = { addon = "MockAddon", entry = "missing_api" }, returns = { false } },
+    } })
+    local got = {}
+    for _, n in ipairs(r.nilReads) do got[n] = true end
+    T.ok(got.C_NotInThisClient, "a call-time read is recorded")
+    T.ok(got.io, "the guard's read of the hidden io is recorded")
+    T.ok(not got.LibReadsNil, "a read inside Libs is left out")
+    T.ok(not got.GetItemInfo, "the harness's own reads are not the addon's")
+    T.eq(getmetatable(_G), nil, "the recorder removed its hook")
+end)
+
+test("a global the addon assigns to a hidden name does not leak to the host", function()
+    T.eq(rawget(_G, "ffi"), nil)
+    run({ toc = HIDDEN_TOC, steps = {} })
+    T.eq(rawget(_G, "ffi"), nil, "ffi was nil before and stays nil")
+end)
+
+test("the nil recorder passes an old __index that returns nil or false", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    local old = { __index = function(_, k) if k == "FalseKey" then return false end end }
+    setmetatable(_G, old)
+    local stop = H.recordNilReads({ "@x/" })
+    T.eq(_G.FalseKey, false)
+    T.eq(_G.NothingHere, nil)
+    stop(); setmetatable(_G, nil)
+    local stop2 = H.recordNilReads({ "@x/" })
+    T.eq(_G.NothingElse, nil); stop2()
+end)
+
+test("the nil recorder passes an old __index table", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    setmetatable(_G, { __index = { InTable = 5, FalseT = false } })
+    local stop = H.recordNilReads({ "@x/" })
+    T.eq(_G.InTable, 5); T.eq(_G.FalseT, false); T.eq(_G.Missing, nil)
+    stop(); setmetatable(_G, nil)
+end)
+
+test("a throw outside the entry's pcall still restores the globals and the metatable, and fails the run", function()
+    local realIo, realOs, realDofile = io, os, dofile
+    local before = getmetatable(_G)
+    local r = run({ toc = HIDDEN_TOC, steps = {
+        { call = { addon = "MockAddon", entry = "guard_io", args = "not a list" } },
+    } })
+    T.eq(r.ok, false)
+    T.eq(r.steps[1].kind, "error"); T.ok(r.steps[1].detail:find("the runner failed", 1, true), r.steps[1].detail)
+    T.ok(io == realIo and os == realOs and dofile == realDofile, "hidden globals are back")
+    T.eq(getmetatable(_G), before, "the recorder is off")
+end)
+
+test("the nil recorder keeps an existing _G metatable and puts it back exactly", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    local seen = {}
+    local old = { __newindex = function(t, k, v) seen[#seen + 1] = k; rawset(t, k, v) end, __index = function(_, k) if k == "OldProvided" then return 7 end end }
+    setmetatable(_G, old)
+    local stop = H.recordNilReads({ "@x/" }, { "/libs/" })
+    T.eq(OldProvided, 7, "the earlier __index still answers")
+    CtNewGlobal = 1
+    T.eq(seen[1], "CtNewGlobal", "the earlier __newindex still runs")
+    local names = stop()
+    T.eq(getmetatable(_G), old, "the same metatable is back")
+    rawset(_G, "CtNewGlobal", nil); setmetatable(_G, nil)
+    T.eq(#names, 0)
+end)
+
+test("a Libs or Libraries folder is left out whatever its case", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    local stop = H.recordNilReads({ "@x/" }, { "/libs/", "/libraries/" })
+    for _, src in ipairs({ "@x/LIBS/a.lua", "@x/libraries/b.lua", "@x/Sub/Libraries/c.lua", "@x/Core.lua" }) do
+        local fn = load("local v = Missing_" .. src:gsub("%W", "_") .. " return v", src)
+        fn()
+    end
+    local names = stop()
+    T.eq(#names, 1, table.concat(names, ","))
+    T.ok(names[1]:find("Core_lua", 1, true), names[1])
+end)
+
+test("a Libs folder above the addon folder does not hide the addon's reads", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    local stop = H.recordNilReads({ "@/home/u/libs/MyAddon/" }, { "/libs/" })
+    local fn = load("local v = Missing_Above return v", "@/home/u/libs/MyAddon/Core.lua"); fn()
+    local names = stop()
+    T.eq(table.concat(names, ","), "Missing_Above")
+end)
+
+test("the fake client's issecurevariable: names set up before addon code are secure", function()
+    local H = select(5, dofile("tests/harness.lua")())
+    H.stubClient()
+    T.eq(issecurevariable("CreateFrame"), true)
+    _G.SomeAddonGlobal_X = 1
+    T.eq(issecurevariable("SomeAddonGlobal_X"), false)
+    T.eq(issecurevariable(_G, "SomeAddonGlobal_X"), false)
+    T.eq(issecurevariable({}, "k"), true)
+    _G.SomeAddonGlobal_X = nil
+end)
+
 finish()

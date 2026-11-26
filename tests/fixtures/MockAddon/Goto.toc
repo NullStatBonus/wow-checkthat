@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon goto
+## Notes: Fixture: a file the game cannot load (goto). Not shipped.
+Goto.lua

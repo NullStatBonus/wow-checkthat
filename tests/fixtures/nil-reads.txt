@@ -1,0 +1,24 @@
+# Globals that CheckThat's own files read as nil in the fake client (tests/test_divergence.lua).
+# Each name is accepted because the Adapter guards the read and the fake client does not model the name.
+# One name per line. A new name or a missing name fails the test.
+
+# Era and Forever differ here: C_AddOns is newer, GetAddOnMetadata older. Adapter.AddonMetadata tries C_AddOns first.
+C_AddOns
+GetAddOnMetadata
+
+# Not modelled by the fake client; Adapter.Env and App guard them and fall back to UnitName and GetRealmName.
+UnitFullName
+time
+
+# Settings window close: SettingsPanel is the newer client, InterfaceOptionsFrame the older. The fake has neither.
+InterfaceOptionsFrame
+SettingsPanel
+
+# Context menu: MenuUtil is the newer menu API, UIDropDownMenu the older. The fake has neither, so the caller falls back.
+MenuUtil
+UIDropDownMenu_Initialize
+
+# Confirmation dialog: the fake has StaticPopup_Show but not Hide, and no YES and NO labels. Adapter.Confirm falls back to English.
+StaticPopup_Hide
+YES
+NO

@@ -61,6 +61,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
 | `/ct version` | Show the CheckThat version. During a run it also reports the version as the test fact `version` (0.17.0 is 1700), so a plan can check for a version or newer. |
 | `/ct fact` | Report a test fact during a run. The self-test uses it. |
+| `/ct census` | Record the names this game client provides (globals, API tables, widget methods) in the saved variables, for `ct.py census`. It refuses in combat and waits while you fight. |
 | `/ct reload` | Reload the interface so saved variables are written. |
 
 ## Settings

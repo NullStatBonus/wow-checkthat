@@ -304,6 +304,98 @@ class OfflineBlock(unittest.TestCase):
             out = subprocess.run(args + ["--specs", specs], capture_output=True, text=True)
             self.assertEqual(out.returncode, 0, out.stderr)
 
+    def nil_plan(self, o):
+        o["toc"] = "MockAddon/Hidden.toc"; o["mocks"] = {}; o["level"] = 2
+        o["steps"] = [{"call": {"addon": "MockAddon", "entry": "missing_api"}, "returns": [False]}]
+
+    def run_cli(self, manifests, *extra):
+        # CT_TEST_MANIFESTS points census_manifests at the folder this test fills (default: tests/manifests).
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "plan.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(self.plan(self.nil_plan)))
+            for name, m in manifests.items():
+                os.makedirs(os.path.join(d, "m"), exist_ok=True)
+                with open(os.path.join(d, "m", name), "w", encoding="utf-8") as f:
+                    f.write(json.dumps(m))
+            env = dict(os.environ, CT_TEST_MANIFESTS=os.path.join(d, "m"))
+            args = [sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons", os.path.dirname(os.path.dirname(self.PLAN))] + list(extra)
+            return subprocess.run(args, capture_output=True, text=True, env=env)
+
+    def test_a_block_without_level_runs_level_1_and_warns(self):
+        def legacy(o):
+            self.nil_plan(o); del o["level"]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "plan.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(self.plan(legacy)))
+            out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons",
+                                  os.path.dirname(os.path.dirname(self.PLAN))], capture_output=True, text=True,
+                                 env=dict(os.environ, CT_TEST_MANIFESTS=d))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn(ct.OFFLINE_LEVEL_WARNING, out.stderr)
+        self.assertIn("(interface 11507)", out.stderr)
+
+    def test_the_report_lists_nil_reads_and_junit_carries_it_with_the_interface(self):
+        out = self.run_cli({})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertNotIn(ct.OFFLINE_LEVEL_WARNING, out.stderr)
+        self.assertIn("Globals read as nil in this run (interface 16001):", out.stderr)
+        self.assertIn("C_NotInThisClient", out.stderr)
+        from xml.etree import ElementTree as ET
+        suite = ET.fromstring(out.stdout)
+        self.assertEqual({p.get("name"): p.get("value") for p in suite.find("properties")}, {"interface": "16001"})
+        self.assertIn("C_NotInThisClient", suite.find("system-out").text)
+        self.assertEqual(suite.get("failures"), "0")
+
+    def test_a_matching_manifest_splits_present_from_absent(self):
+        m = {"format": 1, "client": "forever", "build": "1.60.1.71091", "interface": 16001, "globals": {"io": "table", "Other": "function"}}
+        out = self.run_cli({"forever-1.60.1.71091.json": m})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("Present in census for build 1.60.1.71091: io", out.stderr)
+        self.assertIn("Absent from census for build 1.60.1.71091: C_NotInThisClient", out.stderr)
+        out = self.run_cli({"forever-1.60.1.71091.json": dict(m, insecure={"C_NotInThisClient": "table"})})
+        self.assertIn("Set by addon code in census for build 1.60.1.71091: C_NotInThisClient", out.stderr)
+        self.assertNotIn("Absent from census", out.stderr)
+        from xml.etree import ElementTree as ET
+        props = {p.get("name"): p.get("value") for p in ET.fromstring(out.stdout).find("properties")}
+        self.assertEqual(props, {"interface": "16001", "build": "1.60.1.71091"})
+
+    def test_two_builds_for_one_interface_stay_unclassified_until_build_picks_one(self):
+        a = {"format": 1, "client": "forever", "build": "1.60.1.1", "interface": 16001, "globals": {"io": "table"}}
+        b = dict(a, build="1.61.0.2", globals={"C_NotInThisClient": "table"})
+        both = {"a.json": a, "b.json": b}
+        out = self.run_cli(both)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("Interface 16001 matches multiple builds. Showing unclassified names.", out.stderr)
+        self.assertNotIn("Present in census", out.stderr)
+        out = self.run_cli(both, "--build", "1.61.0.2")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("Present in census for build 1.61.0.2: C_NotInThisClient", out.stderr)
+        self.assertNotIn("matches multiple builds", out.stderr)
+        self.assertEqual(self.run_cli(both, "--build", "9.9").returncode, 2)
+
+    def test_schema_accepts_levels_1_and_2_only(self):
+        for lv, ok in ((1, True), (2, True), (3, False), ("2", False)):
+            p = self.plan(lambda o: o.__setitem__("level", lv))
+            self.assertEqual(not ct.validate(p), ok, lv)
+
+    def test_build_never_picks_a_manifest_of_another_interface(self):
+        era = {"format": 1, "client": "era", "build": "1.15.9.1", "interface": 11509, "globals": {"io": "table"}}
+        fv = {"format": 1, "client": "forever", "build": "1.61.0.2", "interface": 16001, "globals": {"io": "table"}}
+        out = self.run_cli({"a.json": era, "b.json": fv}, "--build", "1.15.9.1")
+        self.assertEqual(out.returncode, 2, out.stderr)
+        self.assertIn("no census manifest for build 1.15.9.1 with interface 16001", out.stderr)
+        out = self.run_cli({"a.json": era, "b.json": fv}, "--build", "1.61.0.2")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("Present in census for build 1.61.0.2", out.stderr)
+
+    def test_the_build_is_returned_when_no_global_was_read_as_nil(self):
+        m = {"build": "1.60.1.1", "interface": 16001, "globals": {}}
+        text, build = ct.nil_read_report(16001, [], [m])
+        self.assertEqual(build, "1.60.1.1")
+        self.assertIn("none", text)
+
     def test_cli_prints_junit_and_sets_the_exit_code(self):
         out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", self.PLAN, "--addons", os.path.dirname(os.path.dirname(self.PLAN))], capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
@@ -762,6 +854,85 @@ class SVReader(unittest.TestCase):
             r = subprocess.run(["luajit", os.path.join(ROOT, "tools", "sv2json.lua"), path], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(ct.sv_text(path) + "\n", r.stdout, path)
+
+
+class Census(unittest.TestCase):
+    BODY = ('CheckThatDB = {["global"] = {["census"] = {["build"] = "1.15.9.70576", ["interface"] = 11509, ["date"] = "2026-11-25", '
+            '["addons"] = {"CheckThat", "Blizzard_Foo", "SomeAddon"}, '
+            '["globals"] = {["CreateFrame"] = "function", ["MenuUtil"] = "table", ["Blizzard_FooX"] = "table", ["SomeAddonLike"] = "table"}, '
+            '["truncated"] = {"MenuUtil"}, '
+            '["tables"] = {["MenuUtil"] = {["CreateContextMenu"] = "function"}}, '
+            '["widgets"] = {["Frame"] = {"SetPoint", "ClearAllPoints"}}, ["unavailable"] = {}}}}\n')
+
+    def tree(self, body):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        sv = os.path.join(d, "src", "Account", "A", "SavedVariables"); os.makedirs(sv)
+        with open(os.path.join(sv, "CheckThat.lua"), "w") as fh:
+            fh.write(body)
+        return d
+
+    def args(self, d, **kw):
+        return type("A", (), dict({"src": os.path.join(d, "src"), "wow": None, "o": os.path.join(d, "out"), "diff": None}, **kw))
+
+    def run_census(self, a):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = ct.cmd_census(a)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_export_writes_a_manifest_for_the_stored_census(self):
+        d = self.tree(self.BODY)
+        code, out, _ = self.run_census(self.args(d))
+        path = os.path.join(d, "out", "era-1.15.9.70576.json")
+        self.assertEqual((code, out), (0, path + "\n"))
+        with open(path) as fh: m = json.load(fh)
+        self.assertEqual((m["format"], m["client"], m["build"], m["interface"], m["date"]), (1, "era", "1.15.9.70576", 11509, "2026-11-25"))
+        self.assertEqual(m["globals"], {"CreateFrame": "function", "MenuUtil": "table", "Blizzard_FooX": "table", "SomeAddonLike": "table"},
+                         "the game already left addon names out: nothing is guessed from folder names")
+        self.assertEqual(m["truncated"], ["MenuUtil"])
+        self.assertEqual(m["tables"], {"MenuUtil": {"CreateContextMenu": "function"}})
+        self.assertEqual(m["widgets"], {"Frame": ["ClearAllPoints", "SetPoint"]})
+        self.assertEqual((m["unavailable"], m["addons"]), ([], ["CheckThat", "SomeAddon"]))
+
+    def test_unfiltered_census_drops_names_that_start_with_an_addon_folder(self):
+        d = self.tree(self.BODY.replace('["unavailable"] = {}', '["unavailable"] = {}, ["unfiltered"] = true')
+                      .replace('["SomeAddonLike"] = "table"}', '["SomeAddonLike"] = "table", ["SomeAddonDB"] = "table"}')
+                      .replace('["CreateContextMenu"] = "function"}}', '["CreateContextMenu"] = "function"}, ["SomeAddonDB"] = {["x"] = "table"}}'))
+        code, out, _ = self.run_census(self.args(d))
+        with open(out.strip()) as fh: m = json.load(fh)
+        self.assertEqual(m["globals"], {"CreateFrame": "function", "MenuUtil": "table", "Blizzard_FooX": "table"})
+        self.assertEqual(m["tables"], {"MenuUtil": {"CreateContextMenu": "function"}})
+
+    def test_forever_client_from_the_interface(self):
+        d = self.tree(self.BODY.replace("11509", "16001").replace("1.15.9.70576", "2.5.5.1"))
+        code, out, _ = self.run_census(self.args(d))
+        self.assertEqual(os.path.basename(out.strip()), "forever-2.5.5.1.json")
+
+    def test_missing_census_says_how_to_make_one(self):
+        for body in ("CheckThatDB = {}\n", 'CheckThatDB = {["global"] = {["census"] = {}}}\n'):
+            code, out, err = self.run_census(self.args(self.tree(body)))
+            self.assertEqual((code, out), (1, ""))
+            self.assertIn("Run /ct census, wait for completion, type /reload, then copy SavedVariables again.", err)
+
+    def test_damaged_file_is_an_error(self):
+        code, _, err = self.run_census(self.args(self.tree("CheckThatDB = {\n")))
+        self.assertEqual(code, 1)
+        self.assertIn("could not decode", err)
+
+    def test_diff_lists_added_removed_and_changed(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        def write(name, m):
+            p = os.path.join(d, name); 
+            with open(p, "w") as fh: json.dump(m, fh)
+            return p
+        old = write("old.json", {"globals": {"Keep": "function", "Gone": "table", "Shift": "table"}, "tables": {"C_X": {"A": "function"}}, "widgets": {"Frame": ["SetPoint"]}})
+        new = write("new.json", {"globals": {"Keep": "function", "New": "function", "Shift": "function"}, "tables": {"C_X": {"A": "function", "B": "function"}}, "widgets": {"Frame": ["SetPoint", "SetThing"]}})
+        code, out, _ = self.run_census(self.args(d, diff=[old, new]))
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines(), ["+ global New (function)", "+ member C_X.B (function)", "+ method Frame:SetThing (function)",
+                                           "- global Gone (table)", "~ global Shift: table -> function", "3 added, 1 removed, 1 changed type"])
+        code, _, err = self.run_census(self.args(d, diff=[old, os.path.join(d, "none.json")]))
+        self.assertEqual(code, 1); self.assertIn("cannot read a manifest", err)
 
 
 class Collect(unittest.TestCase):

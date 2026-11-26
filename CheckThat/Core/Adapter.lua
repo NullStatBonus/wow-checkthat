@@ -33,6 +33,10 @@ function Adapter.Env()
         if not ok then return nil end -- unknown, never "false": a missing answer must not satisfy an eq false check
         return loaded and true or false
     end
+    -- Reads for the client census (Model/Census.lua); the functions are below.
+    for _, name in ipairs({ "After", "Clock", "CensusNextKey", "CensusType", "CensusOpen", "CensusMember", "CensusWidget", "CensusWidgetKinds", "LoadedAddons" }) do
+        env[name] = function(...) return Adapter[name](...) end
+    end
     return setmetatable(env, { __index = _G })
 end
 
@@ -58,9 +62,117 @@ function Adapter.AddonVersion(name)
     if ok and type(v) == "string" and v ~= "" and v ~= "unknown" then return v end
     return nil
 end
--- Runs fn after sec seconds, if the client has timers.
+-- Runs fn after sec seconds. Returns true when it is scheduled, false when the client has no timers or refuses.
 function Adapter.After(sec, fn)
-    if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(sec, fn) end
+    local f = _G.C_Timer and _G.C_Timer.After
+    if type(f) ~= "function" then return false end
+    return (pcall(f, sec, fn))
+end
+-- Milliseconds from the profiling clock, or nil when the client has none.
+function Adapter.Clock()
+    local ok, v = pcall(function() return _G.debugprofilestop() end)
+    return ok and type(v) == "number" and v or nil
+end
+-- The census reads globals with rawget and next, so no __index or __newindex of a game table runs.
+-- One step through _G: the key after cursor (nil starts, and nil comes back at the end), as ok, key. ok is false
+-- when next fails (the table changed under the walk). The caller keeps the cursor between frames.
+function Adapter.CensusNextKey(cursor)
+    local ok, k = pcall(next, _G, cursor)
+    if ok then return true, k end
+    return false
+end
+-- The Lua type of one global, or nil when it is gone. The second value is false for a name an addon defined
+-- (issecurevariable), true for one the game defined, and nil when the client cannot tell.
+function Adapter.CensusType(name)
+    local ok, v = pcall(rawget, _G, name)
+    if not ok or v == nil then return nil end
+    local secure
+    if type(_G.issecurevariable) == "function" then
+        local ok2, s = pcall(_G.issecurevariable, name)
+        if ok2 and type(s) == "boolean" then secure = s end
+    end
+    return type(v), secure
+end
+-- The member check of a table: issecurevariable(table, key), when this client accepts a table; nil when it does not.
+local function memberCheck()
+    local f = _G.issecurevariable
+    if type(f) ~= "function" then return nil end
+    local ok, r = pcall(f, {}, "x")
+    if not ok or type(r) ~= "boolean" then return nil end
+    return function(t, k)
+        local ok2, s = pcall(f, t, k)
+        if ok2 and type(s) == "boolean" then return s end
+        return nil
+    end
+end
+-- Opens a table global for member reads: a handle, whether it is a frame (its [0] is the userdata) and whether addon
+-- members can be told apart. The handle is nil when the global is not a table or cannot be read, or is a frame.
+function Adapter.CensusOpen(name)
+    local ok, t = pcall(rawget, _G, name)
+    if not ok or type(t) ~= "table" then return nil end
+    local okz, zero = pcall(rawget, t, 0)
+    if okz and type(zero) == "userdata" then return nil, true end
+    local check = memberCheck()
+    return { t = t, check = check }, false, check ~= nil
+end
+-- One member of an opened table: the key after cursor, as ok, key, type, keep, unknown. ok is false when next fails;
+-- key is nil at the end. keep is false for a member an addon added. unknown is true when the member check gave no
+-- answer for this key (the member is kept). Only next touches the table, so no __index runs.
+function Adapter.CensusMember(h, cursor)
+    local ok, k, v = pcall(next, h.t, cursor)
+    if not ok then return false end
+    if k == nil then return true end
+    if not h.check then return true, k, type(v), true, false end
+    local s = h.check(h.t, k)
+    return true, k, type(v), s ~= false, s == nil
+end
+-- The widget types the census samples.
+function Adapter.CensusWidgetKinds()
+    return { "Frame", "Button", "CheckButton", "EditBox", "ScrollFrame", "Slider", "StatusBar", "Cooldown", "Model", "MessageFrame",
+        "ScrollingMessageFrame", "SimpleHTML", "ColorSelect", "GameTooltip", "FontString", "Texture" }
+end
+-- Hidden sample frames with no name, kept for the session: a frame cannot be freed.
+local samples
+-- The sorted method names on the metatable of a sample widget, or nil when CreateFrame refuses the type.
+function Adapter.CensusWidget(kind)
+    samples = samples or {}
+    local ok, obj = pcall(function()
+        if samples[kind] then return samples[kind] end
+        local made
+        if kind == "FontString" or kind == "Texture" then
+            samples.Frame = samples.Frame or _G.CreateFrame("Frame", nil, _G.UIParent)
+            made = kind == "FontString" and samples.Frame:CreateFontString() or samples.Frame:CreateTexture()
+        else
+            made = _G.CreateFrame(kind, nil, _G.UIParent)
+            made:Hide()
+        end
+        samples[kind] = made
+        return made
+    end)
+    if not ok or type(obj) ~= "table" then return nil end
+    local methods
+    ok = pcall(function()
+        local index = getmetatable(obj).__index
+        if type(index) ~= "table" then return end
+        methods = {}
+        for k, v in next, index do if type(k) == "string" and type(v) == "function" then methods[#methods + 1] = k end end
+    end)
+    return ok and methods or nil
+end
+-- The folder names of the loaded addons, or nil when the client cannot list them.
+function Adapter.LoadedAddons()
+    local ns_ = _G.C_AddOns or {}
+    local count, info, loaded = ns_.GetNumAddOns or _G.GetNumAddOns, ns_.GetAddOnInfo or _G.GetAddOnInfo, ns_.IsAddOnLoaded or _G.IsAddOnLoaded
+    if type(count) ~= "function" or type(info) ~= "function" or type(loaded) ~= "function" then return nil end
+    local names = {}
+    local ok = pcall(function()
+        for i = 1, count() do
+            local name = info(i)
+            if type(name) == "table" then name = name.name end -- newer clients answer with a table
+            if type(name) == "string" and loaded(name) then names[#names + 1] = name end
+        end
+    end)
+    if ok then table.sort(names); return names end
 end
 -- The error handler is one slot shared by every addon. HookErrors sets ours over the current one (make(previous)
 -- builds it) and does nothing when ours is still the current handler. Some addons take the slot and turn

@@ -281,7 +281,7 @@ Validation, in the compiler and on import, SHALL reject the id `failed` as a cat
 - **THEN** validation prints a warning and exits zero
 
 ### Requirement: Plan may carry an offline block
-A plan MAY hold a top-level `offline` object with `toc`, optional `mocks` and `mockAfterLoad`, and `steps`. Each step is one of a `call` (addon, entry, literal `args`) with `returns` or `throws`, an `event` (name, literal `args`), or a `mockCalls` count. Validation SHALL reject any other shape. Compile SHALL remove the block, so the compiled string and its digest do not contain it.
+A plan MAY hold a top-level `offline` object with `toc`, optional `mocks`, `mockAfterLoad` and `level` (1 or 2), and `steps`. Each step is one of a `call` (addon, entry, literal `args`) with `returns` or `throws`, an `event` (name, literal `args`), or a `mockCalls` count. Validation SHALL reject any other shape. Compile SHALL remove the block, so the compiled string and its digest do not contain it.
 
 #### Scenario: Valid block
 - **WHEN** a plan holds an offline block with one call step
@@ -294,6 +294,10 @@ A plan MAY hold a top-level `offline` object with `toc`, optional `mocks` and `m
 #### Scenario: Compile drops the block
 - **WHEN** the same plan is compiled with and without the block
 - **THEN** both compiled strings are equal
+
+#### Scenario: Offline level
+- **WHEN** an offline block says `level: 2`, and another says `level: 3`
+- **THEN** validation passes the first and fails the second
 
 ### Requirement: Step may call an entry
 A step MAY hold `call: {addon, entry, args}` only when it is an auto step. `addon` and `entry` SHALL be names of the same form as a fact's addon and key, and `args` SHALL be a list of at most 8 strings, numbers or booleans. Validation SHALL reject any other field or shape, in the game and in the tools.

@@ -28,4 +28,123 @@ test("Confirm closes an open dialog of the same key, so the new text shows", fun
     T.eq(_G.StaticPopupDialogs["WOWCHECKTHAT_CONFIRM"].text, "second")
     _G.StaticPopupDialogs, _G.StaticPopup_Hide, _G.StaticPopup_Show = d, h, s
 end)
+-- Reads every member of a table global through the step reads, the way the census does.
+local function walkTable(name)
+    local h, isFrame, filtered = A.CensusOpen(name)
+    if not h then return nil, isFrame end
+    local members, unknown, cursor = {}, false, nil
+    while true do
+        local ok, k, ty, keep, unk = A.CensusMember(h, cursor)
+        if not ok or k == nil then break end
+        cursor = k
+        if unk then unknown = true end
+        if keep then members[k] = ty end
+    end
+    return members, isFrame, filtered and not unknown
+end
+test("census reads use rawget and next, skip frames, and fail to nil", function()
+    _G.CensusProbe = setmetatable({ Alpha = function() end, [1] = true }, { __index = function() error("an __index ran") end })
+    T.eq(A.CensusType("CensusProbe"), "table"); T.eq(A.CensusType("CensusNoSuchName"), nil)
+    local found
+    local cursor = nil
+    while true do
+        local ok, k = A.CensusNextKey(cursor)
+        T.ok(ok, "next works"); if k == nil then break end
+        cursor = k
+        if k == "CensusProbe" then found = true end
+    end
+    T.ok(found, "CensusNextKey steps through the keys")
+    T.eq(select(1, A.CensusNextKey("CensusNoSuchKeyAnywhere")), false, "a key that is gone fails, not a nil end")
+    local members, isFrame = walkTable("CensusProbe")
+    T.eq(isFrame, false); T.eq(members.Alpha, "function"); T.eq(members[1], "boolean")
+    _G.CensusFrame = setmetatable({ [0] = newproxy() }, { __index = function() error("an __index ran") end })
+    local m, frame = walkTable("CensusFrame")
+    T.eq(m, nil); T.eq(frame, true)
+    _G.CensusFake = setmetatable({ GetObjectType = function() end }, { __index = function() error("an __index ran") end })
+    T.eq(select(2, walkTable("CensusFake")), false, "a table with a GetObjectType member and no [0] userdata is no frame")
+    _G.CensusFake = nil
+    T.eq(walkTable("CensusNoSuchName"), nil)
+    _G.CensusProbe, _G.CensusFrame = nil, nil
+end)
+
+test("census skips what an addon defined when issecurevariable can tell, and cuts a huge table", function()
+    local isv = _G.issecurevariable
+    local g = { CensusMine = true }
+    _G.CensusMine, _G.CensusBlizz = {}, {}
+    _G.issecurevariable = function(a, b)
+        if b == nil then return not (a == "CensusMine"), nil end
+        if type(a) ~= "table" then error("bad table") end
+        return b ~= "Added"
+    end
+    local ty, secure = A.CensusType("CensusMine"); T.eq(ty, "table"); T.eq(secure, false)
+    ty, secure = A.CensusType("CensusBlizz"); T.eq(secure, true)
+    _G.CensusBlizz = { Own = 1, Added = 2 }
+    local members, frame, filtered = walkTable("CensusBlizz")
+    T.eq(members.Own, "number"); T.eq(members.Added, nil, "an added member is left out"); T.eq(filtered, true)
+    _G.issecurevariable = function() error("no table form") end
+    ty, secure = A.CensusType("CensusBlizz"); T.eq(ty, "table"); T.eq(secure, nil, "unknown, not true")
+    members, frame, filtered = walkTable("CensusBlizz")
+    T.eq(members.Added, "number"); T.eq(filtered, false)
+    _G.issecurevariable = nil
+    T.eq(select(2, A.CensusType("CensusBlizz")), nil)
+    _G.CensusMine, _G.CensusBlizz, _G.issecurevariable = nil, nil, isv
+end)
+
+test("a member check that works on a probe and fails on the real table reports unfiltered", function()
+    local isv = _G.issecurevariable
+    _G.CensusOdd = { One = 1, Two = 2 }
+    local real
+    _G.issecurevariable = function(a, b)
+        if a == real then error("refuses this table") end
+        return true
+    end
+    real = _G.CensusOdd
+    local members, _, filtered = walkTable("CensusOdd")
+    T.eq(members.One, "number", "the member is kept")
+    T.eq(filtered, false, "but the table is unfiltered")
+    local h, _, f = A.CensusOpen("CensusOdd")
+    T.eq(f, true, "the probe was accepted")
+    local ok, k, _, keep, unknown = A.CensusMember(h, nil)
+    T.ok(ok and keep and unknown, "an unknown answer on a real key")
+    _G.CensusOdd, _G.issecurevariable = nil, isv
+end)
+
+test("After reports whether it scheduled", function()
+    local ct = _G.C_Timer
+    _G.C_Timer = nil
+    T.eq(A.After(0, function() end), false)
+    local ran
+    _G.C_Timer = { After = function(_, fn) ran = fn end }
+    T.eq(A.After(0, function() end), true); T.ok(ran)
+    _G.C_Timer = { After = function() error("refused") end }
+    T.eq(A.After(0, function() end), false)
+    _G.C_Timer = ct
+end)
+
+test("census widget methods come from the metatable, and a refused type is nil", function()
+    local cf, up = _G.CreateFrame, _G.UIParent
+    _G.UIParent = {}
+    local methods = { SetPoint = function() end, Hide = function() end, Data = 1 }
+    _G.CreateFrame = function(kind)
+        if kind == "Nope" then error("unknown frame type") end
+        return setmetatable({}, { __index = methods })
+    end
+    local list = A.CensusWidget("Slider")
+    table.sort(list)
+    T.eq(table.concat(list, ","), "Hide,SetPoint", "functions only")
+    T.eq(A.CensusWidget("Nope"), nil)
+    _G.CreateFrame, _G.UIParent = cf, up
+end)
+
+test("census clock and addon list are nil when the client has none", function()
+    local dp, g1, g2 = _G.debugprofilestop, _G.GetNumAddOns, _G.C_AddOns
+    _G.debugprofilestop, _G.GetNumAddOns, _G.C_AddOns = nil, nil, nil
+    T.eq(A.Clock(), nil); T.eq(A.LoadedAddons(), nil)
+    _G.debugprofilestop = function() return 5 end
+    T.eq(A.Clock(), 5)
+    _G.C_AddOns = { GetNumAddOns = function() return 2 end, GetAddOnInfo = function(i) return i == 1 and { name = "B" } or "A" end, IsAddOnLoaded = function() return true end }
+    T.eq(table.concat(A.LoadedAddons(), ","), "A,B", "string or table answers, sorted")
+    _G.debugprofilestop, _G.GetNumAddOns, _G.C_AddOns = dp, g1, g2
+end)
+
 finish()

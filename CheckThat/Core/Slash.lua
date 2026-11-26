@@ -1,6 +1,6 @@
 -- /ct commands. Run(args, deps) is plain Lua: it returns the lines to print and calls deps for anything
 -- that touches the game, so tests can drive it with fakes.
--- deps = { open(page), card(), importPrompt(), export(), macro(), reload(), report(), confirmClear(), setDebug(on), verdict(cmd, note), endRun() }
+-- deps = { census() (returns "started", "busy" or "combat"), open(page), card(), importPrompt(), export(), macro(), reload(), report(), confirmClear(), setDebug(on), verdict(cmd, note), endRun() }
 local _, ns = ...
 local L = ns.L
 
@@ -24,7 +24,7 @@ function Slash.Run(args, deps)
     local cmd, rest = (args or ""):match("^%s*(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     local App = ns.App
-    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, version = true, undo = true, back = true, next = true, ["end"] = true, categories = true }
+    local noArgs = { import = true, export = true, macro = true, reload = true, fact = true, version = true, undo = true, back = true, next = true, ["end"] = true, categories = true, census = true }
     if noArgs[cmd] and rest ~= "" then return { L["Usage: /ct %s takes no arguments."]:format(cmd) } end
     if cmd == "" then deps.card(); return {}
     elseif cmd == "settings" then
@@ -48,7 +48,7 @@ function Slash.Run(args, deps)
         if topic == "appearance" then return {
             L["Keys: card.scale (50-200), card.background-opacity (0-100), card.text-opacity (0-100), card.locked (on or off)."],
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
-        elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run)."] }
+        elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run), /ct census (record the names available in this game session)."] }
         elseif topic == "runs" then return {
             L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct macrorun <step id>, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>, /ct rerun failed (retries the failed and unverified steps of all categories)."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
@@ -134,6 +134,11 @@ function Slash.Run(args, deps)
         local major, minor, patch = v:match("^(%d+)%.(%d+)%.(%d+)")
         if major then ns.Facts.Report("CheckThat", "version", major * 10000 + minor * 100 + patch) end
         return { L["CheckThat %s"]:format(Slash.Esc(v)) }
+    elseif cmd == "census" then
+        local r = deps.census()
+        if r == "busy" then return { L["A client census is already running."] } end
+        if r == "combat" then return { L["Run /ct census after combat ends."] } end
+        return { L["Client census started. Wait for the completion message before you reload or log out."] }
     elseif cmd == "fact" then
         local ok, why = ns.Facts.Report("CheckThat", "selftest", 1)
         if ok then return { L["Reported the test fact."] } end
@@ -180,6 +185,10 @@ function Slash.Register(addon)
         export = function() if ns.Card then ns.Card.ExportNow() end end,
         macro = function() if ns.Card then ns.Card.MakeMacro() end end,
         reload = function() ns.Adapter.Reload() end,
+        census = function()
+            return ns.Census.Start(function() Slash.Print(L["Client census complete. Type /reload or log out to save it."]) end,
+                function() Slash.Print(L["The client census could not read the game's names. The saved census is unchanged."]) end)
+        end,
         report = function() ns.Export.Show(L["CheckThat debug report"], ns.Log.Report()) end,
         setDebug = function(on) addon.db.profile.debug = on and true or false end,
         confirmClear = function()

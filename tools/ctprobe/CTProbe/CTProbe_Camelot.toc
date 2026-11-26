@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: CTProbe
+## Notes: v2 taint probe (issue 98). /ctp taint run. Development probe for CheckThat, not shipped.
+## SavedVariables: CTProbeDB
+
+CTProbe.lua
