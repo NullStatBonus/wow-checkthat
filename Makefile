@@ -10,7 +10,7 @@ build:
 	@mkdir -p build
 	@for p in keepthat dontdothat selftest checkthat-0.8 checkthat-0.16 checkthat-0.17 checkthat-0.20 checkthat-0.20.1 checkthat-0.16-picker checkthat-picker-fixture checkthat-openrun.owner checkthat-openrun.viewer; do $(PY) tools/ct.py compile plans/$$p.yaml -o build/$$p.ct || exit 1; done
 
-# luajit tests/run.lua [pattern] runs a subset; each file also runs alone: luajit tests/test_json.lua
+# luajit tests/run.lua [file-pattern [test-name]] runs a subset (an unmatched test name fails); each file also runs alone: luajit tests/test_json.lua
 test-lua:
 	@luajit tests/run.lua
 

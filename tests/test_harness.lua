@@ -40,6 +40,26 @@ test("T.raises fails when the call succeeds or the message differs, and shows th
     T.ok(m:find('expected an error containing "protected"', 1, true) and m:find("a typo: nil index", 1, true), m)
 end)
 
+test("H.stub and T.finally refuse to register outside a test", function()
+    local out, code = run(PRE .. [[
+local ok, err = pcall(H.stub, {}, "k", 1)
+assert(not ok and tostring(err):find("outside a test", 1, true), tostring(err))
+local ok2 = pcall(T.finally, function() end)
+assert(not ok2)
+test("a", function() end)
+finish()]])
+    T.eq(code, 0, out)
+end)
+
+test("a cleanup error is reported next to the test's own failure, and fails a passing test", function()
+    local out, code = run(PRE .. [[
+test("a", function() T.finally(function() error("restore broke") end); error("first") end)
+test("b", function() T.finally(function() error("restore broke too") end) end)
+finish()]])
+    T.eq(code, 1); T.ok(out:find("first", 1, true) and out:find("cleanup failed: ", 1, true) and out:find("restore broke too", 1, true), out)
+    T.ok(out:find("0 passed, 2 failed", 1, true), out)
+end)
+
 test("H.stub restores the old value, nil included, after a failed test", function()
     local out, code = run(PRE .. [[
 local t = { keep = "old" }
@@ -85,10 +105,9 @@ test("run.lua passes the test name on, skips files with no match and fails when 
         local out = p:read("*a"); p:close()
         return out, tonumber(out:match("EXIT:(%d+)%s*$"))
     end
-    local out, code = runner("test_ 'T.same names the first'")
+    local out, code = runner("test_harn 'T.same names the first'")
     T.eq(code, 0, out); T.ok(out:find("test_harness.lua", 1, true) and not out:find("test_plan.lua", 1, true), out)
-    T.ok(out:find("skipped (no matching test)", 1, true), out)
-    out, code = runner("test_ 'no such test anywhere'")
+    out, code = runner("test_harn 'no such test anywhere'")
     T.eq(code, 1, out); T.ok(out:find("no test matches", 1, true), out)
 end)
 

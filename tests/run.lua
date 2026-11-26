@@ -27,7 +27,7 @@ for _, file in ipairs(files) do
     local code = tonumber(out:match("EXIT:(%d+)%s*$"))
     out = out:gsub("EXIT:%d+%s*$", ""):gsub("%s+$", "")
     local name = file:match("[^/]+$")
-    if code == NO_MATCH then
+    if testName and code == NO_MATCH then
         skipped = skipped + 1
     elseif code == 0 then
         ran = ran + 1

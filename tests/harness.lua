@@ -465,10 +465,11 @@ function H.loadToc(ns, toc)
 end
 
 -- Undo list for the running test: H.stub and T.finally push here, test() unwinds it after the test, pass or fail.
-local undo = {}
+local undo, running = {}, false
 
 -- Sets t[key] = value and restores the old value (nil too) after the test, also when the test fails.
 function H.stub(t, key, value)
+    assert(running, "H.stub outside a test: it would be undone after the first test")
     local old = rawget(t, key)
     undo[#undo + 1] = function() rawset(t, key, old) end
     rawset(t, key, value)
@@ -535,7 +536,10 @@ return function()
             error(("%s: expected an error containing %s, got %s"):format(msg or "raises", fmt(pat), fmt(tostring(err))), 2)
         end
     end
-    function T.finally(fn) undo[#undo + 1] = fn end
+    function T.finally(fn)
+        assert(running, "T.finally outside a test")
+        undo[#undo + 1] = fn
+    end
     local pattern = arg and arg[1]
     local function trace(e)
         local tb = debug.traceback(tostring(e), 2)
@@ -543,10 +547,14 @@ return function()
     end
     local function test(name, fn)
         if pattern and not name:find(pattern, 1, true) then return end
+        running = true
         local ok, err = xpcall(fn, trace)
+        running = false
         for i = #undo, 1, -1 do
             local uok, uerr = pcall(undo[i])
-            if not uok and ok then ok, err = false, "cleanup failed: " .. tostring(uerr) end
+            if not uok then
+                ok, err = false, (ok and "" or tostring(err) .. "\n") .. "cleanup failed: " .. tostring(uerr)
+            end
             undo[i] = nil
         end
         if ok then pass = pass + 1 else fails = fails + 1; rawprint("FAIL " .. name .. ": " .. tostring(err)) end
