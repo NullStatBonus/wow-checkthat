@@ -13,6 +13,8 @@
 - Load-on-demand addons, LoadWith, and the order between several addons.
 - The event bus and the virtual clock (#150).
 - VARIABLES_LOADED and SPELLS_CHANGED. The wiki says neither has a fixed place in the order.
+- Measuring the logout order and the PLAYER_ENTERING_WORLD arguments in game (#163).
+- A fresh load that also resets tables that existed before the run, such as a LibStub a test loaded first (#164).
 
 ## Decisions
 
@@ -66,4 +68,4 @@ The JSON result keeps every key it has. A block without groups produces the same
 ## Risks / Trade-offs
 
 - An in-process fresh load is weaker than a new Lua state (see Non-Goals). The snapshot covers what addons usually touch.
-- The wiki marks the logout events with {{fact}}. The order follows the wiki, and `docs/contracts.md` gets a line to confirm it with CTProbe.
+- The wiki marks the logout events with {{fact}}. The order follows the wiki, and `docs/contracts.md` records it as source-reviewed until CTProbe measures it (#163).

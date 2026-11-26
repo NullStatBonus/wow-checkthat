@@ -396,6 +396,25 @@ class OfflineBlock(unittest.TestCase):
         self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 3))), "neither steps nor groups")
         self.assertTrue(ct.validate(self.plan(lambda o: self.life(o, 3, steps=[{"reload": False}]))))
 
+    def test_the_command_runs_groups_and_reports_each_step(self):
+        groups = [{"label": "A", "steps": [{"call": {"addon": "MockAddon", "entry": "db"}, "returns": ["file"]}]},
+                  {"label": "B", "steps": [{"reload": True}, {"call": {"addon": "MockAddon", "entry": "db"}, "returns": ["wrong"]}]}]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "plan.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(json.dumps(self.plan(lambda o: self.life(o, 3, groups=groups))))
+            out = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "offline", path, "--addons",
+                                  os.path.dirname(os.path.dirname(self.PLAN))], capture_output=True, text=True,
+                                 env=dict(os.environ, CT_TEST_MANIFESTS=d))
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertNotIn(ct.OFFLINE_LEVEL_WARNING, out.stderr)
+        self.assertIn("offline: 2 passed, 1 failed", out.stderr)
+        from xml.etree import ElementTree as ET
+        suite = ET.fromstring(out.stdout)
+        self.assertEqual(suite.get("failures"), "1")
+        self.assertEqual([(c.get("classname"), c.get("name")) for c in suite.iter("testcase")],
+                         [("offline.1.1", "A: call 1"), ("offline.2.1", "B: reload 1"), ("offline.2.2", "B: call 2")])
+
     def test_a_block_without_groups_keeps_its_step_ids(self):
         self.assertEqual([i["step"] for i in self.run_plan()], ["offline.%d" % n for n in range(1, 6)])
 

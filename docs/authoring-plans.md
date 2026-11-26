@@ -81,22 +81,22 @@ offline:
 ```
 
 - **Level.** `level: 2` and above give the newer fake-client answers. `GetBuildInfo` gives the number from the TOC's `## Interface:` line (the first number when the line lists several; the key counts at the start of a line only), so the addon sees the client its TOC names; a TOC with no such line gets 11507. `issecurevariable` is true for the names the fake client defines and false for names addon code set. A block without `level` runs at level 1, as before: interface 11507 and `issecurevariable` false for every name. `ct.py offline` then prints a warning. `level: 3` adds the game's load order (see Load order below). New plans declare `level: 3`. A stricter check comes as a new level, so an existing plan keeps its result.
-- **Load order (level 3).** The runner reads `## SavedVariables` and `## SavedVariablesPerCharacter` from the TOC. Those names are nil while the files run. After the last file it assigns what `savedVariables` holds, so a value the addon set at file scope is replaced, as in the game. A name with no saved value keeps what the file set, as on a first login. With `## LoadSavedVariablesFirst: 1` the values are assigned before the first file. Then ADDON_LOADED (the folder name), PLAYER_LOGIN and PLAYER_ENTERING_WORLD (`true, false`) fire at the frames that registered them, and `IsLoggedIn()` is false until PLAYER_LOGIN. An entry registered at PLAYER_LOGIN can then be called with no `event` step. `UnregisterEvent` works. A `savedVariables` name the TOC does not declare fails the load step. JSON keys are strings: use a `reload` to test number keys.
+- **Load order (level 3).** The runner reads `## SavedVariables` and `## SavedVariablesPerCharacter` from the TOC. Those names are nil while the files run. After the last file it assigns what `savedVariables` holds, so a value the addon set at file scope is replaced, as in the game. The fresh load does not reset a table that existed before the run (#164); `ct.py offline` always starts a new process. A name with no saved value keeps what the file set, as on a first login. With `## LoadSavedVariablesFirst: 1` the values are assigned before the first file. Then ADDON_LOADED (the folder name), PLAYER_LOGIN and PLAYER_ENTERING_WORLD (`true, false`) fire at the frames that registered them, and `IsLoggedIn()` is false until PLAYER_LOGIN. An entry registered at PLAYER_LOGIN can then be called with no `event` step. `UnregisterEvent` works. A `savedVariables` name the TOC does not declare fails the load step. JSON keys are strings: use a `reload` to test number keys.
 - **Reload (level 3).** A `{ reload: true }` step fires PLAYER_LEAVING_WORLD, PLAYER_LOGOUT and ADDONS_UNLOADING. It then keeps each saved variable as the game writes it: strings, numbers, booleans and tables, without functions or metatables. Two references to one table come back as two tables, and a reference to a table it is inside is dropped. Then the addon loads fresh: its other globals, frames, entries and upvalues are gone. The saved values come back and the login events fire with PLAYER_ENTERING_WORLD `false, true`. Mocks are set again and their counts go on. The fresh load runs in the same Lua process. It puts back the global table and the `string`, `table`, `math`, `bit` and `coroutine` tables, so a change an addon makes elsewhere, such as to a metatable, can still leak.
 - **Groups (level 3).** Put `groups` in place of `steps` to give each case its own load:
 
   ```yaml
   offline:
-    toc: wow-keepthat/KeepThat/KeepThat_Vanilla.toc
+    toc: MyAddon/MyAddon.toc
     level: 3
     mocks: { GetMoney: { returns: [0] } }           # every group
     groups:
     - label: Rich
       mocks: { GetMoney: { returns: [100000] } }    # over the block's mocks
-      savedVariables: { KeepThatDB: { global: { log: [] } } }
-      steps: [ { call: { addon: KeepThat, entry: can_buy }, returns: [true] } ]
+      savedVariables: { MyAddonDB: { warn: true } }
+      steps: [ { call: { addon: MyAddon, entry: can_buy }, returns: [true] } ]
     - label: Poor
-      steps: [ { call: { addon: KeepThat, entry: can_buy }, returns: [false] } ]
+      steps: [ { call: { addon: MyAddon, entry: can_buy }, returns: [false] } ]
   ```
 
   Each group starts from a fresh load, with its own `savedVariables` or else the block's, never the previous group's. Mock counts start at zero in each group. JUnit names a group's steps `offline.G.N` and labels them `group label: step label`. A block without groups keeps `offline.N`.
