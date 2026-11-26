@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Adds the "templates" key to a client surface: tools/clients/<client>.json.
 
-    python3 tools/template_slice.py SURFACE BLIZZARD_SOURCE TEMPLATE [TEMPLATE ...] [-o OUT]
+    python3 tools/template_slice.py SURFACE BLIZZARD_SOURCE TEMPLATE [TEMPLATE ...] [-o OUT] [--tooltip-hooks script|processor]
 
 SURFACE is a client surface made by tools/client_slice.py. BLIZZARD_SOURCE is a checkout of the matching wow-ui-source
 track. For each TEMPLATE the tool reads the XML that defines it, follows inherits, and lists what a frame made from it
@@ -10,6 +10,9 @@ parentKey and parentArray child keys. Output is the surface with templates = { n
 added at the end; every other byte of the file stays. The source holds one definition per name for each client, but a name defined in two
 files (a Classic and a Mainline copy) takes the union, so a frame errs toward accepting a call. Only names the game
 defines are written. Nothing from the source is executed.
+
+--tooltip-hooks writes a key the census cannot know, measured in game with CTProbe: which tooltip hook path the client runs. It is set before
+the templates block, so a re-run keeps it. Re-slicing a census with client_slice.py drops both keys: run this tool again with the flag.
 
 Limits: a mixin is found by `Name = {}`, `Name = Name or {}`, `CreateFromMixins(...)` and `Mixin(Name, ...)` at the start of a line, and a
 method by `function Name:Method(`, `function Name.Method(` and `Name.Method = function`. A mixin built another way is missed, so a
@@ -50,6 +53,9 @@ def scan(root):
                 for name, parents, mixed in MIXIN_DEF.findall(text):
                     m = mixins.setdefault(name, {"parents": set(), "methods": set()})
                     m["parents"].update(split_names(parents) + split_names(mixed))
+                if "AddTooltipDataAccessorDelegate(" in text:  # tooltip methods the game generates: SetHyperlink = "GetHyperlink", ...
+                    gen = mixins.setdefault("TooltipDataHandlerMixin", {"parents": set(), "methods": set()})["methods"]
+                    gen.update(re.findall(r'^\s*(Set\w+)\s*=\s*"Get\w+",?\s*$', text, re.M))
                 for o1, m1, o2, m2 in METHOD_DEF.findall(text):
                     mixins.setdefault(o1 or o2, {"parents": set(), "methods": set()})["methods"].add(m1 or m2)
     return templates, mixins
@@ -109,8 +115,16 @@ def main():
     import argparse
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("surface"); p.add_argument("source"); p.add_argument("templates", nargs="+"); p.add_argument("-o")
+    p.add_argument("--tooltip-hooks", choices=("script", "processor"), dest="tooltip_hooks",
+                   help="write the measured tooltip hook path of this client: script (OnTooltipSetItem, Era) or processor (TooltipDataProcessor, Forever). Without it an existing value stays")
     a = p.parse_args()
-    surface = json.loads(read(a.surface))
+    raw = read(a.surface)
+    if a.tooltip_hooks:  # a measured key: set before the templates block, which this tool rewrites from its start
+        raw = re.sub(r',\n "tooltipHooks": "[a-z]*"', "", raw)
+        hook = ',\n "tooltipHooks": "%s"' % a.tooltip_hooks
+        i = raw.find(',\n "templates": {')
+        raw = (raw[:i] + hook + raw[i:]) if i >= 0 else (raw.rstrip()[:-1].rstrip() + hook + "\n}\n")
+    surface = json.loads(raw)
     templates, mixins = scan(a.source)
     out = dict(surface.get("templates", {}))
     for name in a.templates:
@@ -119,7 +133,6 @@ def main():
         methods, keys = resolve(name, templates, mixins)
         out[name] = {"methods": sorted(methods), "keys": sorted(keys)}
     block = ',\n "templates": {\n' + ",\n".join('  %s: %s' % (json.dumps(k), json.dumps(v)) for k, v in sorted(out.items())) + "\n }\n}\n"
-    raw = read(a.surface)
     if "templates" in surface:  # replace the block this tool wrote earlier (it is the last key) and keep the rest
         i = raw.find(',\n "templates": {')
         if i < 0:

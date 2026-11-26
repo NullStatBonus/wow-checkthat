@@ -198,6 +198,37 @@ class TemplateSlice(unittest.TestCase):
         self.assertEqual(sorted(methods), ["Direct", "Far", "Ping", "Pong"], "also Name.Method = function and Mixin(Name, ...)"); self.assertEqual(sorted(keys), ["Inner", "Text"])
         self.assertNotIn("Nope", methods)
 
+    def test_the_tooltip_hook_key_is_written_kept_and_stays_before_the_templates(self):
+        d, surface = self.tree()
+        tool = [sys.executable, os.path.join(ROOT, "tools", "template_slice.py"), surface, os.path.join(d, "src")]
+        first = os.path.join(d, "first.json")
+        self.assertEqual(subprocess.run(tool + ["Child", "--tooltip-hooks", "processor", "-o", first], capture_output=True, text=True).returncode, 0)
+        with open(first) as fh: text = fh.read()
+        self.assertEqual(list(json.loads(text)), ["format", "client", "widgets", "tooltipHooks", "templates"])
+        self.assertEqual(json.loads(text)["tooltipHooks"], "processor")
+        again = os.path.join(d, "again.json")
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "template_slice.py"), first, os.path.join(d, "src"), "Base", "-o", again], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(again) as fh: j = json.load(fh)
+        self.assertEqual(j["tooltipHooks"], "processor", "a run without the flag keeps it"); self.assertEqual(sorted(j["templates"]), ["Base", "Child"])
+        third = os.path.join(d, "third.json")
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools", "template_slice.py"), again, os.path.join(d, "src"), "Base", "--tooltip-hooks", "script", "-o", third], check=True, capture_output=True)
+        with open(third) as fh: self.assertEqual(json.load(fh)["tooltipHooks"], "script"); 
+        bad = subprocess.run(tool + ["Child", "--tooltip-hooks", "other"], capture_output=True, text=True)
+        self.assertNotEqual(bad.returncode, 0)
+
+    def test_generated_tooltip_accessors_count_as_mixin_methods(self):
+        import template_slice
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, "h.lua"), "w") as f:
+            f.write('TooltipDataHandlerMixin = {}\nlocal accessors = {\n\tSetHyperlink = "GetHyperlink",\n\tSetBagItem = "GetBagItem"\n}\nfor a, g in pairs(accessors) do AddTooltipDataAccessorDelegate(TooltipDataHandlerMixin, a, g) end\n'
+                    'GameTooltipDataMixin = CreateFromMixins(TooltipDataHandlerMixin)\nfunction GameTooltipDataMixin:OnLoad() end\n')
+        with open(os.path.join(d, "t.xml"), "w") as f:
+            f.write('<Ui><GameTooltip name="TipTemplate" mixin="GameTooltipDataMixin" virtual="true"/></Ui>')
+        templates, mixins = template_slice.scan(d)
+        methods, _ = template_slice.resolve("TipTemplate", templates, mixins)
+        self.assertEqual(sorted(methods), ["OnLoad", "SetBagItem", "SetHyperlink"])
+
     def test_the_surface_file_keeps_every_other_byte_and_an_unknown_template_is_an_error(self):
         d, surface = self.tree()
         with open(surface) as fh: before = fh.read()
@@ -220,7 +251,7 @@ class TemplateSlice(unittest.TestCase):
         for client in ("era", "forever"):
             with open(os.path.join(ROOT, "tools", "clients", client + ".json")) as f:
                 t = json.load(f)["templates"]
-            for n in ("BackdropTemplate", "UIPanelButtonTemplate", "UIPanelScrollFrameTemplate", "UICheckButtonTemplate", "UIDropDownMenuTemplate"):
+            for n in ("BackdropTemplate", "UIPanelButtonTemplate", "UIPanelScrollFrameTemplate", "UICheckButtonTemplate", "UIDropDownMenuTemplate", "GameTooltipTemplate"):
                 self.assertIn(n, t, client)
             self.assertIn("SetBackdrop", t["BackdropTemplate"]["methods"], client)
 
@@ -986,7 +1017,7 @@ class ClientSlice(unittest.TestCase):
         for client, interface in (("era", 11509), ("forever", 16001)):
             with open(os.path.join(ROOT, "tools", "clients", client + ".json"), encoding="utf-8") as f:
                 s = json.load(f)
-            self.assertEqual(list(s), self.KEYS + ["templates"], client)   # templates: added by tools/template_slice.py, read from Blizzard's source
+            self.assertEqual(list(s), self.KEYS + ["tooltipHooks", "templates"], client)   # templates: added by tools/template_slice.py, read from Blizzard's source
             self.assertEqual((s["format"], s["client"], s["interface"]), (1, client, interface))
             self.assertTrue(all(isinstance(n, str) for n in s["functions"]))
             self.assertTrue(all(k.startswith("C_") and all(isinstance(n, str) for n in v) for k, v in s["namespaces"].items()))
