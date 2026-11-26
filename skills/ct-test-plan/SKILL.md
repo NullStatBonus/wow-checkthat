@@ -27,7 +27,7 @@ Ask **one question per turn** and wait for the answer. For each question say why
 5. **Locale.** Which client locale will the plan run on? Write the plan for that locale only. Authors keep one plan per locale. Do not translate. Player-visible text in the plan uses the strings that locale shows.
 6. **Depth.** Sample (a handful of steps) or release plan? What is the riskiest part of the scope? What must never break? Scope before you draft or convert anything, also a manual test document (`ct.py from-md`):
    - A plan checks only what a fake game cannot prove: real game data and events, end-to-end wiring, drawing, sound, other addons, and saved variables across `/reload`. Logic that a unit test proves gets no plan step. For each candidate check, ask whether a unit test already proves it, and show the author the list.
-   - Measure, do not guess. Run the addon's unit tests with coverage when it has them, and map the scope's spec requirements to plan steps (`ct.py coverage`, section 4) and, by hand or with the addon's own coverage report, to unit tests. Base the sample-or-release answer on that map.
+   - Measure, do not guess. Run the addon's unit tests with coverage when it has them, and map the scope's spec requirements to plan steps (`ct.py coverage`, section 4) and to unit tests (`-- covers: <Requirement name>` comments, read by the same command). Base the sample-or-release answer on that map.
    - Offer an essential draft first, never a one-for-one conversion of a manual document. Each step covers a whole feature from start to finish, not one facet.
    - A plan has at most 25 steps and a section at most 10. A larger scope becomes a plan set by area (section 2).
 7. **Clients.** Which clients are in scope: `classic-era`, `forever-camelot`, or both? Which steps are for one client only?
@@ -99,7 +99,7 @@ After the last step, run the handoff gate. Do every part, in this order, and fix
 6. Tell the author which plan version any earlier in-game run used, and what changed since. Never claim a later edit was tested by an earlier run.
 
 Then show the author:
-- Coverage: each scope item and the step(s) that cover it; gaps in bold. When `$CT` and the addon source are at hand, `$PY $CT/tools/ct.py coverage <plan...> --addon-src <addon folder>` lists the subcommands, settings and spec requirements no step touches; a step or section names a requirement with `covers: [heading text]`.
+- Coverage: each scope item and the step(s) that cover it; gaps in bold. When `$CT` and the addon source are at hand, `$PY $CT/tools/ct.py coverage <plan...> --addon-src <addon folder>` lists the subcommands, settings and spec requirements no step touches, and which requirements unit tests already cover (a plan step on those may repeat a test); a step or section names a requirement with `covers: [heading text]`.
 - For a set of plans: each preamble names every partner file, and the reviewer line names the partner files and step IDs.
 - The checklist in `reference.md`, with each finding tied to a step id.
 

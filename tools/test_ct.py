@@ -2864,6 +2864,57 @@ class Coverage(unittest.TestCase):
         s = self.by(self.cov(p)[1], "settings")
         self.assertEqual({k: v["steps"] for k, v in s.items()}, {"verbose": ["f2"], "size": ["f1"], "quiet": []})
 
+    def test_unit_test_markers_count_toward_requirements(self):
+        p = self.plan(("r1", {"kind": "manual", "text": "t"}, None), covers=["Second thing works"])
+        code, d, _ = self.cov(p)
+        self.assertEqual(code, 0)
+        r = self.by(d, "requirements")
+        self.assertEqual(r["First thing works"]["tests"], ["test_cap.lua:1"])
+        self.assertEqual(r["Second thing works"]["tests"], ["test_cap.lua:3"]); self.assertEqual(r["Second thing works"]["steps"], ["r1"])
+        self.assertEqual(r["Third thing works"]["tests"], [], "a marker under fixtures is not read")
+        self.assertEqual(d["testCounts"], {"tests": 2, "plans": 1, "both": 1, "neither": 1, "total": 3})
+        self.assertEqual(d["testAndPlan"], ["Second thing works"])
+        self.assertEqual(d["unknownTests"], ["Not a requirement"])
+
+    def test_an_explicit_tests_folder_that_is_missing_is_an_error(self):
+        f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False); self.addCleanup(os.unlink, f.name)
+        import yaml
+        yaml.safe_dump(self.plan(("r1", {"kind": "manual", "text": "t"}, None)), f); f.close()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(ct.main(["coverage", f.name, "--addon-src", self.SRC, "--tests", os.path.join(self.FX, "nope")]), 2)
+        self.assertIn("is not a folder", err.getvalue())
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(ct.main(["coverage", f.name, "--addon-src", self.SRC, "--specs", os.path.join(self.FX, "nope"), "--tests", os.path.join(self.FX, "tests")]), 2)
+        self.assertIn("needs the addon's openspec specs", err.getvalue())
+
+    def test_without_a_tests_folder_the_output_has_no_test_keys(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        shutil.copytree(self.SRC, os.path.join(d, "addon")); shutil.copytree(os.path.join(self.FX, "openspec"), os.path.join(d, "openspec"))
+        f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False); self.addCleanup(os.unlink, f.name)
+        import yaml
+        yaml.safe_dump(self.plan(("r1", {"kind": "manual", "text": "t"}, None)), f); f.close()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(ct.main(["coverage", f.name, "--addon-src", os.path.join(d, "addon"), "--format", "json"]), 0)
+        j = json.loads(out.getvalue())
+        self.assertNotIn("testCounts", j); self.assertTrue(all("tests" not in r for r in j["requirements"]))
+
+    def test_the_text_report_shows_test_coverage_and_overlap(self):
+        p = self.plan(("r1", {"kind": "manual", "text": "t"}, None), covers=["Second thing works"])
+        f = tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False); self.addCleanup(os.unlink, f.name)
+        import yaml
+        yaml.safe_dump(p, f); f.close()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ct.main(["coverage", f.name, "--addon-src", self.SRC])
+        t = out.getvalue()
+        self.assertIn("by unit tests 2, by plans 1, by both 1, by neither 1 (of 3)", t)
+        self.assertIn("in both, a plan step may repeat a unit test: Second thing works", t)
+        self.assertIn("unknown requirement named by a test: Not a requirement", t)
+        self.assertIn("tests    First thing works  test_cap.lua:1", t)
+
     def test_a_plain_word_in_prose_is_not_a_command(self):
         p = self.plan(("t1", {"kind": "manual", "text": "The size is large and verbose, and alpha is a letter."}, None))
         d = self.cov(p)[1]
