@@ -167,11 +167,25 @@ class Compile(unittest.TestCase):
 
 class Plans(unittest.TestCase):
     def test_shipped_plans_validate(self):
-        for n in ("keepthat", "dontdothat", "selftest"):
+        for n in ("dontdothat", "selftest"):
             plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
             self.assertEqual(ct.validate(plan), [], n)
             self.assertEqual(ct.warnings(plan), [], n)
 
+
+class KeepThatPlans(unittest.TestCase):
+    def test_the_fixture_plan_validates_and_stays_short(self):
+        plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))
+        self.assertEqual(ct.validate(plan), []); self.assertEqual(ct.warnings(plan), [])
+        self.assertLessEqual(sum(len(s["steps"]) for s in plan["sections"]), 8)
+
+    def test_the_plan_of_record_in_the_sibling_repository_validates_when_present(self):
+        path = os.path.join(ROOT, "..", "wow-keepthat", "plans", "keepthat.yaml")
+        if not os.path.isfile(path):
+            self.skipTest("../wow-keepthat is not checked out")
+        specs = os.path.join(ROOT, "..", "wow-keepthat", "openspec", "specs")
+        names = set(ct.requirement_names(specs)) if os.path.isdir(specs) else None
+        self.assertEqual(ct.validate(ct.load_yaml(path), names), [])
 
 class OpenRunPlans(unittest.TestCase):
     PATHS = [os.path.join(ROOT, "plans", "checkthat-openrun.%s.yaml" % r) for r in ("owner", "viewer")]
@@ -205,7 +219,7 @@ class NativeText(unittest.TestCase):
 
     def test_shipped_plans_have_no_markdown(self):
         import glob
-        for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True):
+        for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]:
             d = ct.load_yaml(path)
             for box, key, _ in ct.display_fields(d):
                 self.assertNotRegex(box[key], r"`|\*\*", path + " " + key)
@@ -214,7 +228,7 @@ class NativeText(unittest.TestCase):
 class SamplePlans(unittest.TestCase):
     def test_sample_plans_stay_short_and_full_plans_stay_valid(self):
         import glob
-        for n in ("keepthat", "dontdothat"):
+        for n in ("dontdothat",):
             plan = ct.load_yaml(os.path.join(ROOT, "plans", n + ".yaml"))
             steps = sum(len(s["steps"]) for s in plan["sections"])
             self.assertLessEqual(steps, 8, n)
@@ -571,7 +585,7 @@ class LogCaps(unittest.TestCase):
         import glob
         for addon, logs in ct.LOGS.items():
             self.assertIsInstance(logs["debug"].get("cap"), int, addon)
-        paths = glob.glob(os.path.join(ROOT, "plans", "*.yaml")) + glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml"))
+        paths = glob.glob(os.path.join(ROOT, "plans", "*.yaml")) + glob.glob(os.path.join(ROOT, "plans", "full", "*.yaml")) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]
         checked = 0
         for path in paths:
             plan = ct.load_yaml(path)
