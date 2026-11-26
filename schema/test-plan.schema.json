@@ -213,6 +213,60 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "minimum": 5
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "steps"
+                  ],
+                  "properties": {
+                    "steps": {
+                      "contains": {
+                        "required": [
+                          "tooltip"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "groups"
+                  ],
+                  "properties": {
+                    "groups": {
+                      "contains": {
+                        "properties": {
+                          "steps": {
+                            "contains": {
+                              "required": [
+                                "tooltip"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
         }
       ],
       "properties": {
@@ -444,6 +498,69 @@
                         "minimum": 0
                       }
                     }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tooltip"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "tooltip": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "description": "Level 5. Checks the lines the addon put on GameTooltip so far: lines (how many), or equals or contains (the text of a line; with line, that line, else any line).",
+                    "properties": {
+                      "lines": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "equals": {
+                        "type": "string"
+                      },
+                      "contains": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "anyOf": [
+                          { "required": ["lines"] },
+                          { "required": ["equals"] },
+                          { "required": ["contains"] }
+                        ]
+                      },
+                      {
+                        "not": {
+                          "required": ["equals", "contains"]
+                        }
+                      },
+                      {
+                        "if": {
+                          "required": ["lines"]
+                        },
+                        "then": {
+                          "not": {
+                            "anyOf": [
+                              { "required": ["line"] },
+                              { "required": ["equals"] },
+                              { "required": ["contains"] }
+                            ]
+                          }
+                        }
+                      }
+                    ]
                   }
                 }
               }
