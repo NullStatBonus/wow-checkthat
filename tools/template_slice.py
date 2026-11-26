@@ -50,6 +50,9 @@ def scan(root):
                 for name, parents, mixed in MIXIN_DEF.findall(text):
                     m = mixins.setdefault(name, {"parents": set(), "methods": set()})
                     m["parents"].update(split_names(parents) + split_names(mixed))
+                if "AddTooltipDataAccessorDelegate(" in text:  # tooltip methods the game generates: SetHyperlink = "GetHyperlink", ...
+                    gen = mixins.setdefault("TooltipDataHandlerMixin", {"parents": set(), "methods": set()})["methods"]
+                    gen.update(re.findall(r'^\s*(Set\w+)\s*=\s*"Get\w+",', text, re.M))
                 for o1, m1, o2, m2 in METHOD_DEF.findall(text):
                     mixins.setdefault(o1 or o2, {"parents": set(), "methods": set()})["methods"].add(m1 or m2)
     return templates, mixins

@@ -68,6 +68,37 @@ test("under a client surface GameTooltip records the lines an addon adds, and a 
     T.eq(H.tooltipLines(CreateFrame("Frame")), nil); T.eq(CreateFrame("Frame").AddLine, nil, "a plain frame has no AddLine")
 end)
 
+test("the tooltip hook path follows the client: Era runs the OnTooltipSetItem script, Forever the TooltipDataProcessor post call", function()
+    local function itemLink() return "|cffffffff|Hitem:6948::::::::10::::::::::|h[Hearthstone]|h|r" end
+    restore()
+    H.stubClient({ client = "era" })
+    T.eq(rawget(_G, "TooltipDataProcessor"), nil, "Era has no TooltipDataProcessor")
+    local fired = { script = 0, other = 0 }
+    GameTooltip:HookScript("OnTooltipSetItem", function(tip) fired.script = fired.script + 1; fired.tip = tip end)
+    GameTooltip:SetHyperlink("item:6948")
+    T.eq(fired.script, 1, "the script hook runs at once"); T.eq(fired.tip, GameTooltip)
+    GameTooltip:SetHyperlink(itemLink()); T.eq(fired.script, 2, "a full item link too")
+    GameTooltip:SetHyperlink("spell:2061"); T.eq(fired.script, 2, "a spell link is no item")
+    GameTooltip:SetItemByID(6948); T.eq(fired.script, 3)
+    restore()
+    H.stubClient({ client = "forever" })
+    T.eq(type(TooltipDataProcessor), "table"); T.eq(type(Enum.TooltipDataType.Item), "number")
+    T.raises(function() GameTooltip:HookScript("OnTooltipSetItem", function() end) end, "OnTooltipSetItem", "Forever has no such script to hook")
+    GameTooltip:HookScript("OnShow", function() end) -- other scripts still hook
+    local calls, data = 0, nil
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tip, d) calls = calls + 1; data = d end)
+    TooltipDataProcessor.AddTooltipPostCall(12345, function() calls = calls + 100 end)
+    GameTooltip:SetHyperlink("item:6948")
+    T.eq(calls, 1, "the item post call runs at once, and a call for another type does not"); T.eq(data.type, "item")
+    GameTooltip:SetHyperlink("spell:2061"); T.eq(calls, 1)
+    T.raises(function() TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, "no") end, "Usage")
+    restore()
+    local old = H.clientSurface("era"); old.tooltipHooks = nil -- a surface file from before the key: the script path, no processor
+    H.stubClient({ client = old })
+    local n = 0
+    GameTooltip:HookScript("OnTooltipSetItem", function() n = n + 1 end); GameTooltip:SetHyperlink("item:1"); T.eq(n, 1)
+end)
+
 test("a frame of a listed type has only its type's methods, plus those of its listed templates", function()
     restore()
     H.stubClient({ client = "era" })

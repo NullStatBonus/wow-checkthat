@@ -34,7 +34,25 @@ local TOOLTIP = {
     NumLines = function(self) return #self.lines end,
     SetOwner = function(self, owner) self.owner = owner; self.lines = {} end,
     GetOwner = function(self) return self.owner end,
+    -- An item link or id sets the tooltip to an item and runs the client's item hooks at once (measured). It adds no lines.
+    SetHyperlink = function(self, link) self.lines = {}; if type(link) == "string" and link:find("item:", 1, true) then H.itemTooltipSet(self) end end,
+    SetItemByID = function(self) self.lines = {}; H.itemTooltipSet(self) end,
 }
+
+-- Runs the hooks an item tooltip fires: the OnTooltipSetItem script hooks on a client with the script path, the
+-- TooltipDataProcessor post calls for items on one with the processor path (the surface says which: tooltipHooks).
+function H.itemTooltipSet(tip)
+    local frames = rawget(tip, "_frames")
+    local mode = frames and frames.surface and frames.surface.tooltipHooks
+    if mode == "script" or mode == nil then
+        for _, fn in ipairs(tip.hooks.OnTooltipSetItem or {}) do fn(tip) end
+    end
+    if mode == "processor" then
+        for _, call in ipairs(frames.postCalls or {}) do
+            if call.kind == "item" then call.fn(tip, { type = "item" }) end
+        end
+    end
+end
 
 -- The lines of a fake GameTooltip as { { left =, right = }, ... } (a copy), or nil when it is not one.
 function H.tooltipLines(tip)
@@ -47,7 +65,15 @@ end
 
 local function member(frames, k)
     if k == "SetScript" then return function(self, ev, fn) self.scripts[ev] = fn end end
-    if k == "HookScript" then return function(self, ev, fn) self.hooks[ev] = self.hooks[ev] or {}; table.insert(self.hooks[ev], fn) end end
+    if k == "HookScript" then
+        return function(self, ev, fn)
+            -- A client on the processor path has no OnTooltipSetItem script on its tooltip: registering the hook fails (measured; the message is not).
+            if ev == "OnTooltipSetItem" and rawget(self, "lines") and frames.surface and frames.surface.tooltipHooks == "processor" then
+                error('Frame:HookScript(): GameTooltip doesn\'t have a "OnTooltipSetItem" script', 2)
+            end
+            self.hooks[ev] = self.hooks[ev] or {}; table.insert(self.hooks[ev], fn)
+        end
+    end
     if k == "SetAttribute" then return function(self, a, v) self.attrs[a] = v end end
     if k == "Show" then return function(self) setShown(self, true) end end
     if k == "Hide" then return function(self) setShown(self, false) end end
@@ -100,7 +126,7 @@ function stubFrame(frames, template, name, kind)
     local f = { shown = true, scripts = {}, hooks = {}, attrs = {}, drivers = {}, template = template, name = name, kind = kind }
     f.protected = (template and template:find("Secure", 1, true)) and true or false
     frames[#frames + 1] = f
-    if type(kind) == "string" and kind:lower() == "gametooltip" then f.lines = {}; f.shown = false end
+    if type(kind) == "string" and kind:lower() == "gametooltip" then f.lines = {}; f.shown = false; rawset(f, "_frames", frames) end
     local methods = frames.surface and type(kind) == "string" and frames.surface.widgetsByLower[kind:lower()]
     local keys
     if methods and template then methods, keys = H.templateMethods(frames.surface, kind, template) end
@@ -370,6 +396,7 @@ function H.clientSurface(client, root)
     s.lacksBase = {}
     for _, n in ipairs({ "dofile", "load", "loadfile", "module", "require" }) do if not s.functions[n] then s.lacksBase[n] = true end end
     for ns, list in pairs(m.namespaces) do s.namespaces[ns] = set(list) end
+    s.tooltipHooks = m.tooltipHooks -- "script" (OnTooltipSetItem) or "processor" (TooltipDataProcessor); measured, docs/contracts.md
     s.templates = {}
     for name, t in pairs(m.templates or {}) do s.templates[name] = { methods = set(t.methods or {}), keys = set(t.keys or {}) } end
     s.widgetsByLower = {}
@@ -450,8 +477,28 @@ function H.applySurface(st, surface)
         for k in pairs(members) do if t[k] == nil then t[k] = generic(ns .. "." .. k) end end
         rawset(_G, ns, t)
     end
+    -- A client on the processor path (surface.tooltipHooks) has TooltipDataProcessor; one on the script path has none (measured).
+    if surface.tooltipHooks == "processor" then
+        st.frames.postCalls = {}
+        local enum = rawget(_G, "Enum") or {}
+        enum.TooltipDataType = enum.TooltipDataType or { Item = 0 }
+        rawset(_G, "Enum", enum)
+        rawset(_G, "TooltipDataProcessor", {
+            AddTooltipPostCall = function(kind, fn)
+                if type(fn) ~= "function" then error("Usage: TooltipDataProcessor.AddTooltipPostCall(tooltipType, postCall)", 2) end
+                local calls = st.frames.postCalls
+                calls[#calls + 1] = { kind = kind == enum.TooltipDataType.Item and "item" or "other", fn = fn }
+            end,
+        })
+    elseif surface.tooltipHooks == "script" then
+        rawset(_G, "TooltipDataProcessor", nil)
+    end
     -- The game's own tooltip, which records the lines an addon adds (H.tooltipLines).
-    if surface.widgets.GameTooltip and rawget(_G, "GameTooltip") == nil then _G.GameTooltip = stubFrame(st.frames, nil, "GameTooltip", "GameTooltip") end
+    if surface.widgets.GameTooltip and rawget(_G, "GameTooltip") == nil then
+        -- The game's tooltip has the methods of GameTooltipTemplate too (Forever generates SetHyperlink and the other Set* ones there).
+        local template = surface.templates and surface.templates.GameTooltipTemplate and "GameTooltipTemplate" or nil
+        _G.GameTooltip = stubFrame(st.frames, template, "GameTooltip", "GameTooltip")
+    end
     local version, build = tostring(surface.build):match("^(%d+%.%d+%.%d+)%.(%d+)$")
     _G.GetBuildInfo = function() return version or surface.build, build or "", "", surface.interface end
 end
