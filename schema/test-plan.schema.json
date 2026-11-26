@@ -559,17 +559,6 @@
                             ]
                           }
                         }
-                      },
-                      {
-                        "if": {
-                          "required": ["line"]
-                        },
-                        "then": {
-                          "anyOf": [
-                            { "required": ["equals"] },
-                            { "required": ["contains"] }
-                          ]
-                        }
                       }
                     ]
                   }
