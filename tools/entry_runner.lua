@@ -265,6 +265,16 @@ function Runner.run(spec, opts)
     table.sort(mockNames)
     local unlisted
     for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
+    local pending -- a recording is in the plan format, but this runner cannot read it yet: say so instead of running with an empty mock
+    local function noRecording(mocks)
+        for api, v in pairs(mocks or {}) do
+            if type(v) == "table" then
+                if v.recording then pending = pending or api end
+                for _, entry in ipairs(v) do if type(entry) == "table" and entry.recording then pending = pending or api end end
+            end
+        end
+    end
+    noRecording(spec.mocks); for _, g in ipairs(groups) do noRecording(g.mocks) end
     local absent
     if surface then
         for _, api in ipairs(mockNames) do
@@ -414,6 +424,8 @@ function Runner.run(spec, opts)
         loadErr = surfaceErr
     elseif undeclared then
         loadErr = ("savedVariables names %s, which the TOC does not declare"):format(undeclared)
+    elseif pending then
+        loadErr = ("mock %s: a recording is not supported by this runner yet"):format(pending)
     elseif unlisted then
         loadErr = ("mock %s is not on the allow list"):format(unlisted)
     elseif absent then

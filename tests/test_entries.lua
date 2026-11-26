@@ -420,6 +420,16 @@ test("level 3 fires the lifecycle events in the order measured in game, at login
     T.ok(r.steps[3].ok and r.steps[3].detail:find(LOGIN .. " " .. RELOAD, 1, true), r.steps[3].detail)
 end)
 
+test("a mock that names a recording fails the load step until the runner can read recordings", function()
+    local steps = { { call = { addon = "MockAddon", entry = "add", args = { 1, 1 } }, returns = { 2 } } }
+    local r = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = steps })
+    T.ok(not r.ok and r.steps[1].detail:find("a recording is not supported", 1, true), tostring(r.steps[1].detail))
+    local arr = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { { args = { 1 }, returns = { "x" } }, { recording = "GetItemInfo(6948)" } } }, steps = steps })
+    T.ok(not arr.ok, "the array form too")
+    local ok = run({ toc = TOC, level = 5, mocks = { GetItemInfo = { returns = { "x" } } }, steps = steps })
+    T.ok(ok.ok, "a plain mock still runs")
+end)
+
 test("levels 1 and 2 leave the stub CreateFrame and the CheckThat a prepare set after the run", function()
     _G.CreateFrame = nil
     local mine = {}
