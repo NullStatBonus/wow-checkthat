@@ -509,6 +509,11 @@ class OfflineBlock(unittest.TestCase):
         self.assertEqual(out.returncode, 1, out.stderr)
         self.assertRegex(out.stdout, r'name="forever: [^"]*"[^>]*>\s*<failure'); self.assertNotRegex(out.stdout, r'name="era: [^"]*"[^>]*>\s*<failure')
 
+    def test_build_cannot_go_with_both_clients(self):
+        plan = self.client_plan(tocs={"era": "MockAddon/MockAddon_Vanilla.toc", "forever": "MockAddon/MockAddon_Camelot.toc"})
+        out = self.offline_cli(plan, "--client", "both", "--build", "1.15.9.70576")
+        self.assertEqual(out.returncode, 2); self.assertIn("--build names one build", out.stderr)
+
     def test_compile_still_drops_a_block_that_holds_tocs(self):
         both = {"era": "MockAddon/MockAddon_Vanilla.toc"}
         with_block = self.plan(lambda o: o.update(level=5, tocs=both))

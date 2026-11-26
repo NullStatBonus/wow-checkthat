@@ -2768,10 +2768,13 @@ def main(argv=None):
         plan = load_yaml(a.plan)
         clients = {"era": ["era"], "forever": ["forever"], "both": ["era", "forever"]}.get(getattr(a, "client", None), [None])
         items, props, report = [], {}, ""
+        if len(clients) > 1 and a.build:
+            print("error: --build names one build, and --client both runs two clients with different builds: run each client with --client era or forever", file=sys.stderr); return 2
         try:
+            reqs = plan_requirements(plan, a.plan, a.specs)
             for cl in clients:
                 info = {}
-                got = offline_plan(plan, a.addons, plan_requirements(plan, a.plan, a.specs), info, cl)
+                got = offline_plan(plan, a.addons, reqs, info, cl)
                 rep, build = nil_read_report(info.get("interface"), info.get("nilReads") or [], census_manifests(), a.build)
                 if len(clients) > 1:  # both clients: every case names its client, so the two runs read apart
                     for i in got:
