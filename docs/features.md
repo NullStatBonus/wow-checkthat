@@ -86,6 +86,8 @@ Advanced sets how many runs CheckThat keeps (5 to 100, default 20), for all prof
 
 The debug report prints `Stored: <n> runs (limit <n>), <n> plan copies`, and the log reads `report requested: Stored: ...`.
 
+The saved data carries its shape revision, `CheckThatDB.global.dbRev` (1 today). Saved data from 0.21.0 or older has none and gets `dbRev = 1` at the next load, with no other change; the log reads `saved data rev 0 -> 1`. Data written by a newer CheckThat keeps its higher revision: an older version reads it as it can and never lowers the number, and the log says `saved data rev <n> is newer; left as it is`. The debug report prints `Saved data: rev <n>`, and adds `(newer than this version's <n>, left as it is)` in that case. A later change of shape adds a migration step from one revision to the next and never deletes data it cannot rebuild.
+
 ## Saved log positions
 
 When a step opens, CheckThat saves where each log that the step checks stands: its length and its last 12 lines. It saves no other log.

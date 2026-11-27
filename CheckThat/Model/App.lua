@@ -10,6 +10,25 @@ local function now(self) return (self.env.time and self.env.time()) or 0 end
 -- A run saved in a newer major format is kept aside, untouched: this version cannot read it right, and a pass over it
 -- (normalizing, touching, pruning, counting) could damage it. Every other part of the addon then never sees it. It moves back
 -- when a CheckThat that reads its format loads it.
+-- The shape of the saved global table (#248). A table without dbRev is from 0.21.0 or older, rev 0, the same shape as rev 1. A migration
+-- moves the table from one rev to the next: MIGRATIONS[n] takes rev n - 1 to rev n, changes only keys it knows, and never deletes data it
+-- cannot rebuild. A table from a newer CheckThat (dbRev above DB_REV) is left as it is: this version never writes a lower rev over it.
+-- dbRev is written here and not in Core/Defaults.lua, because AceDB drops a saved value that equals its default.
+App.DB_REV = 1
+App.MIGRATIONS = {}
+function App.Migrate(db)
+    local rev = db.dbRev
+    if rev == nil then rev = 0 end
+    if type(rev) ~= "number" or rev % 1 ~= 0 or rev < 0 then return "unreadable" end
+    if rev > App.DB_REV then return "newer" end
+    for n = rev + 1, App.DB_REV do
+        local step = App.MIGRATIONS[n]
+        if step then step(db) end
+        db.dbRev = n
+    end
+    return rev < App.DB_REV and "migrated" or "current", rev
+end
+
 function App.SplitFuture(db)
     for id, run in pairs(db.runs) do
         if ns.Run.Opaque(run) then
@@ -56,6 +75,7 @@ end
 
 function App.Init(db, env, opts)
     App.env = env or _G
+    local migrated, from = App.Migrate(db)
     db.plans = db.plans or {}
     db.planStore = db.planStore or {}
     db.currentByChar = db.currentByChar or {}
@@ -68,6 +88,8 @@ function App.Init(db, env, opts)
     db.errors = db.errors or {}
     db.errorStacks = db.errorStacks or {}
     App.db = db
+    if migrated == "migrated" then App.Log(("saved data rev %d -> %d"):format(from, App.DB_REV))
+    elseif migrated ~= "current" then App.Log(("saved data rev %s is %s; left as it is"):format(tostring(db.dbRev), migrated)) end
     -- Facts and errors belong to the character's open run, also while the card shows another run.
     local function runOpen()
         local run = App.db.runs[App.db.currentByChar[App.Character()] or ""]

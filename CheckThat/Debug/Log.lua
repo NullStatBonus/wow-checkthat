@@ -77,6 +77,8 @@ function Log.Report()
         for _ in pairs(ns.App.db.planStore) do plans = plans + 1 end
         local stored = ("Stored: %d runs (limit %d), %d plan copies"):format(runs, ns.App.RunLimit(), plans)
         out[#out + 1] = stored
+        local rev = ns.App.db.dbRev
+        out[#out + 1] = ("Saved data: rev %s%s"):format(tostring(rev), type(rev) == "number" and rev > ns.App.DB_REV and (" (newer than this version's %d, left as it is)"):format(ns.App.DB_REV) or "")
         local newer = ns.App.FutureCount()
         out[#out + 1] = ("Run format: ct %d, revision %d, written by %s%s"):format(ns.Run.MAJOR, ns.Run.FORMAT_REV, tostring(ns.version),
             newer > 0 and (", %d saved run(s) from a newer CheckThat kept untouched"):format(newer) or "")

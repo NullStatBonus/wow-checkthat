@@ -32,6 +32,34 @@ test("app import stores plan, rejects bad ones without state change", function()
     local r, e2 = App.ImportPlan(assert(ns.Codec.Encode({ kind = "results", ct = 1 })))
     T.ok(r == nil and e2:find("results"))
 end)
+test("saved data from 0.21.0 (no dbRev) gets rev 1 and nothing else changes", function()
+    local old = { plans = { KeepThat = { digest = "d1" } }, planStore = { d1 = { title = "x" } }, runs = { r1 = { ct = 1, id = "r1" } },
+        currentByChar = { ["Tester-Realm"] = "r1" }, runLimit = 30, log = { entries = { { t = 1, msg = "[ct] old" } } }, ui = {} }
+    local before = ns.Json.Encode(old)
+    T.eq(App.Migrate(old), "migrated")
+    T.eq(old.dbRev, App.DB_REV)
+    old.dbRev = nil
+    T.eq(ns.Json.Encode(old), before, "only dbRev was added")
+end)
+
+test("App.Init stamps the saved data once, logs the step, and leaves a newer rev as it is", function()
+    local env = { time = function() return 1000 end, GetBuildInfo = function() return "1.15.7", "63000", "x", 11507 end,
+        UnitName = function() return "Tester" end, GetRealmName = function() return "Realm" end }
+    local db = {}
+    App.Init(db, env)
+    T.eq(db.dbRev, App.DB_REV)
+    T.eq(App.Migrate(db), "current", "a second load changes nothing")
+    local ran = 0
+    H.stub(App, "MIGRATIONS", { [1] = function(d) ran = ran + 1; d.marker = true end })
+    local fresh = {}
+    App.Migrate(fresh)
+    T.eq(ran, 1); T.ok(fresh.marker, "a migration runs from the rev before it")
+    App.Migrate(fresh); T.eq(ran, 1, "and only once")
+    local newer = { dbRev = App.DB_REV + 1, runs = {} }
+    T.eq(App.Migrate(newer), "newer"); T.eq(newer.dbRev, App.DB_REV + 1, "a newer rev is never lowered")
+    T.eq(App.Migrate({ dbRev = "x" }), "unreadable")
+end)
+
 test("a plan that needs a newer CheckThat is refused with that sentence, and nothing is stored", function()
     local db = boot()
     local p = plan(); p.needs = ns.Plan.REV + 1; p.brandNewKey = { 1 }
