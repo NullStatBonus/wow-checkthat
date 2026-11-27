@@ -492,6 +492,7 @@ sections:
       macro: raise
       text: Click Run on the card. The game may show its error window. That is expected.
     expect: Chat says a test error was raised. The card records the result by itself.
+    cleanup: Close the game's error window if it opened.
     verify:
     - assertions
     auto: true

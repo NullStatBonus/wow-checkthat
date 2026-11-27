@@ -742,6 +742,28 @@ test("an automatic result stays on screen and fades to the next step; a result p
     T.eq(card2.calls.SetAlpha[1], 1, "at full opacity")
 end)
 
+test("a step's cleanup shows on the next step until that one has a result (#247)", function()
+    local run, card = runPlan({ manual("a", { cleanup = "Turn the addon on again." }), manual("b"), manual("c") })
+    T.ok(not card.cleanup.shown, "nothing before a result")
+    ns.Card.Verdict("fail")
+    T.eq(card.title.text, "Step b")
+    T.ok(card.cleanup.shown); T.eq(card.cleanup.text, "First, after the last step: Turn the addon on again.")
+    T.eq(ns.App.db.ui.cleanup.step, "a", "saved, so a reload keeps it")
+    ns.Card.Verdict("pass")
+    T.eq(card.title.text, "Step c"); T.ok(not card.cleanup.shown, "gone once the next step has a result")
+    T.eq(ns.App.db.ui.cleanup, nil)
+end)
+test("a held result shows the step's cleanup under it", function()
+    pausing()
+    local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Open your bags." }, expect = "Bags open.",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "bags opened" } }, cleanup = "Close your bags." }
+    local run, card = runPlan({ auto, manual("b") })
+    st.timers = {}
+    table.insert(_G.KeepThatDB.global.log, "bags opened")
+    T.ok(ns.Card.AutoSettle(), "recorded")
+    T.eq(card.result.text, "Passed")
+    T.ok(card.cleanup.shown); T.eq(card.cleanup.text, "Then: Close your bags.")
+end)
 test("a collapsed or hidden card does not pause on an automatic result", function()
     pausing()
     local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",

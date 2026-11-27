@@ -679,6 +679,16 @@ class NativeText(unittest.TestCase):
         self.assertEqual(st["title"], "Run /kt log")
         self.assertEqual(ct.validate(p), [])
 
+    def test_cleanup_is_shown_text_so_its_markdown_is_converted_too(self):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        st["cleanup"] = "Type `/kt reset`."
+        self.assertEqual(ct.validate(p), [], "a plan that validated before #247 still does")
+        self.assertEqual(ct.cleanup_warnings(p), ["a.2: markdown in cleanup: use native color codes (|cffffd100text|r), not backticks or **"])
+        ct.nativize(p)
+        self.assertEqual(st["cleanup"], "Type |cff99ccff/kt reset|r.", "from-md converts it")
+        self.assertEqual(ct.cleanup_warnings(p), [])
+
     def test_shipped_plans_have_no_markdown(self):
         import glob
         for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]:
@@ -3152,7 +3162,8 @@ class ReportTable(unittest.TestCase):
 class Names(unittest.TestCase):
     """The old names are gone. Archived changes, vendored libraries and past changelog entries keep them as history."""
     OLD = re.compile("|".join(["w" + "tt", "Test" + "That"]), re.I)   # built from pieces so this file does not match itself
-    SKIP = ("openspec/changes/archive/", "CheckThat/Libs/", "CHANGELOG.md")
+    SKIP = ("openspec/changes/archive/", "CheckThat/Libs/", "CHANGELOG.md",
+            "CheckThat/Model/BuiltIn.lua")   # a compressed plan string: three letters can match by chance
 
     def test_no_tracked_file_uses_an_old_name(self):
         out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout

@@ -736,6 +736,27 @@ function App.JudgeAtStart(run, ctx, ids)
     return n
 end
 
+-- A step's cleanup (#247). After a result, the card shows it until the next step has a result. Saved in ui.cleanup,
+-- so a reload keeps it; Undo or Redo of that step hides it again.
+local FINAL = { pass = true, partial = true, fail = true, skip = true }
+local function rememberCleanup(run, step, a)
+    if not (App.db and run and step and a and FINAL[a.verdict]) then return end
+    App.db.ui.cleanup = step.cleanup and { run = run.runId, step = step.id } or nil
+    if step.cleanup then App.Log(("cleanup of %s shown next"):format(step.id)) end
+end
+
+-- The cleanup text to show now and the step it belongs to, or nil.
+function App.Cleanup()
+    local c = App.db and App.db.ui.cleanup
+    if type(c) ~= "table" then return nil end
+    local run, ctx = App.Current()
+    if not (run and ctx and run.runId == c.run and not run.endedAt) then return nil end
+    local rec = run.steps[c.step or ""]
+    local from = rec and FINAL[rec.verdict] and ns.Run.stepOf(ctx, c.step)
+    if not (from and type(from.cleanup) == "string") then return nil end
+    return from.cleanup, from
+end
+
 function App.Verdict(verdict, note)
     local run, ctx, step = App.Current()
     if run and run.endedAt then return nil, L["This run has ended. Start the plan again for a new run."] end
@@ -755,7 +776,7 @@ function App.Verdict(verdict, note)
         ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.Check()
     end
     local a, err = ns.Run.Verdict(run, ctx, step.id, verdict, note)
-    if a then logResult(step, a) end
+    if a then logResult(step, a); rememberCleanup(run, step, a) end
     return a, err, step
 end
 
@@ -774,7 +795,7 @@ function App.AutoSettle(note)
     ctx.now = now(App)
     if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample(); ns.Errors.Check() end
     local a = ns.Run.AutoSettle(run, ctx, step.id, note)
-    if a then logResult(step, a) end
+    if a then logResult(step, a); rememberCleanup(run, step, a) end
     return a, step
 end
 
