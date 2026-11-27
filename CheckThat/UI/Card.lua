@@ -1085,7 +1085,7 @@ function Card.ChecksText(items, reserve, left, blind)
     end
     if allMet or reserve then lines[#lines + 1] = L["|cff66ff66All checks detected. Press Pass.|r"] end
     if blind then lines[#lines + 1] = L["|cffffaa00CheckThat cannot detect new Lua errors.|r"] end
-    if left then lines[#lines + 1] = L["CheckThat records the result in %d s."]:format(left) end
+    if left then lines[#lines + 1] = "\n" .. L["CheckThat records the result in %d s."]:format(left) end -- a blank line sets the countdown apart
     return table.concat(lines, "\n")
 end
 

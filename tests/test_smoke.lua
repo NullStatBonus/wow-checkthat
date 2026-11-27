@@ -201,6 +201,7 @@ test("smoke: an auto step passes by itself, shows its countdown and waits while 
     local card = _G.CheckThatCard
     T.eq(card.checksHead.text, "CheckThat checks and records the result", "auto heading")
     T.ok(card.checks.text:find("records the result in 30 s"), "countdown: " .. tostring(card.checks.text))
+    T.ok(card.checks.text:find("|r\n\nCheckThat records the result in 30 s", 1, true), "a blank line above the countdown: " .. tostring(card.checks.text))
     T.eq(ns.Card.AutoSettle(), nil, "nothing recorded before the line")
     KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "bags opened"
     T.ok(ns.Card.AutoSettle(), "recorded when the line appears")
