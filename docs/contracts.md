@@ -107,6 +107,18 @@ Decisions, by part (the follow-up issues carry the build work):
 - **Setup and teardown: build with the plan format.** Mocks restore after the run today; per-step and per-category setup needs plan fields.
 - **Login self-check: defer.** A separate, opt-in setting.
 
+## Vendor, trainer and auction calls (source-reviewed 2026-11-26)
+
+Read from Blizzard's UI source for each client with the wow-api source search. The generated API documentation lists only namespaced `C_` calls, so it does not show the legacy globals below. The Forever source tree ships both the Vanilla and the Mainline interface files, so a call that appears there may not be the one the running client uses. CTProbe's armed capture records what exists in game; this table says what to expect.
+
+| Window | Era (1.15.9) | Forever (1.60.1) |
+| --- | --- | --- |
+| Vendor | `GetMerchantNumItems()`, `GetMerchantItemInfo(index)` returns name, texture, price, stackCount, numAvailable, isPurchasable, isUsable, extendedCost, currencyID, and `GetMerchantItemLink(index)`. | The same three globals appear in both interface trees. `C_MerchantFrame.GetItemInfo(index)` (returns a table) appears in the Mainline tree. |
+| Trainer | `GetNumTrainerServices()`, `GetTrainerServiceInfo(index)` returns name, subText, type, isExpanded. `GetTrainerServiceCost(index)` and `GetTrainerServiceSkillReq(index)`. | The Mainline tree reads `GetTrainerServiceInfo(index)` as name, type, texture, reqLevel, subText, category. This is a different order from Era. `GetNumTrainerServices()`, `GetTrainerServiceCost` and `GetTrainerServiceSkillReq` appear. |
+| Auction house | `GetNumAuctionItems("list")` and `GetAuctionItemInfo("list", index)` returns name, texture, count, quality, canUse, level, levelColHeader, minBid, minIncrement, buyoutPrice, bidAmount, highBidder, bidderFullName, owner, ownerFullName, saleStatus, itemId, hasAllInfo. | No `GetAuctionItemInfo` in the source. The interface uses `C_AuctionHouse` (`GetBrowseResults`, `GetNumItemSearchResults`, `GetItemSearchResultInfo`), which return tables. |
+
+Item data: `C_Item.RequestLoadItemDataByID` exists on both clients. A recording keeps no table return, so the Forever auction calls and `C_MerchantFrame.GetItemInfo` are not recorded as they stand.
+
 ## Pending in-game
 
 - **Protected actions with a tainted global (#98).** Not tried: the probe only reads `issecurevariable`. No `ADDON_ACTION_BLOCKED` was observed because none was provoked. Measuring whether a tainted `GetMoney` blocks a vendor purchase needs a Blizzard path that reads it and then calls a protected function. It does not change the decision, which already drops in-game mocks.
