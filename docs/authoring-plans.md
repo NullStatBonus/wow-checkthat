@@ -289,6 +289,7 @@ Write them in a step's `assertions`. See [Feature reference](features.md#unit-te
 logs:
   facts: { global: CheckThatDB, path: global.facts, format: strings, cap: 300 }
   errors: { global: CheckThatDB, path: global.errors, format: strings, quiet: true, cap: 100 }
+  blocked: { global: CheckThatDB, path: global.blocked, format: strings, quiet: true, cap: 50 }   # "nothing was blocked": absent: true
 # in a step:
     assertions:
     - kind: fact            # a value in a range
