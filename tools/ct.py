@@ -675,6 +675,8 @@ def merge_sections(plan):
                 st["setup"] = (ssetup + " " + st["setup"]).strip() if st.get("setup") else ssetup
             if scl and "clients" not in st:
                 st["clients"] = scl
+            if st.get("clients"):   # the short names (#252) compile to the long ones, which every CheckThat reads
+                st["clients"] = list(dict.fromkeys(CLIENT_ALIAS.get(c, c) for c in st["clients"]))
         sec.pop("clients", None)
     return out
 
@@ -1111,6 +1113,7 @@ def run_luajit(cmd, cwd=None, timeout=None):
 
 
 CLIENTS = (("forever-camelot", "16000"), ("classic-era", "11507"))
+CLIENT_ALIAS = {"era": "classic-era", "forever": "forever-camelot"}   # mirrors Plan.CLIENT_ALIAS (#252)
 
 
 def replay_flow(plan, hooks=None, requirements=None):

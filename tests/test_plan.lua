@@ -12,6 +12,20 @@ local function good()
             { id = "a.2", title = "B", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } },
         } } } }
 end
+test("the short client names era and forever are accepted and match their clients (#252)", function()
+    local p = good()
+    p.sections[1].steps[1].clients = { "era" }
+    T.same(ns.Plan.Validate(p), {})
+    T.eq(#(ns.Plan.Steps(p, "classic-era")), #(ns.Plan.Steps(good(), "classic-era")), "era runs where classic-era does")
+    for _, e in ipairs((ns.Plan.Steps(p, "forever-camelot"))) do T.ok(e.step.id ~= "a.1", "not on forever") end
+    p.sections[1].steps[1].clients = { "tbc" }
+    T.ok(ns.Plan.Validate(p)[1]:find("unknown client tbc"))
+end)
+test("an unknown client runs only the steps without a client tag", function()
+    local all = 0
+    for _, sec in ipairs(good().sections) do for _, st in ipairs(sec.steps) do if not st.clients then all = all + 1 end end end
+    T.eq(#(ns.Plan.Steps(good(), nil)), all)
+end)
 test("needs: a plan of a higher revision is refused with that reason alone, before keys this version does not know", function()
     local p = good(); p.needs = ns.Plan.REV + 1; p.sections[1].steps[1].within = { seconds = 2 }; p.sections[1].steps[2].action.kind = "teleport"
     T.same(ns.Plan.Validate(p), { ("needs plan revision %d; this version reads up to %d"):format(ns.Plan.REV + 1, ns.Plan.REV) })
