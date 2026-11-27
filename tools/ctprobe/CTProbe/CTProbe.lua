@@ -462,7 +462,9 @@ capture = function(win, e)
         if win == "trainer" then
             local f = {}
             for _, t in ipairs(FILTERS) do f[#f + 1] = t .. "=" .. tostring((try("GetTrainerServiceTypeFilter", t))) end
-            say(("window trainer: no rows (filter %s); tick Unavailable and Used in the trainer's filter"):format(table.concat(f, " ")))
+            local shown = try("GetTrainerServiceTypeFilter", "available") or try("GetTrainerServiceTypeFilter", "unavailable")
+            if shown then say(("window trainer: no rows yet (filter %s); waiting for the next update"):format(table.concat(f, " "))) -- the first event comes before the rows
+            else say(("window trainer: no rows (filter %s); tick Available and Unavailable in the trainer's filter"):format(table.concat(f, " "))) end
         else say(("window %s: no rows yet; waiting for the next update"):format(win)) end
         return
     end

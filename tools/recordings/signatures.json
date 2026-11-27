@@ -164,24 +164,18 @@
      "isTradeskill"
     ],
     "types": [
-     "number"
+     "boolean"
     ],
-    "oneornil": [
-     1
-    ],
-    "ref": "Blizzard_TrainerUI.lua:181 (read for truth only)"
+    "ref": "measured 2026-11-27 (CTProbe v8): false at a class trainer on both clients; the trainer windows read it for truth only"
    },
    "forever": {
     "returns": [
      "isTradeskill"
     ],
     "types": [
-     "number"
+     "boolean"
     ],
-    "oneornil": [
-     1
-    ],
-    "ref": "Mainline/Blizzard_TrainerUI.lua:871 (read for truth only)"
+    "ref": "measured 2026-11-27 (CTProbe v8): false at a class trainer on both clients; the trainer windows read it for truth only"
    }
   },
   "GetTrainerServiceTypeFilter": {
@@ -190,24 +184,18 @@
      "shown"
     ],
     "types": [
-     "number"
+     "boolean"
     ],
-    "oneornil": [
-     1
-    ],
-    "ref": "Blizzard_TrainerUI (read for truth only)"
+    "ref": "measured 2026-11-27 (CTProbe v8): true, true, false for available, unavailable, used"
    },
    "forever": {
     "returns": [
      "shown"
     ],
     "types": [
-     "number"
+     "boolean"
     ],
-    "oneornil": [
-     1
-    ],
-    "ref": "Blizzard_TrainerUI (read for truth only)"
+    "ref": "measured 2026-11-27 (CTProbe v8): true, true, false for available, unavailable, used"
    }
   },
   "GetMoney": {

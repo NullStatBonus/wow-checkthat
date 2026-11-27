@@ -447,12 +447,12 @@ test("the committed recordings replay the vendor, trainer and auction scenes of 
         GetTrainerServiceCost = { recording = "class:GetTrainerServiceCost(3)" },
         GetAuctionItemLink = { recording = "GetAuctionItemLink(list,1)" },
         GetMerchantItemInfo = { recording = "gear:GetMerchantItemInfo(2)" } }, steps = {
-        call("trainer_row", 2, { "Heroic Strike", "Rank 2", "available" }), call("trainer_row", 3, { "Journeyman Herbalist", "nil", "unavailable" }),
-        call("trainer_cost", 3, { 1000 }), call("auction_link", 1, { "|cff0070dd|Hitem:13146::::::::::::::::::|h[Shell Launcher Shotgun]|h|r" }),
+        call("trainer_row", 2, { "Mend Pet", "nil", "unavailable" }), call("trainer_row", 3, { "Journeyman Herbalist", "nil", "unavailable" }),
+        call("trainer_cost", 3, { 1200 }), call("auction_link", 1, { "|cff0070dd|Hitem:13146::::::::::::::::::|h[Shell Launcher Shotgun]|h|r" }),
         call("vendor_price", 2, { 5065 }) } })
     for i, s in ipairs(era.steps) do T.ok(s.ok, "era step " .. i .. ": " .. tostring(s.detail)) end
     local forever = run({ toc = REC_FOREVER, level = 5, mocks = { GetTrainerServiceInfo = { recording = "class:GetTrainerServiceInfo(4)" } },
-        steps = { call("trainer_row", 4, { "Battle Shout", "available", 132333 }) } })
+        steps = { call("trainer_row", 4, { "Slow Fall", "unavailable", 135992 }) } })
     T.ok(forever.ok, "forever: " .. tostring(forever.steps[1] and forever.steps[1].detail))
 end)
 
@@ -472,13 +472,13 @@ test("a table return replays as a table, each call gets its own copy, and a tabl
     for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
 end)
 
-test("the committed Forever vendor and auction entries replay as tables", function()
+test("the committed Forever vendor and auction entries (measured 2026-11-27) replay as tables", function()
     local function call(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
     local r = run({ toc = REC_FOREVER, level = 5, mocks = {
         ["C_MerchantFrame.GetItemInfo"] = { recording = "C_MerchantFrame.GetItemInfo(1)" },
         ["C_AuctionHouse.GetCommoditySearchResultInfo"] = { { recording = "C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)" }, { recording = "C_AuctionHouse.GetCommoditySearchResultInfo(2589,2)" } },
         ["C_AuctionHouse.GetBrowseResults"] = { recording = "C_AuctionHouse.GetBrowseResults()" } }, steps = {
-        call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }), call("commodity_price", { 2589, 2 }, { 30, 0 }), call("browse_count", {}, { 1 }) } })
+        call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }), call("commodity_price", { 2589, 2 }, { 27, 0 }), call("browse_count", {}, { 20 }) } })
     for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
 end)
 

@@ -405,6 +405,22 @@ class WindowRecordings(unittest.TestCase):
         self.assertNotIn("Seller", json.dumps(rec)); self.assertNotIn("Bidder", json.dumps(rec))
         self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["returns"][0], "|cffffffff|Hitem:2092::::::::::::::|h[Worn Dagger]|h|r")
 
+    def test_a_run_that_records_a_scene_replaces_its_derived_rows(self):
+        out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
+        authored = lambda api, args: {"api": api, "args": args, "returns": [1], "n": 1, "window": "merchant", "source": {"kind": "authored", "ref": "t"}}
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"GetMerchantItemLink(9)": authored("GetMerchantItemLink", [9]),
+                                              "class:GetTrainerServiceInfo(9)": dict(authored("GetTrainerServiceInfo", [9]), window="trainer"),
+                                              "GetTrainerServiceInfo(9)": dict(authored("GetTrainerServiceInfo", [9]), window="trainer")}}, f)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            ct.main(["recordings", "--src", self.make(), "-o", out, "--merge"])
+        with open(os.path.join(out, "era.json")) as f: calls = json.load(f)["calls"]
+        self.assertNotIn("GetMerchantItemLink(9)", calls, "the run recorded the plain vendor scene, so its authored row goes")
+        self.assertIn("replaced GetMerchantItemLink(9)", o.getvalue())
+        self.assertIn("class:GetTrainerServiceInfo(9)", calls, "a scene the run did not record keeps its authored rows")
+        self.assertIn("GetTrainerServiceInfo(9)", calls, "the plain trainer scene too: its only call raised an error")
+
     def test_a_new_run_names_the_labels_it_drops_and_merge_keeps_them(self):
         out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
         with open(os.path.join(out, "era.json"), "w") as f:

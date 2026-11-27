@@ -1916,6 +1916,14 @@ def cmd_recordings(a):
     if os.path.isfile(path):
         with open(path, encoding="utf-8") as f:
             old = (json.load(f).get("calls") or {})
+    def scene_of(label, call):
+        m = re.match(r"^([a-z]+):", label)
+        return (call.get("window"), m.group(1) if m else "")
+    recorded = {scene_of(label, call) for label, call in rec["calls"].items() if call.get("window")}
+    replaced = sorted(label for label, call in old.items() if label not in rec["calls"] and call.get("source") and call.get("window")
+                      and scene_of(label, call) in recorded)   # an authored row of a scene the run recorded is not the game's: it goes
+    for label in replaced:
+        del old[label]
     dropped = sorted(set(old) - set(rec["calls"]))
     sigs, structures = load_signatures(True)
     differs = [(label, p) for label, call in sorted(rec["calls"].items()) for p in signature_problems(client, label, call, sigs, structures)]
@@ -1935,6 +1943,8 @@ def cmd_recordings(a):
     print("recordings: %d calls for %s (build %s) -> %s" % (len(rec["calls"]), client, rec["build"], path))
     for label, why in skipped:
         print("  left out  %s: %s" % (label, why))
+    for label in replaced:
+        print("  replaced %s: the run recorded its scene, so the %s entry goes" % (label, "derived"))
     for label, kind in confirmed:
         print("  confirmed %s: the game agrees with the %s entry in shape; the game's values replace it" % (label, kind))
     for label, kind in changed:

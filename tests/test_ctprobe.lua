@@ -402,8 +402,13 @@ test("v7: a trainer with no rows or only headers stores nothing and says to chan
     local n = 0
     _G.GetNumTrainerServices = function() return n end
     _G.GetTrainerServiceInfo = function(i) return "Cat" .. i, "", "header" end
+    _G.GetTrainerServiceTypeFilter = function(t) return t ~= "used" end
     SlashCmdList.CTPROBE("record arm"); fire("TRAINER_SHOW")
-    T.ok(has("tick Unavailable and Used"), "the empty list names the filter")
+    T.ok(has("no rows yet (filter"), "an empty list with the filter on waits: the rows come one update later")
+    _G.GetTrainerServiceTypeFilter = function() return false end
+    fire("TRAINER_UPDATE")
+    T.ok(has("tick Available and Unavailable"), "an empty list with the filter off names the filter")
+    _G.GetTrainerServiceTypeFilter = nil
     T.eq(CTProbeDB.fixtures["GetNumTrainerServices()"], nil, "no 0 count ships"); T.eq(CTProbeDB.armed.class, true)
     n = 2; fire("TRAINER_UPDATE")
     T.ok(has("only header rows"), "headers alone are not a recording"); T.eq(CTProbeDB.armed.class, true)
