@@ -302,7 +302,8 @@ class Recordings(unittest.TestCase):
         _, path = self.make()
         link = ct.probe_recordings(path)[1]["calls"]["C_Item.GetItemInfo(6948)"]["returns"][1]
         self.assertEqual(link, "|cnIQ1:|Hitem:6948::::::::::::::|h[Hearthstone]|h|r")
-        self.assertEqual(ct.anonymize_link("|Hitem:19019:0:0:0:0:0:0:0:60:261|h[x]|h"), "|Hitem:19019:0:0:0:0:0:0:0::|h[x]|h")
+        self.assertEqual(ct.anonymize_link("|Hitem:19019:0:0:0:0:0:0:0:60:261|h[x]|h"), "|Hitem:19019:0:0:0:0:0:0:::|h[x]|h")
+        self.assertEqual(ct.anonymize_link("|Hitem:15210:0:0:0:0:0:1207:827654321:40:0|h[x]|h"), "|Hitem:15210:0:0:0:0:0:1207:::|h[x]|h", "the uniqueID of a random-suffix copy is blanked; the suffix stays")
         self.assertEqual(ct.anonymize_link(5), 5); self.assertEqual(ct.anonymize_link("plain"), "plain")
 
     def test_the_command_writes_the_client_file_and_a_file_with_no_fixtures_is_an_error(self):
@@ -351,9 +352,9 @@ class WindowRecordings(unittest.TestCase):
         self.assertEqual(rec["calls"]["gear:GetMoney()"]["returns"], [98765], "a balance recorded at a window is kept")
         self.assertIn("not a call", dict(skipped)["Gear:GetMoney()"], "a scene name is lower case")
 
-    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_3(self):
+    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_4(self):
         client, rec, skipped = ct.probe_recordings(self.make())
-        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 3))
+        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 4))
         self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["window"], "auction")
         self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["args"], ["list"], "a plain word argument reads back")
         self.assertEqual(rec["calls"]["GetAuctionItemInfo(list,1)"]["args"], ["list", 1])
@@ -369,6 +370,76 @@ class WindowRecordings(unittest.TestCase):
         self.assertEqual(r[11:15], ["", "", "", ""], "highBidder, bidderFullName, owner and ownerFullName are blank")
         self.assertNotIn("Seller", json.dumps(rec)); self.assertNotIn("Bidder", json.dumps(rec))
         self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["returns"][0], "|cffffffff|Hitem:2092::::::::::::::|h[Worn Dagger]|h|r")
+
+    def test_a_new_run_names_the_labels_it_drops_and_merge_keeps_them(self):
+        out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"OldCall(1)": {"api": "OldCall", "args": [1], "returns": [1], "n": 1}, "GetLocale()": {"api": "GetLocale", "args": [], "returns": ["deDE"], "n": 1}}}, f)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            self.assertEqual(ct.main(["recordings", "--src", self.make(), "-o", out]), 0)
+        self.assertIn("dropped  OldCall(1)", o.getvalue())
+        with open(os.path.join(out, "era.json")) as f: self.assertNotIn("OldCall(1)", json.load(f)["calls"])
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"OldCall(1)": {"api": "OldCall", "args": [1], "returns": [1], "n": 1}, "GetLocale()": {"api": "GetLocale", "args": [], "returns": ["deDE"], "n": 1}}}, f)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ct.main(["recordings", "--src", self.make(), "-o", out, "--merge"]), 0)
+        with open(os.path.join(out, "era.json")) as f: calls = json.load(f)["calls"]
+        self.assertIn("OldCall(1)", calls, "--merge keeps a call this run did not record")
+        self.assertEqual(calls["GetLocale()"]["returns"], ["enUS"], "and this run wins where both have one")
+
+    def test_a_call_that_does_not_fit_its_signature_is_named(self):
+        sigs = {"GetX": {"era": {"returns": ["name", "flag", "count"], "types": ["string", "number", "number"], "nilable": [1], "oneornil": [2]}},
+                "GetItem": {"era": {"returns": ["a"], "types": ["string"], "emptyOk": True}}}
+        ok = {"api": "GetX", "n": 3, "returns": [False, 1, 5], "nils": [1]}
+        self.assertEqual(ct.signature_problems("era", "GetX()", ok, sigs), [], "a nil where nilable and a 1 where 1 or nil fit")
+        self.assertEqual(ct.signature_problems("era", "GetX()", dict(ok, nils=[1, 2], returns=[False, False, 5]), sigs), [], "nil fits a 1-or-nil")
+        self.assertIn("is nil", ct.signature_problems("era", "GetX()", dict(ok, nils=[3], returns=["a", 1, False]), sigs)[0])
+        self.assertIn("answers 1 or nil, got True", ct.signature_problems("era", "GetX()", dict(ok, returns=[False, True, 5]), sigs)[0])
+        self.assertIn("is a string, the signature says number", ct.signature_problems("era", "GetX()", dict(ok, returns=[False, 1, "5"]), sigs)[0])
+        self.assertIn("4 returns, the signature has 3", ct.signature_problems("era", "GetX()", dict(ok, n=4, returns=[False, 1, 5, 6]), sigs)[0])
+        self.assertEqual(ct.signature_problems("forever", "GetX()", dict(ok, n=9), sigs), [], "no signature for the client: nothing to say")
+        self.assertEqual(ct.signature_problems("era", "GetItem(1)", {"api": "GetItem", "n": 0, "returns": []}, sigs), [], "an uncached item may return nothing")
+
+    def test_the_committed_recordings_fit_the_signatures_and_say_where_a_derived_call_came_from(self):
+        sigs = ct.load_signatures()
+        for client in ("era", "forever"):
+            with open(os.path.join(ROOT, "tools", "recordings", client + ".json")) as f: rec = json.load(f)
+            self.assertIn(rec.get("rev", 1), (1, 2, 3, 4))
+            for label, call in rec["calls"].items():
+                self.assertEqual(ct.signature_problems(client, label, call, sigs), [], "%s %s" % (client, label))
+                if call.get("window") or call.get("source"):
+                    self.assertIn(client, sigs.get(call["api"], {}), "%s %s: a window or derived call needs a signature" % (client, label))
+                src = call.get("source")
+                if src is not None:
+                    self.assertIn(src.get("kind"), ct.RECORDING_SOURCES, label)
+                    self.assertTrue(isinstance(src.get("ref"), str) and src["ref"].strip(), label + " names where it came from")
+        for api, per in sigs.items():
+            for client, s in per.items():
+                self.assertEqual(len(s["returns"]), len(s["types"]), api)
+                self.assertTrue(s.get("ref"), api + " names its source")
+                for i in (s.get("nilable") or []) + (s.get("oneornil") or []):
+                    self.assertTrue(1 <= i <= len(s["returns"]), api)
+
+    def test_a_run_confirms_or_flags_a_derived_entry_and_names_a_call_off_its_signature(self):
+        out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
+        derived = {"api": "GetMerchantItemLink", "args": [1], "returns": ["|Hitem:1|h"], "n": 1, "window": "merchant", "source": {"kind": "authored", "ref": "test"}}
+        changed = {"api": "GetLocale", "args": [], "returns": [5], "n": 1, "source": {"kind": "wiki", "ref": "test"}}
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"GetMerchantItemLink(1)": derived, "GetLocale()": changed}}, f)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            self.assertEqual(ct.main(["recordings", "--src", self.make(), "-o", out]), 0)
+        self.assertIn("confirmed GetMerchantItemLink(1): the game agrees with the authored entry", o.getvalue())
+        self.assertIn("changed  GetLocale(): the game differs from the wiki entry", o.getvalue())
+        with open(os.path.join(out, "era.json")) as f: self.assertNotIn("source", json.load(f)["calls"]["GetMerchantItemLink(1)"], "the game's entry replaces it")
+        bad = self.SV.replace('["GetMerchantItemLink(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "string"', '["GetMerchantItemLink(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 7 }, { ["type"] = "string"')
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, "CTProbe.lua"), "w") as f: f.write(bad)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            ct.main(["recordings", "--src", os.path.join(d, "CTProbe.lua"), "-o", out])
+        self.assertIn("differs from signature  GetMerchantItemLink(1): return 1 (link) is a number", o.getvalue())
 
     def test_a_recording_without_tags_still_loads(self):
         _, rec, _ = ct.probe_recordings(Recordings.make(Recordings(), None)[1])

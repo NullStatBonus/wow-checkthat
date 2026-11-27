@@ -11,6 +11,37 @@
     20
    ]
   },
+  "C_Item.GetItemInfo(1194)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    1194
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Bastard Sword",
+    "|cnIQ1:|Hitem:1194::::::::::::::::::|h[Bastard Sword]|h|r",
+    1,
+    4,
+    1,
+    "Weapon",
+    "Two-Handed Swords",
+    1,
+    "INVTYPE_2HWEAPON",
+    135276,
+    20,
+    2,
+    8,
+    0,
+    0,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
   "C_Item.GetItemInfo(12640)": {
    "api": "C_Item.GetItemInfo",
    "args": [
@@ -70,6 +101,68 @@
     false,
     ""
    ]
+  },
+  "C_Item.GetItemInfo(2131)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2131
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Shortsword",
+    "|cnIQ1:|Hitem:2131::::::::::::::::::|h[Shortsword]|h|r",
+    1,
+    3,
+    1,
+    "Weapon",
+    "One-Handed Swords",
+    1,
+    "INVTYPE_WEAPON",
+    135274,
+    10,
+    2,
+    7,
+    0,
+    0,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "C_Item.GetItemInfo(2134)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2134
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Hand Axe",
+    "|cnIQ1:|Hitem:2134::::::::::::::::::|h[Hand Axe]|h|r",
+    1,
+    4,
+    1,
+    "Weapon",
+    "One-Handed Axes",
+    1,
+    "INVTYPE_WEAPON",
+    132410,
+    16,
+    2,
+    0,
+    0,
+    0,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
   },
   "C_Item.GetItemInfo(6948)": {
    "api": "C_Item.GetItemInfo",
@@ -177,7 +270,7 @@
    "args": [],
    "n": 1,
    "returns": [
-    35
+    5
    ],
    "window": "trainer"
   },
@@ -186,9 +279,10 @@
    "args": [
     1
    ],
-   "n": 1,
+   "n": 2,
    "returns": [
-    50
+    10,
+    true
    ],
    "window": "trainer"
   },
@@ -197,9 +291,10 @@
    "args": [
     2
    ],
-   "n": 1,
+   "n": 2,
    "returns": [
-    50
+    500,
+    false
    ],
    "window": "trainer"
   },
@@ -208,9 +303,10 @@
    "args": [
     3
    ],
-   "n": 1,
+   "n": 2,
    "returns": [
-    100
+    5000,
+    false
    ],
    "window": "trainer"
   },
@@ -224,12 +320,12 @@
     5
    ],
    "returns": [
-    "Linen Belt",
+    "Apprentice Herbalism",
     "available",
-    132494,
+    136246,
     0,
     false,
-    "Belts"
+    ""
    ],
    "window": "trainer"
   },
@@ -243,12 +339,12 @@
     5
    ],
    "returns": [
-    "Simple Linen Boots",
-    "available",
-    132539,
+    "Journeyman Herbalism",
+    "unavailable",
+    136246,
     0,
     false,
-    "Shoes"
+    ""
    ],
    "window": "trainer"
   },
@@ -262,12 +358,45 @@
     5
    ],
    "returns": [
-    "Faction Banner",
-    "available",
-    132484,
+    "Expert Herbalism",
+    "unavailable",
+    136246,
     0,
     false,
-    "Camping"
+    ""
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(1)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(2)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(3)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    0
    ],
    "window": "trainer"
   },
@@ -277,9 +406,12 @@
     1
    ],
    "n": 3,
+   "nils": [
+    1
+   ],
    "returns": [
-    "Tailoring",
-    15,
+    false,
+    0,
     true
    ],
    "window": "trainer"
@@ -291,9 +423,9 @@
    ],
    "n": 3,
    "returns": [
-    "Tailoring",
-    20,
-    true
+    "Herbalism",
+    50,
+    false
    ],
    "window": "trainer"
   },
@@ -304,9 +436,9 @@
    ],
    "n": 3,
    "returns": [
-    "Tailoring",
-    20,
-    true
+    "Herbalism",
+    125,
+    false
    ],
    "window": "trainer"
   },
@@ -325,9 +457,445 @@
    "returns": [
     true
    ]
+  },
+  "class:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "returns": [
+    2500
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetNumTrainerServices()": {
+   "api": "GetNumTrainerServices",
+   "args": [],
+   "returns": [
+    4
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceCost(1)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    1
+   ],
+   "returns": [
+    0
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceCost(2)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    2
+   ],
+   "returns": [
+    100,
+    false
+   ],
+   "n": 2,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceCost(3)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    3
+   ],
+   "returns": [
+    1000,
+    false
+   ],
+   "n": 2,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceCost(4)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    4
+   ],
+   "returns": [
+    600,
+    false
+   ],
+   "n": 2,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceInfo(1)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    1
+   ],
+   "returns": [
+    "Arms",
+    "header",
+    132355,
+    0,
+    false,
+    ""
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceInfo(2)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    2
+   ],
+   "returns": [
+    "Heroic Strike",
+    "available",
+    132282,
+    8,
+    "Rank 2",
+    ""
+   ],
+   "n": 6,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceInfo(3)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    3
+   ],
+   "returns": [
+    "Heroic Strike",
+    "unavailable",
+    132282,
+    16,
+    "Rank 3",
+    ""
+   ],
+   "n": 6,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceInfo(4)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    4
+   ],
+   "returns": [
+    "Battle Shout",
+    "available",
+    132333,
+    12,
+    "Rank 2",
+    ""
+   ],
+   "n": 6,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceLevelReq(1)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    1
+   ],
+   "returns": [
+    0
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceLevelReq(2)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    2
+   ],
+   "returns": [
+    8
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceLevelReq(3)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    3
+   ],
+   "returns": [
+    16
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceLevelReq(4)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    4
+   ],
+   "returns": [
+    12
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceSkillReq(1)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceSkillReq(2)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    2
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceSkillReq(3)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    3
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceSkillReq(4)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    4
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceTypeFilter(available)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "available"
+   ],
+   "returns": [
+    1
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceTypeFilter(unavailable)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "unavailable"
+   ],
+   "returns": [
+    1
+   ],
+   "n": 1,
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:GetTrainerServiceTypeFilter(used)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "used"
+   ],
+   "returns": [
+    false
+   ],
+   "n": 1,
+   "nils": [
+    1
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "class:IsTradeskillTrainer()": {
+   "api": "IsTradeskillTrainer",
+   "args": [],
+   "returns": [
+    false
+   ],
+   "n": 1,
+   "nils": [
+    1
+   ],
+   "window": "trainer",
+   "source": {
+    "kind": "authored",
+    "ref": "class trainer rows in the shape of tools/recordings/signatures.json (Blizzard_TrainerUI); the spell names, ranks and levels are a Warrior trainer's, the costs, money and textures are made up; not measured"
+   }
+  },
+  "gear:GetMerchantItemLink(1)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:2131:::::::::::14:::::::|h[Shortsword]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(2)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:1194:::::::::::14:::::::|h[Bastard Sword]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(3)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:2134:::::::::::14:::::::|h[Hand Axe]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantNumItems()": {
+   "api": "GetMerchantNumItems",
+   "args": [],
+   "n": 1,
+   "returns": [
+    16
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    33075
+   ],
+   "window": "merchant"
+  },
+  "trainer:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    33075
+   ],
+   "window": "trainer"
   }
  },
  "client": "forever",
  "format": 1,
- "rev": 2
+ "rev": 4
 }

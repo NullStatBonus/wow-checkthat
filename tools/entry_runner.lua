@@ -25,7 +25,11 @@ Runner.LEVEL = 6
 Runner.MOCKABLE = {}
 for _, n in ipairs({ "GetItemInfo", "GetItemCount", "C_Item.GetItemInfo", "C_Item.GetItemCount", "GetMoney", "GetTime",
     "UnitName", "IsInGuild", "GetNumGroupMembers", "GetContainerNumFreeSlots", "C_Container.GetContainerNumFreeSlots",
-    "C_Container.GetContainerItemInfo" }) do Runner.MOCKABLE[n] = true end
+    "C_Container.GetContainerItemInfo",
+    -- the read-only vendor, trainer and auction window calls CTProbe records (#240); the calls that buy, learn or bid stay off the list
+    "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemID", "GetNumTrainerServices", "GetTrainerServiceInfo",
+    "GetTrainerServiceCost", "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "IsTradeskillTrainer", "GetTrainerServiceTypeFilter",
+    "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink" }) do Runner.MOCKABLE[n] = true end
 
 local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
 

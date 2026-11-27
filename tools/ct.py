@@ -1718,20 +1718,56 @@ def sv_json(path):
 
 
 RECORDING_FORMAT = 1
-RECORDING_REV = 3   # 2: a call may carry "window". 3: a label may start with a scene name ("gear:GetMerchantItemInfo(1)"). format stays 1, because a released runner rejects any other value.
+RECORDING_REV = 4   # 2: a call may carry "window". 3: a label may start with a scene name ("gear:GetMerchantItemInfo(1)"). 4: a call may carry "source"
+                    # (not recorded in game: taken from Blizzard source, the wiki, a game-data table, or authored). format stays 1, because a released runner rejects any other value.
+RECORDING_SOURCES = ("source", "wiki", "database", "authored")
+SIGNATURES = os.path.join(ROOT, "tools", "recordings", "signatures.json")
+
+def _rtype(v):
+    return "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float)) else "string" if isinstance(v, str) else type(v).__name__
+
+def signature_problems(client, label, call, sigs):
+    """What in a recorded call does not fit tools/recordings/signatures.json for this client: more returns than the call has, a nil where
+    none may be, a 1-or-nil answer that is something else, or a value of another type. [] when it fits or the api has no signature."""
+    s = (sigs.get(call.get("api")) or {}).get(client)
+    if not s:
+        return []
+    n, names, types = call.get("n", 0), s["returns"], s["types"]
+    if n == 0 and s.get("emptyOk"):
+        return []
+    out = []
+    if n > len(names):
+        out.append("%d returns, the signature has %d" % (n, len(names)))
+    nils, may_nil, one = set(call.get("nils") or []), set(s.get("nilable") or []), set(s.get("oneornil") or [])
+    for i, v in enumerate(call.get("returns") or [], 1):
+        if i > len(names):
+            break
+        if i in nils:
+            if i not in may_nil and i not in one:
+                out.append("return %d (%s) is nil" % (i, names[i - 1]))
+        elif i in one:
+            if v != 1 or isinstance(v, bool):
+                out.append("return %d (%s) answers 1 or nil, got %r" % (i, names[i - 1], v))
+        elif _rtype(v) != types[i - 1]:
+            out.append("return %d (%s) is a %s, the signature says %s" % (i, names[i - 1], _rtype(v), types[i - 1]))
+    return out
+
+def load_signatures():
+    with open(SIGNATURES, encoding="utf-8") as f:
+        return json.load(f)["apis"]
 RECORDING_WINDOWS = ("merchant", "trainer", "auction")
 # Returns that name another player: 1-based positions, blanked in a recording. GetAuctionItemInfo: highBidder, bidderFullName, owner, ownerFullName.
 REDACTED_RETURNS = {"GetAuctionItemInfo": (12, 13, 14, 15)}
 ITEM_LINK = re.compile(r"\|Hitem:([^|]*)\|h")
 
 def anonymize_link(value):
-    """An item link carries the looking player's level and specialization (fields 9 and 10 after the item id). A recording keeps the item and
-    empties those two fields, so it names no character."""
+    """An item link carries the looking player's level and specialization (fields 9 and 10 after the item id) and, on a random-suffix item, a
+    uniqueID (field 8) that tells one copy from another. A recording keeps the item and empties those three fields, so it names no character."""
     if not isinstance(value, str):
         return value
     def blank(m):
         parts = m.group(1).split(":")
-        for i in (8, 9):
+        for i in (7, 8, 9):
             if i < len(parts):
                 parts[i] = ""
         return "|Hitem:" + ":".join(parts) + "|h"
@@ -1802,11 +1838,37 @@ def cmd_recordings(a):
     out = a.out or os.path.join(ROOT, "tools", "recordings")
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, client + ".json")
+    old = {}
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            old = (json.load(f).get("calls") or {})
+    dropped = sorted(set(old) - set(rec["calls"]))
+    sigs = load_signatures()
+    differs = [(label, p) for label, call in sorted(rec["calls"].items()) for p in signature_problems(client, label, call, sigs)]
+    confirmed, changed = [], []
+    for label, call in sorted(rec["calls"].items()):
+        was = old.get(label)
+        if not (was and was.get("source")):
+            continue
+        same = (was.get("n"), sorted(was.get("nils") or []), [_rtype(v) for v in was.get("returns") or []]) == \
+               (call.get("n"), sorted(call.get("nils") or []), [_rtype(v) for v in call.get("returns") or []])
+        (confirmed if same else changed).append((label, was["source"].get("kind")))
+    if a.merge:
+        for label in dropped:
+            rec["calls"][label] = old[label]
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(rec, f, indent=1, sort_keys=True); f.write("\n")
     print("recordings: %d calls for %s (build %s) -> %s" % (len(rec["calls"]), client, rec["build"], path))
     for label, why in skipped:
         print("  left out  %s: %s" % (label, why))
+    for label, kind in confirmed:
+        print("  confirmed %s: the game agrees with the %s entry in shape; the game's values replace it" % (label, kind))
+    for label, kind in changed:
+        print("  changed  %s: the game differs from the %s entry in count, nils or types; check the signature" % (label, kind))
+    for label, why in differs:
+        print("  differs from signature  %s: %s" % (label, why))
+    for label in dropped:
+        print(("  kept     %s: in the old file, not in this run (--merge)" if a.merge else "  dropped  %s: in the old file, not in this run; --merge keeps it") % label)
     return 0
 
 
@@ -3286,7 +3348,7 @@ def main(argv=None):
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
-    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)")
+    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")

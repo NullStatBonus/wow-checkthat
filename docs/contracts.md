@@ -109,13 +109,13 @@ Decisions, by part (the follow-up issues carry the build work):
 
 ## Vendor, trainer and auction calls (source-reviewed 2026-11-26)
 
-Read from Blizzard's UI source for each client with the wow-api source search. The generated API documentation lists only namespaced `C_` calls, so it does not show the legacy globals below. The Forever source tree ships both the Vanilla and the Mainline interface files, so a call that appears there may not be the one the running client uses. CTProbe's armed capture records what exists in game; this table says what to expect.
+Read from Blizzard's UI source for each client with the wow-api source search. The generated API documentation lists the namespaced `C_` calls and, on Forever, a few legacy globals such as `GetMoney`; it does not show most of the globals below. The Forever source tree ships both the Vanilla and the Mainline interface files, and `Blizzard_UIPanels_Game.toc` loads the Vanilla files only for the vanilla game type, so a call that appears only in the Vanilla tree is not the one Forever uses. Which functions a client has comes from the census (`tools/clients/`). CTProbe's armed capture records what exists in game; this table says what to expect.
 
 | Window | Era (1.15.9) | Forever (1.60.1) |
 | --- | --- | --- |
-| Vendor | `GetMerchantNumItems()`, `GetMerchantItemInfo(index)` returns name, texture, price, stackCount, numAvailable, isPurchasable, isUsable, extendedCost, currencyID, and `GetMerchantItemLink(index)`. | The same three globals appear in both interface trees. `C_MerchantFrame.GetItemInfo(index)` (returns a table) appears in the Mainline tree. |
+| Vendor | `GetMerchantNumItems()`, `GetMerchantItemInfo(index)` returns name, texture, price, stackCount, numAvailable, isPurchasable, isUsable, extendedCost, currencyID, and `GetMerchantItemLink(index)`. | `GetMerchantNumItems` and `GetMerchantItemLink` exist. `GetMerchantItemInfo` appears only in the Vanilla tree, which Forever does not load, and is a nil global in game. The Mainline vendor uses `C_MerchantFrame.GetItemInfo(index)` (a table of 11 fields) and `GetMerchantItemID(index)`. |
 | Trainer | `GetNumTrainerServices()`, `GetTrainerServiceInfo(index)` returns name, subText, type, isExpanded. `GetTrainerServiceCost(index)` and `GetTrainerServiceSkillReq(index)`. | The Mainline tree reads `GetTrainerServiceInfo(index)` as name, type, texture, reqLevel, subText, category. This is a different order from Era. `GetNumTrainerServices()`, `GetTrainerServiceCost` and `GetTrainerServiceSkillReq` appear. |
-| Auction house | `GetNumAuctionItems("list")` and `GetAuctionItemInfo("list", index)` returns name, texture, count, quality, canUse, level, levelColHeader, minBid, minIncrement, buyoutPrice, bidAmount, highBidder, bidderFullName, owner, ownerFullName, saleStatus, itemId, hasAllInfo. | No `GetAuctionItemInfo` in the source. The interface uses `C_AuctionHouse` (`GetBrowseResults`, `GetNumItemSearchResults`, `GetItemSearchResultInfo`), which return tables. |
+| Auction house | `GetNumAuctionItems("list")` and `GetAuctionItemInfo("list", index)` returns name, texture, count, quality, canUse, level, levelColHeader, minBid, minIncrement, buyoutPrice, bidAmount, highBidder, bidderFullName, owner, ownerFullName, saleStatus, itemId, hasAllInfo. | No `GetAuctionItemInfo` or `GetAuctionItemLink`, and `AUCTION_ITEM_LIST_UPDATE` is not an event. The interface uses `C_AuctionHouse` (`GetBrowseResults`, `GetNumItemSearchResults`, `GetItemSearchResultInfo`), which return tables. |
 
 Measured in game on 2026-11-26 with CTProbe v4 armed capture (Era 1.15.9.70576, Forever 1.60.1.71139):
 
@@ -128,7 +128,13 @@ Measured in game on 2026-11-26 with CTProbe v4 armed capture (Era 1.15.9.70576, 
 
 Item data: `C_Item.RequestLoadItemDataByID` exists on both clients. A recording keeps no table return, so the Forever auction calls and `C_MerchantFrame.GetItemInfo` are not recorded as they stand.
 
-Added for CTProbe v5 (source-reviewed 2026-11-27, #240): `GetAuctionItemLink("list", index)` and `GetTrainerServiceLevelReq(index)` appear in the Era source and not in the Forever source; Forever's `GetTrainerServiceInfo` carries the required level itself. `IsTradeskillTrainer()` appears in both, and CTProbe uses it to tell a class trainer from a profession trainer. `C_Item.GetItemInfoInstant` appears in both; its sixth return (class 2 weapon, 4 armor) tells a gear vendor. Not measured in game yet.
+Added for CTProbe v5 to v7 (source-reviewed 2026-11-27, #240):
+
+- `GetAuctionItemLink("list", index)` exists on Era only. `GetTrainerServiceLevelReq(index)` is in the Era source and not in the Forever source, but Forever has it: it answered 0 for each Herbalism row (measured 2026-11-27). Forever's `GetTrainerServiceInfo` also carries the required level (return 4).
+- `IsTradeskillTrainer()` exists on both, and both trainer windows read it for truth only. CTProbe treats nil or false as a class trainer and records the answer. Forever also has `C_Trainer.GetTrainerType()`.
+- Both trainer windows set the filter on every show: available on, unavailable on, used off. A row the filter hides is not in `GetNumTrainerServices()`, and header rows have a cost of 0 and no rank.
+- `GetMerchantItemID(index)` exists on both and gives the item id without the item cache. `C_Item.GetItemInfoInstant` exists on both; its sixth return (class 2 weapon, 4 armor) tells a gear vendor.
+- Measured 2026-11-27 with CTProbe v5: an Era weapon vendor (Mace, Hammer, Flail: 1739, 5065 and 7797 copper, `isUsable` false for the two the character cannot use), the `GetItemInfo` of those items, an Era auction link, and the balance beside each window on both clients. The class trainer was not recorded (a probe bug, fixed in v6).
 
 ## Pending in-game
 
