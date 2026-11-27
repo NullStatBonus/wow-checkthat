@@ -271,6 +271,7 @@ class Recordings(unittest.TestCase):
 ["GetNamed(\\"a,b\\")"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 1 } } },
 ["GetWord(playerfoo)"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 2 } } },
 ["C_Container.GetContainerItemInfo(0, 1)"] = { ["n"] = 1, ["values"] = { { ["type"] = "table", ["value"] = {} } } },
+["GetHandler()"] = { ["n"] = 1, ["values"] = { { ["type"] = "function" } } },
 },
 }
 '''
@@ -285,7 +286,8 @@ class Recordings(unittest.TestCase):
         d, path = self.make()
         client, rec, skipped = ct.probe_recordings(path)
         self.assertEqual((client, rec["format"], rec["build"]), ("forever", 1, "1.60.1.71139"))
-        self.assertEqual(sorted(rec["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetBuildInfo()", "GetFlag(true, 5)", "GetWord(playerfoo)"])
+        self.assertEqual(sorted(rec["calls"]), ["C_Container.GetContainerItemInfo(0, 1)", "C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetBuildInfo()", "GetFlag(true, 5)", "GetWord(playerfoo)"])
+        self.assertEqual(rec["calls"]["C_Container.GetContainerItemInfo(0, 1)"]["returns"], [{}], "an empty table return is kept (rev 5)")
         self.assertEqual(rec["calls"]["GetFlag(true, 5)"]["args"], [True, 5], "a boolean argument stays a boolean")
         self.assertEqual(rec["calls"]["GetWord(playerfoo)"]["args"], ["playerfoo"], "only the exact word player marks a call on the player")
         c = rec["calls"]["C_Item.GetItemInfo(6948)"]
@@ -296,13 +298,46 @@ class Recordings(unittest.TestCase):
         why = dict(skipped)
         self.assertIn("personal", why["GetMoney()"]); self.assertIn("player", why["UnitClass(player)"])
         self.assertIn("cannot be read back", why['GetNamed("a,b")'])
-        self.assertIn("error", why["GetItemInfo(6948)"]); self.assertIn("table", why["C_Container.GetContainerItemInfo(0, 1)"])
+        self.assertIn("error", why["GetItemInfo(6948)"]); self.assertIn("a function", why["GetHandler()"])
+
+    def test_a_table_return_becomes_json_names_no_player_and_a_table_argument_is_read_from_the_call(self):
+        def sv(fixtures):
+            return 'CTProbeDB = { ["fixtures"] = { ["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.60.1" }, { ["type"] = "string", ["value"] = "71139" }, { ["type"] = "string", ["value"] = "x" }, { ["type"] = "number", ["value"] = 16001 } } }, ' + fixtures + ' } }'
+        def num(v): return '{ ["type"] = "number", ["value"] = %d }' % v
+        def s(v): return '{ ["type"] = "string", ["value"] = "%s" }' % v
+        key = '{ ["type"] = "table", ["value"] = { ["itemID"] = %s, ["itemLevel"] = %s } }' % (num(2589), num(5))
+        info = ('{ ["type"] = "table", ["value"] = { ["itemKey"] = %s, ["owners"] = { ["type"] = "table", ["value"] = { ["1"] = %s } }, ["bidder"] = %s, '
+                '["buyoutAmount"] = %s, ["itemLink"] = %s } }') % (key, s("Seller"), s("Player-1-0ABC"), num(300), s("|Hitem:2589:0:0:0:0:0:0:123456:40:0|h[Linen Cloth]|h"))
+        merchant = '{ ["type"] = "table", ["value"] = { ["name"] = %s, ["price"] = %s, ["stackCount"] = %s, ["isUsable"] = { ["type"] = "boolean", ["value"] = true } } }' % (s("Coarse Thread"), num(10), num(1))
+        browse = '{ ["type"] = "table", ["value"] = { ["1"] = { ["type"] = "table", ["value"] = { ["minPrice"] = %s } }, ["2"] = { ["type"] = "table", ["value"] = { ["minPrice"] = %s } } } }' % (num(1), num(2))
+        text = sv('["C_MerchantFrame.GetItemInfo(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { %s } }, ' % merchant
+                  + '["C_AuctionHouse.GetItemSearchResultInfo(itemKey:2589,1)"] = { ["window"] = "auction", ["n"] = 1, ["args"] = { %s, %s }, ["values"] = { %s } }, ' % (key, num(1), info)
+                  + '["C_AuctionHouse.GetBrowseResults()"] = { ["window"] = "auction", ["n"] = 1, ["values"] = { %s } }, ' % browse
+                  + '["C_MerchantFrame.GetItemInfo(2)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "table", ["cut"] = true, ["value"] = {} } } }, '
+                  + '["C_AuctionHouse.GetItemSearchResultInfo(itemKey:1,1)"] = { ["window"] = "auction", ["n"] = 1, ["args"] = { { ["type"] = "nil" }, %s }, ["values"] = { %s } }' % (num(1), num(1)))
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "CTProbe.lua")
+        with open(path, "w") as f: f.write(text)
+        client, rec, skipped = ct.probe_recordings(path)
+        self.assertEqual((client, rec["rev"]), ("forever", 5))
+        calls = rec["calls"]
+        self.assertEqual(calls["C_MerchantFrame.GetItemInfo(1)"]["returns"], [{"name": "Coarse Thread", "price": 10, "stackCount": 1, "isUsable": True}])
+        r = calls["C_AuctionHouse.GetItemSearchResultInfo(itemKey:2589,1)"]
+        self.assertEqual((r["api"], r["args"]), ("C_AuctionHouse.GetItemSearchResultInfo", [{"itemID": 2589, "itemLevel": 5}, 1]), "the stored itemKey is the argument")
+        self.assertEqual(r["returns"][0]["owners"], [], "no seller is named"); self.assertNotIn("bidder", r["returns"][0], "and no bidder")
+        self.assertEqual(r["returns"][0]["itemLink"], "|Hitem:2589:0:0:0:0:0:0:::|h[Linen Cloth]|h", "a link inside a table is anonymized")
+        self.assertNotIn("Seller", json.dumps(rec)); self.assertNotIn("Player-1", json.dumps(rec))
+        self.assertEqual(calls["C_AuctionHouse.GetBrowseResults()"]["returns"], [[{"minPrice": 1}, {"minPrice": 2}]], "a Lua array becomes a list")
+        why = dict(skipped)
+        self.assertIn("a table cut short", why["C_MerchantFrame.GetItemInfo(2)"])
+        self.assertIn("a nil argument", why["C_AuctionHouse.GetItemSearchResultInfo(itemKey:1,1)"])
 
     def test_an_item_link_keeps_the_item_and_loses_the_level_and_specialization(self):
         _, path = self.make()
         link = ct.probe_recordings(path)[1]["calls"]["C_Item.GetItemInfo(6948)"]["returns"][1]
         self.assertEqual(link, "|cnIQ1:|Hitem:6948::::::::::::::|h[Hearthstone]|h|r")
-        self.assertEqual(ct.anonymize_link("|Hitem:19019:0:0:0:0:0:0:0:60:261|h[x]|h"), "|Hitem:19019:0:0:0:0:0:0:0::|h[x]|h")
+        self.assertEqual(ct.anonymize_link("|Hitem:19019:0:0:0:0:0:0:0:60:261|h[x]|h"), "|Hitem:19019:0:0:0:0:0:0:::|h[x]|h")
+        self.assertEqual(ct.anonymize_link("|Hitem:15210:0:0:0:0:0:1207:827654321:40:0|h[x]|h"), "|Hitem:15210:0:0:0:0:0:1207:::|h[x]|h", "the uniqueID of a random-suffix copy is blanked; the suffix stays")
         self.assertEqual(ct.anonymize_link(5), 5); self.assertEqual(ct.anonymize_link("plain"), "plain")
 
     def test_the_command_writes_the_client_file_and_a_file_with_no_fixtures_is_an_error(self):
@@ -331,6 +366,9 @@ class WindowRecordings(unittest.TestCase):
 ["GetNumTrainerServices()"] = { ["window"] = "trainer", ["error"] = "attempt to call a nil value" },
 ["GetTrainerServiceInfo(1)"] = { ["window"] = "bogus", ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Spell" } } },
 ["GetLocale()"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "enUS" } } },
+["gear:GetMerchantItemInfo(1)"] = { ["window"] = "merchant", ["n"] = 3, ["values"] = { { ["type"] = "string", ["value"] = "Lionheart Helm" }, { ["type"] = "number", ["value"] = 1 }, { ["type"] = "number", ["value"] = 250000 } } },
+["gear:GetMoney()"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 98765 } } },
+["Gear:GetMoney()"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 1 } } },
 },
 }
 '''
@@ -341,9 +379,16 @@ class WindowRecordings(unittest.TestCase):
         with open(path, "w") as f: f.write(self.SV)
         return path
 
-    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_2(self):
+    def test_a_scene_label_keeps_its_name_and_the_mocked_function_and_money_beside_a_window_keeps_its_value(self):
+        _, rec, skipped = ct.probe_recordings(self.make())
+        c = rec["calls"]["gear:GetMerchantItemInfo(1)"]
+        self.assertEqual((c["api"], c["args"], c["returns"][2], c["window"]), ("GetMerchantItemInfo", [1], 250000, "merchant"))
+        self.assertEqual(rec["calls"]["gear:GetMoney()"]["returns"], [98765], "a balance recorded at a window is kept")
+        self.assertIn("not a call", dict(skipped)["Gear:GetMoney()"], "a scene name is lower case")
+
+    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_5(self):
         client, rec, skipped = ct.probe_recordings(self.make())
-        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 2))
+        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 5))
         self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["window"], "auction")
         self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["args"], ["list"], "a plain word argument reads back")
         self.assertEqual(rec["calls"]["GetAuctionItemInfo(list,1)"]["args"], ["list", 1])
@@ -359,6 +404,109 @@ class WindowRecordings(unittest.TestCase):
         self.assertEqual(r[11:15], ["", "", "", ""], "highBidder, bidderFullName, owner and ownerFullName are blank")
         self.assertNotIn("Seller", json.dumps(rec)); self.assertNotIn("Bidder", json.dumps(rec))
         self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["returns"][0], "|cffffffff|Hitem:2092::::::::::::::|h[Worn Dagger]|h|r")
+
+    def test_a_run_that_records_a_scene_replaces_its_derived_rows(self):
+        out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
+        authored = lambda api, args: {"api": api, "args": args, "returns": [1], "n": 1, "window": "merchant", "source": {"kind": "authored", "ref": "t"}}
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"GetMerchantItemLink(9)": authored("GetMerchantItemLink", [9]),
+                                              "class:GetTrainerServiceInfo(9)": dict(authored("GetTrainerServiceInfo", [9]), window="trainer"),
+                                              "GetTrainerServiceInfo(9)": dict(authored("GetTrainerServiceInfo", [9]), window="trainer")}}, f)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            ct.main(["recordings", "--src", self.make(), "-o", out, "--merge"])
+        with open(os.path.join(out, "era.json")) as f: calls = json.load(f)["calls"]
+        self.assertNotIn("GetMerchantItemLink(9)", calls, "the run recorded the plain vendor scene, so its authored row goes")
+        self.assertIn("replaced GetMerchantItemLink(9)", o.getvalue())
+        self.assertIn("class:GetTrainerServiceInfo(9)", calls, "a scene the run did not record keeps its authored rows")
+        self.assertIn("GetTrainerServiceInfo(9)", calls, "the plain trainer scene too: its only call raised an error")
+
+    def test_a_new_run_names_the_labels_it_drops_and_merge_keeps_them(self):
+        out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"OldCall(1)": {"api": "OldCall", "args": [1], "returns": [1], "n": 1}, "GetLocale()": {"api": "GetLocale", "args": [], "returns": ["deDE"], "n": 1}}}, f)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            self.assertEqual(ct.main(["recordings", "--src", self.make(), "-o", out]), 0)
+        self.assertIn("dropped  OldCall(1)", o.getvalue())
+        with open(os.path.join(out, "era.json")) as f: self.assertNotIn("OldCall(1)", json.load(f)["calls"])
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"OldCall(1)": {"api": "OldCall", "args": [1], "returns": [1], "n": 1}, "GetLocale()": {"api": "GetLocale", "args": [], "returns": ["deDE"], "n": 1}}}, f)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ct.main(["recordings", "--src", self.make(), "-o", out, "--merge"]), 0)
+        with open(os.path.join(out, "era.json")) as f: calls = json.load(f)["calls"]
+        self.assertIn("OldCall(1)", calls, "--merge keeps a call this run did not record")
+        self.assertEqual(calls["GetLocale()"]["returns"], ["enUS"], "and this run wins where both have one")
+
+    def test_a_call_that_does_not_fit_its_signature_is_named(self):
+        sigs = {"GetX": {"era": {"returns": ["name", "flag", "count"], "types": ["string", "number", "number"], "nilable": [1], "oneornil": [2]}},
+                "GetItem": {"era": {"returns": ["a"], "types": ["string"], "emptyOk": True}}}
+        ok = {"api": "GetX", "n": 3, "returns": [False, 1, 5], "nils": [1]}
+        self.assertEqual(ct.signature_problems("era", "GetX()", ok, sigs), [], "a nil where nilable and a 1 where 1 or nil fit")
+        self.assertEqual(ct.signature_problems("era", "GetX()", dict(ok, nils=[1, 2], returns=[False, False, 5]), sigs), [], "nil fits a 1-or-nil")
+        self.assertIn("is nil", ct.signature_problems("era", "GetX()", dict(ok, nils=[3], returns=["a", 1, False]), sigs)[0])
+        self.assertIn("answers 1 or nil, got True", ct.signature_problems("era", "GetX()", dict(ok, returns=[False, True, 5]), sigs)[0])
+        self.assertIn("is a string, the signature says number", ct.signature_problems("era", "GetX()", dict(ok, returns=[False, 1, "5"]), sigs)[0])
+        self.assertIn("4 returns, the signature has 3", ct.signature_problems("era", "GetX()", dict(ok, n=4, returns=[False, 1, 5, 6]), sigs)[0])
+        self.assertEqual(ct.signature_problems("forever", "GetX()", dict(ok, n=9), sigs), [], "no signature for the client: nothing to say")
+        self.assertEqual(ct.signature_problems("era", "GetItem(1)", {"api": "GetItem", "n": 0, "returns": []}, sigs), [], "an uncached item may return nothing")
+
+    def test_a_table_return_is_checked_field_by_field(self):
+        st = {"Key": {"itemID": "number", "itemLevel": "number?"}, "Info": {"itemKey": "Key", "owners": "list<string>", "name": "string?"}}
+        sigs = {"GetInfo": {"forever": {"returns": ["info"], "types": ["Info"], "nilable": [1]}}, "GetAll": {"forever": {"returns": ["all"], "types": ["list<Key>"]}}}
+        good = {"api": "GetInfo", "n": 1, "returns": [{"itemKey": {"itemID": 1}, "owners": []}]}
+        self.assertEqual(ct.signature_problems("forever", "x", good, sigs, st), [], "an optional field may be missing")
+        bad = {"api": "GetInfo", "n": 1, "returns": [{"itemKey": {"itemLevel": 2, "color": 1}, "owners": ["a", 3]}]}
+        p = ct.signature_problems("forever", "x", bad, sigs, st)
+        self.assertIn("return 1 (info).itemKey.color is not a field of Key", p)
+        self.assertIn("return 1 (info).itemKey.itemID is missing", p)
+        self.assertIn("return 1 (info).owners[2] is a number, the signature says string", p)
+        self.assertEqual(ct.signature_problems("forever", "x", {"api": "GetAll", "n": 1, "returns": [{}]}, sigs, st), [], "an empty list may read back as {}")
+        self.assertIn("is a string", ct.signature_problems("forever", "x", {"api": "GetAll", "n": 1, "returns": ["no"]}, sigs, st)[0])
+        self.assertIn("not in structures", ct.signature_problems("forever", "x", {"api": "GetInfo", "n": 1, "returns": [{}]}, sigs, {})[0])
+
+    def test_the_committed_recordings_fit_the_signatures_and_say_where_a_derived_call_came_from(self):
+        sigs, structures = ct.load_signatures(True)
+        for client in ("era", "forever"):
+            with open(os.path.join(ROOT, "tools", "recordings", client + ".json")) as f: rec = json.load(f)
+            self.assertIn(rec.get("rev", 1), (1, 2, 3, 4, 5))
+            for label, call in rec["calls"].items():
+                self.assertEqual(ct.signature_problems(client, label, call, sigs, structures), [], "%s %s" % (client, label))
+                if call.get("window") or call.get("source"):
+                    self.assertIn(client, sigs.get(call["api"], {}), "%s %s: a window or derived call needs a signature" % (client, label))
+                src = call.get("source")
+                if src is not None:
+                    self.assertIn(src.get("kind"), ct.RECORDING_SOURCES, label)
+                    self.assertTrue(isinstance(src.get("ref"), str) and src["ref"].strip(), label + " names where it came from")
+        for api, per in sigs.items():
+            for client, s in per.items():
+                self.assertEqual(len(s["returns"]), len(s["types"]), api)
+                self.assertTrue(s.get("ref"), api + " names its source")
+                for i in (s.get("nilable") or []) + (s.get("oneornil") or []):
+                    self.assertTrue(1 <= i <= len(s["returns"]), api)
+                for t in s["types"]:
+                    base = t[5:-1] if t.startswith("list<") else t
+                    self.assertTrue(base in ct.SCALARS or base in structures, "%s names %s" % (api, t))
+
+    def test_a_run_confirms_or_flags_a_derived_entry_and_names_a_call_off_its_signature(self):
+        out = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, out)
+        derived = {"api": "GetMerchantItemLink", "args": [1], "returns": ["|Hitem:1|h"], "n": 1, "window": "merchant", "source": {"kind": "authored", "ref": "test"}}
+        changed = {"api": "GetLocale", "args": [], "returns": [5], "n": 1, "source": {"kind": "wiki", "ref": "test"}}
+        with open(os.path.join(out, "era.json"), "w") as f:
+            json.dump({"format": 1, "calls": {"GetMerchantItemLink(1)": derived, "GetLocale()": changed}}, f)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            self.assertEqual(ct.main(["recordings", "--src", self.make(), "-o", out]), 0)
+        self.assertIn("confirmed GetMerchantItemLink(1): the game agrees with the authored entry", o.getvalue())
+        self.assertIn("changed  GetLocale(): the game differs from the wiki entry", o.getvalue())
+        with open(os.path.join(out, "era.json")) as f: self.assertNotIn("source", json.load(f)["calls"]["GetMerchantItemLink(1)"], "the game's entry replaces it")
+        bad = self.SV.replace('["GetMerchantItemLink(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "string"', '["GetMerchantItemLink(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 7 }, { ["type"] = "string"')
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, "CTProbe.lua"), "w") as f: f.write(bad)
+        o = io.StringIO()
+        with contextlib.redirect_stdout(o):
+            ct.main(["recordings", "--src", os.path.join(d, "CTProbe.lua"), "-o", out])
+        self.assertIn("differs from signature  GetMerchantItemLink(1): return 1 (link) is a number", o.getvalue())
 
     def test_a_recording_without_tags_still_loads(self):
         _, rec, _ = ct.probe_recordings(Recordings.make(Recordings(), None)[1])
@@ -382,6 +530,13 @@ class WindowRecordings(unittest.TestCase):
         with open(os.path.join(root, "spec.json"), "w") as f: json.dump(spec, f)
         p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        rec["rev"] = 3; rec["calls"]["gear:GetItemInfo(6948)"] = dict(rec["calls"]["GetItemInfo(6948)"])
+        rec["calls"]["gear:GetItemInfo(6948)"]["returns"] = ["Gear stone"] + rec["calls"]["GetItemInfo(6948)"]["returns"][1:]
+        with open(os.path.join(root, "tools", "recordings", "era.json"), "w") as f: json.dump(rec, f)
+        spec["mocks"] = {"GetItemInfo": {"recording": "gear:GetItemInfo(6948)"}}; spec["steps"][0]["returns"] = ["Gear stone"]
+        with open(os.path.join(root, "spec.json"), "w") as f: json.dump(spec, f)
+        p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
+        self.assertEqual(p.returncode, 0, "a rev 3 file and a scene label: " + p.stdout + p.stderr)
 
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
@@ -616,6 +771,14 @@ class OfflineBlock(unittest.TestCase):
         for lv, ok in ((1, True), (2, True), (3, True), (4, True), (5, True), (6, True), (7, False), (0, False), ("2", False)):
             p = self.plan(lambda o: o.__setitem__("level", lv))
             self.assertEqual(not ct.validate(p), ok, lv)
+
+    def test_a_mock_may_take_and_return_tables(self):
+        def m(o):
+            o["level"] = 5
+            o["mocks"] = {"C_MerchantFrame.GetItemInfo": {"args": [1], "returns": [{"name": "Coarse Thread", "price": 10, "stackCount": 1}]},
+                          "C_AuctionHouse.GetItemSearchResultInfo": {"args": [{"itemID": 2589, "itemLevel": 0}, 1], "returns": [{"owners": [], "buyoutAmount": 300}]},
+                          "C_AuctionHouse.GetBrowseResults": {"returns": [[{"minPrice": 1}, {"minPrice": 2}]]}}
+        self.assertEqual(ct.validate(self.plan(m)), [], "a table argument or return is plain JSON in the plan")
 
     def test_a_mock_can_name_a_recording_at_level_5_and_not_mix_it_with_args_or_returns(self):
         def with_mocks(mocks, level=5):

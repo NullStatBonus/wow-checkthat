@@ -405,7 +405,7 @@
                   "recording": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Level 5. The label of a recorded call (tools/recordings/<client>.json, made from a CTProbe run), for example GetItemInfo(6948). Its arguments and return values replace args and returns, for the client the block runs on. Not with args or returns."
+                    "description": "Level 5. The label of a recorded call (tools/recordings/<client>.json, made from a CTProbe run), for example GetItemInfo(6948), or with a scene name for a second vendor or trainer, for example gear:GetMerchantItemInfo(1). Its arguments and return values replace args and returns, for the client the block runs on. Not with args or returns."
                   }
                 },
                 "not": {

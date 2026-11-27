@@ -25,7 +25,15 @@ Runner.LEVEL = 6
 Runner.MOCKABLE = {}
 for _, n in ipairs({ "GetItemInfo", "GetItemCount", "C_Item.GetItemInfo", "C_Item.GetItemCount", "GetMoney", "GetTime",
     "UnitName", "IsInGuild", "GetNumGroupMembers", "GetContainerNumFreeSlots", "C_Container.GetContainerNumFreeSlots",
-    "C_Container.GetContainerItemInfo" }) do Runner.MOCKABLE[n] = true end
+    "C_Container.GetContainerItemInfo",
+    -- the read-only vendor, trainer and auction window calls CTProbe records (#240); the calls that buy, learn or bid stay off the list
+    "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemID", "GetNumTrainerServices", "GetTrainerServiceInfo",
+    "GetTrainerServiceCost", "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "IsTradeskillTrainer", "GetTrainerServiceTypeFilter",
+    "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink",
+    -- Forever's vendor row and auction house results return tables (#234)
+    "C_MerchantFrame.GetItemInfo", "C_AuctionHouse.GetBrowseResults", "C_AuctionHouse.HasFullBrowseResults", "C_AuctionHouse.GetNumItemSearchResults",
+    "C_AuctionHouse.HasFullItemSearchResults", "C_AuctionHouse.GetItemSearchResultInfo", "C_AuctionHouse.GetItemKeyInfo",
+    "C_AuctionHouse.GetNumCommoditySearchResults", "C_AuctionHouse.HasFullCommoditySearchResults", "C_AuctionHouse.GetCommoditySearchResultInfo" }) do Runner.MOCKABLE[n] = true end
 
 local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
 
@@ -67,6 +75,13 @@ local function walk(path, create)
     return t, parts[#parts]
 end
 
+local function copyValue(v)
+    if type(v) ~= "table" then return v end
+    local c = {}
+    for k, x in pairs(v) do c[k] = copyValue(x) end
+    return c
+end
+
 local function makeMock(rules, counts, api)
     if rules.returns or rules.args then rules = { rules } end
     return function(...)
@@ -77,7 +92,11 @@ local function makeMock(rules, counts, api)
             for i, want in ipairs(rule.args or {}) do
                 if not deepEq(args[i], want) then ok = false; break end
             end
-            if ok then return unpack(rule.returns or {}, 1, rule.n or #(rule.returns or {})) end -- n keeps the nils of a recording
+            if ok then -- n keeps the nils of a recording; a table return is a fresh copy each call, as the game's is
+                local out, want = {}, rule.returns or {}
+                for i = 1, rule.n or #want do out[i] = copyValue(want[i]) end
+                return unpack(out, 1, rule.n or #want)
+            end
         end
     end
 end
@@ -273,7 +292,8 @@ function Runner.run(spec, opts)
         local label = entry.recording
         if entry.args ~= nil or entry.returns ~= nil then recErr = recErr or ("mock %s: a recording cannot be combined with args or returns"):format(api); return end
         if not surface then recErr = recErr or ("mock %s: a recording needs offline level 5"):format(api); return end
-        if label:sub(1, #api + 1) ~= api .. "(" then recErr = recErr or ("mock %s: the recording %s is for another function"):format(api, label); return end
+        local bare = label:gsub("^%l+:", "", 1) -- a scene name ("gear:", recording rev 3) comes before the call
+        if bare:sub(1, #api + 1) ~= api .. "(" then recErr = recErr or ("mock %s: the recording %s is for another function"):format(api, label); return end
         local call = surface.recordings and surface.recordings.calls and surface.recordings.calls[label]
         if recFileErr then recErr = recErr or recFileErr; return end
         if not call then

@@ -1718,25 +1718,121 @@ def sv_json(path):
 
 
 RECORDING_FORMAT = 1
-RECORDING_REV = 2   # 2: a call may carry "window". format stays 1, because a released runner rejects any other value.
+RECORDING_REV = 5   # 2: a call may carry "window". 3: a label may start with a scene name ("gear:GetMerchantItemInfo(1)"). 4: a call may carry "source"
+                    # (not recorded in game: taken from Blizzard source, the wiki, a game-data table, or authored). 5: a return or an argument may be a table
+                    # (a JSON object, or a list for a Lua array). format stays 1, because a released runner rejects any other value.
+RECORDING_SOURCES = ("source", "wiki", "database", "authored")
+SIGNATURES = os.path.join(ROOT, "tools", "recordings", "signatures.json")
+
+def _rtype(v):
+    return "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float)) else "string" if isinstance(v, str) \
+        else "table" if isinstance(v, (dict, list)) else type(v).__name__
+
+def from_shape(s):
+    """(value, problem) from one value CTProbe's shape() stored. A nil is None, a table a dict, or a list when its keys are 1..n. problem
+    names what cannot go in a recording: a table copied in part (cut), or a function or userdata anywhere in it."""
+    t = s.get("type")
+    if t == "nil":
+        return None, None
+    if t in ("function", "userdata", "thread"):
+        return None, "a %s" % t
+    if t != "table":
+        return anonymize_link(s.get("value")), None
+    raw = s.get("value")
+    if raw == []:   # the saved-variables reader gives an empty Lua table as a list
+        raw = {}
+    if s.get("cut") or not isinstance(raw, dict):
+        return None, "a table cut short"
+    out = {}
+    for k, sub in raw.items():
+        v, problem = from_shape(sub)
+        if problem:
+            return None, problem
+        if v is not None:   # a nil field is a missing key, as in Lua
+            out[k] = v
+    if out and all(k.isdigit() for k in out) and sorted(int(k) for k in out) == list(range(1, len(out) + 1)):
+        return [out[str(i)] for i in range(1, len(out) + 1)], None
+    return out, None
+
+SCALARS = ("string", "number", "boolean")
+
+def value_problems(v, want, structures, where):
+    """What in one value does not fit a signature type: a scalar type, a structure name (its fields; "?" marks one that may be missing; an
+    unknown field is named too), or list<type>."""
+    if want in SCALARS:
+        return [] if _rtype(v) == want else ["%s is a %s, the signature says %s" % (where, _rtype(v), want)]
+    if want.startswith("list<") and want.endswith(">"):
+        if v == {}:   # an empty Lua table reads back as an object
+            v = []
+        if not isinstance(v, list):
+            return ["%s is a %s, the signature says %s" % (where, _rtype(v), want)]
+        return [p for i, x in enumerate(v, 1) for p in value_problems(x, want[5:-1], structures, "%s[%d]" % (where, i))]
+    fields = structures.get(want)
+    if fields is None:
+        return ["%s: the signature names %s, which is not in structures" % (where, want)]
+    if not isinstance(v, dict):
+        return ["%s is a %s, the signature says %s" % (where, _rtype(v), want)]
+    out = ["%s.%s is not a field of %s" % (where, k, want) for k in sorted(v) if k not in fields]
+    for name, t in fields.items():
+        optional = t.endswith("?")
+        if name not in v:
+            if not optional:
+                out.append("%s.%s is missing" % (where, name))
+            continue
+        out += value_problems(v[name], t.rstrip("?"), structures, "%s.%s" % (where, name))
+    return out
+
+def signature_problems(client, label, call, sigs, structures=None):
+    """What in a recorded call does not fit tools/recordings/signatures.json for this client: more returns than the call has, a nil where
+    none may be, a 1-or-nil answer that is something else, or a value of another type. [] when it fits or the api has no signature."""
+    s = (sigs.get(call.get("api")) or {}).get(client)
+    if not s:
+        return []
+    n, names, types = call.get("n", 0), s["returns"], s["types"]
+    if n == 0 and s.get("emptyOk"):
+        return []
+    out = []
+    if n > len(names):
+        out.append("%d returns, the signature has %d" % (n, len(names)))
+    nils, may_nil, one = set(call.get("nils") or []), set(s.get("nilable") or []), set(s.get("oneornil") or [])
+    for i, v in enumerate(call.get("returns") or [], 1):
+        if i > len(names):
+            break
+        if i in nils:
+            if i not in may_nil and i not in one:
+                out.append("return %d (%s) is nil" % (i, names[i - 1]))
+        elif i in one:
+            if v != 1 or isinstance(v, bool):
+                out.append("return %d (%s) answers 1 or nil, got %r" % (i, names[i - 1], v))
+        else:
+            out += value_problems(v, types[i - 1], structures or {}, "return %d (%s)" % (i, names[i - 1]))
+    return out
+
+def load_signatures(with_structures=False):
+    with open(SIGNATURES, encoding="utf-8") as f:
+        data = json.load(f)
+    return (data["apis"], data.get("structures") or {}) if with_structures else data["apis"]
 RECORDING_WINDOWS = ("merchant", "trainer", "auction")
 # Returns that name another player: 1-based positions, blanked in a recording. GetAuctionItemInfo: highBidder, bidderFullName, owner, ownerFullName.
 REDACTED_RETURNS = {"GetAuctionItemInfo": (12, 13, 14, 15)}
+# Fields of a table return that name other players: emptied (a list) or removed. C_AuctionHouse results list the sellers and the bidder.
+REDACTED_FIELDS = {"GetItemSearchResultInfo": {"owners": [], "bidder": None}, "GetCommoditySearchResultInfo": {"owners": []}}
 ITEM_LINK = re.compile(r"\|Hitem:([^|]*)\|h")
 
 def anonymize_link(value):
-    """An item link carries the looking player's level and specialization (fields 9 and 10 after the item id). A recording keeps the item and
-    empties those two fields, so it names no character."""
+    """An item link carries the looking player's level and specialization (fields 9 and 10 after the item id) and, on a random-suffix item, a
+    uniqueID (field 8) that tells one copy from another. A recording keeps the item and empties those three fields, so it names no character."""
     if not isinstance(value, str):
         return value
     def blank(m):
         parts = m.group(1).split(":")
-        for i in (8, 9):
+        for i in (7, 8, 9):
             if i < len(parts):
                 parts[i] = ""
         return "|Hitem:" + ":".join(parts) + "|h"
     return ITEM_LINK.sub(blank, value)
-CALL_LABEL = re.compile(r"^([A-Za-z_][\w.]*)\((.*)\)$")
+# A label is a call, optionally after a scene name: CTProbe records a second vendor or trainer (gear, class) and money per window (merchant:GetMoney()).
+CALL_LABEL = re.compile(r"^(?:[a-z]+:)?([A-Za-z_][\w.]*)\((.*)\)$")
 
 def probe_recordings(sv_path):
     """(client, recording, skipped) from the CTProbeDB.fixtures that CTProbe's /ctp record saved. recording is {format, client, build, calls}
@@ -1762,29 +1858,44 @@ def probe_recordings(sv_path):
             skipped.append((label, "a personal value, recorded by type only")); continue
         if not m:
             skipped.append((label, "the label is not a call")); continue
-        parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
-        if "player" in parts:
-            skipped.append((label, "a call on the player")); continue
-        if any(not re.fullmatch(r"-?\d+(\.\d+)?|true|false|[A-Za-z_]\w*", p) for p in parts) or "nil" in parts:
-            skipped.append((label, "an argument that cannot be read back exactly from the label")); continue
-        args = []
-        for part in parts:
-            args.append(True if part == "true" else False if part == "false" else int(part) if re.fullmatch(r"-?\d+", part)
-                        else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
+        short = m.group(1).rsplit(".", 1)[-1]
+        if isinstance(rec.get("args"), list):   # a table argument (an auction itemKey): CTProbe stores the arguments with the call
+            args, bad = [], None
+            for s in rec["args"]:
+                v, problem = from_shape(s) if isinstance(s, dict) else (None, "an argument CTProbe did not store")
+                bad = bad or problem or ("a nil argument" if v is None else None)
+                args.append(v)
+            if bad:
+                skipped.append((label, "an argument that cannot be stored: %s" % bad)); continue
+        else:
+            parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
+            if "player" in parts:
+                skipped.append((label, "a call on the player")); continue
+            if any(not re.fullmatch(r"-?\d+(\.\d+)?|true|false|[A-Za-z_]\w*", p) for p in parts) or "nil" in parts:
+                skipped.append((label, "an argument that cannot be read back exactly from the label")); continue
+            args = []
+            for part in parts:
+                args.append(True if part == "true" else False if part == "false" else int(part) if re.fullmatch(r"-?\d+", part)
+                            else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
         returns, nils, bad = [], [], None
         for i, v in enumerate(rec.get("values", []), 1):
-            t = v.get("type")
-            if t == "nil":
-                returns.append(False); nils.append(i)
-            elif t in ("table", "function", "userdata", "thread"):
-                bad = t
-            else:
-                value = anonymize_link(v.get("value"))
-                if isinstance(value, str) and i in REDACTED_RETURNS.get(m.group(1).rsplit(".", 1)[-1], ()):
-                    value = ""
-                returns.append(value)
+            value, problem = from_shape(v)
+            if problem:
+                bad = problem; break
+            if value is None:
+                returns.append(False); nils.append(i); continue
+            if isinstance(value, str) and i in REDACTED_RETURNS.get(short, ()):
+                value = ""
+            if isinstance(value, dict) and short in REDACTED_FIELDS:
+                for field, blank in REDACTED_FIELDS[short].items():
+                    if field in value:
+                        if blank is None:
+                            del value[field]
+                        else:
+                            value[field] = blank
+            returns.append(value)
         if bad:
-            skipped.append((label, "returns a %s" % bad)); continue
+            skipped.append((label, "returns %s" % bad)); continue
         calls[label] = {"api": m.group(1), "args": args, "returns": returns, "n": int(rec.get("n", len(returns)))}
         if nils:
             calls[label]["nils"] = nils
@@ -1801,11 +1912,47 @@ def cmd_recordings(a):
     out = a.out or os.path.join(ROOT, "tools", "recordings")
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, client + ".json")
+    old = {}
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            old = (json.load(f).get("calls") or {})
+    def scene_of(label, call):
+        m = re.match(r"^([a-z]+):", label)
+        return (call.get("window"), m.group(1) if m else "")
+    recorded = {scene_of(label, call) for label, call in rec["calls"].items() if call.get("window")}
+    replaced = sorted(label for label, call in old.items() if label not in rec["calls"] and call.get("source") and call.get("window")
+                      and scene_of(label, call) in recorded)   # an authored row of a scene the run recorded is not the game's: it goes
+    for label in replaced:
+        del old[label]
+    dropped = sorted(set(old) - set(rec["calls"]))
+    sigs, structures = load_signatures(True)
+    differs = [(label, p) for label, call in sorted(rec["calls"].items()) for p in signature_problems(client, label, call, sigs, structures)]
+    confirmed, changed = [], []
+    for label, call in sorted(rec["calls"].items()):
+        was = old.get(label)
+        if not (was and was.get("source")):
+            continue
+        same = (was.get("n"), sorted(was.get("nils") or []), [_rtype(v) for v in was.get("returns") or []]) == \
+               (call.get("n"), sorted(call.get("nils") or []), [_rtype(v) for v in call.get("returns") or []])
+        (confirmed if same else changed).append((label, was["source"].get("kind")))
+    if a.merge:
+        for label in dropped:
+            rec["calls"][label] = old[label]
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(rec, f, indent=1, sort_keys=True); f.write("\n")
     print("recordings: %d calls for %s (build %s) -> %s" % (len(rec["calls"]), client, rec["build"], path))
     for label, why in skipped:
         print("  left out  %s: %s" % (label, why))
+    for label in replaced:
+        print("  replaced %s: the run recorded its scene, so the %s entry goes" % (label, "derived"))
+    for label, kind in confirmed:
+        print("  confirmed %s: the game agrees with the %s entry in shape; the game's values replace it" % (label, kind))
+    for label, kind in changed:
+        print("  changed  %s: the game differs from the %s entry in count, nils or types; check the signature" % (label, kind))
+    for label, why in differs:
+        print("  differs from signature  %s: %s" % (label, why))
+    for label in dropped:
+        print(("  kept     %s: in the old file, not in this run (--merge)" if a.merge else "  dropped  %s: in the old file, not in this run; --merge keeps it") % label)
     return 0
 
 
@@ -3285,7 +3432,7 @@ def main(argv=None):
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
-    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)")
+    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
     p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")

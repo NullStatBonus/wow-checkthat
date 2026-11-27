@@ -71,6 +71,37 @@
     ""
    ]
   },
+  "C_Item.GetItemInfo(2028)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2028
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Hammer",
+    "|cffffffff|Hitem:2028::::::::::::::::::|h[Hammer]|h|r",
+    1,
+    21,
+    16,
+    "Weapon",
+    "One-Handed Maces",
+    1,
+    "INVTYPE_WEAPON",
+    133052,
+    1013,
+    2,
+    4,
+    0,
+    254,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
   "C_Item.GetItemInfo(6948)": {
    "api": "C_Item.GetItemInfo",
    "args": [
@@ -101,6 +132,68 @@
     ""
    ]
   },
+  "C_Item.GetItemInfo(852)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    852
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Mace",
+    "|cffffffff|Hitem:852::::::::::::::::::|h[Mace]|h|r",
+    1,
+    14,
+    9,
+    "Weapon",
+    "One-Handed Maces",
+    1,
+    "INVTYPE_WEAPON",
+    133490,
+    347,
+    2,
+    4,
+    0,
+    254,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "C_Item.GetItemInfo(925)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    925
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Flail",
+    "|cffffffff|Hitem:925::::::::::::::::::|h[Flail]|h|r",
+    1,
+    25,
+    20,
+    "Weapon",
+    "One-Handed Maces",
+    1,
+    "INVTYPE_WEAPONMAINHAND",
+    133476,
+    1559,
+    2,
+    4,
+    0,
+    254,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
   "GetAuctionItemInfo(list,1)": {
    "api": "GetAuctionItemInfo",
    "args": [
@@ -114,23 +207,23 @@
     15
    ],
    "returns": [
-    "Twisted Sabre",
-    135325,
+    "Shell Launcher Shotgun",
+    135617,
     1,
     3,
     false,
-    21,
+    53,
     "REQ_LEVEL_ABBR",
-    105760,
+    742056,
     0,
-    120000,
+    750000,
     0,
     false,
     false,
     false,
     false,
     0,
-    2011,
+    13146,
     true
    ],
    "window": "auction"
@@ -200,6 +293,18 @@
     0,
     9945,
     true
+   ],
+   "window": "auction"
+  },
+  "GetAuctionItemLink(list,1)": {
+   "api": "GetAuctionItemLink",
+   "args": [
+    "list",
+    1
+   ],
+   "n": 1,
+   "returns": [
+    "|cff0070dd|Hitem:13146::::::::::::::::::|h[Shell Launcher Shotgun]|h|r"
    ],
    "window": "auction"
   },
@@ -285,6 +390,37 @@
     ""
    ]
   },
+  "GetItemInfo(2028)": {
+   "api": "GetItemInfo",
+   "args": [
+    2028
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Hammer",
+    "|cffffffff|Hitem:2028::::::::::::::::::|h[Hammer]|h|r",
+    1,
+    21,
+    16,
+    "Weapon",
+    "One-Handed Maces",
+    1,
+    "INVTYPE_WEAPON",
+    133052,
+    1013,
+    2,
+    4,
+    0,
+    254,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
   "GetItemInfo(6948)": {
    "api": "GetItemInfo",
    "args": [
@@ -314,6 +450,68 @@
     false,
     ""
    ]
+  },
+  "GetItemInfo(852)": {
+   "api": "GetItemInfo",
+   "args": [
+    852
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Mace",
+    "|cffffffff|Hitem:852::::::::::::::::::|h[Mace]|h|r",
+    1,
+    14,
+    9,
+    "Weapon",
+    "One-Handed Maces",
+    1,
+    "INVTYPE_WEAPON",
+    133490,
+    347,
+    2,
+    4,
+    0,
+    254,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "GetItemInfo(925)": {
+   "api": "GetItemInfo",
+   "args": [
+    925
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Flail",
+    "|cffffffff|Hitem:925::::::::::::::::::|h[Flail]|h|r",
+    1,
+    25,
+    20,
+    "Weapon",
+    "One-Handed Maces",
+    1,
+    "INVTYPE_WEAPONMAINHAND",
+    133476,
+    1559,
+    2,
+    4,
+    0,
+    254,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
   },
   "GetLocale()": {
    "api": "GetLocale",
@@ -438,8 +636,8 @@
    ],
    "n": 2,
    "returns": [
-    50,
-    155
+    1,
+    1
    ],
    "window": "auction"
   },
@@ -535,6 +733,39 @@
    ],
    "window": "trainer"
   },
+  "GetTrainerServiceLevelReq(1)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(2)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(3)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
   "GetTrainerServiceSkillReq(1)": {
    "api": "GetTrainerServiceSkillReq",
    "args": [
@@ -595,9 +826,745 @@
    "returns": [
     true
    ]
+  },
+  "class:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    19
+   ],
+   "window": "trainer"
+  },
+  "class:GetNumTrainerServices()": {
+   "api": "GetNumTrainerServices",
+   "args": [],
+   "n": 1,
+   "returns": [
+    115
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(10)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    10
+   ],
+   "n": 1,
+   "returns": [
+    8000
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(11)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    11
+   ],
+   "n": 1,
+   "returns": [
+    8000
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(2)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    600
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(3)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    1200
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(4)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    4
+   ],
+   "n": 1,
+   "returns": [
+    1200
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(5)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    5
+   ],
+   "n": 1,
+   "returns": [
+    1200
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(6)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    6
+   ],
+   "n": 1,
+   "returns": [
+    2000
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(7)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    7
+   ],
+   "n": 1,
+   "returns": [
+    2200
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(8)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    8
+   ],
+   "n": 1,
+   "returns": [
+    2200
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(9)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    9
+   ],
+   "n": 1,
+   "returns": [
+    7000
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(10)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    10
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Aspect of the Hawk",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(11)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    11
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Mend Pet",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(2)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    2
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Mend Pet",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(3)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    3
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Eagle Eye",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(4)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    4
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Eyes of the Beast",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(5)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    5
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Scare Beast",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(6)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    6
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Aspect of the Hawk",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(7)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    7
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Aspect of the Cheetah",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(8)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    8
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Mend Pet",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(9)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    9
+   ],
+   "n": 4,
+   "nils": [
+    2
+   ],
+   "returns": [
+    "Beast Lore",
+    false,
+    "unavailable",
+    1
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(10)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    10
+   ],
+   "n": 1,
+   "returns": [
+    28
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(11)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    11
+   ],
+   "n": 1,
+   "returns": [
+    28
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(2)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    12
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(3)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(4)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    4
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(5)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    5
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(6)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    6
+   ],
+   "n": 1,
+   "returns": [
+    18
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(7)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    7
+   ],
+   "n": 1,
+   "returns": [
+    20
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(8)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    8
+   ],
+   "n": 1,
+   "returns": [
+    20
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(9)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    9
+   ],
+   "n": 1,
+   "returns": [
+    24
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(10)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    10
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(11)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    11
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(2)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    2
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(3)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    3
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(4)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    4
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(5)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    5
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(6)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    6
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(7)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    7
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(8)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    8
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(9)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    9
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceTypeFilter(available)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "available"
+   ],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceTypeFilter(unavailable)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "unavailable"
+   ],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceTypeFilter(used)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "used"
+   ],
+   "n": 1,
+   "returns": [
+    false
+   ],
+   "window": "trainer"
+  },
+  "class:IsTradeskillTrainer()": {
+   "api": "IsTradeskillTrainer",
+   "args": [],
+   "n": 1,
+   "returns": [
+    false
+   ],
+   "window": "trainer"
+  },
+  "gear:GetMerchantItemInfo(1)": {
+   "api": "GetMerchantItemInfo",
+   "args": [
+    1
+   ],
+   "n": 9,
+   "nils": [
+    9
+   ],
+   "returns": [
+    "Mace",
+    133490,
+    1739,
+    1,
+    -1,
+    true,
+    false,
+    false,
+    false
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemInfo(2)": {
+   "api": "GetMerchantItemInfo",
+   "args": [
+    2
+   ],
+   "n": 9,
+   "nils": [
+    9
+   ],
+   "returns": [
+    "Hammer",
+    133052,
+    5065,
+    1,
+    -1,
+    false,
+    false,
+    false,
+    false
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemInfo(3)": {
+   "api": "GetMerchantItemInfo",
+   "args": [
+    3
+   ],
+   "n": 9,
+   "nils": [
+    9
+   ],
+   "returns": [
+    "Flail",
+    133476,
+    7797,
+    1,
+    -1,
+    false,
+    false,
+    false,
+    false
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(1)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    "|cffffffff|Hitem:852::::::::::::::::::|h[Mace]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(2)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    "|cffffffff|Hitem:2028::::::::::::::::::|h[Hammer]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(3)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    "|cffffffff|Hitem:925::::::::::::::::::|h[Flail]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantNumItems()": {
+   "api": "GetMerchantNumItems",
+   "args": [],
+   "n": 1,
+   "returns": [
+    15
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    19
+   ],
+   "window": "merchant"
+  },
+  "trainer:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    19
+   ],
+   "window": "trainer"
   }
  },
  "client": "era",
  "format": 1,
- "rev": 2
+ "rev": 5
 }

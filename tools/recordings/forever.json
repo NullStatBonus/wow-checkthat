@@ -1,6 +1,495 @@
 {
  "build": "1.60.1.71139",
  "calls": {
+  "C_AuctionHouse.GetBrowseResults()": {
+   "api": "C_AuctionHouse.GetBrowseResults",
+   "args": [],
+   "n": 1,
+   "returns": [
+    [
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 4577,
+       "itemLevel": 13,
+       "itemSuffix": 0
+      },
+      "minPrice": 370,
+      "totalQuantity": 58
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 2098,
+       "itemLevel": 27,
+       "itemSuffix": 0
+      },
+      "minPrice": 29999,
+      "totalQuantity": 28
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 8188,
+       "itemLevel": 37,
+       "itemSuffix": 0
+      },
+      "minPrice": 6410,
+      "totalQuantity": 48
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 9487,
+       "itemLevel": 29,
+       "itemSuffix": 0
+      },
+      "minPrice": 43500,
+      "totalQuantity": 5
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14308
+      },
+      "minPrice": 25500,
+      "totalQuantity": 2
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14320
+      },
+      "minPrice": 71000,
+      "totalQuantity": 3
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14321
+      },
+      "minPrice": 19799,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14323
+      },
+      "minPrice": 20589,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14313
+      },
+      "minPrice": 71100,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14312
+      },
+      "minPrice": 21080,
+      "totalQuantity": 3
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14330
+      },
+      "minPrice": 71100,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14332
+      },
+      "minPrice": 19700,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14300
+      },
+      "minPrice": 20400,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14303
+      },
+      "minPrice": 28000,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14455
+      },
+      "minPrice": 22500,
+      "totalQuantity": 2
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14307
+      },
+      "minPrice": 28000,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15323,
+       "itemLevel": 50,
+       "itemSuffix": 14301
+      },
+      "minPrice": 50000,
+      "totalQuantity": 1
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 13146,
+       "itemLevel": 58,
+       "itemSuffix": 0
+      },
+      "minPrice": 55000,
+      "totalQuantity": 18
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 4379,
+       "itemLevel": 26,
+       "itemSuffix": 0
+      },
+      "minPrice": 3200,
+      "totalQuantity": 18
+     },
+     {
+      "containsOwnerItem": false,
+      "itemKey": {
+       "battlePetSpeciesID": 0,
+       "itemID": 15322,
+       "itemLevel": 39,
+       "itemSuffix": 0
+      },
+      "minPrice": 7754,
+      "totalQuantity": 60
+     }
+    ]
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)": {
+   "api": "C_AuctionHouse.GetCommoditySearchResultInfo",
+   "args": [
+    2589,
+    1
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "auctionID": 242628019,
+     "containsAccountItem": false,
+     "containsOwnerItem": false,
+     "itemID": 2589,
+     "numOwnerItems": 0,
+     "owners": [],
+     "quantity": 9,
+     "timeLeftSeconds": 28758,
+     "totalNumberOfOwners": 1,
+     "unitPrice": 26
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetCommoditySearchResultInfo(2589,2)": {
+   "api": "C_AuctionHouse.GetCommoditySearchResultInfo",
+   "args": [
+    2589,
+    2
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "auctionID": 242379398,
+     "containsAccountItem": false,
+     "containsOwnerItem": false,
+     "itemID": 2589,
+     "numOwnerItems": 0,
+     "owners": [],
+     "quantity": 2917,
+     "timeLeftSeconds": 86358,
+     "totalNumberOfOwners": 21,
+     "unitPrice": 27
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetCommoditySearchResultInfo(2589,3)": {
+   "api": "C_AuctionHouse.GetCommoditySearchResultInfo",
+   "args": [
+    2589,
+    3
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "auctionID": 236561801,
+     "containsAccountItem": false,
+     "containsOwnerItem": false,
+     "itemID": 2589,
+     "numOwnerItems": 0,
+     "owners": [],
+     "quantity": 4749,
+     "timeLeftSeconds": 85691,
+     "totalNumberOfOwners": 1,
+     "unitPrice": 28
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetItemKeyInfo(itemKey:4577)": {
+   "api": "C_AuctionHouse.GetItemKeyInfo",
+   "args": [
+    {
+     "battlePetSpeciesID": 0,
+     "itemID": 4577,
+     "itemLevel": 13,
+     "itemSuffix": 0
+    }
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "battlePetSpeciesID": 0,
+     "iconFileID": 135612,
+     "isCommodity": false,
+     "isEquipment": true,
+     "isPet": false,
+     "itemID": 4577,
+     "itemName": "Compact Shotgun",
+     "quality": 2
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetItemSearchResultInfo(itemKey:4577,1)": {
+   "api": "C_AuctionHouse.GetItemSearchResultInfo",
+   "args": [
+    {
+     "battlePetSpeciesID": 0,
+     "itemID": 4577,
+     "itemLevel": 13,
+     "itemSuffix": 0
+    },
+    1
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "auctionID": 242606436,
+     "buyoutAmount": 370,
+     "containsAccountItem": false,
+     "containsOwnerItem": false,
+     "containsSocketedItem": false,
+     "itemKey": {
+      "battlePetSpeciesID": 0,
+      "itemID": 4577,
+      "itemLevel": 13,
+      "itemSuffix": 0
+     },
+     "itemLink": "|cnIQ2:|Hitem:4577::::::::::::::::::|h[Compact Shotgun]|h|r",
+     "owners": [],
+     "quantity": 1,
+     "timeLeft": 2,
+     "totalNumberOfOwners": 1
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetItemSearchResultInfo(itemKey:4577,2)": {
+   "api": "C_AuctionHouse.GetItemSearchResultInfo",
+   "args": [
+    {
+     "battlePetSpeciesID": 0,
+     "itemID": 4577,
+     "itemLevel": 13,
+     "itemSuffix": 0
+    },
+    2
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "auctionID": 242588018,
+     "buyoutAmount": 370,
+     "containsAccountItem": false,
+     "containsOwnerItem": false,
+     "containsSocketedItem": false,
+     "itemKey": {
+      "battlePetSpeciesID": 0,
+      "itemID": 4577,
+      "itemLevel": 13,
+      "itemSuffix": 0
+     },
+     "itemLink": "|cnIQ2:|Hitem:4577::::::::::::::::::|h[Compact Shotgun]|h|r",
+     "owners": [],
+     "quantity": 1,
+     "timeLeft": 2,
+     "totalNumberOfOwners": 1
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetItemSearchResultInfo(itemKey:4577,3)": {
+   "api": "C_AuctionHouse.GetItemSearchResultInfo",
+   "args": [
+    {
+     "battlePetSpeciesID": 0,
+     "itemID": 4577,
+     "itemLevel": 13,
+     "itemSuffix": 0
+    },
+    3
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "auctionID": 242579823,
+     "buyoutAmount": 370,
+     "containsAccountItem": false,
+     "containsOwnerItem": false,
+     "containsSocketedItem": false,
+     "itemKey": {
+      "battlePetSpeciesID": 0,
+      "itemID": 4577,
+      "itemLevel": 13,
+      "itemSuffix": 0
+     },
+     "itemLink": "|cnIQ2:|Hitem:4577::::::::::::::::::|h[Compact Shotgun]|h|r",
+     "owners": [],
+     "quantity": 1,
+     "timeLeft": 2,
+     "totalNumberOfOwners": 1
+    }
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetNumCommoditySearchResults(2589)": {
+   "api": "C_AuctionHouse.GetNumCommoditySearchResults",
+   "args": [
+    2589
+   ],
+   "n": 1,
+   "returns": [
+    79
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.GetNumItemSearchResults(itemKey:4577)": {
+   "api": "C_AuctionHouse.GetNumItemSearchResults",
+   "args": [
+    {
+     "battlePetSpeciesID": 0,
+     "itemID": 4577,
+     "itemLevel": 13,
+     "itemSuffix": 0
+    }
+   ],
+   "n": 1,
+   "returns": [
+    58
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.HasFullBrowseResults()": {
+   "api": "C_AuctionHouse.HasFullBrowseResults",
+   "args": [],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.HasFullCommoditySearchResults(2589)": {
+   "api": "C_AuctionHouse.HasFullCommoditySearchResults",
+   "args": [
+    2589
+   ],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "auction"
+  },
+  "C_AuctionHouse.HasFullItemSearchResults(itemKey:4577)": {
+   "api": "C_AuctionHouse.HasFullItemSearchResults",
+   "args": [
+    {
+     "battlePetSpeciesID": 0,
+     "itemID": 4577,
+     "itemLevel": 13,
+     "itemSuffix": 0
+    }
+   ],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "auction"
+  },
   "C_Container.GetContainerNumSlots(0)": {
    "api": "C_Container.GetContainerNumSlots",
    "args": [
@@ -10,6 +499,37 @@
    "returns": [
     20
    ]
+  },
+  "C_Item.GetItemInfo(1194)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    1194
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Bastard Sword",
+    "|cnIQ1:|Hitem:1194::::::::::::::::::|h[Bastard Sword]|h|r",
+    1,
+    4,
+    1,
+    "Weapon",
+    "Two-Handed Swords",
+    1,
+    "INVTYPE_2HWEAPON",
+    135276,
+    20,
+    2,
+    8,
+    0,
+    0,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
   },
   "C_Item.GetItemInfo(12640)": {
    "api": "C_Item.GetItemInfo",
@@ -71,6 +591,161 @@
     ""
    ]
   },
+  "C_Item.GetItemInfo(2131)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2131
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Shortsword",
+    "|cnIQ1:|Hitem:2131::::::::::::::::::|h[Shortsword]|h|r",
+    1,
+    3,
+    1,
+    "Weapon",
+    "One-Handed Swords",
+    1,
+    "INVTYPE_WEAPON",
+    135274,
+    10,
+    2,
+    7,
+    0,
+    0,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "C_Item.GetItemInfo(2134)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2134
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Hand Axe",
+    "|cnIQ1:|Hitem:2134::::::::::::::::::|h[Hand Axe]|h|r",
+    1,
+    4,
+    1,
+    "Weapon",
+    "One-Handed Axes",
+    1,
+    "INVTYPE_WEAPON",
+    132410,
+    16,
+    2,
+    0,
+    0,
+    0,
+    false,
+    false,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "C_Item.GetItemInfo(2320)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2320
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Coarse Thread",
+    "|cnIQ1:|Hitem:2320::::::::::::::::::|h[Coarse Thread]|h|r",
+    1,
+    5,
+    0,
+    "Trade Goods",
+    "Cloth",
+    20,
+    "INVTYPE_NON_EQUIP_IGNORE",
+    132891,
+    2,
+    7,
+    5,
+    0,
+    0,
+    false,
+    true,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "C_Item.GetItemInfo(2321)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    2321
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Fine Thread",
+    "|cnIQ1:|Hitem:2321::::::::::::::::::|h[Fine Thread]|h|r",
+    1,
+    20,
+    0,
+    "Trade Goods",
+    "Cloth",
+    20,
+    "INVTYPE_NON_EQUIP_IGNORE",
+    132912,
+    25,
+    7,
+    5,
+    0,
+    0,
+    false,
+    true,
+    ""
+   ],
+   "window": "merchant"
+  },
+  "C_Item.GetItemInfo(4291)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    4291
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Silken Thread",
+    "|cnIQ1:|Hitem:4291::::::::::::::::::|h[Silken Thread]|h|r",
+    1,
+    30,
+    0,
+    "Trade Goods",
+    "Cloth",
+    20,
+    "INVTYPE_NON_EQUIP_IGNORE",
+    132906,
+    125,
+    7,
+    5,
+    0,
+    0,
+    false,
+    true,
+    ""
+   ],
+   "window": "merchant"
+  },
   "C_Item.GetItemInfo(6948)": {
    "api": "C_Item.GetItemInfo",
    "args": [
@@ -101,6 +776,69 @@
     ""
    ]
   },
+  "C_MerchantFrame.GetItemInfo(1)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "hasExtendedCost": false,
+     "isPurchasable": true,
+     "isQuestStartItem": false,
+     "isUsable": true,
+     "name": "Coarse Thread",
+     "numAvailable": -1,
+     "price": 10,
+     "stackCount": 1,
+     "texture": 132891
+    }
+   ],
+   "window": "merchant"
+  },
+  "C_MerchantFrame.GetItemInfo(2)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "hasExtendedCost": false,
+     "isPurchasable": true,
+     "isQuestStartItem": false,
+     "isUsable": true,
+     "name": "Fine Thread",
+     "numAvailable": -1,
+     "price": 100,
+     "stackCount": 1,
+     "texture": 132912
+    }
+   ],
+   "window": "merchant"
+  },
+  "C_MerchantFrame.GetItemInfo(3)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    {
+     "hasExtendedCost": false,
+     "isPurchasable": true,
+     "isQuestStartItem": false,
+     "isUsable": true,
+     "name": "Silken Thread",
+     "numAvailable": -1,
+     "price": 500,
+     "stackCount": 1,
+     "texture": 132906
+    }
+   ],
+   "window": "merchant"
+  },
   "GetBuildInfo()": {
    "api": "GetBuildInfo",
    "args": [],
@@ -129,6 +867,39 @@
    "returns": [
     "enUS"
    ]
+  },
+  "GetMerchantItemID(1)": {
+   "api": "GetMerchantItemID",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    2320
+   ],
+   "window": "merchant"
+  },
+  "GetMerchantItemID(2)": {
+   "api": "GetMerchantItemID",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    2321
+   ],
+   "window": "merchant"
+  },
+  "GetMerchantItemID(3)": {
+   "api": "GetMerchantItemID",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    4291
+   ],
+   "window": "merchant"
   },
   "GetMerchantItemLink(1)": {
    "api": "GetMerchantItemLink",
@@ -177,7 +948,7 @@
    "args": [],
    "n": 1,
    "returns": [
-    35
+    5
    ],
    "window": "trainer"
   },
@@ -186,9 +957,10 @@
    "args": [
     1
    ],
-   "n": 1,
+   "n": 2,
    "returns": [
-    50
+    10,
+    true
    ],
    "window": "trainer"
   },
@@ -197,9 +969,10 @@
    "args": [
     2
    ],
-   "n": 1,
+   "n": 2,
    "returns": [
-    50
+    500,
+    false
    ],
    "window": "trainer"
   },
@@ -208,9 +981,10 @@
    "args": [
     3
    ],
-   "n": 1,
+   "n": 2,
    "returns": [
-    100
+    5000,
+    false
    ],
    "window": "trainer"
   },
@@ -224,12 +998,12 @@
     5
    ],
    "returns": [
-    "Linen Belt",
+    "Apprentice Herbalism",
     "available",
-    132494,
+    136246,
     0,
     false,
-    "Belts"
+    ""
    ],
    "window": "trainer"
   },
@@ -243,12 +1017,12 @@
     5
    ],
    "returns": [
-    "Simple Linen Boots",
-    "available",
-    132539,
+    "Journeyman Herbalism",
+    "unavailable",
+    136246,
     0,
     false,
-    "Shoes"
+    ""
    ],
    "window": "trainer"
   },
@@ -262,12 +1036,45 @@
     5
    ],
    "returns": [
-    "Faction Banner",
-    "available",
-    132484,
+    "Expert Herbalism",
+    "unavailable",
+    136246,
     0,
     false,
-    "Camping"
+    ""
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(1)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(2)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    0
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceLevelReq(3)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    0
    ],
    "window": "trainer"
   },
@@ -277,9 +1084,12 @@
     1
    ],
    "n": 3,
+   "nils": [
+    1
+   ],
    "returns": [
-    "Tailoring",
-    15,
+    false,
+    0,
     true
    ],
    "window": "trainer"
@@ -291,9 +1101,9 @@
    ],
    "n": 3,
    "returns": [
-    "Tailoring",
-    20,
-    true
+    "Herbalism",
+    50,
+    false
    ],
    "window": "trainer"
   },
@@ -304,9 +1114,9 @@
    ],
    "n": 3,
    "returns": [
-    "Tailoring",
-    20,
-    true
+    "Herbalism",
+    125,
+    false
    ],
    "window": "trainer"
   },
@@ -325,9 +1135,693 @@
    "returns": [
     true
    ]
+  },
+  "class:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    33075
+   ],
+   "window": "trainer"
+  },
+  "class:GetNumTrainerServices()": {
+   "api": "GetNumTrainerServices",
+   "args": [],
+   "n": 1,
+   "returns": [
+    148
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(1)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    600
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(10)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    10
+   ],
+   "n": 1,
+   "returns": [
+    1700
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(2)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    600
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(3)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    600
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(4)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    4
+   ],
+   "n": 1,
+   "returns": [
+    600
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(5)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    5
+   ],
+   "n": 1,
+   "returns": [
+    900
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(6)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    6
+   ],
+   "n": 1,
+   "returns": [
+    900
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(7)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    7
+   ],
+   "n": 1,
+   "returns": [
+    900
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(8)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    8
+   ],
+   "n": 1,
+   "returns": [
+    900
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceCost(9)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    9
+   ],
+   "n": 1,
+   "returns": [
+    1700
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(1)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    1
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Conjure Food",
+    "unavailable",
+    133951,
+    12,
+    false,
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(10)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    10
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Flamestrike",
+    "unavailable",
+    135826,
+    16,
+    false,
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(2)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    2
+   ],
+   "n": 6,
+   "returns": [
+    "Dampen Magic",
+    "unavailable",
+    136006,
+    12,
+    "Rank 1",
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(3)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    3
+   ],
+   "n": 6,
+   "returns": [
+    "Fireball",
+    "unavailable",
+    135812,
+    12,
+    "Rank 3",
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(4)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    4
+   ],
+   "n": 6,
+   "returns": [
+    "Slow Fall",
+    "unavailable",
+    135992,
+    12,
+    "",
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(5)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    5
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Arcane Explosion",
+    "unavailable",
+    136116,
+    14,
+    false,
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(6)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    6
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Arcane Intellect",
+    "unavailable",
+    135932,
+    14,
+    false,
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(7)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    7
+   ],
+   "n": 6,
+   "returns": [
+    "Fire Blast",
+    "unavailable",
+    135807,
+    14,
+    "Rank 2",
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(8)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    8
+   ],
+   "n": 6,
+   "returns": [
+    "Frostbolt",
+    "unavailable",
+    135846,
+    14,
+    "Rank 3",
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceInfo(9)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    9
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Arcane Missiles",
+    "unavailable",
+    136096,
+    16,
+    false,
+    ""
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(1)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    12
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(10)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    10
+   ],
+   "n": 1,
+   "returns": [
+    16
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(2)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    12
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(3)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    12
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(4)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    4
+   ],
+   "n": 1,
+   "returns": [
+    12
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(5)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    5
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(6)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    6
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(7)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    7
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(8)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    8
+   ],
+   "n": 1,
+   "returns": [
+    14
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceLevelReq(9)": {
+   "api": "GetTrainerServiceLevelReq",
+   "args": [
+    9
+   ],
+   "n": 1,
+   "returns": [
+    16
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(1)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    1
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(10)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    10
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(2)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    2
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(3)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    3
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(4)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    4
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(5)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    5
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(6)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    6
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(7)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    7
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(8)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    8
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceSkillReq(9)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    9
+   ],
+   "n": 3,
+   "nils": [
+    1
+   ],
+   "returns": [
+    false,
+    0,
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceTypeFilter(available)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "available"
+   ],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceTypeFilter(unavailable)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "unavailable"
+   ],
+   "n": 1,
+   "returns": [
+    true
+   ],
+   "window": "trainer"
+  },
+  "class:GetTrainerServiceTypeFilter(used)": {
+   "api": "GetTrainerServiceTypeFilter",
+   "args": [
+    "used"
+   ],
+   "n": 1,
+   "returns": [
+    false
+   ],
+   "window": "trainer"
+  },
+  "class:IsTradeskillTrainer()": {
+   "api": "IsTradeskillTrainer",
+   "args": [],
+   "n": 1,
+   "returns": [
+    false
+   ],
+   "window": "trainer"
+  },
+  "gear:GetMerchantItemLink(1)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:2131:::::::::::14:::::::|h[Shortsword]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(2)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:1194:::::::::::14:::::::|h[Bastard Sword]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantItemLink(3)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:2134:::::::::::14:::::::|h[Hand Axe]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMerchantNumItems()": {
+   "api": "GetMerchantNumItems",
+   "args": [],
+   "n": 1,
+   "returns": [
+    16
+   ],
+   "window": "merchant"
+  },
+  "gear:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    33075
+   ],
+   "window": "merchant"
+  },
+  "merchant:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    33075
+   ],
+   "window": "merchant"
+  },
+  "trainer:GetMoney()": {
+   "api": "GetMoney",
+   "args": [],
+   "n": 1,
+   "returns": [
+    33075
+   ],
+   "window": "trainer"
   }
  },
  "client": "forever",
  "format": 1,
- "rev": 2
+ "rev": 5
 }

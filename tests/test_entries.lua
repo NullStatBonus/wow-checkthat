@@ -440,6 +440,58 @@ test("a mock can replay a call recorded in game, for the client the TOC names", 
     T.ok(grouped.steps[1].ok, "a group's mock too")
 end)
 
+test("the committed recordings replay the vendor, trainer and auction scenes of #240", function()
+    local function call(entry, i, returns) return { call = { addon = "MockAddon", entry = entry, args = { i } }, returns = returns } end
+    local era = run({ toc = REC_ERA, level = 5, mocks = {
+        GetTrainerServiceInfo = { { recording = "class:GetTrainerServiceInfo(2)" }, { recording = "GetTrainerServiceInfo(3)" } },
+        GetTrainerServiceCost = { recording = "class:GetTrainerServiceCost(3)" },
+        GetAuctionItemLink = { recording = "GetAuctionItemLink(list,1)" },
+        GetMerchantItemInfo = { recording = "gear:GetMerchantItemInfo(2)" } }, steps = {
+        call("trainer_row", 2, { "Mend Pet", "nil", "unavailable" }), call("trainer_row", 3, { "Journeyman Herbalist", "nil", "unavailable" }),
+        call("trainer_cost", 3, { 1200 }), call("auction_link", 1, { "|cff0070dd|Hitem:13146::::::::::::::::::|h[Shell Launcher Shotgun]|h|r" }),
+        call("vendor_price", 2, { 5065 }) } })
+    for i, s in ipairs(era.steps) do T.ok(s.ok, "era step " .. i .. ": " .. tostring(s.detail)) end
+    local forever = run({ toc = REC_FOREVER, level = 5, mocks = { GetTrainerServiceInfo = { recording = "class:GetTrainerServiceInfo(4)" } },
+        steps = { call("trainer_row", 4, { "Slow Fall", "unavailable", 135992 }) } })
+    T.ok(forever.ok, "forever: " .. tostring(forever.steps[1] and forever.steps[1].detail))
+end)
+
+test("a table return replays as a table, each call gets its own copy, and a table argument matches by value", function()
+    local function call(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
+    local key = { itemID = 2589, itemLevel = 0, itemSuffix = 0, battlePetSpeciesID = 0 }
+    local r = run({ toc = REC_FOREVER, level = 5, mocks = {
+        ["C_MerchantFrame.GetItemInfo"] = { args = { 1 }, returns = { { name = "Coarse Thread", price = 10, stackCount = 1, isUsable = true } } },
+        ["C_AuctionHouse.GetCommoditySearchResultInfo"] = { args = { 2589, 1 }, returns = { { itemID = 2589, unitPrice = 15, owners = {} } } },
+        ["C_AuctionHouse.GetItemSearchResultInfo"] = { args = { key, 1 }, returns = { { itemKey = key, buyoutAmount = 300, owners = {} } } },
+        ["C_AuctionHouse.GetBrowseResults"] = { returns = { { { minPrice = 1 }, { minPrice = 2 } } } } }, steps = {
+        call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }), call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }),
+        call("commodity_price", { 2589, 1 }, { 15, 0 }),
+        call("item_result", { { itemID = 2589, itemLevel = 0, itemSuffix = 0, battlePetSpeciesID = 0 }, 1 }, { 300, 2589 }),
+        call("item_result", { { itemID = 2589, itemLevel = 7, itemSuffix = 0, battlePetSpeciesID = 0 }, 1 }, {}),
+        call("browse_count", {}, { 2 }) } })
+    for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
+end)
+
+test("the committed Forever vendor and auction entries (measured 2026-11-27) replay as tables", function()
+    local function call(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
+    local r = run({ toc = REC_FOREVER, level = 5, mocks = {
+        ["C_MerchantFrame.GetItemInfo"] = { recording = "C_MerchantFrame.GetItemInfo(1)" },
+        ["C_AuctionHouse.GetCommoditySearchResultInfo"] = { { recording = "C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)" }, { recording = "C_AuctionHouse.GetCommoditySearchResultInfo(2589,2)" } },
+        ["C_AuctionHouse.GetBrowseResults"] = { recording = "C_AuctionHouse.GetBrowseResults()" } }, steps = {
+        call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }), call("commodity_price", { 2589, 2 }, { 27, 0 }), call("browse_count", {}, { 20 }) } })
+    for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
+end)
+
+test("every read-only window call can be mocked, and no call that buys, learns or bids can", function()
+    local R = dofile("tools/entry_runner.lua")
+    for _, n in ipairs({ "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemID", "GetNumTrainerServices", "GetTrainerServiceInfo",
+        "GetTrainerServiceCost", "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "IsTradeskillTrainer", "GetTrainerServiceTypeFilter",
+        "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink", "C_MerchantFrame.GetItemInfo", "C_AuctionHouse.GetBrowseResults",
+        "C_AuctionHouse.GetItemSearchResultInfo", "C_AuctionHouse.GetCommoditySearchResultInfo", "C_AuctionHouse.GetItemKeyInfo" }) do T.ok(R.MOCKABLE[n], n) end
+    for _, n in ipairs({ "BuyMerchantItem", "BuyTrainerService", "PlaceAuctionBid", "PickupMerchantItem", "StartAuction", "C_AuctionHouse.PlaceBid",
+        "C_AuctionHouse.StartCommoditiesPurchase", "C_AuctionHouse.PostItem", "C_AuctionHouse.SendBrowseQuery", "C_MerchantFrame.SellAllJunkItems" }) do T.ok(not R.MOCKABLE[n], n) end
+end)
+
 test("a recording that does not fit fails the load step and says why", function()
     local steps = { recCall("info_first", 6948, { "Hearthstone" }) }
     local function loadError(r) return (not r.ok) and tostring(r.steps[1].detail) or "ran" end
@@ -458,14 +510,16 @@ test("the committed recordings name no character, realm or personal value", func
         local f = assert(io.open("tools/recordings/" .. client .. ".json")); local text = f:read("*a"); f:close()
         local rec = assert(jns.Json.Decode(text))
         T.eq(rec.format, 1); T.eq(rec.client, client); T.ok(next(rec.calls))
-        T.ok(rec.rev == nil or rec.rev == 2, "rev is absent in a file from before the window tags, or 2")
+        T.ok(rec.rev == nil or (rec.rev >= 2 and rec.rev <= 5), "rev is absent in a file from before the window tags, or 2 to 5")
         for label, call in pairs(rec.calls) do
             T.ok(call.window == nil or call.window == "merchant" or call.window == "trainer" or call.window == "auction", label .. " has an unknown window tag")
             if call.api == "GetAuctionItemInfo" then
                 for i = 12, 15 do T.ok(type(call.returns[i]) ~= "string" or call.returns[i] == "", label .. " names a bidder or a seller at return " .. i) end -- a nil is stored as false
             end
             T.ok(not label:find("player", 1, true), label .. " is a call on the player")
-            for _, personal in ipairs({ "GetMoney", "GetItemCount", "UnitName", "GetRealmName", "GetTime", "GetServerTime" }) do T.ok(call.api ~= personal, call.api .. " is personal") end
+            for _, personal in ipairs({ "GetMoney", "GetItemCount", "UnitName", "GetRealmName", "GetTime", "GetServerTime" }) do
+                T.ok(call.api ~= personal or (personal == "GetMoney" and call.window and label:find("^%l+:")), call.api .. " is personal") -- a balance is kept only beside a window scene
+            end
         end
         T.ok(not text:find("|Hitem:6948::::::::10:", 1, true) and not text:find("|Hitem:%d+:[^|]*:%d+:%d+:", 1), "an item link carries no level or specialization")
     end
