@@ -314,7 +314,7 @@ function Evidence.CheckLog(a, snapshots, plan, env, wantDetail)
     local lines, exact, src = window(a, snapshots, plan, env)
     if not lines then return "unverified", exact, wantDetail and describeLog(a, nil) or nil end
     local r, why = judgeLog(a, lines, exact, src)
-    return r, why, wantDetail and r ~= "pass" and describeLog(a, lines, r) or nil -- a pass keeps none: no second scan -- a pass keeps none: no second scan
+    return r, why, wantDetail and r ~= "pass" and describeLog(a, lines, r) or nil -- a pass keeps none: no second scan
 end
 
 -- A fact is stored as the line "[addon] key=value". The value reads as a boolean, a number, or else text.

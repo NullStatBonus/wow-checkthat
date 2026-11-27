@@ -46,7 +46,7 @@ function RunEvents.Changed(before, after, reason)
 end
 
 -- Returns true when fn is stored. A second registration for an addon replaces the first. A run that is already
--- open (a run survives /reload, and CheckThat loads before the addons) gets one "start" now.
+-- open (a run survives /reload, and CheckThat loads after the addons that register) gets one "start" now.
 function RunEvents.Register(addon, fn)
     if not validName(addon) or type(fn) ~= "function" then
         note("refused a run callback: the name or function is not valid"); return false

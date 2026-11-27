@@ -622,9 +622,8 @@ function Run.Undo(run, ctx, id)
     table.remove(rec.attempts)
     rec.reopened = true -- the report cannot tell this from an untouched step when the only attempt is gone
     local prev = rec.attempts[#rec.attempts]
-    rec.verdict = prev and prev.verdict or "pending"
+    rec.verdict = "pending" -- the step is open again, whatever the earlier attempt said
     rec.evidence = prev and prev.evidence or nil
-    if rec.verdict ~= "pending" then rec.verdict = "pending" end
     run.current = Run.IndexOf(run, id)
     Run.Touch(run, ctx.now)
     return true

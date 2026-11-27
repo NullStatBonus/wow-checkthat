@@ -48,7 +48,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct debug on`, `/ct debug off` | Record or stop the debug log. |
 | `/ct log`, `/ct log clear` | Copy the debug report in a window like the one KeepThat, DontDoThat and ClosestVendor use. Clear it after confirmation. |
 | `/ct import` | Paste a plan string, in the same window style as the debug report. |
-| `/ct start <addon>` | Start a run for an imported plan. |
+| `/ct start <addon>` | Start a run for an imported plan. The addon name works in any letter case. |
 | `/ct end` | End the current run after confirmation. The card has an End run item in its Run menu too. |
 | `/ct pass`, `/ct partial [note]`, `/ct fail [note]`, `/ct skip [note]` | Record the result of the current step. Partial means it mostly works. |
 | `/ct undo` | Undo the last result. |
@@ -88,6 +88,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - Blue on the tracker means untested, also while some steps of the category have results. Yellow means partial or unverified. Red means fail, green means pass, and grey means all skipped. [Details](docs/features.md#categories-and-the-tracker)
 - CheckThat records Lua errors only while a run is open. With BugGrabber loaded, CheckThat reads BugGrabber's error counts instead of setting its own handler. When an addon takes the handler later, CheckThat sets its own again within a second while the card is shown, or when a result is judged. Each error line names the addon from its file path (`[KeepThat]`), and the first error of a step keeps a short call stack for `/ct log`. BugGrabber and BugSack are optional: CheckThat works without them and reads BugGrabber's list when it holds the handler.
 - Run is not available in combat. It comes back when combat ends.
+- A plan can read the saved variables and globals of any addon, and a results string can include what they hold. The start screen lists the variables a plan reads. The debug report shows them as `Plan reads`. Check a results string before you share it. [Details](docs/features.md#which-lines-decided-a-check)
 - With **Keep the CT macro on the current step** on, bind a key to the macro CheckThat names (`CT` unless you own one) and play a plan with it and the result keys. The macro holds a marker line (`/ct macrorun <step id>`) and commands, never a result. A press for another step prints a warning and logs `macro stale`. It changes out of combat only. If you edit the macro, it stays as you left it for the rest of that run. A new run, or ticking the setting again, takes it back while its first line is still the marker. Delete the marker line to keep the macro for good. A step whose commands do not fit in a macro (over four lines or 255 characters) gets `/ct status`. The debug report shows `macroFollow`.
 - A step with more commands than the card has copy boxes (four) gets no Run button, so no command runs unseen. `/script` and `/dump` are not allowed.
 - A long plan or step title ends with "..." and shows in full when you point at it.

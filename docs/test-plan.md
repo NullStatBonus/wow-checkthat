@@ -94,6 +94,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 22. **The step title stands out.** Look at any step title on each client.
    Check: the title is larger than the other text and has a dark outline. Take a screenshot for the listing page.
    Log: none; on screen only.
+23. **A reload while the card shows a past run.** Setup: end one run, then start another and press Pass on its first step. Open Esc, Options, AddOns, CheckThat, Home, pick the ended run under Past runs and press Open run. Type `/reload`.
+   Check: chat says "Reloaded. Your run continues on the same step." and then names the run you started last, not the ended one. Under Past runs on Home, pick the run you started last and press Open run. Its step says "Reloaded" under Do and does not ask for a second reload.
+   Log: `[ct] resumed run <id>` names the run you started last.
 
 ## 4. Evidence
 
@@ -142,6 +145,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 14. **A step for another class, and a step checked at run start.** On a character that is not a Mage, import `build/checkthat-0.21.ct` and play it past "Checked when the run starts".
    Check: the card never shows "A step for a Mage" or "Checked when the run starts". With the back arrow, the Mage step says it does not apply, with the reason, and the other says CheckThat checked it when the run started.
    Log: `[ct] step ct2100.mage inapplicable: This step is for a Mage.` The report shows `attempt 1: pass at run start` for ct2100.start and "not for this character" for ct2100.mage.
+15. **The start screen names the variables a plan reads.** Type `/ct import`, paste the contents of `build/selftest.ct` and press Import. Do not start the run.
+   Check: under "N steps. Ready to test. Select Start run." a grey line says "This plan reads these variables: CheckThatDB. A results string can include what they hold."
+   Log: after you select Start run and type `/ct log`, the report shows `Plan reads: CheckThatDB`.
 
 ## 5. Categories and unit-test checks
 

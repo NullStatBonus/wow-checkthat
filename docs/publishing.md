@@ -28,7 +28,7 @@ Upload screenshots on CurseForge and Wago with the text from `docs/listing.md`: 
 
 ## How the package is laid out
 
-- The addon lives in `CheckThat/` inside the repository, so `.pkgmeta` moves it to the top of the zip and ignores everything else (tests, tools, docs, openspec, captures and screenshots).
+- The addon lives in `CheckThat/` inside the repository, so `.pkgmeta` moves it to the top of the zip and ignores everything else (tests, tools, docs, openspec, captures, screenshots and the root notices and requirement files). Only `LICENSE` and `CHANGELOG.md` ship from the repository root. The Ace3 and LibDeflate license files ship inside `CheckThat/Libs`; `THIRD_PARTY.md` only points to them. `tools/test_ct.py` fails when a new top-level file is neither listed in `ignore` nor one of those two.
 - The Ace3 libraries and LibDeflate are committed under `CheckThat/Libs`, so no externals are fetched.
 - The packager treats `CheckThat_Camelot.toc` as the WoW Forever TOC (its name for the Forever client) and `CheckThat_Vanilla.toc` as Classic Era. A TOC named `_Forever` would not be recognized, so Forever would not be offered as a game version.
 - Both TOCs list the same files in the same order (`tools/check-tocs-match.sh`).

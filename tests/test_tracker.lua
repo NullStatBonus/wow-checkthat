@@ -51,6 +51,21 @@ test("it lists every category, also with a dozen and more, with color and words"
     T.eq(win().caption.shown, false, "no overall count in the header: each row has its own")
 end)
 
+test("a profile switch puts the Categories window in the new profile's place", function()
+    start(3)
+    ns.Tracker.Show()
+    local db = ns.addon.db
+    local function point() local c = win().calls.SetPoint; return c[1], c[3], c[4], c[5] end -- the last SetPoint call
+    db.profile.card.trackerPos = { "TOPLEFT", "BOTTOMLEFT", 10, 20 }
+    ns.Tracker.ApplyPosition()
+    T.same({ point() }, { "TOPLEFT", "BOTTOMLEFT", 10, 20 }, "the saved place shows")
+    db:SetProfile("Elsewhere") -- a new profile has no saved place
+    T.same({ point() }, { "LEFT", "LEFT", 20, 0 }, "the new profile's place, with no reload")
+    db:SetProfile("Default")
+    T.same({ point() }, { "TOPLEFT", "BOTTOMLEFT", 10, 20 }, "back to the first profile's place")
+    db.profile.card.trackerPos = nil
+end)
+
 test("a list longer than the window scrolls with the mouse wheel and says what shows", function()
     local run = start(20)
     ns.Tracker.Show()

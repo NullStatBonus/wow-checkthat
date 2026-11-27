@@ -107,6 +107,32 @@ test("start shows the card and undo refreshes it", function()
 end)
 
 
+test("start takes the addon name in any case and knows the addons Plan.SLASH lists", function()
+    ns.App.Init({}, { time = function() return 1 end, UnitName = function() return "T" end, GetRealmName = function() return "R" end })
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "t", sections = { { id = "s", title = "S", steps = {
+        { id = "a", title = "A", action = { kind = "manual", text = "x" }, expect = "e", verify = { "player" } } } } } }
+    ns.App.db.plans.KeepThat = { plan = p, digest = "d" }
+    T.ok(run("start keepthat")[1]:find("^Started KeepThat"), "lower case")
+    T.ok(run("start KEEPTHAT")[1]:find("^Started KeepThat"), "upper case")
+    T.ok(run("start Nothing")[1]:find("Usage"))
+    -- the list is Plan.SLASH, not a copy: an addon added there is accepted with no second edit
+    ns.Plan.SLASH.NewThat = { ["/nt"] = true }
+    T.finally(function() ns.Plan.SLASH.NewThat = nil end)
+    T.ok(not run("start newthat")[1]:find("Usage"), "an addon in Plan.SLASH is accepted")
+end)
+
+test("a slash verdict is worded through L[], each word on its own", function()
+    T.eq(ns.Slash.VerdictLine({ verdict = "pass", evidence = "matched" }), "Step pass (matched).")
+    T.eq(ns.Slash.VerdictLine({ verdict = "fail", evidence = "contradicts" }), "Step fail (contradicts).")
+    T.eq(ns.Slash.VerdictLine({ verdict = "skip" }), "Step skip.")
+    local was = {}
+    for _, k in ipairs({ "Step %s (%s).", "Step %s.", "pass", "matched" }) do was[k] = rawget(ns.L, k) end
+    T.finally(function() for k, v in pairs(was) do ns.L[k] = v end; for _, k in ipairs({ "Step %s (%s).", "Step %s.", "pass", "matched" }) do if was[k] == nil then rawset(ns.L, k, nil) end end end)
+    ns.L["Step %s (%s)."], ns.L["Step %s."], ns.L["pass"], ns.L["matched"] = "Schritt %s [%s].", "Schritt %s!", "bestanden", "gefunden"
+    T.eq(ns.Slash.VerdictLine({ verdict = "pass", evidence = "matched" }), "Schritt bestanden [gefunden].", "a translation owns the whole sentence, brackets too")
+    T.eq(ns.Slash.VerdictLine({ verdict = "pass" }), "Schritt bestanden!")
+end)
+
 test("text from a plan is escaped for chat", function()
     T.eq(ns.Slash.Esc("a|cffff0000b|r"), "a||cffff0000b||r")
     T.eq(ns.Slash.Esc("plain"), "plain")
@@ -153,6 +179,13 @@ test("categories lists each category with a state word and counts", function()
     T.eq(out[1], "Bank (bank): untested, 0 passed, 0 failed, 2 open"); T.eq(out[2], "Mail (mail): not picked")
     T.eq(out[3], "Overall: untested, 0 passed, 0 failed, 2 open")
     T.ok(run("categories now please")[1]:find("takes no arguments"), "surplus input is refused")
+end)
+test("categories escapes a bar in a title, as the other chat lines do", function()
+    local r = withRun({ "bank" })
+    r.categories[1].title = "Bank |cffff0000red|r"
+    local out = run("categories")
+    T.eq(out[1], "Bank ||cffff0000red||r (bank): untested, 0 passed, 0 failed, 2 open", "chat shows the title as typed")
+    T.eq(ns.App.CategoryLine(ns.App.Categories()[1]):sub(1, 9), "Bank |cff", "the line for a tooltip keeps the raw text")
 end)
 test("run shows a category or a step and reports a bad name without changing the run", function()
     called.card = nil

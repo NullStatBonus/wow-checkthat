@@ -44,7 +44,7 @@ Choose Clear plan... in the Run menu. CheckThat names the plan and asks first. I
 - The recorded results stay. The card shows "Run ended" with Export results, and the results string still works. The stored copy of the plan stays for the ended run.
 - The ended card offers Import a plan in place of Main window.
 
-The start screen shows the plan title as its heading, with the count of steps this game client runs and "Ready to test. Select Start run." under it. A plan with no step for this client says "This plan is not for this game client. None of its steps run here." in amber, lists no categories and turns Start run off. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge.
+The start screen shows the plan title as its heading, with the count of steps this game client runs and "Ready to test. Select Start run." under it. A plan with no step for this client says "This plan is not for this game client. None of its steps run here." in amber, lists no categories and turns Start run off. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge. Under the step count a grey line lists the variables the plan reads: each log source's `global` and each `global-value` check's name, sorted, up to six and then "and N more". It reads "This plan reads these variables: KeepThatDB, OtherAddonDB. A results string can include what they hold." A `frame-shown` check is not listed: it saves only whether the frame is shown. A plan that reads none shows no line.
 
 Debug log: `plan cleared <addon>`.
 
@@ -128,7 +128,7 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 - **Which outcomes.** Every outcome that is not a pass, also in an attempt that passed (a failing diagnostic never gates it). Passing outcomes keep none of these keys, and the check does not build them.
 - **Position and excerpt.** For `scope: attempt` the position `n` is the same position as line `n` of the excerpt of that source, when `n` is 20 or less. Hits carry their own text, so a hit past line 20 is still shown.
 - **Size.** Hit text and `observed` count toward the byte budget of a run with the excerpt, for every attempt that kept them (also a passing one). The oldest attempts lose them first, keep `rule`, `shape`, `matched`, `window` and `why`, and set `trimmed` on each check that lost text.
-- **Privacy.** Hit lines and values come from debug logs and can hold private data, as the excerpt can. Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
+- **Privacy.** Hit lines and values come from debug logs and can hold private data, as the excerpt can. A plan may read any global of any addon, and the `observed` value, the hits and the excerpts hold what it read. The start screen lists those variables before you start, and the debug report shows `Plan reads: <names>` for the run on the card (`none` when it reads none). Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
 - **Contract.** `schema/run-results.schema.json` describes the run record. `tools/ct.py` rejects a revision whose hits are malformed and names it in `status`.
 
 ## Step card
@@ -136,7 +136,7 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 - **Title.** The step title is the strongest text: the game's large font, two points larger, with an outline. Without `CreateFont` the stock large font stays.
 - **Setup.** Setup, the plan's preamble at the start and the section intro sit in one line that folds. It opens by itself the first time a step shows in a run. Blocked requirements stay outside it.
 - **Do.** One sentence, or one checkbox for each listed action. A click on the box or its text ticks it. Ticks are yours: they never record a result, and Pass needs none. A finished step shows its ticks read-only. Without the checkbox template a text box shows `[ ]` or `[x]`. Debug log: `step <id> action <n> ticked` or `cleared`.
-- **Hints.** Under Do: Reloaded after a reload, Print Screen, the reload request and the macro that does not fit.
+- **Hints.** Under Do: Reloaded after a reload, Print Screen, the reload request and the macro that does not fit. A reload marks the open run of your character, also while the card shows a past run from Past runs. Chat then reports that run, and the debug log says `resumed run <id> after load`.
 - **Expect.** One sentence, or one short line for each listed result.
 - **Checks.** A step with required checks lists them under a small green "CheckThat checks" heading ("CheckThat checks and records the result" on an automatic step). A step with none is yours and shows no heading.
 - **Note.** "+ Add note" until you click it. A note you typed stays with the attempt.

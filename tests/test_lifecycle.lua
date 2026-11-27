@@ -33,6 +33,38 @@ test("a run started before a reload is still the current run after it", function
     T.eq(seen[2].runId, seen[1].runId, "the same run is current after the reload")
 end)
 
+test("a reload while the card shows a past run marks the open run, and the resume lines name that run", function()
+    local ids, seen = {}, {}
+    local r = Runner.run({ toc = "CheckThat/CheckThat_Vanilla.toc", level = 3, steps = { { reload = true } } }, {
+        loaded = function(cns, st, n)
+            local app = cns.App
+            if n == 1 then
+                T.ok(app.ImportPlan(planText()))
+                ids.past = assert(app.Start("KeepThat")).runId
+                T.ok(app.End(ids.past))
+                ids.open = assert(app.Start("KeepThat")).runId
+                T.ok(ids.open ~= ids.past)
+                app.Begin() -- the open run has an open attempt on its current step
+                T.ok(app.OpenRun(ids.past), "the card shows the past run")
+                T.eq(app.Current().runId, ids.past)
+                st.said = {}
+            else
+                local run = app.db.runs[ids.open]
+                local rec = run.steps[run.order[run.current]]
+                seen.reloaded = rec.attempts[#rec.attempts].reloaded
+                seen.said = table.concat(st.said, "\n")
+                seen.shown = app.Current().runId
+            end
+        end,
+    })
+    T.ok(r.ok, r.steps[#r.steps].detail)
+    T.eq(seen.shown, ids.past, "the card still shows the past run")
+    T.eq(seen.reloaded, true, "the open run's attempt is marked as reloaded")
+    T.ok(seen.said:find("Reloaded. Your run continues on the same step.", 1, true), seen.said)
+    T.ok(seen.said:find(ids.open .. ": ", 1, true), "the status line names the open run: " .. seen.said)
+    T.ok(not seen.said:find("(run ended)", 1, true), "the past run is not reported as resumed: " .. seen.said)
+end)
+
 test("a second level 3 run in the same process loads CheckThat again", function()
     local r = Runner.run({ toc = "CheckThat/CheckThat_Vanilla.toc", level = 3, steps = { { reload = true } } })
     T.ok(r.ok, r.steps[#r.steps].detail)

@@ -2590,6 +2590,17 @@ class PackageRoot(unittest.TestCase):
         self.assertEqual(found, [])
 
 
+    def test_every_top_level_entry_is_packaged_on_purpose_or_ignored(self):
+        # .pkgmeta ignores everything that is not the addon. LICENSE and the changelog ship; dot files and folders are the packager's own.
+        with open(os.path.join(ct.ROOT, ".pkgmeta"), encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+        start = lines.index("ignore:")
+        ignored = {l.strip()[2:].strip() for l in lines[start + 1:] if l.strip().startswith("- ")}
+        ships = {"CheckThat", "LICENSE", "CHANGELOG.md"}
+        loose = [n for n in sorted(os.listdir(ct.ROOT)) if not n.startswith(".") and n not in ships and n not in ignored]
+        self.assertEqual(loose, [], "add these to the ignore list of .pkgmeta")
+
+
 class Safety(unittest.TestCase):
     def test_run_ids_cannot_leave_the_runs_folder(self):
         with tempfile.TemporaryDirectory() as d:
