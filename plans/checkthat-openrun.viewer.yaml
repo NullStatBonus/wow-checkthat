@@ -63,7 +63,9 @@ sections:
     action:
       kind: manual
       text: With the owner run picked, select |cffffd100Export run|r.
-    expect: A box shows a string that starts with !CT1!. Close it with Escape. The step records itself.
+    expect:
+    - A box shows a string that starts with !CT1!.
+    - Close it with Escape. The step records itself.
     verify:
     - assertions
     auto: true
@@ -77,9 +79,14 @@ sections:
     title: Delete the owner run
     action:
       kind: manual
-      text: With the owner run picked, select |cffffd100Delete run|r. Read the question. Select |cffffd100Accept|r.
+      text:
+      - With the owner run picked, select |cffffd100Delete run|r.
+      - Read the question.
+      - Select |cffffd100Accept|r.
     setup: Delete run removes the owner run from the saved file. The previous step exported it, so keep that string.
-    expect: The question names the owner run. After Accept the run is gone from the list.
+    expect:
+    - The question names the owner run.
+    - After Accept the run is gone from the list.
     verify:
     - player
     - assertions

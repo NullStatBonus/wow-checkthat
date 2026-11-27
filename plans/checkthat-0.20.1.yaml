@@ -46,7 +46,9 @@ sections:
     action:
       kind: copy-slash
       text: /ct version
-    expect: Chat shows the CheckThat version, 0.20.1 or newer. The card records the result by itself. If the step fails, stop and copy CheckThat 0.20.1 into the game again.
+    expect:
+    - Chat shows the CheckThat version, 0.20.1 or newer. The card records the result by itself.
+    - If the step fails, stop and copy CheckThat 0.20.1 into the game again.
     verify:
     - assertions
     auto: true
@@ -65,10 +67,14 @@ sections:
     title: Clear the debug log
     action:
       kind: manual
-      text: Type |cff99ccff/ct log clear|r and accept the question. Then press Pass on the card.
+      text:
+      - Type |cff99ccff/ct log clear|r and accept the question.
+      - Press Pass on the card.
       commands:
       - /ct log clear
-    expect: A question asks to clear the debug log. After you accept, chat says "Debug log cleared."
+    expect:
+    - A question asks to clear the debug log.
+    - After you accept, chat says "Debug log cleared."
     verify:
     - player
     notes: An old log from an earlier run would hide this run's lines from the checks.
@@ -109,8 +115,13 @@ sections:
     title: Undo the result
     action:
       kind: manual
-      text: Click |cffffd100Undo|r once. The card goes back to the step Pass me. Press |cffffd100Pass|r on it. The card comes back to this step. Press |cffffd100Pass|r here, and do not click Undo again.
-    expect: After Undo the card shows Pass me with no result. After your second Pass the card shows the next step.
+      text:
+      - Click |cffffd100Undo|r once. The card goes back to the step Pass me.
+      - Press |cffffd100Pass|r on it. The card comes back to this step.
+      - Press |cffffd100Pass|r here, and do not click Undo again.
+    expect:
+    - After Undo the card shows Pass me with no result.
+    - After your second Pass the card shows the next step.
     verify:
     - player
     - assertions
@@ -133,8 +144,12 @@ sections:
     title: Press a macro made for another step
     action:
       kind: manual
-      text: Type |cff99ccff/ct macrorun ct2001.nowhere|r once. Then press |cffffd100Pass|r on the card.
-    expect: Chat says "This macro is for step ct2001.nowhere. The card shows step ct2001.stale." Then press Pass on the card.
+      text:
+      - Type |cff99ccff/ct macrorun ct2001.nowhere|r once.
+      - Press |cffffd100Pass|r on the card.
+    expect:
+    - Chat says "This macro is for step ct2001.nowhere. The card shows step ct2001.stale."
+    - Press Pass on the card.
     verify:
     - player
     - assertions
@@ -168,8 +183,14 @@ sections:
     title: A result on a finished step
     action:
       kind: manual
-      text: Click the |cffffd100<|r button at the top right of the card once. The card shows Pass me again with its result. Do not click Redo this step. Type |cff99ccff/ct fail|r. Then click the |cffffd100>|r button and press |cffffd100Pass|r here.
-    expect: After the command chat says "This step has a result. Use Redo this step or Undo first." Pass me again keeps its Pass. Then press Pass on this step.
+      text:
+      - Click the |cffffd100<|r button at the top right of the card once. The card shows Pass me again with its result. Do not click Redo this step.
+      - Type |cff99ccff/ct fail|r.
+      - Click the |cffffd100>|r button and press |cffffd100Pass|r here.
+    expect:
+    - After the command chat says "This step has a result. Use Redo this step or Undo first."
+    - Pass me again keeps its Pass.
+    - Press Pass on this step.
     verify:
     - player
     - assertions
@@ -192,10 +213,17 @@ sections:
     title: Close the card
     action:
       kind: manual
-      text: Look for the Run button beside |cff99ccff/ct status|r on the card. Click the X at the top right of the card. Type |cff99ccff/ct|r to open the card again. Press |cffffd100Pass|r on the card.
+      text:
+      - Look for the Run button beside |cff99ccff/ct status|r on the card.
+      - Click the X at the top right of the card.
+      - Type |cff99ccff/ct|r to open the card again.
+      - Press |cffffd100Pass|r on the card.
       commands:
       - /ct status
-    expect: While the card is closed, no Run button stays on the screen. After |cff99ccff/ct|r the card and its Run button come back. Then press Pass on the card.
+    expect:
+    - While the card is closed, no Run button stays on the screen.
+    - After |cff99ccff/ct|r the card and its Run button come back.
+    - Press Pass on the card.
     verify:
     - player
     notes: Nothing is logged when the card closes, so this step is a player check. The command /ct is not in commands on purpose, because it toggles the card and the Run button would close it.

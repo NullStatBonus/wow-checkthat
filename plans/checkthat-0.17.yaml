@@ -44,7 +44,9 @@ sections:
     action:
       kind: copy-slash
       text: /ct version
-    expect: Chat says "CheckThat 0.17.0" or a newer version. The card records the result by itself. If the step fails, stop and copy CheckThat 0.17.0 into the game again.
+    expect:
+    - Chat says "CheckThat 0.17.0" or a newer version. The card records the result by itself.
+    - If the step fails, stop and copy CheckThat 0.17.0 into the game again.
     verify:
     - assertions
     auto: true
@@ -100,7 +102,10 @@ sections:
     action:
       kind: manual
       text: In the Categories window click the plus button of the row |cffffd100Step list|r.
-    expect: The button turns into a minus. The steps of the category show under the row, in the order of this plan. Then press Pass on the card.
+    expect:
+    - The button turns into a minus.
+    - The steps of the category show under the row, in the order of this plan.
+    - Press Pass on the card.
     verify:
     - player
     - assertions
@@ -116,7 +121,9 @@ sections:
     action:
       kind: manual
       text: In the Categories window click the minus button of the row |cffffd100Step list|r.
-    expect: The steps leave the window and the button is a plus again. Then press Pass on the card.
+    expect:
+    - The steps leave the window and the button is a plus again.
+    - Press Pass on the card.
     verify:
     - player
     - assertions
@@ -132,7 +139,11 @@ sections:
     action:
       kind: manual
       text: In the Categories window click the row name |cffffd100Expand steps|r. Do not click the plus button.
-    expect: A menu opens. It offers Go to first open step and Rerun category. The steps of the category stay hidden. Then press Pass on the card.
+    expect:
+    - A menu opens.
+    - It offers Go to first open step and Rerun category.
+    - The steps of the category stay hidden.
+    - Press Pass on the card.
     verify:
     - player
 - id: s2
@@ -184,8 +195,14 @@ sections:
     title: Read the result of each step
     action:
       kind: manual
-      text: In the Categories window click the plus button of the row |cffffd100Step list|r. Press |cffffd100Pass|r on the card when you have looked.
-    expect: 'The list reads: Pass me passed, Partial me partial, Skip me skipped, Fail me failed. Each result has a mark and a word. Read each step title, then its word. This step reads open.'
+      text:
+      - In the Categories window click the plus button of the row |cffffd100Step list|r.
+      - Press |cffffd100Pass|r on the card when you have looked.
+    expect:
+    - 'The list reads: Pass me passed, Partial me partial, Skip me skipped, Fail me failed.'
+    - Each result has a mark and a word.
+    - Read each step title, then its word.
+    - This step reads open.
     verify:
     - player
     - assertions
@@ -201,8 +218,13 @@ sections:
     title: A step for another client
     action:
       kind: manual
-      text: Look at the list of Step list in the Categories window. Find the step |cffffd100Only on Classic Era|r.
-    expect: The step shows with the words "not for this client". The card never shows it as a step to do. Then press Pass on the card.
+      text:
+      - Look at the list of Step list in the Categories window.
+      - Find the step |cffffd100Only on Classic Era|r.
+    expect:
+    - The step shows with the words "not for this client".
+    - The card never shows it as a step to do.
+    - Press Pass on the card.
     verify:
     - player
   - id: ct17.land
@@ -219,8 +241,15 @@ sections:
     title: Click a step in the list
     action:
       kind: manual
-      text: 'In the Categories window click the step row |cffffd100Land here|r under Step list. Then press |cffffd100>|r on the card to come back to this step.'
-    expect: The card shows the step Land here at once. It reads passed, and its result does not change. The row Partial me still reads partial. After >, the card shows this step again. Then press Pass on the card.
+      text:
+      - In the Categories window click the step row |cffffd100Land here|r under Step list.
+      - Press |cffffd100>|r on the card to come back to this step.
+    expect:
+    - The card shows the step Land here at once.
+    - It reads passed, and its result does not change.
+    - The row Partial me still reads partial.
+    - After >, the card shows this step again.
+    - Press Pass on the card.
     verify:
     - player
     - assertions
@@ -268,8 +297,13 @@ sections:
     title: Undo the result
     action:
       kind: manual
-      text: 'Click |cffffd100Undo|r once. The card shows Reopen me. Press |cffffd100Pass|r on it. The card comes back to this step. Press |cffffd100Pass|r here, and do not click Undo again.'
-    expect: After Undo the card shows Reopen me with no result. After your second Pass the card shows the next step.
+      text:
+      - Click |cffffd100Undo|r once. The card shows Reopen me.
+      - Press |cffffd100Pass|r on it. The card comes back to this step.
+      - Press |cffffd100Pass|r here, and do not click Undo again.
+    expect:
+    - After Undo the card shows Reopen me with no result.
+    - After your second Pass the card shows the next step.
     verify:
     - player
     - assertions
@@ -286,7 +320,9 @@ sections:
     action:
       kind: manual
       text: 'In the Categories window click the plus button of the row |cffffd100Reopened step|r.'
-    expect: The list reads Reopen me passed and Undo the result passed. Then press Pass on the card.
+    expect:
+    - The list reads Reopen me passed and Undo the result passed.
+    - Press Pass on the card.
     verify:
     - player
 - id: s5
@@ -301,8 +337,12 @@ sections:
     title: Remove the Spare category
     action:
       kind: manual
-      text: 'In the Categories window click the row |cffffd100Spare category|r. Choose |cffffd100Remove from run: Spare category|r.'
-    expect: The row reads "not picked". Then press Pass on the card.
+      text:
+      - In the Categories window click the row |cffffd100Spare category|r.
+      - 'Choose |cffffd100Remove from run: Spare category|r.'
+    expect:
+    - The row reads "not picked".
+    - Press Pass on the card.
     verify:
     - player
     - assertions
@@ -317,8 +357,13 @@ sections:
     title: Show a step that is not picked
     action:
       kind: manual
-      text: 'In the Categories window click the plus button of the row |cffffd100Spare category|r. Then click the step row |cffffd100Never shown|r.'
-    expect: The step reads "not picked". Clicking it does nothing, and the card keeps its step. Then press Pass on the card.
+      text:
+      - In the Categories window click the plus button of the row |cffffd100Spare category|r.
+      - Click the step row |cffffd100Never shown|r.
+    expect:
+    - The step reads "not picked".
+    - Clicking it does nothing, and the card keeps its step.
+    - Press Pass on the card.
     verify:
     - player
     - assertions

@@ -49,15 +49,27 @@ sections:
       text: Type |cff99ccff/ct settings home|r and look under |cffffd100Past runs|r.
       commands:
       - /ct settings home
-    expect: The list shows at least seven runs. This run is first, then your practice runs. Each entry starts with a date and time. The practice run right below this one is the one you left open. With fewer runs, stop and make more practice runs first.
+    expect:
+    - The list shows at least seven runs.
+    - This run is first, then your practice runs.
+    - Each entry starts with a date and time.
+    - The practice run right below this one is the one you left open.
+    - With fewer runs, stop and make more practice runs first.
     verify:
     - player
   - id: ct8.view
     title: View an ended run and come back
     action:
       kind: manual
-      text: Under |cffffd100Past runs|r pick the oldest ended practice run and select |cffffd100Open run|r. Select |cffffd100Accept|r. Look at the card. Then pick the newest run, which is this one, and select |cffffd100Open run|r again.
-    expect: The card shows "Run ended" with the practice run's results and no Pass button. After the second Open run it shows this step again. The second Open run asks nothing.
+      text:
+      - Under |cffffd100Past runs|r pick the oldest ended practice run and select |cffffd100Open run|r.
+      - Select |cffffd100Accept|r.
+      - Look at the card.
+      - Pick the newest run, which is this one, and select |cffffd100Open run|r again.
+    expect:
+    - The card shows "Run ended" with the practice run's results and no Pass button.
+    - After the second Open run it shows this step again.
+    - The second Open run asks nothing.
     verify:
     - player
     - assertions
@@ -74,7 +86,9 @@ sections:
     action:
       kind: manual
       text: Under |cffffd100Past runs|r pick a practice run and select |cffffd100Export run|r.
-    expect: A box shows a string that starts with !CT1!. Press Escape to close it. The step records itself.
+    expect:
+    - A box shows a string that starts with !CT1!.
+    - Press Escape to close it. The step records itself.
     verify:
     - assertions
     auto: true
@@ -88,8 +102,14 @@ sections:
     title: Open run asks before it replaces your run
     action:
       kind: manual
-      text: Pick the practice run listed right below this run. It is the one you left open. Select |cffffd100Open run|r. Read the question. Select |cffffd100Cancel|r.
-    expect: The question says your current run leaves the checklist. After Cancel, the card still shows this step.
+      text:
+      - Pick the practice run listed right below this run. It is the one you left open.
+      - Select |cffffd100Open run|r.
+      - Read the question.
+      - Select |cffffd100Cancel|r.
+    expect:
+    - The question says your current run leaves the checklist.
+    - After Cancel, the card still shows this step.
     verify:
     - player
     - assertions
@@ -108,10 +128,16 @@ sections:
     title: A run that comes back starts its step again
     action:
       kind: manual
-      text: Pick the practice run listed right below this run and select |cffffd100Open run|r, then |cffffd100Accept|r. Type |cff99ccff/ct status|r. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
+      text:
+      - Pick the practice run listed right below this run and select |cffffd100Open run|r, then |cffffd100Accept|r.
+      - Type |cff99ccff/ct status|r.
+      - Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
       commands:
       - /ct status
-    expect: Back on this step, the check below is not green yet, because the status line came from the other run. Type |cff99ccff/ct status|r again and the check turns green. Press Pass only after that.
+    expect:
+    - Back on this step, the check below is not green yet, because the status line came from the other run.
+    - Type |cff99ccff/ct status|r again and the check turns green.
+    - Press Pass only after that.
     verify:
     - player
     - assertions
@@ -124,8 +150,13 @@ sections:
     title: Delete a practice run
     action:
       kind: manual
-      text: Pick an ended practice run and select |cffffd100Delete run|r. Read the question. Select |cffffd100Accept|r.
-    expect: The question names the run you picked. After Accept the run is gone from the list.
+      text:
+      - Pick an ended practice run and select |cffffd100Delete run|r.
+      - Read the question.
+      - Select |cffffd100Accept|r.
+    expect:
+    - The question names the run you picked.
+    - After Accept the run is gone from the list.
     verify:
     - player
     - assertions
@@ -145,7 +176,10 @@ sections:
     title: Drag Runs to keep without deleting
     action:
       kind: manual
-      text: Open Esc, Options, AddOns, CheckThat, Advanced. Drag |cffffd100Runs to keep|r down to 5 and back up to 20, then release. Then press Run to type |cff99ccff/ct status|r.
+      text:
+      - Open Esc, Options, AddOns, CheckThat, Advanced.
+      - Drag |cffffd100Runs to keep|r down to 5 and back up to 20, then release.
+      - Press Run to type |cff99ccff/ct status|r.
       commands:
       - /ct status
     expect: Under Past runs on Home, every run is still listed.
@@ -166,12 +200,19 @@ sections:
     title: Start a run to prune the oldest runs
     action:
       kind: manual
-      text: Set |cffffd100Runs to keep|r to 5 in Advanced. Type |cff99ccff/ct start DontDoThat|r. Open Home and count the runs. Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
+      text:
+      - Set |cffffd100Runs to keep|r to 5 in Advanced.
+      - Type |cff99ccff/ct start DontDoThat|r.
+      - Open Home and count the runs.
+      - Pick this plan's run, select |cffffd100Open run|r, then |cffffd100Accept|r.
       commands:
       - /ct start DontDoThat
     setup: Home must list at least six runs now, this one included. Starting a run adds one, and the limit is 5.
     cleanup: Set |cffffd100Runs to keep|r back to 20.
-    expect: Home lists five runs. The oldest ended practice runs are gone. This plan's run is still there.
+    expect:
+    - Home lists five runs.
+    - The oldest ended practice runs are gone.
+    - This plan's run is still there.
     verify:
     - player
     - assertions
@@ -185,7 +226,10 @@ sections:
     title: The report shows the stored runs
     action:
       kind: manual
-      text: Type |cff99ccff/ct log|r, press Ctrl+A, then look near the top of the report.
+      text:
+      - Type |cff99ccff/ct log|r.
+      - Press Ctrl+A.
+      - Look near the top of the report.
       commands:
       - /ct log
     expect: The report holds a line that starts with "Stored:" and names the runs, the limit and the plan copies. The step records itself.

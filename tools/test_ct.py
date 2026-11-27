@@ -348,7 +348,7 @@ class OpenRunPlans(unittest.TestCase):
             for sec in ct.load_yaml(p)["sections"]:
                 for s in sec["steps"]:
                     self.assertEqual(len(s["action"].get("commands") or []) <= 1, True, s["id"])
-                    self.assertNotIn("log in", s["action"].get("text", "").lower(), s["id"])
+                    self.assertNotIn("log in", ct.joined(s["action"].get("text")).lower(), s["id"])
 
 
 class NativeText(unittest.TestCase):
