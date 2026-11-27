@@ -552,4 +552,245 @@ test("with more than eight categories all cleared, the card start screen turns S
     ns.App.db.ui.cleared = nil
 end)
 
+-- The step card: a checklist of the player's actions, Expect as short lines, the checks under a heading, Setup that folds,
+-- a note behind "Add note", and a pause on an automatic result.
+local function runPlan(steps, extra)
+    _G.KeepThatDB = { global = { log = { "[kt] boot" } } }
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "Card",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = steps } } }
+    for k, v in pairs(extra or {}) do p[k] = v end
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+    local run = assert(ns.App.Start("KeepThat"))
+    ns.addon.db.profile.card.collapsed = false
+    ns.Card.Show()
+    return run, _G.CheckThatCard
+end
+local function kt(line) KeepThatDB.global.log[#KeepThatDB.global.log + 1] = line end
+local manual = function(id, extra)
+    local s = { id = id, title = "Step " .. id, action = { kind = "manual", text = "Do it." }, expect = "It works.", verify = { "player" } }
+    for k, v in pairs(extra or {}) do s[k] = v end
+    return s
+end
+
+test("listed actions are checkboxes the player ticks, saved on the attempt and never a result", function()
+    local run, card = runPlan({ manual("a", { action = { kind = "manual", text = { "Walk in.", "Wait.", "Walk out." } } }), manual("b") })
+    T.eq(card.acts[1].label.text, "Walk in."); T.eq(card.acts[3].label.text, "Walk out."); T.ok(card.acts[3].box.shown)
+    T.eq(card.acts[2].box.calls.SetChecked[1], false)
+    T.ok(card.acts[2].box.calls.Enable and not card.acts[2].box.calls.Disable, "an open step's boxes take clicks")
+    card.acts[2].box.scripts.OnClick(card.acts[2].box)
+    local ticks = run.steps.a.attempts[1].ticks
+    T.ok(ticks[1] == false and ticks[2] and ticks[3] == false, "only the second action is ticked")
+    T.eq(card.acts[2].box.calls.SetChecked[1], true, "the box shows the tick")
+    card.acts[2].hit.scripts.OnClick(card.acts[2].hit)
+    T.eq(run.steps.a.attempts[1].ticks[2], false, "a click on the label toggles it back")
+    T.eq(run.steps.a.verdict, "pending", "ticks are no result")
+    T.ok(card.pass.shown, "Pass needs no ticks")
+    card.acts[1].box.scripts.OnClick(card.acts[1].box)
+    ns.Card.Verdict("fail")
+    card.prevBtn.scripts.OnClick()
+    T.ok(card.acts[1].box.calls.Disable, "a finished step shows its ticks read-only")
+    T.eq(card.acts[1].box.calls.SetChecked[1], true)
+    card.acts[2].box.scripts.OnClick(card.acts[2].box)
+    T.eq(run.steps.a.attempts[1].ticks[2], false, "a finished attempt does not change")
+end)
+
+test("without the checkbox template an action shows a text box with [ ] and [x]", function()
+    local real = _G.CreateFrame
+    _G.CreateFrame = function(kind, name, parent, template, ...)
+        if template == "UICheckButtonTemplate" then error("no such template") end
+        return real(kind, name, parent, template, ...)
+    end
+    local ok, err = pcall(function()
+        local card = _G.CheckThatCard
+        for _, r in ipairs(card.acts) do r.box:Hide(); r.label:Hide(); r.hit:Hide() end
+        card.acts = {}
+        local run = runPlan({ manual("a", { action = { kind = "manual", text = { "One.", "Two." } } }) })
+        T.eq(card.acts[1].box.mark.text, "[ ]")
+        card.acts[1].box.scripts.OnClick(card.acts[1].box)
+        T.eq(card.acts[1].box.mark.text, "[x]"); T.ok(run.steps.a.attempts[1].ticks[1])
+    end)
+    _G.CreateFrame = real
+    local card = _G.CheckThatCard
+    for _, r in ipairs(card.acts) do r.box:Hide(); r.label:Hide(); r.hit:Hide() end
+    card.acts = {}
+    assert(ok, err)
+end)
+
+test("Expect as a list shows one short line for each result, and a sentence stays a sentence", function()
+    local _, card = runPlan({ manual("a", { expect = { "The question closes.", "Nothing is asked inside." } }), manual("b") })
+    T.eq(card.rows[3].body.text, "- The question closes.\n- Nothing is asked inside.")
+    ns.App.Verdict("pass"); ns.Card.Refresh()
+    T.eq(card.rows[3].body.text, "It works.")
+end)
+
+test("the checks list has a heading and no step shows a banner", function()
+    local _, card = runPlan({ manual("a"), manual("b", { verify = { "player", "assertions" }, assertions = { { kind = "log", source = "debug", contains = "x", label = "X" } } }) })
+    T.ok(not card.checksHead.shown, "a player step has no heading")
+    T.eq(rawget(card, "banner"), nil, "no banner")
+    ns.App.Verdict("pass"); ns.Card.Refresh()
+    T.ok(card.checksHead.shown); T.eq(card.checksHead.text, "CheckThat checks")
+    T.ok(card.checks.text:find("X", 1, true))
+end)
+
+test("Setup folds to one line, opens by itself the first time and keeps the player's choice", function()
+    local run, card = runPlan({ manual("a", { setup = "Stand at the Deadmines entrance. Open the question." }), manual("b", { setup = "Stand still." }) },
+        { preamble = "Use a level 20 character." })
+    T.ok(card.fold.shown); T.eq(card.fold.label.text, "- Setup: Stand at the Deadmines entrance.")
+    T.ok(card.context.shown and card.context.text:find("Before you start: Use a level 20 character.", 1, true), "the preamble is inside the fold")
+    card.fold.scripts.OnClick(card.fold)
+    T.ok(not card.context.shown, "closed by a click")
+    ns.App.db.ui.setupSeen.ids[run.runId .. "/a"] = true
+    card.setupOpen = {} -- what a reload forgets
+    ns.Card.Refresh()
+    T.ok(not card.context.shown, "a step seen before in this run stays closed")
+    ns.App.Verdict("pass"); ns.Card.Refresh()
+    T.ok(card.context.shown and card.context.text == "Stand still.", "the next step opens the first time")
+end)
+
+test("the note is one Add note line until the player opens it", function()
+    local _, card = runPlan({ manual("a"), manual("b") })
+    T.ok(card.addNote.shown); T.ok(not card.note.shown)
+    card.addNote.scripts.OnClick(card.addNote)
+    T.ok(card.note.shown and card.noteLabel.shown, "the box opens")
+    card.note:SetText("slow"); ns.Card.Verdict("pass")
+    T.ok(card.addNote.shown and not card.note.shown, "the next step starts closed again")
+end)
+
+test("after a reload the hint line says Reloaded", function()
+    local run, card = runPlan({ manual("a"), manual("b") })
+    run.steps.a.attempts[1].reloaded = true; ns.Card.Refresh()
+    T.ok(card.hint.shown and card.hint.text:find("Reloaded.", 1, true), tostring(card.hint.text))
+end)
+
+test("an automatic result stays on screen and fades to the next step; a result press then judges nothing", function()
+    local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Open your bags." }, expect = "Bags open.",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "bags opened" } } }
+    local run, card = runPlan({ auto, manual("b"), manual("c") })
+    st.timers = {}
+    kt("bags opened")
+    T.ok(ns.Card.AutoSettle(), "recorded")
+    T.eq(run.steps.a.verdict, "pass"); T.eq(select(3, ns.App.Current()).id, "b", "the run moved on")
+    T.eq(card.title.text, "Auto", "the card still shows the recorded step")
+    T.ok(card.recorded.text:find("recorded by CheckThat", 1, true)); T.ok(not card.pass.shown and not card.redo.shown)
+    T.eq(#run.steps.b.attempts, 0, "the next step has not opened: its time starts when it shows")
+    T.eq(ns.Card.AutoSettle(), nil, "nothing settles during the pause")
+    local said = {}
+    local print0 = ns.Slash.Print; ns.Slash.Print = function(m) said[#said + 1] = m end
+    ns.Card.KeyVerdict("pass")
+    ns.Slash.Print = print0
+    T.eq(run.steps.b.verdict, "pending", "a key press meant for the passed step does not judge the next one")
+    T.eq(said[1], "CheckThat recorded that step by itself. The card now shows the next step.")
+    T.eq(card.title.text, "Step b", "the press ended the pause")
+    -- a second result held to its end by the timers, with the card fading
+    local run2, card2 = runPlan({ auto, manual("b") })
+    st.timers = {}
+    kt("bags opened"); ns.Card.AutoSettle()
+    T.eq(card2.title.text, "Auto")
+    local queued = st.timers; st.timers = {}
+    for _, fn in ipairs(queued) do fn() end
+    T.ok(card2.calls.SetAlpha, "the card faded")
+    T.eq(card2.title.text, "Step b", "the next step shows when the pause ends")
+    T.eq(card2.calls.SetAlpha[1], 1, "at full opacity")
+end)
+
+test("a collapsed or hidden card does not pause on an automatic result", function()
+    local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
+    local _, card = runPlan({ auto, manual("b") })
+    ns.addon.db.profile.card.collapsed = true; ns.Card.Refresh()
+    kt("went"); T.ok(ns.Card.AutoSettle())
+    ns.addon.db.profile.card.collapsed = false; ns.Card.Refresh()
+    T.eq(card.title.text, "Step b")
+end)
+
+test("a step that does not apply says why, and a step passed at run start says so", function()
+    local env = ns.App.env
+    local real = env.UnitClass
+    env.UnitClass = function() return "Hunter", "HUNTER" end
+    _G.KeepThatDB = { global = { log = { "[kt] ready" } } }
+    local ok, err = pcall(function()
+        local asyncStep = { id = "v", title = "Ready", auto = true, async = true, action = { kind = "manual", text = "Wait." }, expect = "e",
+            verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "ready" } } }
+        local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "Card", requirements = { caster = { text = "This step needs a Mage.", class = { "MAGE" }, unmet = "inapplicable" } },
+            logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+            sections = { { id = "s", title = "S", steps = { asyncStep, manual("m", { requires = { "caster" } }), manual("n") } } } }
+        ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+        assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+        local run = assert(ns.App.Start("KeepThat"))
+        ns.Card.Show()
+        local card = _G.CheckThatCard
+        T.eq(card.title.text, "Step n", "the card passed over both")
+        T.eq(run.steps.m.verdict, "inapplicable")
+        card.prevBtn.scripts.OnClick()
+        T.eq(card.recorded.text, "Does not apply: This step needs a Mage.")
+        T.ok(not card.redo.shown, "no Redo: a rerun checks the step again")
+        T.eq(card.barFill.calls.SetWidth[1], 178, "progress leaves the step out: one of two steps resolved")
+        card.prevBtn.scripts.OnClick()
+        T.eq(card.recorded.text, "Recorded: Pass (checked by CheckThat when the run started)")
+    end)
+    env.UnitClass = real
+    assert(ok, err)
+end)
+
+test("the title uses the card's title font, or the stock large font without CreateFont", function()
+    local card = _G.CheckThatCard
+    T.eq(card.titleFont, "GameFontHighlightLarge", "the fake client has no CreateFont")
+end)
+
+test("an automatic unverified result does not pause the card: the step stays open for the player", function()
+    local auto = { id = "a", title = "Auto", auto = true, timeout = 5, action = { kind = "wait-event", text = "Go." }, expect = "e",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "never" } } }
+    local run, card = runPlan({ auto, manual("b") })
+    local real = ns.App.env.time
+    ns.App.env.time = function() return (real and real() or 0) + 100 end
+    local a = ns.Card.AutoSettle()
+    ns.App.env.time = real
+    T.eq(a.verdict, "unverified"); T.eq(select(3, ns.App.Current()).id, "a")
+    T.ok(card.pass.shown, "the result buttons stay: no pause")
+    ns.Card.KeyVerdict("skip")
+    T.eq(run.steps.a.verdict, "skip", "the player's press counts")
+end)
+
+test("ending the run during the pause shows the results at once, and a key with the game UI hidden leaves the pause alone", function()
+    local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
+    local run, card = runPlan({ auto, manual("b") })
+    st.timers = {}
+    kt("went"); T.ok(ns.Card.AutoSettle()); T.eq(card.title.text, "Auto")
+    card.IsVisible = function() return false end
+    local said = {}
+    local print0 = ns.Slash.Print; ns.Slash.Print = function(m) said[#said + 1] = m end
+    ns.Card.KeyVerdict("pass")
+    ns.Slash.Print = print0; card.IsVisible = nil
+    T.eq(said[1], "Open the checklist and show a step to record a result with a key.")
+    ns.Card.Refresh(); T.eq(card.title.text, "Auto", "still paused")
+    ns.App.End(run.runId); ns.Card.Refresh()
+    T.eq(card.title.text, "Run ended")
+    st.timers = {}
+end)
+
+test("a hidden card does not pause on an automatic result", function()
+    local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
+    local _, card = runPlan({ auto, manual("b") })
+    card:Hide()
+    kt("went"); T.ok(ns.Card.AutoSettle())
+    ns.Card.Show()
+    T.eq(card.title.text, "Step b")
+end)
+
+test("the title font is the large font two points larger with an outline when the client has CreateFont", function()
+    local set
+    local obj = { CopyFontObject = function() end, SetFont = function(_, path, size, flags) set = { path, size, flags } end }
+    H.stub(_G, "CreateFont", function(name) _G[name] = obj; return obj end)
+    H.stub(_G, "GameFontHighlightLarge", { GetFont = function() return "Fonts\\FRIZQT__.TTF", 16 end })
+    T.finally(function() _G.CheckThatCardTitle = nil end)
+    T.eq(ns.Card.TitleFont(), "CheckThatCardTitle")
+    T.same(set, { "Fonts\\FRIZQT__.TTF", 18, "OUTLINE" })
+    _G.CreateFont = function() error("refused") end; _G.CheckThatCardTitle = nil
+    T.eq(ns.Card.TitleFont(), "GameFontHighlightLarge", "a refusal keeps the stock font")
+end)
+
 finish()

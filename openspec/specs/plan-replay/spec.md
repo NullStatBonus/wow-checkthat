@@ -105,3 +105,10 @@ For `--run`, of the copies of one file the newest one collected no later than th
 #### Scenario: Run not in any copy
 - **WHEN** the run's newest stored revision is 5 and no collected `CheckThat.lua` holds revision 5
 - **THEN** the command exits 2 and says to collect again
+
+### Requirement: Flow replay covers async and inapplicable steps
+`ct replay-flow` and `tests/replay_plan.lua` SHALL settle an async step at run start when its fixture lines exist before the first step, and SHALL report a step with an `unmet: inapplicable` requirement as inapplicable when the hooks file marks the requirement unmet.
+
+#### Scenario: Async version step
+- **WHEN** the fixture holds the version fact before the run starts
+- **THEN** the replay records the step passed at start and never shows it

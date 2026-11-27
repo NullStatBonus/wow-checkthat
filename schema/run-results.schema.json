@@ -149,6 +149,10 @@
      "minimum": 1,
      "description": "How many times the CT macro ran while the card showed a different step than the macro was written for. Counted on the step the card showed. Absent means none, or a run from before formatRev 4."
     },
+    "unmet": {
+     "type": "string",
+     "description": "Since formatRev 6. On an inapplicable step: the text of the requirement the character does not meet (a class or a profession). Absent otherwise."
+    },
     "attempts": {
      "type": "array",
      "items": {
@@ -199,6 +203,19 @@
       "$ref": "#/$defs/outcome"
      },
      "description": "One per check of the step, in plan order (the position is the check's index)."
+    },
+    "ticks": {
+     "type": "array",
+     "items": {
+      "type": ["number", "boolean"]
+     },
+     "description": "Since formatRev 6. One entry per listed action of the step: the time the player ticked it, or false. Absent when the step lists no actions or nothing was ticked. Ticks never change the verdict."
+    },
+    "at": {
+     "enum": [
+      "start"
+     ],
+     "description": "Since formatRev 6. start: CheckThat judged this async step when the run started. Absent otherwise."
     },
     "excerpt": {
      "type": "object",

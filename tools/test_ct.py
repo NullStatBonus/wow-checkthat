@@ -368,7 +368,8 @@ class NativeText(unittest.TestCase):
         for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]:
             d = ct.load_yaml(path)
             for box, key, _ in ct.display_fields(d):
-                self.assertNotRegex(box[key], r"`|\*\*", path + " " + key)
+                for text in ct.lines_of(box[key]):   # action text and expect may be lists
+                    self.assertNotRegex(text, r"`|\*\*", path + " " + key)
 
 
 class SamplePlans(unittest.TestCase):
@@ -950,7 +951,8 @@ class PlanSkill(unittest.TestCase):
                        "**Purpose and depth.**", "set `purpose`", "### Foundation plans", "pillars", "**One character.**",
                        "not the release gate", "**Player language.**", "foundation plan over 12 steps",
                        "**Name earlier steps by what the player did.**", "--addon-src <addon folder>", "older build than the addon's TOC",
-                       "replay <plan> --run <run id>", "not judged offline"):
+                       "replay <plan> --run <run id>", "not judged offline",
+                       "**Actions as a list.**", "`async: true`", "`unmet: inapplicable`"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -961,6 +963,33 @@ class PlanSkill(unittest.TestCase):
         p["sections"][0]["steps"][1].update({"verify": ["player", "assertions"], "assertions": [{"kind": "log", "source": "debug", "contains": "[ct] step a.1 pass", "scope": "session"}]})
         p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "[ct] step a.10 pass"}]
         self.assertEqual(ct.validate(p), [])
+
+    def test_lists_async_and_class_requirements_are_valid(self):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        st["action"]["text"] = ["Walk in.", "Wait 10 seconds.", "Walk out."]
+        st["expect"] = ["It closes.", "It shows again outside."]
+        p["requirements"]["caster"] = {"text": "A Mage", "class": ["MAGE"], "profession": ["Tailoring"], "unmet": "inapplicable"}
+        self.assertEqual(ct.validate(p), [])
+        self.assertIn("Walk in. Wait 10 seconds. Walk out.", ct.joined(st["action"]["text"]))
+        q = good(); a = q["sections"][0]["steps"][0]
+        inherited = dict(a, verify=["assertions"], auto=True, action={"kind": "manual", "text": "w"}); inherited["async"] = True
+        errs = ct.validate(dict(q, sections=[dict(q["sections"][0], steps=[inherited])]))
+        self.assertTrue(any("async cannot have setup" in e for e in errs), "a section's setup counts")
+        del q["sections"][0]["setup"]
+        a.update({"verify": ["assertions"], "auto": True, "async": True, "action": {"kind": "manual", "text": "Wait."}})
+        self.assertEqual(ct.validate(q), [])
+        a["timeout"] = 30; a["assertions"][0]["absent"] = True
+        self.assertTrue(any("async cannot check" in e for e in ct.validate(q)))
+
+    def test_coverage_reads_a_list_of_actions(self):
+        p = good(); p["sections"][0]["steps"][1]["action"]["text"] = ["Type /kt log.", "Press Pass."]
+        touches = {sid: cmds for sid, _, cmds, _ in ct.step_touches(p)}
+        self.assertIn("log", [c for c, _ in touches["a.2"]])
+
+    def test_a_list_item_with_markdown_becomes_color_codes(self):
+        p = good(); p["sections"][0]["steps"][1]["action"]["text"] = ["Open the bag.", "Press **Run**."]
+        self.assertEqual(ct.nativize(p)["sections"][0]["steps"][1]["action"]["text"][1], "Press |cffffd100Run|r.")
 
     def test_scope_run_is_valid_and_an_unknown_scope_is_not(self):
         p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "x", "scope": "run"}]
@@ -2548,6 +2577,21 @@ class ReportAuto(unittest.TestCase):
         self.assertIn("log debug, 2 new lines:", text)
         self.assertIn("      one\n      two", text)
         self.assertNotIn("new line", ct.report_text(self.run_fixture(verdict="fail")))
+
+    def test_report_names_the_actions_left_unticked_on_a_failed_attempt(self):
+        text = ct.report_text(self.run_fixture(verdict="fail", ticks=[100, False, False]))
+        self.assertIn("actions not ticked: 2, 3 (of 3)", text)
+        self.assertNotIn("not ticked", ct.report_text(self.run_fixture(verdict="pass", ticks=[100, False])))
+        m = ct.run_model("KeepThat-1", self.run_fixture(verdict="fail", ticks=[100, False])["KeepThat-1"])
+        self.assertEqual(m["steps"][0]["unticked"], [2])
+
+    def test_report_says_a_step_passed_at_run_start_and_why_a_step_does_not_apply(self):
+        run = self.run_fixture(by="auto", at="start", verdict="fail")
+        self.assertIn("attempt 1: fail at run start", ct.report_text(run))
+        self.assertTrue(ct.run_model("KeepThat-1", run["KeepThat-1"])["steps"][0]["atStart"])
+        rec = {"verdict": "inapplicable", "unmet": "This step needs a Mage.", "attempts": []}
+        self.assertEqual(ct.classify(rec), ("skipped", "not for this character: This step needs a Mage."))
+        self.assertEqual(ct.classify({"verdict": "inapplicable", "attempts": []}), ("skipped", "not for this client"))
 
     def test_report_marks_an_automatic_failure_attempt(self):
         text = ct.report_text(self.run_fixture(by="auto", verdict="fail"))

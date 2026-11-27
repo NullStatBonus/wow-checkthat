@@ -74,14 +74,14 @@ Log assertions and state probes SHALL only read. Unverified results SHALL tell t
 - **THEN** the only changes are in the run record, the card and the debug log
 
 ### Requirement: Notes and share points
-The card SHALL offer a one-line note box saved with the verdict. After a step with a share point, the card SHALL open the results export or ask for a reload so the log reaches the saved file. Unverified steps SHALL name the missing evidence and offer Retry or Skip with a note.
+The card SHALL offer a one-line note box saved with the verdict, shown behind an "Add note" control until the player opens it or the attempt already has a note. After a step with a share point, the card SHALL open the results export or ask for a reload so the log reaches the saved file. Unverified steps SHALL name the missing evidence and offer Retry or Skip with a note.
 
 #### Scenario: Export share point
 - **WHEN** the player records a verdict on a step with `share: export`
 - **THEN** the results string opens in the copy window
 
 #### Scenario: Note kept
-- **WHEN** the player types a note and presses Fail
+- **WHEN** the player opens the note, types a note and presses Fail
 - **THEN** the note is stored in the attempt and shown in the report
 
 ### Requirement: Import opens the window
@@ -96,7 +96,7 @@ Importing a valid plan SHALL open the checklist window and offer Start run and I
 - **THEN** the line under the heading says "1 step", not "1 steps"
 
 ### Requirement: Card layout hierarchy
-The card SHALL show, top to bottom: a header with the current step number and the close and collapse controls; a thin progress bar filled by resolved steps; the step title as the strongest text; Setup (when given), Do and Expect in a labelled column; the commands of the step in read-only boxes beside Do with the Run all button next to the first; an amber evidence line only when evidence is missing; a labelled note field; and a pinned row with Pass, Fail, Skip and Undo. Collapsed, the card SHALL be a one-line strip with the step title and the step number.
+The card SHALL show, top to bottom: a header with the current step number and the close and collapse controls; a thin progress bar filled by resolved steps; the step title as the strongest text, heavier than any other text on the card; a Setup line (when the step has setup, or a preamble or section intro applies) that folds; Do, as a sentence or as one checkbox for each listed action, with the step's commands in read-only boxes and the Run button next to the first; Expect, as a sentence or one short line for each listed result; the checks list under a small "CheckThat checks" heading when the step has required assertions; an amber evidence line only when evidence is missing; an "Add note" control; and a pinned row with Pass, Partial, Fail, Skip and Undo. Collapsed, the card SHALL be a one-line strip with the step title and the step number.
 
 #### Scenario: Unverified step
 - **WHEN** a Pass has missing required evidence
@@ -106,6 +106,10 @@ The card SHALL show, top to bottom: a header with the current step number and th
 - **WHEN** the last step is resolved
 - **THEN** the card shows passed, failed and skipped counts, the plan's handoff text, and Export results and Main window buttons
 
+#### Scenario: Setup fold
+- **WHEN** a step with setup opens for the first time in the run
+- **THEN** the Setup fold is open; on a later visit it shows one line that opens on a click
+
 ### Requirement: Verdict row and Run button fit the card
 The verdict row SHALL hold Pass, Partial, Fail and Skip in fixed places, with Undo at the right. The secure button SHALL be labelled Run and SHALL sit inside the card beside the first command.
 
@@ -114,11 +118,11 @@ The verdict row SHALL hold Pass, Partial, Fail and Skip in fixed places, with Un
 - **THEN** no button extends past its edge
 
 ### Requirement: Reload is acknowledged
-After a reload that resumes a step, the card SHALL show a visible "Reloaded" line under the step title and chat SHALL say the run continues on the same step.
+After a reload that resumes a step, the card SHALL say "Reloaded" in the hint line under Do and chat SHALL say the run continues on the same step.
 
 #### Scenario: Resume
 - **WHEN** the player reloads mid-step
-- **THEN** the card shows the Reloaded line and chat confirms the resume
+- **THEN** the hint line says Reloaded and chat confirms the resume
 
 ### Requirement: Import screen offers recent plans
 The import screen SHALL offer a text box for a pasted plan string and a "Recent plans" dropdown of up to 8 plans used before, newest first without duplicates. Choosing one SHALL make it the current plan, open the checklist window with Start run, and move it to the front of the list. A plan whose stored copy is gone SHALL be left out of the list.
@@ -143,11 +147,15 @@ Importing a plan, or choosing one from Recent plans, SHALL make it the pending p
 - **THEN** the card offers Start run and Resume run, and Resume returns to the unfinished run
 
 ### Requirement: The card says who checks the step
-Under the step title the card SHALL show a banner. A step with at least one required assertion SHALL show "CHECKTHAT CHECKS THIS STEP". Any other step SHALL show "YOU CONFIRM THIS STEP", and SHALL say whether CheckThat records extra detail for the reviewer or cannot see the step.
+A step with at least one required assertion SHALL show its checks list under a small green "CheckThat checks" heading; an auto step's heading SHALL say that CheckThat records the result. A step without required assertions SHALL show no heading and no banner.
 
 #### Scenario: Auto-checked step
 - **WHEN** a step has a required assertion
-- **THEN** the green banner shows and the checks are listed below Expect
+- **THEN** the green heading shows above the checks list, under Expect
+
+#### Scenario: Player step
+- **WHEN** a step has no required assertion
+- **THEN** no banner and no heading shows
 
 ### Requirement: Live checks
 While a step with required assertions is open, the card SHALL list each required check by its label and update the list at least twice a second: a green check when met, a waiting icon while not, a red mark when contradicted, and "(checked when you press Pass)" for absence checks. When all are met the card SHALL say so. Showing the list SHALL record nothing.
@@ -190,12 +198,24 @@ An auto step SHALL show on the card that CheckThat records the result when the c
 - **THEN** the card shows 18 seconds left
 
 #### Scenario: Result recorded
-- **WHEN** the runner records an automatic result
-- **THEN** the card moves to the next step and the recorded step shows that CheckThat settled it
+- **WHEN** the runner records an automatic pass, partial or fail while the card is shown and expanded and the run moves on
+- **THEN** the card keeps the recorded step on screen with "Recorded: Pass (recorded by CheckThat)" and fades to the next step over 3 seconds
+
+#### Scenario: Unverified at the timeout
+- **WHEN** an automatic result is unverified and the step stays open
+- **THEN** the card does not pause and the player's next press counts
+
+#### Scenario: Run ended during the fade
+- **WHEN** the run ends while the card holds a result
+- **THEN** the card shows the ended run at once
+
+#### Scenario: Press during the fade
+- **WHEN** the player presses a card button or a result key during the fade
+- **THEN** the fade ends at once and the press applies to the next step only if it is a navigation press; a result press is ignored with a chat line
 
 #### Scenario: Card hidden
 - **WHEN** the card is hidden while an auto step is open and the checks are met
-- **THEN** the runner records the result, and the card shows the next step when the player opens it again
+- **THEN** the runner records the result, and the card shows the next step, without a fade, when the player opens it again
 
 #### Scenario: Game interface hidden
 - **WHEN** the player hides the game interface while an auto step is open
@@ -504,3 +524,14 @@ The body that `/ct macro` writes SHALL follow the same layout as the follow sett
 #### Scenario: Marker removed
 - **WHEN** the tester removed the marker line from the macro and presses it
 - **THEN** the debug log has no `macro run` or `macro stale` line
+
+### Requirement: Listed actions are checkboxes the player ticks
+When a step lists its actions, the card SHALL show one standard checkbox for each, with the action text as its label; a click on the box or the label toggles it. Where the checkbox template is missing, the card SHALL show a clickable text row with "[ ]" or "[x]". A finished step SHALL show its ticks read-only. Ticks SHALL NOT enable, disable or record a result.
+
+#### Scenario: Tick an action
+- **WHEN** the player clicks the label of the second action
+- **THEN** its box is ticked and the attempt saves the tick
+
+#### Scenario: Pass with an action unticked
+- **WHEN** the player presses Pass with one action unticked
+- **THEN** the step is judged as today

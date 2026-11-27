@@ -1,0 +1,215 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat 0.21 card checklist, pause and steps for one character
+purpose: feature
+preamble: |-
+  Play any character that is not a Mage, out of combat, in a city. The first step checks the version, because an older copy gives results that mean nothing. Stop there if it fails. Do not press End run before the last step. Run the plan once on each client.
+handoff: "Type |cff99ccff/ct export|r, then |cff99ccff/reload|r so the game saves the run. Then run the collect tool and read the report: ct2100.mage must say it does not apply, and ct2100.start must say it passed at run start."
+categories:
+- id: setup
+  title: Set up
+- id: card
+  title: The card
+- id: steps
+  title: Steps decided early
+- id: errors
+  title: Lua errors
+logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+    cap: 300
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+  errors:
+    global: CheckThatDB
+    path: global.errors
+    format: strings
+    quiet: true
+    cap: 100
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+  mage:
+    text: This step is for a Mage.
+    class:
+    - MAGE
+    unmet: inapplicable
+sections:
+- id: s1
+  title: Set up
+  requires:
+  - loaded
+  steps:
+  - id: ct2100.version
+    category: setup
+    title: Check the CheckThat version
+    action:
+      kind: copy-slash
+      text: /ct version
+    expect: Chat shows the CheckThat version, 0.21.0 or newer. The card records the result by itself. If the step fails, stop and copy CheckThat 0.21.0 into the game again.
+    verify:
+    - assertions
+    auto: true
+    timeout: 180
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: version
+      op: ge
+      value: 2100
+      label: CheckThat is 0.21.0 or newer
+    notes: The fact is major*10000 + minor*100 + patch, so 0.21.0 is 2100.
+  - id: ct2100.debug
+    category: setup
+    title: Turn debug recording on
+    action:
+      kind: copy-slash
+      text: /ct debug on
+    expect: Chat says "Debug recording is on." The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 60
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] debug on'
+      label: Debug recording turned on
+- id: s2
+  title: The card
+  requires:
+  - loaded
+  steps:
+  - id: ct2100.checklist
+    category: card
+    title: Tick each action
+    setup: Stand where you can open your bags and the map. Close every other window.
+    action:
+      kind: manual
+      text:
+      - Open your bags, then tick the first box.
+      - Close your bags, then click the text of the second action.
+      - Click the second box again to clear it, then tick it once more.
+    expect:
+    - Each box shows a tick when you click it or its text.
+    - The second box clears and ticks again.
+    - Pass, Fail and Skip work at any time. Press Pass.
+    verify:
+    - player
+    notes: The ticks are saved with the attempt; the report shows the actions left unticked on a failed step.
+  - id: ct2100.pause
+    category: card
+    title: The card pauses on an automatic result
+    action:
+      kind: copy-slash
+      text: /ct status
+    expect:
+    - 'The step shows "Recorded: Pass (recorded by CheckThat)" in green.'
+    - The card fades for about 3 seconds, then shows the next step at full brightness.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] status requested'
+      label: CheckThat saw the status request
+  - id: ct2100.held
+    category: card
+    title: The pause was logged
+    action:
+      kind: manual
+      text: Wait. CheckThat records the result by itself.
+    expect: The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 30
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] card holds ct2100.pause for 3 s'
+      scope: run
+      label: The card held the automatic result
+- id: s3
+  title: Steps decided early
+  requires:
+  - loaded
+  steps:
+  - id: ct2100.start
+    category: steps
+    title: Checked when the run starts
+    action:
+      kind: manual
+      text: Nothing to do. CheckThat checked this step when the run started.
+    expect: The card never stops here. Press the back arrow later to see "checked by CheckThat when the run started".
+    verify:
+    - assertions
+    auto: true
+    async: true
+    assertions:
+    - kind: state
+      probe: addon-loaded
+      name: CheckThat
+      op: eq
+      value: true
+      label: CheckThat is loaded
+  - id: ct2100.mage
+    category: steps
+    title: A step for a Mage
+    requires:
+    - mage
+    action:
+      kind: manual
+      text: Press Pass if the card shows this step.
+    expect: On a character that is not a Mage the card never shows this step. The back arrow shows that it does not apply, with the reason.
+    verify:
+    - player
+  - id: ct2100.look
+    category: steps
+    title: Look back at the two steps
+    action:
+      kind: manual
+      text:
+      - Press the back arrow until the card shows "A step for a Mage".
+      - Press the back arrow once more to see "Checked when the run starts".
+      - Press the forward arrow until this step shows again.
+    expect:
+    - The Mage step says it does not apply, with the reason.
+    - The other step says CheckThat checked it when the run started.
+    - Press Pass.
+    verify:
+    - player
+- id: s4
+  title: Lua errors
+  requires:
+  - loaded
+  steps:
+  - id: ct2100.noerror
+    category: errors
+    title: No Lua error in this run
+    action:
+      kind: manual
+      text: Wait. CheckThat records the result by itself.
+    expect: No Lua error window appeared during the run. The card records the result by itself after 10 seconds.
+    verify:
+    - assertions
+    auto: true
+    timeout: 10
+    assertions:
+    - kind: log
+      source: errors
+      pattern: .
+      absent: true
+      scope: run
+      label: No Lua error since the run started

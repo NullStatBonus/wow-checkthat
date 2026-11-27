@@ -18,7 +18,7 @@ end
 -- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
 -- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
 -- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
-Run.MAJOR, Run.FORMAT_REV = 1, 5
+Run.MAJOR, Run.FORMAT_REV = 1, 6
 
 -- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
 -- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
@@ -159,7 +159,8 @@ local function reorder(run, ctx)
     run.order = {}
     for _, e in ipairs((ns.Plan.Steps(ctx.plan, ctx.client))) do
         local rec = run.steps[e.step.id]
-        if rec and not OUT[rec.verdict] then run.order[#run.order + 1] = e.step.id end
+        -- A step that does not apply to this character (rec.unmet) keeps its place: a rerun checks it again.
+        if rec and (not OUT[rec.verdict] or rec.unmet) then run.order[#run.order + 1] = e.step.id end
     end
     local at = viewing and Run.IndexOf(run, viewing)
     run.current = at or (wasEnd and Run.NextPending(run, 0)) or math.min(run.current, #run.order + 1)
@@ -249,7 +250,7 @@ function Run.Trigger(run, ctx, name)
     end
     local rec = run.steps[name]
     if not rec then return nil, "unknown" end
-    if rec.verdict == "inapplicable" then return nil, "not for this client" end
+    if rec.verdict == "inapplicable" and not rec.unmet then return nil, "not for this client" end
     if rec.verdict == "deselected" then Run.Select(run, ctx, run.cat[name]) end
     run.current = Run.IndexOf(run, name)
     Run.Touch(run, ctx.now)
@@ -262,7 +263,7 @@ function Run.Show(run, ctx, id)
     local rec = run.steps[id]
     if not rec then return nil, "unknown" end
     local i = Run.IndexOf(run, id)
-    if not i or rec.verdict == "inapplicable" or rec.verdict == "deselected" then return nil, "not offered" end
+    if not i or (rec.verdict == "inapplicable" and not rec.unmet) or rec.verdict == "deselected" then return nil, "not offered" end
     run.current = i
     if not run.endedAt then Run.Touch(run, ctx.now) end
     return true
@@ -274,7 +275,7 @@ Run.FAILED = "failed"
 -- The one place that clears what a step record holds for its last result. full also drops the attempts and counters: the
 -- step leaves the run. A new per-step key goes here, so no path can leave it behind.
 function Run.ResetRecord(rec, verdict, full)
-    rec.verdict, rec.evidence, rec.reopened = verdict, nil, nil
+    rec.verdict, rec.evidence, rec.reopened, rec.unmet = verdict, nil, nil, nil
     if full then rec.attempts, rec.macroStale = {}, nil end
 end
 
@@ -326,21 +327,111 @@ local function stepOf(ctx, id)
 end
 Run.stepOf = stepOf
 
--- Which requirements are unmet right now? Requirement = { text=, probe= } with an optional state probe.
+-- Does a requirement fail right now? Only what the game says counts: unknown data (no class, no skill lines) holds.
+-- A requirement = { text=, probe=, class=, profession=, unmet= }; every condition it names must hold.
+local function fails(def, env)
+    if def.probe then
+        local op, value = def.op, def.value
+        if op == nil then -- addon-loaded answers true or false, so "exists" would pass for an unloaded addon
+            if def.probe == "addon-loaded" then op, value = "eq", true else op = "exists" end
+        end
+        local a = { kind = "state", probe = def.probe, name = def.name, path = def.path, op = op, value = value, tolerance = def.tolerance }
+        if ns.Evidence.CheckState(a, env) ~= "pass" then return true end
+    end
+    if type(def.class) == "table" then
+        local token = ns.Adapter.ClassToken(env)
+        if token then
+            local hit = false
+            for _, c in ipairs(def.class) do if c == token then hit = true end end
+            if not hit then return true end
+        end
+    end
+    if type(def.profession) == "table" then
+        local known = ns.Adapter.Professions(env)
+        if known then
+            local hit = false
+            for _, p in ipairs(def.profession) do if known[p] then hit = true end end
+            if not hit then return true end
+        end
+    end
+    return false
+end
+
+-- Which requirements are unmet right now and block the step (shown on the card). A requirement with
+-- unmet = "inapplicable" is not listed: it makes the step inapplicable instead (Run.Unmet).
 function Run.Blocked(ctx, step)
     local missing = {}
     for _, r in ipairs(step.requires or {}) do
         local def = ctx.plan.requirements and ctx.plan.requirements[r]
-        if def and def.probe then
-            local op, value = def.op, def.value
-            if op == nil then -- addon-loaded answers true or false, so "exists" would pass for an unloaded addon
-                if def.probe == "addon-loaded" then op, value = "eq", true else op = "exists" end
-            end
-            local a = { kind = "state", probe = def.probe, name = def.name, path = def.path, op = op, value = value, tolerance = def.tolerance }
-            if ns.Evidence.CheckState(a, ctx.env) ~= "pass" then missing[#missing + 1] = def.text or r end
-        end
+        if def and def.unmet ~= "inapplicable" and fails(def, ctx.env) then missing[#missing + 1] = def.text or r end
     end
     return missing
+end
+
+-- The text of the first unmet requirement that makes the step inapplicable for this character, or nil.
+function Run.Unmet(ctx, step)
+    for _, r in ipairs(step and step.requires or {}) do
+        local def = ctx.plan.requirements and ctx.plan.requirements[r]
+        if def and def.unmet == "inapplicable" and fails(def, ctx.env) then return def.text or r end
+    end
+end
+
+-- Record a step as not for this character: no attempt (there was nothing to judge), the reason on the record.
+-- Progress leaves it out, like a step for the other client. A rerun checks again. Returns the reason.
+function Run.MarkInapplicable(run, ctx, id, reason)
+    local rec = run.steps[id]
+    if run.endedAt or not rec then return nil end
+    local last = rec.attempts[#rec.attempts]
+    if last and not last.verdict then table.remove(rec.attempts) end -- an attempt the card opened before the check
+    rec.verdict, rec.evidence, rec.reopened, rec.unmet = "inapplicable", nil, nil, reason
+    run.current = Run.NextPending(run, Run.IndexOf(run, id)) or (#run.order + 1)
+    Run.Touch(run, ctx.now)
+    return reason
+end
+
+-- The player ticked (on) or cleared action i of the open attempt. Ticks are a list with one entry per listed action,
+-- the time of the tick or false. They never change the verdict or the evidence. Returns true when it changed.
+function Run.Tick(run, ctx, id, i, on)
+    local step, rec = stepOf(ctx, id), run.steps[id]
+    if run.endedAt or not (step and rec) then return false end
+    local actions = ns.Plan.Lines(step.action and step.action.text)
+    if type(step.action and step.action.text) ~= "table" or i < 1 or i > #actions or i % 1 ~= 0 then return false end
+    local a = rec.attempts[#rec.attempts]
+    if not a or a.verdict then return false end
+    a.ticks = a.ticks or {}
+    for k = 1, #actions do if a.ticks[k] == nil then a.ticks[k] = false end end
+    local v = on and ctx.now or false
+    if (a.ticks[i] ~= false) == (v ~= false) then return false end
+    a.ticks[i] = v
+    Run.Touch(run, ctx.now)
+    return true
+end
+
+-- Async steps (step.async on an auto step) are judged once, against the logs as they stand, before any of them opens:
+-- the whole retained log is the window. A step whose required checks all pass records an automatic pass with
+-- at = "start"; any other step stays pending and settles on its turn. Opens no attempt for the player, calls no entry
+-- and starts no timer. ids limits it to some steps (a rerun). Returns how many passed.
+function Run.JudgeAtStart(run, ctx, ids)
+    if run.endedAt then return 0 end
+    local want
+    if ids then want = {}; for _, id in ipairs(ids) do want[id] = true end end
+    local keep, n = run.current, 0
+    for _, id in ipairs(run.order) do
+        local step, rec = stepOf(ctx, id), run.steps[id]
+        if step and step.async and step.auto and rec and rec.verdict == "pending" and (not want or want[id])
+            and not Run.Unmet(ctx, step) and #Run.Blocked(ctx, step) == 0 then
+            local last = rec.attempts[#rec.attempts]
+            if not (last and not last.verdict) then
+                rec.attempts[#rec.attempts + 1] = { n = #rec.attempts + 1, started = ctx.now, at = "start", build = ctx.build }
+                local a = Run.Verdict(run, ctx, id, "pass", nil, "auto", true)
+                if a then n = n + 1 else table.remove(rec.attempts) end
+            end
+        end
+    end
+    local cur = run.steps[run.order[keep or 0] or ""]
+    if cur and (cur.verdict == "pending" or cur.verdict == "unverified") then run.current = keep
+    else run.current = Run.NextPending(run, keep or 0) or (#run.order + 1) end
+    return n
 end
 
 -- Open an attempt: snapshot logs first so the player can act straight away.
@@ -348,7 +439,11 @@ function Run.Begin(run, ctx, id)
     local rec = run.steps[id]
     local last = rec.attempts[#rec.attempts]
     if last and not last.verdict then return last end -- already open (e.g. after a reload)
-    local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = ns.Evidence.Snapshot(ctx.plan, ctx.env, stepOf(ctx, id), run.snapshots), build = ctx.build }
+    local step = stepOf(ctx, id)
+    -- An async step reads the whole retained log on every attempt, as at run start: its evidence was written before
+    -- the run, so a retry after Undo or Redo can still find it.
+    local snaps = not (step and step.async) and ns.Evidence.Snapshot(ctx.plan, ctx.env, step, run.snapshots) or nil
+    local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = snaps, build = ctx.build }
     -- After the runner settled the last attempt as unverified, the retry waits for the player: no loop of automatic results.
     -- (Undo resets the step to pending: that is the player acting, so the retry may settle itself.)
     if last and last.by == "auto" and last.verdict == "unverified" and rec.verdict == "unverified" then a.noauto = true end
@@ -507,7 +602,7 @@ function Run.Verdict(run, ctx, id, verdict, note, by, holdUnlessMet)
     verdict = effective
     rec.verdict = verdict
     rec.evidence = a.evidence
-    rec.reopened = nil -- the retry has a result
+    rec.reopened, rec.unmet = nil, nil -- the retry has a result (and a step with a result applies)
     run.history = run.history or {}
     run.history[#run.history + 1] = id
     -- Fail moves on like the other results (Undo retries it). Only missing evidence keeps the step open.

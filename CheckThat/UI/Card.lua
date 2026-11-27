@@ -7,6 +7,7 @@ local Card = {}
 ns.Card = Card
 
 local card, text
+local hold -- { id = step id } while an automatic result stays on screen (Card.Hold)
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 local A = ns.Adapter
 
@@ -83,6 +84,21 @@ local GREY, BODY = { 0.67, 0.67, 0.67 }, { 0.87, 0.87, 0.87 }
 local AMBER, GREEN, RED = { 1, 0.67, 0 }, { 0.6, 1, 0.6 }, { 1, 0.4, 0.4 }
 local blindNow -- set below: does the step read the Lua error list while CheckThat cannot see errors?
 
+-- The title is the strongest text on the card: the game's large font, two points larger, with an outline (game fonts
+-- have no bold weight). Returns the font object's name; without CreateFont the stock large font stays.
+function Card.TitleFont()
+    if type(_G.CreateFont) ~= "function" then return "GameFontHighlightLarge" end
+    local base = _G.GameFontHighlightLarge
+    if type(base) ~= "table" then return "GameFontHighlightLarge" end
+    local ok = pcall(function()
+        local f = _G.CheckThatCardTitle or _G.CreateFont("CheckThatCardTitle")
+        f:CopyFontObject(base)
+        local path, size = base:GetFont()
+        if type(path) == "string" and type(size) == "number" then f:SetFont(path, size + 2, "OUTLINE") end
+    end)
+    return ok and "CheckThatCardTitle" or "GameFontHighlightLarge"
+end
+
 local function fs(font, color, width, justify)
     local f = card:CreateFontString(nil, "OVERLAY", font)
     if color then f:SetTextColor(color[1], color[2], color[3]) end
@@ -152,6 +168,14 @@ end
 -- A result from a button or a bound key. The result is recorded first; a drawing error afterwards is logged,
 -- never allowed to look like a stuck step.
 function Card.Verdict(v)
+    if hold then
+        -- The press was meant for the step that just passed by itself; it never judges the next one.
+        Card.EndHold()
+        App.Log(("result %s ignored: the card was showing an automatic result"):format(v))
+        ns.Slash.Print(L["CheckThat recorded that step by itself. The card now shows the next step."])
+        Card.Refresh()
+        return
+    end
     local note = card.note:GetText()
     if note == "" then note = nil end
     pcall(function() card.note:SetText(""); card.note:ClearFocus() end)
@@ -164,6 +188,7 @@ end
 function Card.KeyVerdict(v)
     local btn = card and card[v]
     local function seen(f) return f and (f.IsVisible and f:IsVisible() or (not f.IsVisible and f:IsShown())) end -- hidden UI (Alt+Z) hides its children
+    if card and hold and seen(card) then return Card.Verdict(v) end -- the pause ends; the press judges nothing
     if not (card and seen(card) and seen(btn)) then
         App.Log(("key %s ignored: card not visible"):format(v))
         ns.Slash.Print(L["Open the checklist and show a step to record a result with a key."])
@@ -244,7 +269,9 @@ local function build()
     card.picks = {}
     card.pickNote = fs("GameFontHighlightSmall", GREY, 340)
 
-    card.title = fs("GameFontHighlightLarge", { 1, 1, 1 }, INNER)
+    local titleFont = Card.TitleFont()
+    card.titleFont = titleFont
+    card.title = fs(titleFont, { 1, 1, 1 }, INNER)
     -- Over the collapsed title: shows the full text on hover and passes a drag on to the card.
     card.titleHit = CreateFrame("Frame", nil, card)
     card.titleHit:EnableMouse(true); card.titleHit:RegisterForDrag("LeftButton")
@@ -260,9 +287,28 @@ local function build()
     card.noteLabel = fs("GameFontHighlightSmall", GREY, 46)
     card.noteLabel:SetText(L["Note"])
     card.tally = fs("GameFontHighlight", BODY, INNER)
-    card.reloadedNote = fs("GameFontHighlight", GREEN, INNER)
-    card.banner = fs("GameFontHighlightSmall", GREY, INNER)
+    card.blocked = fs("GameFontHighlightSmall", GREY, INNER)
+    card.checksHead = fs("GameFontHighlightSmall", GREEN, INNER)
     card.checks = fs("GameFontHighlight", BODY, INNER)
+    -- The Setup fold: one line with + or -, a click opens or closes it.
+    card.fold = CreateFrame("Button", nil, card)
+    card.fold:SetSize(INNER, 16)
+    card.fold.label = card.fold:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.fold.label:SetPoint("LEFT", 0, 0); card.fold.label:SetWidth(INNER); card.fold.label:SetJustifyH("LEFT")
+    card.fold.label:SetWordWrap(false); card.fold.label:SetMaxLines(1)
+    card.fold.label:SetTextColor(GREY[1], GREY[2], GREY[3])
+    card.texts[#card.texts + 1] = card.fold.label
+    card.fold:SetScript("OnClick", function(self) Card.ToggleSetup(self.key); Card.Refresh() end)
+    -- The note opens from one line, so a step without a note shows no empty box.
+    card.addNote = CreateFrame("Button", nil, card)
+    card.addNote:SetSize(120, 18)
+    card.addNote:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    card.addNote.label = card.addNote:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.addNote.label:SetPoint("LEFT", 2, 0); card.addNote.label:SetText(L["+ Add note"])
+    card.addNote.label:SetTextColor(GREY[1], GREY[2], GREY[3])
+    card.texts[#card.texts + 1] = card.addNote.label
+    card.addNote:SetScript("OnClick", function() card.noteOpen = true; Card.Refresh(); pcall(function() card.note:SetFocus() end) end)
+    card.acts, card.setupOpen = {}, {}
     card.recorded = fs("GameFontHighlight", BODY, INNER)
     card.redo = makeButton(card, L["Redo this step"], 120); card.redo:SetHeight(24)
     card.redo:SetPoint("BOTTOMLEFT", 12, 12)
@@ -468,12 +514,13 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "chooseBtn", "title", "reloadedNote", "resume", "banner", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide(); card.caption:Hide(); card.catBtn:Hide()
     for _, s in ipairs(card.segs) do s.back:Hide(); for _, t in ipairs(s.parts) do t:Hide() end; s.hit:Hide() end
     for _, t in ipairs(card.barParts) do t:Hide() end
     for _, p in ipairs(card.picks) do p.check:Hide(); p.label:Hide() end
+    for _, r in ipairs(card.acts) do r.box:Hide(); r.label:Hide(); r.hit:Hide() end
     card.secureWanted = false
     if not A.InCombat() and card.secure then card.secure:Hide() end
 end
@@ -617,6 +664,72 @@ local function makePick(i)
     return p
 end
 
+-- One listed action: a standard checkbox and its label; a click on either toggles it. Without the checkbox template a
+-- text button shows [ ] or [x]. A tick goes to the run (App.Tick); the box always shows what the run holds.
+function Card.MakeAction(i)
+    local row = {}
+    local ok, box = pcall(CreateFrame, "CheckButton", nil, card, "UICheckButtonTemplate")
+    local isCheck = ok and box and box.SetChecked ~= nil
+    if isCheck then box:SetSize(24, 24)
+    else
+        box = CreateFrame("Button", nil, card); box:SetSize(24, 18)
+        box.mark = box:CreateFontString(nil, "OVERLAY", "GameFontHighlight"); box.mark:SetPoint("CENTER")
+        card.texts[#card.texts + 1] = box.mark
+    end
+    row.box = box
+    row.label = fs("GameFontHighlight", BODY, 280)
+    row.hit = CreateFrame("Button", nil, card)
+    row.hit:SetPoint("TOPLEFT", row.label, "TOPLEFT"); row.hit:SetPoint("BOTTOMRIGHT", row.label, "BOTTOMRIGHT")
+    local function toggle()
+        if row.locked then if isCheck then box:SetChecked(row.on) end return end
+        App.Tick(i, not row.on); Card.Refresh()
+    end
+    box:SetScript("OnClick", toggle); row.hit:SetScript("OnClick", toggle)
+    function row.set(on, locked)
+        row.locked = locked
+        if isCheck then
+            box:SetChecked(on)
+            if locked then box:Disable() else box:Enable() end
+        else box.mark:SetText(on and "[x]" or "[ ]") end
+    end
+    card.acts[i] = row
+    return row
+end
+
+-- Is the Setup fold of this step open? The first time a step shows in a run it opens by itself; then the player decides.
+-- What was seen is kept for the current run only, so it survives a reload without growing.
+function Card.SetupOpen(key)
+    local ui = App.db.ui
+    local runId = key:match("^(.-)/") or ""
+    if type(ui.setupSeen) ~= "table" or ui.setupSeen.run ~= runId then ui.setupSeen = { run = runId, ids = {} } end
+    if card.setupOpen[key] == nil then
+        card.setupOpen[key] = not ui.setupSeen.ids[key]
+        ui.setupSeen.ids[key] = true
+    end
+    return card.setupOpen[key]
+end
+function Card.ToggleSetup(key) if key then card.setupOpen[key] = not Card.SetupOpen(key) end end
+
+-- After an automatic result the card keeps the recorded step on screen and fades to the next step (Card.HOLD seconds).
+-- A press on the card or a result key ends it. Without timers there is no hold.
+Card.HOLD, Card.FADE_STEPS = 3, 6
+function Card.EndHold()
+    if not card then return end
+    hold = nil
+    card:SetAlpha(1)
+end
+function Card.Hold(stepId)
+    if Card.HOLD <= 0 then return false end
+    local h = { id = stepId }
+    hold = h
+    if not A.After(Card.HOLD, function() if hold == h then Card.EndHold(); Card.Refresh() end end) then hold = nil; return false end
+    for i = 1, Card.FADE_STEPS - 1 do
+        A.After(Card.HOLD * i / Card.FADE_STEPS, function() if hold == h then card:SetAlpha(1 - 0.6 * i / Card.FADE_STEPS) end end)
+    end
+    App.Log(("card holds %s for %d s"):format(stepId, Card.HOLD))
+    return true
+end
+
 local refreshCard
 function Card.Refresh()
     refreshCard()
@@ -631,6 +744,10 @@ function refreshCard()
     if not card then return end
     if not card:IsShown() and card.secure and not A.InCombat() then card.secure:Hide() end
     local run, ctx, step = App.Current()
+    -- While an automatic result is held on screen, the card shows that step, read-only, and not the next one.
+    local held = hold and run and ctx and ns.Run.stepOf(ctx, hold.id)
+    if hold and (not held or run.endedAt) then Card.EndHold(); held = nil end -- an ended run shows its results at once
+    if held then step = held end
     hideAll()
     local collapsed = cfg().collapsed
     local pendingAddon = App.db.ui.pendingStart
@@ -708,6 +825,7 @@ function refreshCard()
         card:SetHeight(y + 36); return
     end
     local total = #run.order
+    for _, id in ipairs(run.order) do if run.steps[id].verdict == "inapplicable" then total = total - 1 end end -- not for this character: out of progress
     local c = ns.Run.Counts(run)
     local resolved = total - (c.open or c.pending or 0)
     local rows, overall, sum = App.Categories()
@@ -745,73 +863,108 @@ function refreshCard()
     end
     local rec0 = run.steps[step.id]
     local resolved = rec0.verdict ~= "pending" and rec0.verdict ~= "unverified"
-    if not resolved then App.Begin() end -- arm evidence before the tester acts
+    if not resolved then
+        local _, _, unmet = App.Begin() -- arm evidence before the tester acts
+        if unmet then return refreshCard() end -- not for this character: the run moved on
+    end
     local lastA = rec0.attempts[#rec0.attempts]
     local open = lastA and not lastA.verdict and lastA or nil
     local viewing = resolved and not open -- a finished step is read-only until Redo
+    local holding = hold ~= nil -- an automatic result stays on screen while the card fades to the next step
     local reloaded = open and open.reloaded
-    local required, hasExtra = {}, false
+    local required = {}
     for _, a in ipairs(step.assertions or {}) do
-        if a.diagnostic then hasExtra = true else required[#required + 1] = a end
+        if not a.diagnostic then required[#required + 1] = a end
     end
-    for _, v in ipairs(step.verify or {}) do if v == "reviewer" then hasExtra = true end end
     card.prevBtn:Show(); card.nextBtn:Show()
     local y = 36 + top
     place(card.title, 12, y); setText(card.title, step.title)
     y = y + card.title:GetStringHeight() + 6
-    -- Who checks this step: unmissable, right under the title.
-    place(card.banner, 12, y)
     local autoLive = step.auto and not (open and open.noauto) -- after an automatic unverified result the retry waits for the player
-    if autoLive then
-        setText(card.banner, L["|cff66ff66CHECKTHAT CHECKS THIS STEP.|r It records the result when the checks are met."], GREY)
-    elseif #required > 0 then
-        setText(card.banner, L["|cff66ff66CHECKTHAT CHECKS THIS STEP.|r It ticks below when it sees your action."], GREY)
-    elseif hasExtra then
-        setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r CheckThat records extra detail for the reviewer."], GREY)
-    else
-        setText(card.banner, L["|cffffd100YOU CONFIRM THIS STEP.|r CheckThat cannot see it."], GREY)
-    end
-    y = y + card.banner:GetStringHeight() + 8
-    if reloaded then
-        place(card.reloadedNote, 12, y); setText(card.reloadedNote, L["Reloaded. Check the result now, then record it."], GREEN)
-        y = y + card.reloadedNote:GetStringHeight() + 8
-    end
+    -- Setup folds to one line. It holds the step's setup, the plan's preamble at the start and the section intro, and
+    -- opens by itself the first time the step shows in this run.
     local extra = {}
+    if step.setup then extra[#extra + 1] = step.setup end
     if ctx.plan.preamble and App.AtStart(run) then extra[#extra + 1] = L["Before you start: %s"]:format(ctx.plan.preamble:sub(1, 300)) end
     local intro = App.SectionIntro(run, ctx, step.id)
     if intro then extra[#extra + 1] = L["This section: %s"]:format(intro:sub(1, 240)) end
-    local blocked = ns.Run.Blocked(ctx, step)
-    if #blocked > 0 then extra[#extra + 1] = L["Blocked: %s"]:format(table.concat(blocked, "; ")) end
-    if #extra > 0 then
-        place(card.context, 12, y); setText(card.context, table.concat(extra, "\n"), GREY)
-        y = y + card.context:GetStringHeight() + 8
+    if #extra > 0 and not viewing then
+        local key = run.runId .. "/" .. step.id
+        local opened = Card.SetupOpen(key)
+        card.fold.key = key
+        local first = extra[1]:match("^(.-[%.!?])%s") or extra[1]
+        card.fold.label:SetText((opened and L["- Setup: %s"] or L["+ Setup: %s"]):format(first)) -- one line: the game ends a longer one with "..."
+        place(card.fold, 12, y); card.fold:Show()
+        y = y + 18
+        if opened then
+            place(card.context, 24, y); setText(card.context, table.concat(extra, "\n"), BODY)
+            y = y + card.context:GetStringHeight() + 8
+        end
     end
-    local rows = {}
-    if step.setup then rows[#rows + 1] = { L["Setup"], step.setup } end
-    rows[#rows + 1] = { L["Do"], step.action.text or (step.action.kind == "wait-event" and (autoLive and L["Wait. CheckThat records the result when the checks below are met."] or L["Repeat the action, then press Pass."])) or L["Use the command below."] }
-    rows[#rows + 1] = { L["Expect"], step.expect }
+    local blocked = ns.Run.Blocked(ctx, step)
+    if #blocked > 0 and not viewing then
+        place(card.blocked, 12, y); setText(card.blocked, L["Blocked: %s"]:format(table.concat(blocked, "; ")), GREY)
+        y = y + card.blocked:GetStringHeight() + 8
+    end
+    -- Do: one sentence, or one checkbox for each listed action. The player ticks them; a tick is never a result.
+    local acts = type(step.action.text) == "table" and step.action.text or nil
+    local doRow, exRow = card.rows[2], card.rows[3]
+    place(doRow.label, 12, y + 2); setText(doRow.label, L["Do"], GREY)
+    if acts then
+        local ticks = (open or lastA or {}).ticks or {}
+        for i, t in ipairs(acts) do
+            local row = card.acts[i] or Card.MakeAction(i)
+            local on = ticks[i] and true or false
+            row.on = on
+            row.set(on, not open or holding)
+            place(row.box, 56, y - 4); row.box:Show()
+            place(row.label, 82, y); setText(row.label, t, on and { 1, 1, 1 } or BODY)
+            row.hit:Show()
+            y = y + math.max(row.label:GetStringHeight(), 16) + 6
+        end
+    else
+        place(doRow.body, 62, y)
+        setText(doRow.body, step.action.text or (step.action.kind == "wait-event" and (autoLive and L["Wait. CheckThat records the result when the checks below are met."] or L["Repeat the action, then press Pass."])) or L["Use the command below."], BODY)
+        y = y + doRow.body:GetStringHeight() + 6
+    end
     local copies = App.Copyables(step, ctx.plan)
     local firstCopy
-    for i, r in ipairs(rows) do
-        local row = card.rows[i]
-        place(row.label, 12, y + 2); setText(row.label, r[1], GREY)
-        place(row.body, 62, y); setText(row.body, r[2], BODY)
-        y = y + row.body:GetStringHeight() + 6
-        if r[1] == L["Do"] and not viewing then
-            for k, e in ipairs(card.copies) do
-                if copies[k] then
-                    e:Set(copies[k]); place(e, 66, y); e:Show()
-                    firstCopy = firstCopy or e
-                    y = y + 26
-                end
+    if not viewing then
+        for k, e in ipairs(card.copies) do
+            if copies[k] then
+                e:Set(copies[k]); place(e, 66, y); e:Show()
+                firstCopy = firstCopy or e
+                y = y + 26
             end
         end
-        y = y + 4
     end
-    -- Live checks: each required check ticks as CheckThat sees it.
+    -- Hints belong to the action: a reload, a screenshot, the macro that does not fit.
+    local hint = {}
+    if reloaded then hint[#hint + 1] = L["|cff99ff99Reloaded.|r Check the result now, then record it."] end
+    if not viewing then
+        if step.screenshot then hint[#hint + 1] = L["Press Print Screen while the result is on screen."] end
+        if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Type /reload when done. This step resumes after."] end
+        if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Type /reload now so the game saves the log."] end
+        local _, _, noMacro = Card.MacroBody()
+        if ns.addon.db.profile.macroFollow and noMacro then
+            hint[#hint + 1] = L["This step has no macro: its commands do not fit in one."]
+        end
+    end
+    if #hint > 0 then place(card.hint, 62, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
+    y = y + 4
+    -- Expect: one sentence, or one short line for each listed result.
+    place(exRow.label, 12, y + 2); setText(exRow.label, L["Expect"], GREY)
+    local ex = step.expect
+    place(exRow.body, 62, y)
+    setText(exRow.body, type(ex) == "table" and ("- " .. table.concat(ex, "\n- ")) or ex, BODY)
+    y = y + exRow.body:GetStringHeight() + 10
+    -- Live checks, under a small heading that says CheckThat checks them. A step with none is the player's step.
     card.checkStep = nil
     if #required > 0 and open then
         card.checkStep = step.id
+        place(card.checksHead, 12, y)
+        setText(card.checksHead, autoLive and L["CheckThat checks and records the result"] or L["CheckThat checks"], GREEN)
+        y = y + card.checksHead:GetStringHeight() + 4
         place(card.checks, 12, y); card.checks:Show()
         local items, left = ns.Run.Preview(run, ctx, step.id), App.TimeLeft()
         local blind = blindNow(ctx, items) and true or false
@@ -824,11 +977,15 @@ function refreshCard()
         -- A finished step: show what was recorded, offer Redo. Nothing here changes the result.
         local word = ({ pass = L["Pass"], partial = L["Partial"], fail = L["Fail"], skip = L["Skip"] })[rec0.verdict] or rec0.verdict
         local last = lastA
+        local line
+        if rec0.verdict == "inapplicable" then line = L["Does not apply: %s"]:format(rec0.unmet or L["this step is for the other client."])
+        elseif last and last.at == "start" then line = L["Recorded: %s (checked by CheckThat when the run started)"]:format(word)
+        elseif last and last.by == "auto" then line = L["Recorded: %s (recorded by CheckThat)"]:format(word)
+        else line = L["Recorded: %s"]:format(word) end
         place(card.recorded, 12, y)
-        setText(card.recorded, ((last and last.by == "auto") and L["Recorded: %s (recorded by CheckThat)"] or L["Recorded: %s"]):format(word)
-            .. ((last and last.note) and ("  -  " .. last.note) or ""), BODY)
+        setText(card.recorded, line .. ((last and last.note) and ("  -  " .. last.note) or ""), holding and GREEN or BODY)
         y = y + card.recorded:GetStringHeight() + 12
-        card.redo:Show()
+        if not holding and rec0.verdict ~= "inapplicable" then card.redo:Show() end -- a rerun checks a step that does not apply again
         card:SetHeight(y + 40); return
     end
     -- Evidence status: amber only when something is missing.
@@ -840,21 +997,18 @@ function refreshCard()
         setText(card.evidence, L["Unverified: %s. Repeat the action and press Pass again. Fail or Skip moves on."]:format(why and (WHY[why] or L["see the report"]) or L["no detail"]), AMBER)
         y = y + card.evidence:GetStringHeight() + 6
     end
-    local hint = {}
-    if step.screenshot then hint[#hint + 1] = L["Press Print Screen while the result is on screen."] end
-    if step.reload == "after_action" and not reloaded then hint[#hint + 1] = L["Type /reload when done. This step resumes after."] end
-    if App.db.ui.shareReload == run.runId then hint[#hint + 1] = L["Type /reload now so the game saves the log."] end
-    local _, _, noMacro = Card.MacroBody()
-    if ns.addon.db.profile.macroFollow and noMacro then
-        hint[#hint + 1] = L["This step has no macro: its commands do not fit in one."]
-    end
-    if #hint > 0 then place(card.hint, 12, y); setText(card.hint, table.concat(hint, " "), GREY); y = y + card.hint:GetStringHeight() + 6 end
     y = y + 6
+    -- The note: one "Add note" line until the player opens it, or the attempt already has text in it.
     local noteKey = noteKeyOf(run, step, rec0)
-    if card.noteKey ~= noteKey then card.note:SetText(""); card.noteKey = noteKey end -- a note belongs to one step attempt
-    card.noteLabel:Show(); place(card.noteLabel, 12, y + 3)
-    place(card.note, 62, y - 1); card.note:Show()
-    y = y + 34
+    if card.noteKey ~= noteKey then card.note:SetText(""); card.noteKey = noteKey; card.noteOpen = false end -- a note belongs to one step attempt
+    if card.noteOpen or card.note:GetText() ~= "" then
+        card.noteLabel:Show(); place(card.noteLabel, 12, y + 3)
+        place(card.note, 62, y - 1); card.note:Show()
+        y = y + 34
+    else
+        place(card.addNote, 10, y); card.addNote:Show()
+        y = y + 26
+    end
     for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo" }) do card[k]:Show() end
     -- The secure button sits beside the first command. A reload is the player's /reload, or the Run button of a step that lists it.
     card.secureAnchor = firstCopy or false
@@ -866,6 +1020,7 @@ end
 
 -- < and >: move the viewed step. Logged, and a drawing error is recorded instead of looking like a dead button.
 function Card.Go(delta)
+    if card and hold then Card.EndHold() end
     local before = App.Current() and select(3, App.Current())
     local moved = App.Goto(delta)
     local _, _, step = App.Current()
@@ -940,6 +1095,7 @@ function Card.AutoSettle()
     elseif not UIParent:IsShown() then return nil end
     local pending = App.db.ui.pendingStart
     if pending and App.db.plans[pending] then return nil end -- the Start screen is showing, not the run
+    if hold then return nil end -- the next step opens when the hold ends, so its timer starts when the player sees it
     local note = card.note and card.note:GetText()
     if note == "" then note = nil end
     local run, _, cur = App.Current()
@@ -952,6 +1108,9 @@ function Card.AutoSettle()
     end
     if a then
         pcall(function() card.note:SetText(""); card.note:ClearFocus() end) -- the note went with the result
+        -- Pause only when the run moved on: an unverified result keeps the step open for the player.
+        local _, _, now = App.Current()
+        if a.verdict ~= "unverified" and not (now and now.id == step.id) and card:IsShown() and not cfg().collapsed then pcall(Card.Hold, step.id) end
         local ok2, err = pcall(function() Card.AfterVerdict(step); Card.Refresh() end)
         if not ok2 and ns.Log then ns.Log.Failure("card", "after auto: " .. tostring(err)) end
     end
