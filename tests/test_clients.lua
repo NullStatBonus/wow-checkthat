@@ -18,7 +18,7 @@ for client, toc in pairs({ era = "CheckThat/CheckThat_Vanilla.toc", forever = "C
         CheckThatDB = nil
         ns.addon:OnInitialize()
         ns.addon:OnEnable()
-        T.eq(_G.CheckThat.API_VERSION, 3)
+        T.eq(_G.CheckThat.API_VERSION, 4)
         T.ok(ns.App.ImportPlan(planText()))
         local lines = ns.Slash.Run("start KeepThat", { card = function() ns.Card.Show() end })
         T.ok(lines[1]:find("Started"), lines[1])

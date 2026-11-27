@@ -64,7 +64,7 @@ end
 -- line format stay as they are, and API_VERSION rises only when something is added.
 function Facts.API()
     return {
-        API_VERSION = 3,
+        API_VERSION = 4, -- 4: Commands
         Entry = function(addon, name, fn)
             if not ns.Entries then return false end
             local ok, stored = pcall(ns.Entries.Register, addon, name, fn)
@@ -79,6 +79,12 @@ function Facts.API()
             if not ns.RunEvents then return nil end
             local ok, plan = pcall(ns.RunEvents.Active, addon)
             return ok and plan or nil
+        end,
+        -- The addon's own slash commands, which a plan for it may offer as Run buttons (#244): Commands("MyAddon", { "/my" }).
+        Commands = function(addon, list)
+            if not (ns.App and ns.App.DeclareCommands) then return false end
+            local ok, stored = pcall(ns.App.DeclareCommands, addon, list)
+            return ok and stored == true
         end,
         Report = function(addon, key, value)
             local ok, recorded = pcall(Facts.Report, addon, key, value)

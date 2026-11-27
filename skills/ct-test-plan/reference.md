@@ -34,7 +34,7 @@ Judge each log assertion against `docs/debug-logging.md`.
 
 ## Commands (`validate` warns about misses)
 - Every slash command in step text appears in `action.commands`.
-- Each command is in the addon's allow list, or is `/reload`, `/reloadui` or `/console scriptErrors 0|1`.
+- Each command is in the addon's allow list or the plan's `commands`, or is `/reload`, `/reloadui` or `/console scriptErrors 0|1`.
 - No `/script`, `/run` or `/dump`. The card shows four command lines; keep a step to four.
 
 ## Character roles
@@ -88,7 +88,7 @@ Judge each log assertion against `docs/debug-logging.md`.
 Rules that hold for CheckThat's own plans and tools. Read them when the plan is for CheckThat or the addon integrates with it.
 
 ### Supported addons
-A plan names an addon CheckThat supports: it must be in `Plan.SLASH` in `$CT/CheckThat/Model/Plan.lua` and in `SLASH` in `ct.py`. For any other addon the plan needs a CheckThat change first.
+A plan names any addon by its folder name. CheckThat knows the commands of the addons in `Plan.SLASH` (`$CT/CheckThat/Model/Plan.lua`, and `SLASH` in `ct.py`). For any other addon, list its prefixes in `commands` (for example `commands: [/my]`): CheckThat offers them only when the addon registered them in game, or declared them with `CheckThat.Commands`. `/run`, `/script`, `/dump`, `/console` and another addon's commands are refused.
 
 ### Log sources
 `LOGS` in `ct.py` lists the debug-log saved variable, its path and its format (`strings` or `entries`) for each supported addon. The addon's own source decides when they differ.

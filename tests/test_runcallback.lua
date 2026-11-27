@@ -32,10 +32,10 @@ local function watch(api, addon)
     end)
 end
 
-test("the API is version 3 and OnRun refuses bad input without raising", function()
+test("the API is version 4 and OnRun refuses bad input without raising", function()
     boot()
     local api = ns.Facts.API()
-    T.eq(api.API_VERSION, 3)
+    T.eq(api.API_VERSION, 4)
     T.eq(api.OnRun("A B", function() end), false)
     T.eq(api.OnRun("A", "not a function"), false)
     T.eq(api.OnRun(nil, function() end), false)

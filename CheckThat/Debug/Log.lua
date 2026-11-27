@@ -69,6 +69,10 @@ function Log.Report()
         if ctx then
             local reads = ns.App.PlanReads(ctx.plan)
             out[#out + 1] = "Plan reads: " .. (#reads > 0 and table.concat(reads, ", ") or "none")
+            local offered, missing = ns.App.CommandsCheck(ctx.plan)
+            if #offered + #missing > 0 then
+                out[#out + 1] = ("Plan commands: offered %s; not offered %s"):format(#offered > 0 and table.concat(offered, ", ") or "none", #missing > 0 and table.concat(missing, ", ") or "none")
+            end
         end
     end
     if ns.App and ns.App.db then

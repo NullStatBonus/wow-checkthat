@@ -121,6 +121,15 @@ test("start takes the addon name in any case and knows the addons Plan.SLASH lis
     T.ok(not run("start newthat")[1]:find("Usage"), "an addon in Plan.SLASH is accepted")
 end)
 
+test("start finds an imported plan for any addon, in any case (#244)", function()
+    ns.App.Init({}, { time = function() return 1 end, UnitName = function() return "T" end, GetRealmName = function() return "R" end })
+    local p = { kind = "plan", ct = 1, addon = "MyAddon", title = "t", sections = { { id = "s", title = "S", steps = {
+        { id = "a", title = "A", action = { kind = "manual", text = "x" }, expect = "e", verify = { "player" } } } } } }
+    ns.App.db.plans.MyAddon = { plan = p, digest = "d" }
+    T.ok(run("start myaddon")[1]:find("^Started MyAddon"), "a plan for an addon outside Plan.SLASH starts")
+    T.ok(run("start OtherAddon")[1]:find("Usage"), "an addon with no plan is still refused")
+end)
+
 test("a slash verdict is worded through L[], each word on its own", function()
     T.eq(ns.Slash.VerdictLine({ verdict = "pass", evidence = "matched" }), "Step pass (matched).")
     T.eq(ns.Slash.VerdictLine({ verdict = "fail", evidence = "contradicts" }), "Step fail (contradicts).")
