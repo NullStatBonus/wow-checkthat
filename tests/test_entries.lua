@@ -456,12 +456,40 @@ test("the committed recordings replay the vendor, trainer and auction scenes of 
     T.ok(forever.ok, "forever: " .. tostring(forever.steps[1] and forever.steps[1].detail))
 end)
 
+test("a table return replays as a table, each call gets its own copy, and a table argument matches by value", function()
+    local function call(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
+    local key = { itemID = 2589, itemLevel = 0, itemSuffix = 0, battlePetSpeciesID = 0 }
+    local r = run({ toc = REC_FOREVER, level = 5, mocks = {
+        ["C_MerchantFrame.GetItemInfo"] = { args = { 1 }, returns = { { name = "Coarse Thread", price = 10, stackCount = 1, isUsable = true } } },
+        ["C_AuctionHouse.GetCommoditySearchResultInfo"] = { args = { 2589, 1 }, returns = { { itemID = 2589, unitPrice = 15, owners = {} } } },
+        ["C_AuctionHouse.GetItemSearchResultInfo"] = { args = { key, 1 }, returns = { { itemKey = key, buyoutAmount = 300, owners = {} } } },
+        ["C_AuctionHouse.GetBrowseResults"] = { returns = { { { minPrice = 1 }, { minPrice = 2 } } } } }, steps = {
+        call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }), call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }),
+        call("commodity_price", { 2589, 1 }, { 15, 0 }),
+        call("item_result", { { itemID = 2589, itemLevel = 0, itemSuffix = 0, battlePetSpeciesID = 0 }, 1 }, { 300, 2589 }),
+        call("item_result", { { itemID = 2589, itemLevel = 7, itemSuffix = 0, battlePetSpeciesID = 0 }, 1 }, {}),
+        call("browse_count", {}, { 2 }) } })
+    for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
+end)
+
+test("the committed Forever vendor and auction entries replay as tables", function()
+    local function call(entry, args, returns) return { call = { addon = "MockAddon", entry = entry, args = args }, returns = returns } end
+    local r = run({ toc = REC_FOREVER, level = 5, mocks = {
+        ["C_MerchantFrame.GetItemInfo"] = { recording = "C_MerchantFrame.GetItemInfo(1)" },
+        ["C_AuctionHouse.GetCommoditySearchResultInfo"] = { { recording = "C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)" }, { recording = "C_AuctionHouse.GetCommoditySearchResultInfo(2589,2)" } },
+        ["C_AuctionHouse.GetBrowseResults"] = { recording = "C_AuctionHouse.GetBrowseResults()" } }, steps = {
+        call("vendor_info", { 1 }, { "Coarse Thread", 10, 1 }), call("commodity_price", { 2589, 2 }, { 30, 0 }), call("browse_count", {}, { 1 }) } })
+    for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
+end)
+
 test("every read-only window call can be mocked, and no call that buys, learns or bids can", function()
     local R = dofile("tools/entry_runner.lua")
     for _, n in ipairs({ "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemID", "GetNumTrainerServices", "GetTrainerServiceInfo",
         "GetTrainerServiceCost", "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "IsTradeskillTrainer", "GetTrainerServiceTypeFilter",
-        "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink" }) do T.ok(R.MOCKABLE[n], n) end
-    for _, n in ipairs({ "BuyMerchantItem", "BuyTrainerService", "PlaceAuctionBid", "PickupMerchantItem", "StartAuction" }) do T.ok(not R.MOCKABLE[n], n) end
+        "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink", "C_MerchantFrame.GetItemInfo", "C_AuctionHouse.GetBrowseResults",
+        "C_AuctionHouse.GetItemSearchResultInfo", "C_AuctionHouse.GetCommoditySearchResultInfo", "C_AuctionHouse.GetItemKeyInfo" }) do T.ok(R.MOCKABLE[n], n) end
+    for _, n in ipairs({ "BuyMerchantItem", "BuyTrainerService", "PlaceAuctionBid", "PickupMerchantItem", "StartAuction", "C_AuctionHouse.PlaceBid",
+        "C_AuctionHouse.StartCommoditiesPurchase", "C_AuctionHouse.PostItem", "C_AuctionHouse.SendBrowseQuery", "C_MerchantFrame.SellAllJunkItems" }) do T.ok(not R.MOCKABLE[n], n) end
 end)
 
 test("a recording that does not fit fails the load step and says why", function()
@@ -482,7 +510,7 @@ test("the committed recordings name no character, realm or personal value", func
         local f = assert(io.open("tools/recordings/" .. client .. ".json")); local text = f:read("*a"); f:close()
         local rec = assert(jns.Json.Decode(text))
         T.eq(rec.format, 1); T.eq(rec.client, client); T.ok(next(rec.calls))
-        T.ok(rec.rev == nil or (rec.rev >= 2 and rec.rev <= 4), "rev is absent in a file from before the window tags, or 2 to 4")
+        T.ok(rec.rev == nil or (rec.rev >= 2 and rec.rev <= 5), "rev is absent in a file from before the window tags, or 2 to 5")
         for label, call in pairs(rec.calls) do
             T.ok(call.window == nil or call.window == "merchant" or call.window == "trainer" or call.window == "auction", label .. " has an unknown window tag")
             if call.api == "GetAuctionItemInfo" then

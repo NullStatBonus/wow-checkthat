@@ -2,7 +2,7 @@
 -- The game runs this file first and loads the saved variables afterwards, then fires ADDON_LOADED. A CTProbeDB made here
 -- would be replaced by the table from disk, and every line written to the old one would be lost. So the saved table is
 -- only touched in ADDON_LOADED (see the event handler below).
-local VERSION = 7 -- v7: last update wins per opening, headers skipped, trainer filter and kind recorded, auction waits for complete rows, old window rows cleared at arm, record status (review of #240). v6: one window opening fills one scene; a nil IsTradeskillTrainer is a class trainer. v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
+local VERSION = 8 -- v8: table returns kept three levels deep, table arguments stored, Forever auction house scenes (browse, itemsearch, commodity) (#234). v7: last update wins per opening, headers skipped, trainer filter and kind recorded, auction waits for complete rows, old window rows cleared at arm, record status (review of #240). v6: one window opening fills one scene; a nil IsTradeskillTrainer is a class trainer. v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
 local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
 local realGetTime = GetTime -- say() reads the clock through this, so a hook on GetTime from /ctp taint hookerror cannot reach the log
@@ -74,7 +74,7 @@ end
 
 local opened = {} -- window kind -> the scene this opening fills; its _SHOW and _CLOSED events clear it, so one window fills one scene
 local windowEvents = {} -- window event -> true when this client has it
-local WINDOW_EVENT, ITEM_FIXTURES, capture, store -- set further down, where the calls they use are defined
+local WINDOW_EVENT, ITEM_FIXTURES, capture, store, captureModern, MODERN_EVENT -- set further down, where the calls they use are defined
 local ev = CreateFrame("Frame")
 local watched = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN",
@@ -82,7 +82,8 @@ for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "P
     local ok = pcall(ev.RegisterEvent, ev, e)
     watched[e] = ok
 end
-for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_UPDATE", "MERCHANT_CLOSED", "TRAINER_SHOW", "TRAINER_UPDATE", "TRAINER_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "GET_ITEM_INFO_RECEIVED" }) do
+for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_UPDATE", "MERCHANT_CLOSED", "TRAINER_SHOW", "TRAINER_UPDATE", "TRAINER_CLOSED", "AUCTION_ITEM_LIST_UPDATE", "GET_ITEM_INFO_RECEIVED",
+    "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", "ITEM_SEARCH_RESULTS_UPDATED", "COMMODITY_SEARCH_RESULTS_UPDATED", "AUCTION_HOUSE_CLOSED" }) do
     windowEvents[e] = pcall(ev.RegisterEvent, ev, e) -- a client without the event raises here; arm() stores why that window is missing
 end
 local isLife = {}
@@ -104,6 +105,10 @@ ev:SetScript("OnEvent", function(_, e, ...)
         shows = 0
         say("event PLAYER_REGEN_ENABLED; button shown=" .. tostring(b and b:IsShown()))
         C_Timer.After(2, function() say("2 s after combat; button shown=" .. tostring(b and b:IsShown())) end)
+    elseif e == "AUCTION_HOUSE_CLOSED" then
+        for _, scene in pairs(MODERN_EVENT) do opened[scene] = nil end
+    elseif MODERN_EVENT[e] then
+        captureModern(MODERN_EVENT[e], ...)
     elseif WINDOW_EVENT[e] then
         local win = WINDOW_EVENT[e]
         if e == "MERCHANT_SHOW" or e == "TRAINER_SHOW" or e == "MERCHANT_CLOSED" or e == "TRAINER_CLOSED" then opened[win] = nil end
@@ -276,28 +281,38 @@ for _, id in ipairs(ITEMS) do
     }
     for _, f in ipairs(ITEM_FIXTURES[id]) do FIXTURES[#FIXTURES + 1] = f end
 end
-local function shape(v, typeOnly)
+-- A table is copied three levels deep with up to 32 keys each (an auction result's itemKey is the third level). cut marks a table that
+-- was copied in part, so ct.py does not mistake a sample for the whole answer.
+local function shape(v, typeOnly, depth)
     local t = type(v)
     if typeOnly or t == "function" or t == "userdata" or t == "thread" then return { type = t } end
     if t == "table" then
-        local copy, n = {}, 0
+        depth = depth or 1
+        if depth > 3 then return { type = t, cut = true } end
+        local copy, n, cut = {}, 0, nil
         for k, x in pairs(v) do
             n = n + 1
-            if n > 32 then break end -- C_MerchantFrame.GetItemInfo has 11 fields; a cap of 8 dropped some at random
-            copy[tostring(k)] = type(x) == "table" and { type = "table" } or { type = type(x), value = x }
+            if n > 32 then cut = true; break end
+            local s = shape(x, nil, depth + 1)
+            if s.cut then cut = true end
+            copy[tostring(k)] = s
         end
-        return { type = t, value = copy }
+        return { type = t, value = copy, cut = cut }
     end
     return { type = t, value = v }
 end
 local function pack(...) return { n = select("#", ...), ... } end
 -- Runs fn once and stores what it returned under label. n counts the nils too, so a nil before a value is kept. window tags a call that
 -- was recorded with a window open; ct.py recordings carries the tag into the recording.
-store = function(label, fn, typeOnly, window, scene)
+store = function(label, fn, typeOnly, window, scene, args)
     local r = pack(pcall(fn))
     local values = {}
     for i = 2, r.n do values[#values + 1] = shape(r[i], typeOnly) end
     local entry = r[1] and { n = math.max(r.n - 1, 0), values = values, typeOnly = typeOnly or nil, window = window, scene = scene } or { error = tostring(r[2]), window = window, scene = scene }
+    if args then -- a table argument (an auction itemKey) cannot be read back from the label, so the arguments are stored with the call
+        entry.args = {}
+        for i = 1, args.n or #args do entry.args[i] = shape(args[i]) end
+    end
     CTProbeDB.fixtures[label] = entry
     return entry
 end
@@ -335,6 +350,22 @@ local WINDOWS = {
         money = true, scenes = { "class", "trainer" } },
     auction = { count = "GetNumAuctionItems", arg = "list", rows = { "GetAuctionItemInfo", "GetAuctionItemLink" }, scenes = { "auction" } }, -- the plain word list, so the label reads back
 }
+-- Forever's auction house (C_AuctionHouse): three windows, each one scene with plain labels, tagged auction. Their events carry the search.
+local MODERN = {
+    browse = { event = "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", calls = function() return { { "C_AuctionHouse.HasFullBrowseResults" }, { "C_AuctionHouse.GetBrowseResults" } } end },
+    itemsearch = { event = "ITEM_SEARCH_RESULTS_UPDATED", calls = function(key)
+        local list = { { "C_AuctionHouse.GetNumItemSearchResults", key }, { "C_AuctionHouse.HasFullItemSearchResults", key }, { "C_AuctionHouse.GetItemKeyInfo", key } }
+        for i = 1, ROWS do list[#list + 1] = { "C_AuctionHouse.GetItemSearchResultInfo", key, i } end
+        return list
+    end },
+    commodity = { event = "COMMODITY_SEARCH_RESULTS_UPDATED", calls = function(id)
+        local list = { { "C_AuctionHouse.GetNumCommoditySearchResults", id }, { "C_AuctionHouse.HasFullCommoditySearchResults", id } }
+        for i = 1, ROWS do list[#list + 1] = { "C_AuctionHouse.GetCommoditySearchResultInfo", id, i } end
+        return list
+    end },
+}
+MODERN_EVENT = {} -- declared at the top, where the event handler reads it
+for scene, m in pairs(MODERN) do MODERN_EVENT[m.event] = scene end
 local SCENE_ROWS = { class = 10 } -- a class trainer lists several ranks of one spell, so more rows are kept
 local FILTERS = { "available", "unavailable", "used" } -- the trainer window's filter boxes; a hidden row is not in the count
 WINDOW_EVENT = { MERCHANT_SHOW = "merchant", MERCHANT_UPDATE = "merchant", MERCHANT_CLOSED = "merchant", TRAINER_SHOW = "trainer",
@@ -459,12 +490,33 @@ capture = function(win, e)
     if win ~= "auction" then opened[win] = scene end
     say(("window %s: recorded the count and %d rows as %s"):format(win, #rows, scene))
 end
+-- An itemKey argument is written as itemKey:<itemID> in the label and stored whole with the call. The results stay until the search changes:
+-- the last event of an armed scene wins, and the scene counts as recorded after its first event with rows.
+local function argText(v) return type(v) == "table" and ("itemKey:" .. tostring(v.itemID)) or tostring(v) end
+captureModern = function(scene, ...)
+    if not (CTProbeDB and CTProbeDB.armed and (CTProbeDB.armed[scene] or opened[scene])) then return end
+    local first = ...
+    if scene ~= "browse" and first == nil then return end
+    for l, entry in pairs(CTProbeDB.fixtures) do if entry.scene == scene then CTProbeDB.fixtures[l] = nil end end
+    local n = 0
+    for _, c in ipairs(MODERN[scene].calls(first)) do
+        local name, args, parts, hasTable = c[1], { n = #c - 1 }, {}, false
+        for i = 2, #c do args[i - 1] = c[i]; parts[i - 1] = argText(c[i]); if type(c[i]) == "table" then hasTable = true end end
+        local e = store(name .. "(" .. table.concat(parts, ",") .. ")", function() return call(name, unpack(args, 1, args.n)) end, nil, "auction", scene, hasTable and args or nil)
+        if e.values and e.values[1] and e.values[1].type == "table" then n = n + 1 end
+    end
+    if n > 0 then CTProbeDB.armed[scene] = nil; opened[scene] = true end
+    say(("window auction: %s, %d table results recorded as %s"):format(MODERN[scene].event, n, scene))
+end
 local function arm()
     if not CTProbeDB then say("record arm: saved variables are not loaded yet") return end
     CTProbeDB.fixtures = CTProbeDB.fixtures or {}
     for l, entry in pairs(CTProbeDB.fixtures) do if entry.window then CTProbeDB.fixtures[l] = nil end end -- a new run starts with no old window rows
     CTProbeDB.armed = { merchant = true, gear = true, trainer = true, class = true, auction = true }
     for k in pairs(opened) do opened[k] = nil end -- a window left open from before arming counts as a new opening
+    if rawget(_G, "C_AuctionHouse") and C_AuctionHouse.GetBrowseResults then -- Forever's auction house; Era has the list calls instead
+        for scene, m in pairs(MODERN) do if windowEvents[m.event] then CTProbeDB.armed[scene] = true end end
+    end
     if not windowEvents.AUCTION_ITEM_LIST_UPDATE then
         CTProbeDB.armed.auction = nil
         CTProbeDB.fixtures["GetNumAuctionItems(list)"] = { error = "AUCTION_ITEM_LIST_UPDATE is not an event on this client", window = "auction" }
@@ -474,8 +526,8 @@ end
 local function status()
     if not (CTProbeDB and CTProbeDB.armed) then say("record status: not armed") return end
     local left, done = {}, {}
-    for _, s in ipairs({ "gear", "merchant", "class", "trainer", "auction" }) do
-        if CTProbeDB.armed[s] then left[#left + 1] = s else done[#done + 1] = s end
+    for _, s in ipairs({ "gear", "merchant", "class", "trainer", "auction", "browse", "itemsearch", "commodity" }) do
+        if CTProbeDB.armed[s] then left[#left + 1] = s elseif s ~= "browse" and s ~= "itemsearch" and s ~= "commodity" or opened[s] then done[#done + 1] = s end
     end
     say(("record status: recorded %s; still waiting for %s"):format(#done > 0 and table.concat(done, ", ") or "nothing", #left > 0 and table.concat(left, ", ") or "nothing"))
 end

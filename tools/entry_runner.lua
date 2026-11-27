@@ -29,7 +29,11 @@ for _, n in ipairs({ "GetItemInfo", "GetItemCount", "C_Item.GetItemInfo", "C_Ite
     -- the read-only vendor, trainer and auction window calls CTProbe records (#240); the calls that buy, learn or bid stay off the list
     "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemID", "GetNumTrainerServices", "GetTrainerServiceInfo",
     "GetTrainerServiceCost", "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq", "IsTradeskillTrainer", "GetTrainerServiceTypeFilter",
-    "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink" }) do Runner.MOCKABLE[n] = true end
+    "GetNumAuctionItems", "GetAuctionItemInfo", "GetAuctionItemLink",
+    -- Forever's vendor row and auction house results return tables (#234)
+    "C_MerchantFrame.GetItemInfo", "C_AuctionHouse.GetBrowseResults", "C_AuctionHouse.HasFullBrowseResults", "C_AuctionHouse.GetNumItemSearchResults",
+    "C_AuctionHouse.HasFullItemSearchResults", "C_AuctionHouse.GetItemSearchResultInfo", "C_AuctionHouse.GetItemKeyInfo",
+    "C_AuctionHouse.GetNumCommoditySearchResults", "C_AuctionHouse.HasFullCommoditySearchResults", "C_AuctionHouse.GetCommoditySearchResultInfo" }) do Runner.MOCKABLE[n] = true end
 
 local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
 
@@ -71,6 +75,13 @@ local function walk(path, create)
     return t, parts[#parts]
 end
 
+local function copyValue(v)
+    if type(v) ~= "table" then return v end
+    local c = {}
+    for k, x in pairs(v) do c[k] = copyValue(x) end
+    return c
+end
+
 local function makeMock(rules, counts, api)
     if rules.returns or rules.args then rules = { rules } end
     return function(...)
@@ -81,7 +92,11 @@ local function makeMock(rules, counts, api)
             for i, want in ipairs(rule.args or {}) do
                 if not deepEq(args[i], want) then ok = false; break end
             end
-            if ok then return unpack(rule.returns or {}, 1, rule.n or #(rule.returns or {})) end -- n keeps the nils of a recording
+            if ok then -- n keeps the nils of a recording; a table return is a fresh copy each call, as the game's is
+                local out, want = {}, rule.returns or {}
+                for i = 1, rule.n or #want do out[i] = copyValue(want[i]) end
+                return unpack(out, 1, rule.n or #want)
+            end
         end
     end
 end

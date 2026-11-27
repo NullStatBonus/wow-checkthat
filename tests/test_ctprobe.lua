@@ -473,4 +473,78 @@ test("v7: arming lasts one session, and record status names what is left", funct
     T.eq(CTProbeDB.armed, nil, "a reload ends the arming")
 end)
 
+local function forever()
+    _G.C_AuctionHouse = {
+        HasFullBrowseResults = function() return true end,
+        GetBrowseResults = function() return { { itemKey = { itemID = 2589, itemLevel = 5, itemSuffix = 0, battlePetSpeciesID = 0 }, totalQuantity = 40, minPrice = 120, containsOwnerItem = false } } end,
+        GetNumItemSearchResults = function(key) return key.itemID == 2589 and 2 or 0 end,
+        HasFullItemSearchResults = function() return true end,
+        GetItemKeyInfo = function(key) return { itemID = key.itemID, itemName = "Linen Cloth", quality = 1 } end,
+        GetItemSearchResultInfo = function(key, i) if i <= 2 then return { itemKey = key, owners = { "Seller" .. i }, totalNumberOfOwners = 1, auctionID = 900 + i, quantity = 1, buyoutAmount = 100 * i, bidder = "Player-1-0000" } end end,
+        GetNumCommoditySearchResults = function() return 1 end,
+        HasFullCommoditySearchResults = function() return true end,
+        GetCommoditySearchResultInfo = function(id, i) if i == 1 then return { itemID = id, quantity = 20, unitPrice = 15, auctionID = 77, owners = { "Seller" }, totalNumberOfOwners = 1, numOwnerItems = 0, containsOwnerItem = false, containsAccountItem = false } end end,
+    }
+end
+
+test("v8: a table return is kept three levels deep, and a table cut short says so", function()
+    probe({})
+    vendorFakes(1)
+    local deep = { a = { b = { c = { d = 1 } } } }
+    local wide = {}
+    for k = 1, 40 do wide[k] = k end
+    _G.C_MerchantFrame = { GetItemInfo = function(i) return i == 1 and deep or wide end }
+    local _, fire = probe({})
+    vendorFakes(2)
+    _G.C_MerchantFrame = { GetItemInfo = function(i) return i == 1 and deep or wide end }
+    SlashCmdList.CTPROBE("record arm"); fire("MERCHANT_SHOW")
+    local d = CTProbeDB.fixtures["C_MerchantFrame.GetItemInfo(1)"].values[1]
+    T.eq(d.value.a.value.b.value.c.type, "table"); T.eq(d.value.a.value.b.value.c.cut, true, "the fourth level is cut")
+    T.eq(d.cut, true, "and the cut shows at the top")
+    T.eq(CTProbeDB.fixtures["C_MerchantFrame.GetItemInfo(2)"].values[1].cut, true, "a table with more than 32 keys is cut")
+end)
+
+test("v8: Forever auction searches are recorded as browse, itemsearch and commodity scenes, with the itemKey stored", function()
+    local _, fire = probe({})
+    forever()
+    SlashCmdList.CTPROBE("record arm")
+    T.eq(CTProbeDB.armed.browse, true); T.eq(CTProbeDB.armed.itemsearch, true); T.eq(CTProbeDB.armed.commodity, true)
+    fire("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+    local fx = CTProbeDB.fixtures
+    local b = fx["C_AuctionHouse.GetBrowseResults()"]
+    T.eq(b.window, "auction"); T.eq(b.values[1].value["1"].value.itemKey.value.itemID.value, 2589, "an array of results with their itemKey")
+    T.eq(CTProbeDB.armed.browse, nil)
+    local key = { itemID = 2589, itemLevel = 5, itemSuffix = 0, battlePetSpeciesID = 0 }
+    fire("ITEM_SEARCH_RESULTS_UPDATED", key)
+    local r = fx["C_AuctionHouse.GetItemSearchResultInfo(itemKey:2589,2)"]
+    T.ok(r, "the label names the itemKey by its item"); T.eq(r.args[1].value.itemLevel.value, 5, "the whole itemKey is stored with the call")
+    T.eq(r.args[2].value, 2)
+    T.eq(fx["C_AuctionHouse.GetItemSearchResultInfo(itemKey:2589,3)"].n, 0, "a row past the results returns nothing")
+    T.eq(fx["C_AuctionHouse.GetNumItemSearchResults(itemKey:2589)"].values[1].value, 2)
+    fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
+    T.eq(fx["C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)"].values[1].value.unitPrice.value, 15)
+    T.eq(fx["C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)"].args, nil, "number arguments read back from the label")
+    SlashCmdList.CTPROBE("record status")
+    T.ok(has("recorded browse, itemsearch, commodity") or has("browse, itemsearch, commodity;"), tostring(has("record status")))
+end)
+
+test("v8: the last search of an open auction house wins, and closing it ends the scene", function()
+    local _, fire = probe({})
+    forever()
+    SlashCmdList.CTPROBE("record arm")
+    fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
+    fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2592)
+    T.eq(CTProbeDB.fixtures["C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)"], nil, "the earlier search is cleared")
+    T.ok(CTProbeDB.fixtures["C_AuctionHouse.GetCommoditySearchResultInfo(2592,1)"])
+    fire("AUCTION_HOUSE_CLOSED"); fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2600)
+    T.eq(CTProbeDB.fixtures["C_AuctionHouse.GetCommoditySearchResultInfo(2600,1)"], nil, "a search after closing records nothing")
+end)
+
+test("v8: a client without C_AuctionHouse does not arm the Forever auction scenes", function()
+    probe({})
+    _G.C_AuctionHouse = nil
+    SlashCmdList.CTPROBE("record arm")
+    T.eq(CTProbeDB.armed.browse, nil); T.eq(CTProbeDB.armed.commodity, nil)
+end)
+
 finish()

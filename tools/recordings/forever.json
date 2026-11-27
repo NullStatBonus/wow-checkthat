@@ -1,6 +1,128 @@
 {
  "build": "1.60.1.71139",
  "calls": {
+  "C_AuctionHouse.GetBrowseResults()": {
+   "api": "C_AuctionHouse.GetBrowseResults",
+   "args": [],
+   "returns": [
+    [
+     {
+      "itemKey": {
+       "itemID": 2589,
+       "itemLevel": 0,
+       "itemSuffix": 0,
+       "battlePetSpeciesID": 0
+      },
+      "totalQuantity": 120,
+      "minPrice": 25,
+      "containsOwnerItem": false
+     }
+    ]
+   ],
+   "n": 1,
+   "window": "auction",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_AuctionHouse.GetCommoditySearchResultInfo(2589,1)": {
+   "api": "C_AuctionHouse.GetCommoditySearchResultInfo",
+   "args": [
+    2589,
+    1
+   ],
+   "returns": [
+    {
+     "itemID": 2589,
+     "quantity": 100,
+     "unitPrice": 25,
+     "auctionID": 3001,
+     "owners": [],
+     "totalNumberOfOwners": 1,
+     "timeLeftSeconds": 86400,
+     "numOwnerItems": 0,
+     "containsOwnerItem": false,
+     "containsAccountItem": false
+    }
+   ],
+   "n": 1,
+   "window": "auction",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_AuctionHouse.GetCommoditySearchResultInfo(2589,2)": {
+   "api": "C_AuctionHouse.GetCommoditySearchResultInfo",
+   "args": [
+    2589,
+    2
+   ],
+   "returns": [
+    {
+     "itemID": 2589,
+     "quantity": 20,
+     "unitPrice": 30,
+     "auctionID": 3002,
+     "owners": [],
+     "totalNumberOfOwners": 1,
+     "timeLeftSeconds": 86400,
+     "numOwnerItems": 0,
+     "containsOwnerItem": false,
+     "containsAccountItem": false
+    }
+   ],
+   "n": 1,
+   "window": "auction",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_AuctionHouse.GetNumCommoditySearchResults(2589)": {
+   "api": "C_AuctionHouse.GetNumCommoditySearchResults",
+   "args": [
+    2589
+   ],
+   "returns": [
+    2
+   ],
+   "n": 1,
+   "window": "auction",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_AuctionHouse.HasFullBrowseResults()": {
+   "api": "C_AuctionHouse.HasFullBrowseResults",
+   "args": [],
+   "returns": [
+    true
+   ],
+   "n": 1,
+   "window": "auction",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_AuctionHouse.HasFullCommoditySearchResults(2589)": {
+   "api": "C_AuctionHouse.HasFullCommoditySearchResults",
+   "args": [
+    2589
+   ],
+   "returns": [
+    true
+   ],
+   "n": 1,
+   "window": "auction",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
   "C_Container.GetContainerNumSlots(0)": {
    "api": "C_Container.GetContainerNumSlots",
    "args": [
@@ -193,6 +315,81 @@
     false,
     ""
    ]
+  },
+  "C_MerchantFrame.GetItemInfo(1)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    1
+   ],
+   "returns": [
+    {
+     "name": "Coarse Thread",
+     "texture": 132891,
+     "price": 10,
+     "stackCount": 1,
+     "numAvailable": -1,
+     "isPurchasable": true,
+     "isUsable": true,
+     "hasExtendedCost": false,
+     "isQuestStartItem": false
+    }
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_MerchantFrame.GetItemInfo(2)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    2
+   ],
+   "returns": [
+    {
+     "name": "Fine Thread",
+     "texture": 132891,
+     "price": 100,
+     "stackCount": 1,
+     "numAvailable": -1,
+     "isPurchasable": true,
+     "isUsable": true,
+     "hasExtendedCost": false,
+     "isQuestStartItem": false
+    }
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
+  },
+  "C_MerchantFrame.GetItemInfo(3)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    3
+   ],
+   "returns": [
+    {
+     "name": "Silken Thread",
+     "texture": 132891,
+     "price": 300,
+     "stackCount": 1,
+     "numAvailable": -1,
+     "isPurchasable": true,
+     "isUsable": true,
+     "hasExtendedCost": false,
+     "isQuestStartItem": false
+    }
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "authored",
+    "ref": "shape from Blizzard_APIDocumentationGenerated (MerchantFrameDocumentation, AuctionHouseDocumentation); the items match the recorded vendor links (2320, 2321, 4291) and Linen Cloth (2589); prices, textures, quantities and auction ids are made up; not measured"
+   }
   },
   "GetBuildInfo()": {
    "api": "GetBuildInfo",
@@ -897,5 +1094,5 @@
  },
  "client": "forever",
  "format": 1,
- "rev": 4
+ "rev": 5
 }

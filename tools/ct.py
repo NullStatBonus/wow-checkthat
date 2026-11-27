@@ -1718,15 +1718,71 @@ def sv_json(path):
 
 
 RECORDING_FORMAT = 1
-RECORDING_REV = 4   # 2: a call may carry "window". 3: a label may start with a scene name ("gear:GetMerchantItemInfo(1)"). 4: a call may carry "source"
-                    # (not recorded in game: taken from Blizzard source, the wiki, a game-data table, or authored). format stays 1, because a released runner rejects any other value.
+RECORDING_REV = 5   # 2: a call may carry "window". 3: a label may start with a scene name ("gear:GetMerchantItemInfo(1)"). 4: a call may carry "source"
+                    # (not recorded in game: taken from Blizzard source, the wiki, a game-data table, or authored). 5: a return or an argument may be a table
+                    # (a JSON object, or a list for a Lua array). format stays 1, because a released runner rejects any other value.
 RECORDING_SOURCES = ("source", "wiki", "database", "authored")
 SIGNATURES = os.path.join(ROOT, "tools", "recordings", "signatures.json")
 
 def _rtype(v):
-    return "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float)) else "string" if isinstance(v, str) else type(v).__name__
+    return "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float)) else "string" if isinstance(v, str) \
+        else "table" if isinstance(v, (dict, list)) else type(v).__name__
 
-def signature_problems(client, label, call, sigs):
+def from_shape(s):
+    """(value, problem) from one value CTProbe's shape() stored. A nil is None, a table a dict, or a list when its keys are 1..n. problem
+    names what cannot go in a recording: a table copied in part (cut), or a function or userdata anywhere in it."""
+    t = s.get("type")
+    if t == "nil":
+        return None, None
+    if t in ("function", "userdata", "thread"):
+        return None, "a %s" % t
+    if t != "table":
+        return anonymize_link(s.get("value")), None
+    raw = s.get("value")
+    if raw == []:   # the saved-variables reader gives an empty Lua table as a list
+        raw = {}
+    if s.get("cut") or not isinstance(raw, dict):
+        return None, "a table cut short"
+    out = {}
+    for k, sub in raw.items():
+        v, problem = from_shape(sub)
+        if problem:
+            return None, problem
+        if v is not None:   # a nil field is a missing key, as in Lua
+            out[k] = v
+    if out and all(k.isdigit() for k in out) and sorted(int(k) for k in out) == list(range(1, len(out) + 1)):
+        return [out[str(i)] for i in range(1, len(out) + 1)], None
+    return out, None
+
+SCALARS = ("string", "number", "boolean")
+
+def value_problems(v, want, structures, where):
+    """What in one value does not fit a signature type: a scalar type, a structure name (its fields; "?" marks one that may be missing; an
+    unknown field is named too), or list<type>."""
+    if want in SCALARS:
+        return [] if _rtype(v) == want else ["%s is a %s, the signature says %s" % (where, _rtype(v), want)]
+    if want.startswith("list<") and want.endswith(">"):
+        if v == {}:   # an empty Lua table reads back as an object
+            v = []
+        if not isinstance(v, list):
+            return ["%s is a %s, the signature says %s" % (where, _rtype(v), want)]
+        return [p for i, x in enumerate(v, 1) for p in value_problems(x, want[5:-1], structures, "%s[%d]" % (where, i))]
+    fields = structures.get(want)
+    if fields is None:
+        return ["%s: the signature names %s, which is not in structures" % (where, want)]
+    if not isinstance(v, dict):
+        return ["%s is a %s, the signature says %s" % (where, _rtype(v), want)]
+    out = ["%s.%s is not a field of %s" % (where, k, want) for k in sorted(v) if k not in fields]
+    for name, t in fields.items():
+        optional = t.endswith("?")
+        if name not in v:
+            if not optional:
+                out.append("%s.%s is missing" % (where, name))
+            continue
+        out += value_problems(v[name], t.rstrip("?"), structures, "%s.%s" % (where, name))
+    return out
+
+def signature_problems(client, label, call, sigs, structures=None):
     """What in a recorded call does not fit tools/recordings/signatures.json for this client: more returns than the call has, a nil where
     none may be, a 1-or-nil answer that is something else, or a value of another type. [] when it fits or the api has no signature."""
     s = (sigs.get(call.get("api")) or {}).get(client)
@@ -1748,16 +1804,19 @@ def signature_problems(client, label, call, sigs):
         elif i in one:
             if v != 1 or isinstance(v, bool):
                 out.append("return %d (%s) answers 1 or nil, got %r" % (i, names[i - 1], v))
-        elif _rtype(v) != types[i - 1]:
-            out.append("return %d (%s) is a %s, the signature says %s" % (i, names[i - 1], _rtype(v), types[i - 1]))
+        else:
+            out += value_problems(v, types[i - 1], structures or {}, "return %d (%s)" % (i, names[i - 1]))
     return out
 
-def load_signatures():
+def load_signatures(with_structures=False):
     with open(SIGNATURES, encoding="utf-8") as f:
-        return json.load(f)["apis"]
+        data = json.load(f)
+    return (data["apis"], data.get("structures") or {}) if with_structures else data["apis"]
 RECORDING_WINDOWS = ("merchant", "trainer", "auction")
 # Returns that name another player: 1-based positions, blanked in a recording. GetAuctionItemInfo: highBidder, bidderFullName, owner, ownerFullName.
 REDACTED_RETURNS = {"GetAuctionItemInfo": (12, 13, 14, 15)}
+# Fields of a table return that name other players: emptied (a list) or removed. C_AuctionHouse results list the sellers and the bidder.
+REDACTED_FIELDS = {"GetItemSearchResultInfo": {"owners": [], "bidder": None}, "GetCommoditySearchResultInfo": {"owners": []}}
 ITEM_LINK = re.compile(r"\|Hitem:([^|]*)\|h")
 
 def anonymize_link(value):
@@ -1799,29 +1858,44 @@ def probe_recordings(sv_path):
             skipped.append((label, "a personal value, recorded by type only")); continue
         if not m:
             skipped.append((label, "the label is not a call")); continue
-        parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
-        if "player" in parts:
-            skipped.append((label, "a call on the player")); continue
-        if any(not re.fullmatch(r"-?\d+(\.\d+)?|true|false|[A-Za-z_]\w*", p) for p in parts) or "nil" in parts:
-            skipped.append((label, "an argument that cannot be read back exactly from the label")); continue
-        args = []
-        for part in parts:
-            args.append(True if part == "true" else False if part == "false" else int(part) if re.fullmatch(r"-?\d+", part)
-                        else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
+        short = m.group(1).rsplit(".", 1)[-1]
+        if isinstance(rec.get("args"), list):   # a table argument (an auction itemKey): CTProbe stores the arguments with the call
+            args, bad = [], None
+            for s in rec["args"]:
+                v, problem = from_shape(s) if isinstance(s, dict) else (None, "an argument CTProbe did not store")
+                bad = bad or problem or ("a nil argument" if v is None else None)
+                args.append(v)
+            if bad:
+                skipped.append((label, "an argument that cannot be stored: %s" % bad)); continue
+        else:
+            parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
+            if "player" in parts:
+                skipped.append((label, "a call on the player")); continue
+            if any(not re.fullmatch(r"-?\d+(\.\d+)?|true|false|[A-Za-z_]\w*", p) for p in parts) or "nil" in parts:
+                skipped.append((label, "an argument that cannot be read back exactly from the label")); continue
+            args = []
+            for part in parts:
+                args.append(True if part == "true" else False if part == "false" else int(part) if re.fullmatch(r"-?\d+", part)
+                            else float(part) if re.fullmatch(r"-?\d+\.\d+", part) else part)
         returns, nils, bad = [], [], None
         for i, v in enumerate(rec.get("values", []), 1):
-            t = v.get("type")
-            if t == "nil":
-                returns.append(False); nils.append(i)
-            elif t in ("table", "function", "userdata", "thread"):
-                bad = t
-            else:
-                value = anonymize_link(v.get("value"))
-                if isinstance(value, str) and i in REDACTED_RETURNS.get(m.group(1).rsplit(".", 1)[-1], ()):
-                    value = ""
-                returns.append(value)
+            value, problem = from_shape(v)
+            if problem:
+                bad = problem; break
+            if value is None:
+                returns.append(False); nils.append(i); continue
+            if isinstance(value, str) and i in REDACTED_RETURNS.get(short, ()):
+                value = ""
+            if isinstance(value, dict) and short in REDACTED_FIELDS:
+                for field, blank in REDACTED_FIELDS[short].items():
+                    if field in value:
+                        if blank is None:
+                            del value[field]
+                        else:
+                            value[field] = blank
+            returns.append(value)
         if bad:
-            skipped.append((label, "returns a %s" % bad)); continue
+            skipped.append((label, "returns %s" % bad)); continue
         calls[label] = {"api": m.group(1), "args": args, "returns": returns, "n": int(rec.get("n", len(returns)))}
         if nils:
             calls[label]["nils"] = nils
@@ -1843,8 +1917,8 @@ def cmd_recordings(a):
         with open(path, encoding="utf-8") as f:
             old = (json.load(f).get("calls") or {})
     dropped = sorted(set(old) - set(rec["calls"]))
-    sigs = load_signatures()
-    differs = [(label, p) for label, call in sorted(rec["calls"].items()) for p in signature_problems(client, label, call, sigs)]
+    sigs, structures = load_signatures(True)
+    differs = [(label, p) for label, call in sorted(rec["calls"].items()) for p in signature_problems(client, label, call, sigs, structures)]
     confirmed, changed = [], []
     for label, call in sorted(rec["calls"].items()):
         was = old.get(label)
