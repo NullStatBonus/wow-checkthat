@@ -327,6 +327,8 @@ local function planReason(first)
     if first:find(": pattern ") or first:find(": matches pattern ") then return L["The plan has a text pattern that the game cannot read. Write the pattern again."] end
     if first:find("addon not supported") then return L["This plan is for an addon this CheckThat does not support."] end
     if first:find("format version") then return L["This string needs a newer CheckThat."] end
+    local need, have = first:match("^needs plan revision (%d+); this version reads up to (%d+)")
+    if need then return L["This plan needs a newer CheckThat. It uses plan revision %d, and this version reads up to %d."]:format(tonumber(need), tonumber(have)) end
     return L["The plan has a missing or wrong field. Export it again from the plan file."]
 end
 

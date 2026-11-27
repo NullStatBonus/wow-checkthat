@@ -285,6 +285,21 @@ def expand_cases(plan):
     return out
 
 
+# Plan revisions (#245). PLAN_REV is the highest revision this ct.py writes and reads; it equals Plan.REV in CheckThat/Model/Plan.lua (a test
+# checks). Revision 1 is the plan format as of 0.21.0. Each addition to the plan format raises both and adds a rule here: (revision, what, test),
+# where test(plan) is true when the plan uses the addition. compile writes "needs" from the rules, so an older CheckThat refuses the plan
+# with "needs a newer CheckThat" instead of skipping a check it does not know.
+PLAN_REV = 1
+PLAN_NEEDS = []
+
+def plan_needs(plan):
+    """(revision, what): the highest revision the plan's keys need, and the addition that needs it (None for revision 1)."""
+    best = (1, None)
+    for rev, what, uses in PLAN_NEEDS:
+        if rev > best[0] and uses(plan):
+            best = (rev, what)
+    return best
+
 def validate(plan, requirements=None):
     """Return a list of error strings; empty means valid. requirements is the set of requirement names a covers field may use; None when no specs folder is known."""
     import jsonschema
@@ -295,6 +310,12 @@ def validate(plan, requirements=None):
     holes = null_paths({k: v for k, v in plan.items() if k != "offline"}) if isinstance(plan, dict) else []
     if holes:
         return ["%s: null is not allowed (the game cannot read it): give a value or leave the key out" % h for h in holes]
+    if isinstance(plan, dict) and isinstance(plan.get("needs"), int) and not isinstance(plan.get("needs"), bool):
+        if plan["needs"] > PLAN_REV:
+            return ["needs: the plan needs plan revision %d; this ct.py reads up to %d: use newer tools" % (plan["needs"], PLAN_REV)]
+        rev, what = plan_needs(plan)
+        if plan["needs"] < rev:
+            errs.append("needs: the plan uses %s, which needs plan revision %d, but it says needs %d: raise it or leave needs out (compile writes it)" % (what, rev, plan["needs"]))
     v = jsonschema.Draft202012Validator(schema)
     for e in sorted(v.iter_errors(plan), key=lambda e: list(map(str, e.path))):
         errs.append("%s: %s" % ("/".join(map(str, e.path)) or "<root>", e.message[:200]))
@@ -3496,6 +3517,9 @@ def main(argv=None):
         w = version_lag_warning(plan, plan_toc(plan, a.addon_src))
         if w:
             print("warning: " + w, file=sys.stderr)  # stdout may be the compiled string
+        rev, _ = plan_needs(plan)
+        if rev > 1 or "needs" in plan:   # a revision 1 plan compiles as before, so its string and digest do not change
+            plan["needs"] = max(rev, plan.get("needs", 1))
         s = encode(merge_sections(plan))
         if len(s) > MAX_ENCODED:
             print("error: the compiled plan is %d characters; the game imports at most %d. Split it into a plan set, or shorten its text" % (len(s), MAX_ENCODED), file=sys.stderr)

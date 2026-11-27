@@ -136,6 +136,50 @@ class Validate(unittest.TestCase):
 
 
 class Compile(unittest.TestCase):
+    def compile_out(self, plan):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        src, out = os.path.join(d, "p.yaml"), os.path.join(d, "p.ct")
+        with open(src, "w") as f: json.dump(plan, f)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = ct.main(["compile", src, "-o", out])
+        return code, (open(out).read().strip() if code == 0 else err.getvalue())
+
+    def test_a_revision_1_plan_compiles_without_needs_so_its_string_does_not_change(self):
+        code, s = self.compile_out(good())
+        self.assertEqual(code, 0, s)
+        self.assertNotIn("needs", ct.decode(s))
+        self.assertEqual(s, ct.encode(ct.merge_sections(good())), "byte for byte the string of the tools before #245")
+
+    def test_compile_writes_the_revision_a_newer_key_needs_and_validate_holds_the_plan_to_it(self):
+        with unittest.mock.patch.object(ct, "PLAN_REV", 2), unittest.mock.patch.object(ct, "PLAN_NEEDS", [(2, "a step within", lambda p: any("within" in st for sec in p["sections"] for st in sec["steps"]))]):
+            p = good()
+            self.assertEqual(ct.plan_needs(p), (1, None))
+            code, s = self.compile_out(p)
+            self.assertNotIn("needs", ct.decode(s), "the rule does not match, so no stamp")
+            uses = good(); uses["sections"][0]["steps"][0]["within"] = 2
+            self.assertEqual(ct.plan_needs(uses), (2, "a step within"))
+            low = dict(uses, needs=1)
+            errs = ct.validate(low)
+            self.assertTrue(any("uses a step within, which needs plan revision 2, but it says needs 1" in e for e in errs), errs)
+        hi = dict(good(), needs=ct.PLAN_REV + 1)
+        self.assertEqual(ct.validate(hi), ["needs: the plan needs plan revision %d; this ct.py reads up to %d: use newer tools" % (ct.PLAN_REV + 1, ct.PLAN_REV)])
+        self.assertEqual(ct.validate(dict(good(), needs=1)), [], "needs 1 is valid")
+        for bad in (0, True, "1", 1.5):
+            self.assertTrue(ct.validate(dict(good(), needs=bad)), bad)
+
+    def test_compile_stamps_needs_when_a_rule_matches(self):
+        with unittest.mock.patch.object(ct, "PLAN_REV", 2), unittest.mock.patch.object(ct, "PLAN_NEEDS", [(2, "anything", lambda p: True)]), \
+             unittest.mock.patch.object(ct, "validate", lambda plan, req=None: []):
+            code, s = self.compile_out(good())
+            self.assertEqual(code, 0, s)
+            self.assertEqual(ct.decode(s)["needs"], 2)
+
+    def test_plan_rev_matches_the_addon(self):
+        with open(os.path.join(ROOT, "CheckThat", "Model", "Plan.lua")) as f:
+            m = re.search(r"^Plan\.REV = (\d+)$", f.read(), re.M)
+        self.assertEqual(int(m.group(1)), ct.PLAN_REV, "ct.py PLAN_REV and Plan.REV move together")
+
     def test_section_fields_merge_into_steps(self):
         m = ct.merge_sections(good())
         s0, s1 = m["sections"][0]["steps"]
