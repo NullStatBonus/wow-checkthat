@@ -615,9 +615,13 @@ test("runs beyond the limit are pruned oldest first and the current run stays", 
     T.eq(#App.Runs(), 5)
     T.eq(db.runs[ids[1]], nil); T.eq(db.runs[ids[2]], nil); T.ok(db.runs[ids[3]] and db.runs[ids[7]])
     env.time = function() return 2000 end
+    local said = {}
+    H.stub(ns.Slash, "Print", function(m) said[#said + 1] = m end)
     local live = assert(App.Start("KeepThat"))
     T.eq(#App.Runs(), 5, "never above the limit")
     T.eq(db.runs[ids[3]], nil, "the oldest went")
+    T.eq(#said, 1, "chat says a run was deleted (#252)")
+    T.ok(said[1]:find("^Deleted the oldest run %(.+%) to keep 5%.$"), said[1])
     T.ok(db.runs[live.runId] and db.currentByChar[App.Character()] == live.runId, "the new current run stays")
 end)
 test("the limit never removes any character's current run", function()

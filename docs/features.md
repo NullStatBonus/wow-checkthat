@@ -83,7 +83,7 @@ Debug log: `run open asked <id>`, `run opened <id>`, `run delete asked <id>`, `r
 Advanced sets how many runs CheckThat keeps (5 to 100, default 20), for all profiles.
 
 - The oldest runs go first. The current run of any character always stays.
-- CheckThat deletes the extra runs when you start a run, not while you move the slider.
+- CheckThat deletes the extra runs when you start a run, not while you move the slider. It deletes them whether or not they were exported, and chat names each one: "Deleted the oldest run (<plan title>) to keep 20." The debug log has `run pruned <id>`.
 - A plan copy that no run, loaded plan or recent plan uses is deleted when you import or clear a plan, delete a run, or a run is pruned.
 
 The debug report prints `Stored: <n> runs (limit <n>), <n> plan copies`, and the log reads `report requested: Stored: ...`.
