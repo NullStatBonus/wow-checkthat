@@ -16,7 +16,7 @@ CheckThat needs no other addon. These make it better when they are installed. No
 
 - **BugGrabber.** When it holds the error handler, CheckThat reads its error counts and its stored stack instead of setting its own handler. Without it, CheckThat sets its own. See the Lua errors item in [Feature reference](features.md).
 - **BugSack.** Shows the same errors with the full stack and locals. CheckThat keeps only a short stack and never the locals.
-- **The addon under test.** Its debug log and its facts are the evidence. A plan for one of them needs that addon. CheckThat itself loads without any of them: the TOC has no required dependency and lists only KeepThat, DontDoThat and ClosestVendor under `OptionalDeps`.
+- **The addon under test.** Its debug log and its facts are the evidence. A plan for one of them needs that addon. CheckThat itself loads without any of them: the TOC has no required dependency and lists only BugGrabber under `OptionalDeps`.
 
 ## Sources read
 

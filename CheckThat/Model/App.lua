@@ -177,11 +177,23 @@ function App.RememberRecent(plan, digest)
     App.db.ui.lastImport = plan.addon
 end
 
--- Entries whose plan is still stored: { id = digest, text = "Title (Addon)" }.
+-- A title cut for a one-line list entry: color codes removed, at most max bytes with "..." in place of the rest,
+-- never cut inside a UTF-8 character. A long plan title ran past both edges of the import dropdown.
+App.ENTRY_TITLE_MAX = 48
+function App.ShortTitle(s, max)
+    s = tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    max = max or App.ENTRY_TITLE_MAX
+    if #s <= max then return s end
+    local cut = max - 3
+    while cut > 0 and (s:byte(cut + 1) or 0) >= 0x80 and s:byte(cut + 1) < 0xC0 do cut = cut - 1 end
+    return s:sub(1, cut):gsub("%s+$", "") .. "..."
+end
+
+-- Entries whose plan is still stored: { id = digest, text = "Title (Addon)" }, the title cut to fit one line.
 function App.Recent()
     local out = {}
     for _, e in ipairs(App.db and App.db.ui.recent or {}) do
-        if App.db.planStore[e.digest] then out[#out + 1] = { id = e.digest, text = ("%s (%s)"):format(e.title, e.addon) } end
+        if App.db.planStore[e.digest] then out[#out + 1] = { id = e.digest, text = ("%s (%s)"):format(App.ShortTitle(e.title), e.addon) } end
     end
     return out
 end
@@ -195,6 +207,24 @@ function App.UseRecent(digest)
     App.db.ui.pendingStart = plan.addon
     App.Log(("reused plan %s digest %s"):format(plan.addon, digest))
     return plan
+end
+
+-- The plans CheckThat ships (#246). The import list pins the self-test first; a recent entry for the same plan is left out.
+App.BUILTIN = "builtin:selftest"
+function App.ImportChoices()
+    local s = ns.BuiltIn and ns.BuiltIn.selftest
+    if not s then return App.Recent() end
+    local digest = s:match("^!CT1!(%x+)!")
+    local out = { { id = App.BUILTIN, text = L["CheckThat self-test (built-in)"] } }
+    for _, e in ipairs(App.Recent()) do
+        if e.id ~= digest then out[#out + 1] = e end
+    end
+    return out
+end
+
+-- The string to import for a choice from ImportChoices, or nil for a recent plan.
+function App.BuiltInString(id)
+    return id == App.BUILTIN and ns.BuiltIn and ns.BuiltIn.selftest or nil
 end
 
 -- A stored plan copy stays only while a run, a loaded plan or a recent-list entry names it.

@@ -485,16 +485,7 @@ function Card.ExportNow(runId)
 end
 
 function Card.ImportPrompt()
-    local function choose(digest)
-        local plan, err = App.UseRecent(digest)
-        if plan then
-            ns.Slash.Print(L["Using %s."]:format(ns.Slash.Esc(plan.title)))
-            Card.Show()
-            if ns.Options and ns.Options.Notify then ns.Options.Notify() end
-            Card.Refresh()
-        else ns.Slash.Print(err) end
-    end
-    ns.Export.Prompt(L["Paste a plan string (it starts with !CT1!), or pick a recent plan"], "", function(str)
+    local function accept(str)
         local plan, err = App.ImportPlan(str)
         if plan then
             ns.Slash.Print(L["Imported %s."]:format(ns.Slash.Esc(plan.title)))
@@ -503,7 +494,20 @@ function Card.ImportPrompt()
         else ns.Slash.Print(L["Import failed. %s"]:format(err)) end
         if ns.Options and ns.Options.Notify then ns.Options.Notify() end
         Card.Refresh()
-    end, L["Import"], nil, nil, { choices = App.Recent(), onChoose = choose })
+    end
+    local function choose(id)
+        local builtin = App.BuiltInString(id)
+        if builtin then return accept(builtin) end -- the same checks as a pasted string; the string never shows in the box
+        local plan, err = App.UseRecent(id)
+        if plan then
+            ns.Slash.Print(L["Using %s."]:format(ns.Slash.Esc(plan.title)))
+            Card.Show()
+            if ns.Options and ns.Options.Notify then ns.Options.Notify() end
+            Card.Refresh()
+        else ns.Slash.Print(err) end
+    end
+    ns.Export.Prompt(L["Import a plan"], "", accept, L["Import"], L["Paste a plan string that starts with !CT1!"], nil,
+        { choices = App.ImportChoices(), onChoose = choose })
 end
 
 -- Evidence explanations are English for the log and the report; the card shows a translated sentence.
@@ -796,7 +800,7 @@ function refreshCard()
             card.start:Show()
         else
             setText(card.title, L["No plan yet"])
-            msg = L["Select Import a plan and paste a plan string."]
+            msg = L["Select Import a plan to try the built-in self-test or paste a plan string."]
         end
         y = 36 + card.title:GetStringHeight() + 8
         place(card.context, 12, y); setText(card.context, msg, none and AMBER or BODY)

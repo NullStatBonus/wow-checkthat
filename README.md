@@ -10,7 +10,7 @@ This repository holds the addon (`CheckThat/`), the DontDoThat plan (`plans/`; K
 
 1. Copy the `CheckThat` folder into `Interface/AddOns/`.
 2. Run `make build` (it needs the Python setup under Develop). It writes plan strings to `build/*.ct`.
-3. In game, type `/ct import` and paste a plan string, for example `build/selftest.ct`. Then type `/ct start CheckThat`.
+3. In game, type `/ct import` and choose **CheckThat self-test (built-in)**, or paste a plan string such as `build/selftest.ct`. Then select Start run.
 4. For each step, read what to do and what to expect, then press Pass, Partial, Fail or Skip. A pass the logs do not support is recorded as *unverified*.
 5. Type `/ct export` for a results string, then `/reload` so the game saves the run.
 
@@ -47,7 +47,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct get <key>`, `/ct set <key> <value>` | Read or change a card setting (`card.scale`, `card.background-opacity`, `card.text-opacity`, `card.locked`). |
 | `/ct debug on`, `/ct debug off` | Record or stop the debug log. |
 | `/ct log`, `/ct log clear` | Copy the debug report in a window like the one KeepThat, DontDoThat and ClosestVendor use. Clear it after confirmation. |
-| `/ct import` | Paste a plan string, in the same window style as the debug report. |
+| `/ct import` | Paste a plan string, or choose the built-in self-test or a recent plan, in the same window style as the debug report. |
 | `/ct start <addon>` | Start a run for an imported plan. The addon name works in any letter case. |
 | `/ct end` | End the current run after confirmation. The card has an End run item in its Run menu too. |
 | `/ct pass`, `/ct partial [note]`, `/ct fail [note]`, `/ct skip [note]` | Record the result of the current step. Partial means it mostly works. |

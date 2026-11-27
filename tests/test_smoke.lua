@@ -142,9 +142,33 @@ test("smoke: importing a plan opens the window with a Start button", function()
     ns.App.db.ui.lastImport = nil; _G.CheckThatCard:Hide()
     ns.Card.ImportPrompt()
     local b = _G.CheckThatTextBox
-    T.ok(b.choices and #b.choices >= 1, "recent plans offered")
-    b.onChoose(b.choices[1].id)
+    T.ok(b.choices and #b.choices >= 2, "the self-test and the recent plans offered")
+    T.eq(b.choices[1].id, ns.App.BUILTIN, "the self-test comes first")
+    b.onChoose(b.choices[2].id)
     T.ok(_G.CheckThatCard.shown); T.eq(ns.App.db.ui.lastImport, "DontDoThat")
+end)
+test("smoke: choosing the built-in self-test imports it without pasting", function()
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.lastImport = nil
+    local dbg = ns.addon.db.profile.debug; ns.addon.db.profile.debug = true; ns.App.db.log.entries = {}
+    T.finally(function() ns.addon.db.profile.debug = dbg end)
+    _G.CheckThatCard:Hide()
+    ns.Card.ImportPrompt()
+    local b = _G.CheckThatTextBox
+    T.eq(b.title:GetText(), "Import a plan")
+    local logged = false
+    for _, e in ipairs(ns.App.db.log and ns.App.db.log.entries or {}) do if tostring(type(e) == "table" and e.msg or e):find("import window: plain window, AceGUI failed", 1, true) then logged = true end end
+    T.ok(logged, "the log says why the plain window opened")
+    T.eq(b.choices[1].text, "CheckThat self-test (built-in)")
+    b.onChoose(b.choices[1].id)
+    T.eq(b.edit:GetText(), "", "the string never shows in the box")
+    T.ok(_G.CheckThatCard.shown, "the card opens"); T.eq(ns.App.db.ui.lastImport, "CheckThat")
+    T.ok(_G.CheckThatCard.start.shown, "with Start run")
+    T.eq(_G.CheckThatCard.title:GetText(), "CheckThat self-test")
+    ns.Card.ImportPrompt(); b = _G.CheckThatTextBox
+    local n = 0
+    for _, ch in ipairs(b.choices) do if ch.text:find("self%-test") then n = n + 1 end end
+    T.eq(n, 1, "listed once after it is imported")
+    b:Hide()
 end)
 
 test("smoke: a note stays with its step attempt", function()

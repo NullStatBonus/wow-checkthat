@@ -32,6 +32,7 @@ Model\Errors.lua
 Model\Blocked.lua
 Model\Run.lua
 Model\Census.lua
+Model\BuiltIn.lua
 Model\App.lua
 
 Core\Settings.lua

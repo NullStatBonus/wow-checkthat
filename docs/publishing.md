@@ -24,7 +24,7 @@ Releases are built by [BigWigsMods/packager](https://github.com/BigWigsMods/pack
 
 ## Listing page
 
-Upload screenshots on CurseForge and Wago with the text from `docs/listing.md`: the checklist card on a step with live checks, the plan-ready screen with the Recent plans button, and the settings window. Use the tags Development, Utility and Testing where the site offers them.
+Upload screenshots on CurseForge and Wago with the text from `docs/listing.md`: the checklist card on a step with live checks, the plan-ready screen with the Choose a plan list, and the settings window. Use the tags Development, Utility and Testing where the site offers them.
 
 ## How the package is laid out
 

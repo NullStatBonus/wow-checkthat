@@ -95,6 +95,24 @@ test("the report falls back to the plain window when AceGUI is missing", functio
     gui.Create = create
     T.ok(_G.CheckThatTextBox and _G.CheckThatTextBox.shown, "the plain window opens")
 end)
+test("the plain import window holds each choice to one line inside its button", function()
+    local gui = LibStub("AceGUI-3.0")
+    local create = gui.Create
+    gui.Create = nil
+    T.finally(function() gui.Create = create end)
+    local long = { { id = "A", text = ("Long plan title "):rep(8) } }
+    ns.Export.Prompt("Import a plan", "", function() end, "Import", "hint", nil, { choices = long, onChoose = function() end })
+    ns.Export.OpenMenu()
+    local b = _G.CheckThatTextBox.menu.items[1]
+    local fs = { calls = {} }
+    function fs:SetWidth(w) self.calls.width = w end
+    function fs:SetWordWrap(on) self.calls.wrap = on end
+    rawset(b, "GetFontString", function() return fs end)
+    ns.Export.OpenMenu()
+    T.eq(fs.calls.wrap, false, "one line, cut with dots")
+    T.ok(fs.calls.width and fs.calls.width < 288, "narrower than the 288 button: " .. tostring(fs.calls.width))
+    _G.CheckThatTextBox:Hide()
+end)
 -- Game globals stay in Core/Adapter.lua. UI/ and Debug/ may build their own frames (AGENTS.md, Conventions).
 test("Model, Options and Core use no game globals outside the adapter", function()
     local GLOBALS = { "CreateFrame", "UIParent", "InCombatLockdown", "GetTime", "hooksecurefunc", "GameTooltip", "GetBuildInfo" }
