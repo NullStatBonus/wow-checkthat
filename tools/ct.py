@@ -1592,6 +1592,10 @@ def sv_json(path):
 
 
 RECORDING_FORMAT = 1
+RECORDING_REV = 2   # 2: a call may carry "window". format stays 1, because a released runner rejects any other value.
+RECORDING_WINDOWS = ("merchant", "trainer", "auction")
+# Returns that name another player: 1-based positions, blanked in a recording. GetAuctionItemInfo: highBidder, bidderFullName, owner, ownerFullName.
+REDACTED_RETURNS = {"GetAuctionItemInfo": (12, 13, 14, 15)}
 ITEM_LINK = re.compile(r"\|Hitem:([^|]*)\|h")
 
 def anonymize_link(value):
@@ -1613,7 +1617,7 @@ def probe_recordings(sv_path):
     with calls[label] = {api, args, returns, n, nils}: the arguments are parsed from the label (numbers and plain words), a nil return is a
     false placeholder listed in nils (the plan JSON has no null). skipped names each call left out and why: one that raised an error, a
     personal value (recorded by type only), a call on the player, an argument the label cannot give back exactly (a quoted string, nil),
-    and a return that is a table or a function."""
+    and a return that is a table or a function. A call with a window tag (recorded with a vendor, trainer or auction window open) keeps it, and an auction row loses the names of its bidder and seller."""
     db = sv_json(sv_path).get("CTProbeDB")
     if not isinstance(db, dict) or not isinstance(db.get("fixtures"), dict):
         raise ValueError("%s holds no CTProbeDB.fixtures: run /ctp record in game, then /reload" % sv_path)
@@ -1649,14 +1653,19 @@ def probe_recordings(sv_path):
             elif t in ("table", "function", "userdata", "thread"):
                 bad = t
             else:
-                returns.append(anonymize_link(v.get("value")))
+                value = anonymize_link(v.get("value"))
+                if isinstance(value, str) and i in REDACTED_RETURNS.get(m.group(1).rsplit(".", 1)[-1], ()):
+                    value = ""
+                returns.append(value)
         if bad:
             skipped.append((label, "returns a %s" % bad)); continue
         calls[label] = {"api": m.group(1), "args": args, "returns": returns, "n": int(rec.get("n", len(returns)))}
         if nils:
             calls[label]["nils"] = nils
+        if rec.get("window") in RECORDING_WINDOWS:
+            calls[label]["window"] = rec["window"]
     build = ".".join(str(x) for x in values[:2])
-    return client, {"format": RECORDING_FORMAT, "client": client, "build": build, "calls": calls}, skipped
+    return client, {"format": RECORDING_FORMAT, "rev": RECORDING_REV, "client": client, "build": build, "calls": calls}, skipped
 
 def cmd_recordings(a):
     try:

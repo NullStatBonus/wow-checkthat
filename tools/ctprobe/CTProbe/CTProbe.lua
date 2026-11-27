@@ -2,7 +2,7 @@
 -- The game runs this file first and loads the saved variables afterwards, then fires ADDON_LOADED. A CTProbeDB made here
 -- would be replaced by the table from disk, and every line written to the old one would be lost. So the saved table is
 -- only touched in ADDON_LOADED (see the event handler below).
-local VERSION = 3 -- v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
+local VERSION = 4 -- v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
 local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
 local realGetTime = GetTime -- say() reads the clock through this, so a hook on GetTime from /ctp taint hookerror cannot reach the log
@@ -71,12 +71,16 @@ local function probe()
     say("probe end")
 end
 
+local WINDOW_EVENT, ITEM_FIXTURES, capture, store -- set further down, where the calls they use are defined
 local ev = CreateFrame("Frame")
 local watched = {}
 for _, e in ipairs({ "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN",
     "VARIABLES_LOADED", "PLAYER_ENTERING_WORLD", "PLAYER_LEAVING_WORLD", "PLAYER_LOGOUT", "ADDONS_UNLOADING", "SPELLS_CHANGED", "UPDATE_BINDINGS", "PLAYER_ALIVE" }) do
     local ok = pcall(ev.RegisterEvent, ev, e)
     watched[e] = ok
+end
+for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_UPDATE", "TRAINER_SHOW", "TRAINER_UPDATE", "AUCTION_ITEM_LIST_UPDATE", "GET_ITEM_INFO_RECEIVED" }) do
+    pcall(ev.RegisterEvent, ev, e) -- a client without the event raises here, and the window then never records
 end
 local isLife = {}
 for _, e in ipairs(LIFE) do isLife[e] = true end
@@ -88,7 +92,7 @@ ev:SetScript("OnEvent", function(_, e, ...)
     elseif e == "PLAYER_LOGIN" then
         life(e, ...)
         build()
-        say("v" .. VERSION .. " loaded. /ctp taint run, tooltip, budget, record, life")
+        say("v" .. VERSION .. " loaded. /ctp taint run, tooltip, budget, record, record arm, life")
     elseif e == "PLAYER_REGEN_DISABLED" then
         shows = 0
         say("event PLAYER_REGEN_DISABLED; button shown=" .. tostring(b and b:IsShown()))
@@ -97,6 +101,15 @@ ev:SetScript("OnEvent", function(_, e, ...)
         shows = 0
         say("event PLAYER_REGEN_ENABLED; button shown=" .. tostring(b and b:IsShown()))
         C_Timer.After(2, function() say("2 s after combat; button shown=" .. tostring(b and b:IsShown())) end)
+    elseif WINDOW_EVENT[e] then
+        local win = WINDOW_EVENT[e]
+        if CTProbeDB and CTProbeDB.armed and CTProbeDB.armed[win] then capture(win) end
+    elseif e == "GET_ITEM_INFO_RECEIVED" then
+        local id = ...
+        if CTProbeDB and CTProbeDB.fixtures and ITEM_FIXTURES[id] then
+            for _, f in ipairs(ITEM_FIXTURES[id]) do store(f[1], f[2], f[3]) end
+            say(("item %d delivered; its GetItemInfo records are replaced"):format(id))
+        end
     else
         say("event " .. e .. " " .. table.concat({ tostring((...)), tostring(select(2, ...)) }, " "))
     end
@@ -249,6 +262,15 @@ local FIXTURES = {
     { "UnitName(player)", function() return UnitName("player") end, true },
     { "GetRealmName()", function() return GetRealmName() end, true },
 }
+local ITEMS = { 12640, 12784 } -- candidate armor (Lionheart Helm) and weapon (Arcanite Reaper); the reviewer keeps those that sell for more than 1 silver
+ITEM_FIXTURES = {}
+for _, id in ipairs(ITEMS) do
+    ITEM_FIXTURES[id] = {
+        { ("GetItemInfo(%d)"):format(id), function() return GetItemInfo(id) end },
+        { ("C_Item.GetItemInfo(%d)"):format(id), function() return C_Item.GetItemInfo(id) end },
+    }
+    for _, f in ipairs(ITEM_FIXTURES[id]) do FIXTURES[#FIXTURES + 1] = f end
+end
 local function shape(v, typeOnly)
     local t = type(v)
     if typeOnly or t == "function" or t == "userdata" or t == "thread" then return { type = t } end
@@ -263,20 +285,75 @@ local function shape(v, typeOnly)
     end
     return { type = t, value = v }
 end
+local function pack(...) return { n = select("#", ...), ... } end
+-- Runs fn once and stores what it returned under label. n counts the nils too, so a nil before a value is kept. window tags a call that
+-- was recorded with a window open; ct.py recordings carries the tag into the recording.
+store = function(label, fn, typeOnly, window)
+    local r = pack(pcall(fn))
+    local values = {}
+    for i = 2, r.n do values[#values + 1] = shape(r[i], typeOnly) end
+    local entry = r[1] and { n = math.max(r.n - 1, 0), values = values, typeOnly = typeOnly or nil, window = window } or { error = tostring(r[2]), window = window }
+    CTProbeDB.fixtures[label] = entry
+    return entry
+end
 local function record()
     if not CTProbeDB then say("record: saved variables are not loaded yet") return end
-    CTProbeDB.fixtures = {}
+    local kept = {}
+    for label, entry in pairs(CTProbeDB.fixtures or {}) do if entry.window then kept[label] = entry end end -- what the windows recorded stays
+    CTProbeDB.fixtures = kept
     local good, bad = 0, 0
+    for _, id in ipairs(ITEMS) do
+        local request = C_Item and C_Item.RequestLoadItemDataByID
+        if request then pcall(request, id) end -- an uncached item returns nothing until the client has loaded it
+    end
     for _, f in ipairs(FIXTURES) do
-        local r = { n = select("#", pcall(f[2])), pcall(f[2]) } -- n counts the nils too, so a nil before a value is kept
-        local values = {}
-        for i = 2, r.n do values[#values + 1] = shape(r[i], f[3]) end
-        local ok = r[1]
-        CTProbeDB.fixtures[f[1]] = ok and { n = math.max(r.n - 1, 0), values = values, typeOnly = f[3] or nil } or { error = tostring(r[2]) }
-        if ok then good = good + 1 else bad = bad + 1 end
+        if store(f[1], f[2], f[3]).error then bad = bad + 1 else good = good + 1 end
     end
     CTProbeDB.fixturesBuild = table.concat({ GetBuildInfo() }, " ")
     say(("record: %d calls recorded, %d raised an error (see CTProbeDB.fixtures); build %s"):format(good, bad, CTProbeDB.fixturesBuild))
+end
+
+-- Armed window capture. Vendor, trainer and auction calls return nothing unless their window is open, so /ctp record arm waits for the
+-- window's event and records the count and the first rows then. Only these read-only calls are made: the probe never calls anything that
+-- changes state. A call the client lacks is stored as an error entry, which ct.py recordings reports as skipped.
+local ROWS = 3
+local WINDOWS = {
+    merchant = { count = "GetMerchantNumItems", rows = { "GetMerchantItemInfo", "GetMerchantItemLink" } },
+    trainer = { count = "GetNumTrainerServices", rows = { "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq" } },
+    auction = { count = "GetNumAuctionItems", arg = "list", rows = { "GetAuctionItemInfo" } }, -- the plain word list, so the label reads back
+}
+WINDOW_EVENT = { MERCHANT_SHOW = "merchant", MERCHANT_UPDATE = "merchant", TRAINER_SHOW = "trainer", TRAINER_UPDATE = "trainer",
+    AUCTION_ITEM_LIST_UPDATE = "auction" } -- an auction list exists only after the player searches
+local function recordCall(win, name, ...)
+    local args, parts = { ... }, {}
+    for i, v in ipairs(args) do parts[i] = tostring(v) end
+    return store(name .. "(" .. table.concat(parts, ",") .. ")", function() return _G[name](unpack(args)) end, nil, win)
+end
+capture = function(win)
+    local w = WINDOWS[win]
+    local counted = recordCall(win, w.count, w.arg)
+    local n = counted.values and counted.values[1] and counted.values[1].value
+    if counted.error then
+        CTProbeDB.armed[win] = nil
+        say(("window %s: %s raised an error, so nothing more is recorded"):format(win, w.count))
+    elseif not n or n < 1 then
+        say(("window %s: no rows yet; waiting for the next update"):format(win))
+    else
+        n = math.min(n, ROWS)
+        for i = 1, n do
+            for _, name in ipairs(w.rows) do
+                if w.arg then recordCall(win, name, w.arg, i) else recordCall(win, name, i) end -- a nil first argument would end the list
+            end
+        end
+        CTProbeDB.armed[win] = nil
+        say(("window %s: recorded the count and %d rows"):format(win, n))
+    end
+end
+local function arm()
+    if not CTProbeDB then say("record arm: saved variables are not loaded yet") return end
+    CTProbeDB.fixtures = CTProbeDB.fixtures or {}
+    CTProbeDB.armed = { merchant = true, trainer = true, auction = true }
+    say("armed: open a vendor, a trainer, and search the auction house, then /reload. Run /ctp record first; arm keeps what it recorded")
 end
 
 SLASH_CTPROBE1 = "/ctp"
@@ -285,10 +362,11 @@ SlashCmdList.CTPROBE = function(msg)
     elseif msg == "clear" then if log then wipe(log) end; say("cleared")
     elseif msg == "now" then probe()
     elseif msg == "tooltip" then tooltip()
+    elseif msg == "record arm" then arm()
     elseif msg == "record" then record()
     elseif msg:match("^budget") then budget(msg:match("^budget%s*(%S*)"))
     elseif msg == "life" then
         for _, l in ipairs(log or early) do if l:find("life", 1, true) then print(l) end end -- the whole log, all sessions
     elseif msg:match("^taint") then taint(msg:match("^taint%s*(%S*)"))
-    else say("button=" .. tostring(b and b:IsShown()) .. "; /ctp now, taint, tooltip, budget, record, life, clear") end
+    else say("button=" .. tostring(b and b:IsShown()) .. "; /ctp now, taint, tooltip, budget, record, record arm, life, clear") end
 end
