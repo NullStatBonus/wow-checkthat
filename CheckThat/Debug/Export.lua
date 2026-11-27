@@ -59,6 +59,9 @@ function Export.OpenMenu()
             b:SetPoint("TOPLEFT", 6, -6 - (i - 1) * 24); menu.items[i] = b
         end
         b:SetText(ch.text)
+        -- The button's text is centred and not clipped: hold it to one line inside the button, cut with "..." (#246).
+        local fs = b.GetFontString and b:GetFontString()
+        if fs then fs:SetWidth(272); fs:SetWordWrap(false) end
         b:SetScript("OnClick", function() menu:Hide(); local fn = box.onChoose; if fn then box:Hide(); fn(ch.id) end end)
         b:Show()
     end
@@ -140,6 +143,7 @@ function Export.Prompt(title, content, onAccept, label, hint, readOnly, opts)
     if onAccept and not readOnly then
         local ok, shown = pcall(aceImport, title, content, onAccept, label, hint, opts)
         if ok and shown then if box then box:Hide() end return end
+        if ns.App and ns.App.Log then ns.App.Log("import window: plain window, AceGUI " .. (ok and "missing" or "failed: " .. tostring(shown))) end
         if window then pcall(function() window:Release() end); window = nil end
     end
     if not box then build() end

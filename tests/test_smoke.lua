@@ -149,10 +149,15 @@ test("smoke: importing a plan opens the window with a Start button", function()
 end)
 test("smoke: choosing the built-in self-test imports it without pasting", function()
     ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.lastImport = nil
+    local dbg = ns.addon.db.profile.debug; ns.addon.db.profile.debug = true; ns.App.db.log.entries = {}
+    T.finally(function() ns.addon.db.profile.debug = dbg end)
     _G.CheckThatCard:Hide()
     ns.Card.ImportPrompt()
     local b = _G.CheckThatTextBox
     T.eq(b.title:GetText(), "Import a plan")
+    local logged = false
+    for _, e in ipairs(ns.App.db.log and ns.App.db.log.entries or {}) do if tostring(type(e) == "table" and e.msg or e):find("import window: plain window, AceGUI failed", 1, true) then logged = true end end
+    T.ok(logged, "the log says why the plain window opened")
     T.eq(b.choices[1].text, "CheckThat self-test (built-in)")
     b.onChoose(b.choices[1].id)
     T.eq(b.edit:GetText(), "", "the string never shows in the box")

@@ -35,7 +35,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Log: `[ct] run started`.
 3. **Choose a plan.** Type `/ct import` again, open the "Choose a plan" list, then press Escape.
    Check: the import window is titled "Import a plan" and looks like the report window (title bar, scroll box, same frame). The list shows "CheckThat self-test (built-in)" first and only once. Escape closes the window and the run stays where it was.
-   Log: none; on screen only. The unit tests cover the order and the single entry.
+   Log: no `import window: plain window` line; when there is one, its error says why the AceGUI window did not open. The unit tests cover the order and the single entry.
 4. **Run button.** Open the second step and click Run. The button sits inside the card beside the first command.
    Check: chat shows a status line, and the card moves on by itself without Pass.
    Log: `[ct] status requested`, then `[ct] step self.secure pass auto evidence matched`.
