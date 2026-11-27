@@ -44,7 +44,9 @@ sections:
     action:
       kind: copy-slash
       text: /ct version
-    expect: Chat says "CheckThat 0.20.0" or a newer version. The card records the result by itself. If the step fails, stop and copy CheckThat 0.20.0 into the game again.
+    expect:
+    - Chat says "CheckThat 0.20.0" or a newer version. The card records the result by itself.
+    - If the step fails, stop and copy CheckThat 0.20.0 into the game again.
     verify:
     - assertions
     auto: true
@@ -63,10 +65,14 @@ sections:
     title: "Clear the debug log"
     action:
       kind: manual
-      text: "Type |cff99ccff/ct log clear|r and accept the question. Then press Pass on the card."
+      text:
+      - Type |cff99ccff/ct log clear|r and accept the question.
+      - Press Pass on the card.
       commands:
       - "/ct log clear"
-    expect: "A question asks to clear the debug log. After you accept, chat says \"Debug log cleared.\" An old log from an earlier run would hide this run's lines from the checks."
+    expect:
+    - A question asks to clear the debug log.
+    - After you accept, chat says "Debug log cleared." An old log from an earlier run would hide this run's lines from the checks.
     verify:
     - player
   - id: ct20.debug
@@ -90,8 +96,15 @@ sections:
     title: "Turn the setting on"
     action:
       kind: manual
-      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. If |cffffd100Keep the CT macro on the current step|r is ticked, clear it first. Then tick it. Press Pass on the card."
-    expect: "The setting is ticked. The first time CheckThat makes the macro, chat says \"Macro CT is set. Drag it to a bar and click it.\" The name is CT, or the next free name up to CT9 when you own a macro called CT. Note the name."
+      text:
+      - 'Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced.'
+      - If |cffffd100Keep the CT macro on the current step|r is ticked, clear it first.
+      - Tick it.
+      - Press Pass on the card.
+    expect:
+    - The setting is ticked.
+    - The first time CheckThat makes the macro, chat says "Macro CT is set. Drag it to a bar and click it." The name is CT, or the next free name up to CT9 when you own a macro called CT.
+    - Note the name.
     verify:
     - player
     - assertions
@@ -107,8 +120,16 @@ sections:
     title: "Put the macro on a bar"
     action:
       kind: manual
-      text: "Press Esc, then Macros. Select the macro CheckThat named, drag its icon to a free action bar slot and close the window. Point at the slot with Key Bindings mode on (Esc, Key Bindings, Quick Keybind Mode) and press a key. Press Pass on the card."
-    expect: "The macro window shows the macro. Its first line starts with /ct macrorun and names this step. This step has no commands, so the last line is /ct status. The macro sits on a bar and has a key."
+      text:
+      - Press Esc, then Macros.
+      - Select the macro CheckThat named, drag its icon to a free action bar slot and close the window.
+      - Point at the slot with Key Bindings mode on (Esc, Key Bindings, Quick Keybind Mode) and press a key.
+      - Press Pass on the card.
+    expect:
+    - The macro window shows the macro.
+    - Its first line starts with /ct macrorun and names this step.
+    - This step has no commands, so the last line is /ct status.
+    - The macro sits on a bar and has a key.
     verify:
     - player
 - id: s2
@@ -123,10 +144,15 @@ sections:
     title: "Debug command"
     action:
       kind: manual
-      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      text:
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
       commands:
       - "/ct debug on"
-    expect: "Chat says \"Debug recording is on.\". The card stays on this step until you press Pass. The macro never gives a result."
+    expect:
+    - Chat says "Debug recording is on.".
+    - The card stays on this step until you press Pass.
+    - The macro never gives a result.
     verify:
     - player
     - assertions
@@ -146,8 +172,13 @@ sections:
     title: "A step with no commands"
     action:
       kind: manual
-      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
-    expect: "Chat shows a status line. A step with no commands gives the macro /ct status after the marker. The card shows no line about a missing macro."
+      text:
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
+    expect:
+    - Chat shows a status line.
+    - A step with no commands gives the macro /ct status after the marker.
+    - The card shows no line about a missing macro.
     verify:
     - player
     - assertions
@@ -167,7 +198,10 @@ sections:
     title: "Too many commands for one macro"
     action:
       kind: manual
-      text: "Look at the card. There is no Run button. Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      text:
+      - Look at the card. There is no Run button.
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
       commands:
       - "/ct debug on"
       - "/ct status"
@@ -201,11 +235,16 @@ sections:
     title: "A result command stays out of the macro"
     action:
       kind: manual
-      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      text:
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
       commands:
       - "/ct debug on"
       - "/ct pass"
-    expect: "Chat shows a status line. The card stays on this step. The macro never records a result, so you press Pass yourself."
+    expect:
+    - Chat shows a status line.
+    - The card stays on this step.
+    - The macro never records a result, so you press Pass yourself.
     verify:
     - player
     - assertions
@@ -239,7 +278,10 @@ sections:
     title: "Turn the setting off"
     action:
       kind: manual
-      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Clear |cffffd100Keep the CT macro on the current step|r. Then press Pass on the card."
+      text:
+      - 'Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced.'
+      - Clear |cffffd100Keep the CT macro on the current step|r.
+      - Press Pass on the card.
       commands:
       - "/ct debug on"
     expect: "The setting is clear."
@@ -258,10 +300,15 @@ sections:
     title: "The macro is out of date"
     action:
       kind: manual
-      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      text:
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
       commands:
       - "/ct status"
-    expect: "Chat says the macro is for step ct20.off and the card shows step ct20.afteroff. Then it says \"Debug recording is on.\". With the setting off the macro keeps the text of the step where you cleared it."
+    expect:
+    - Chat says the macro is for step ct20.off and the card shows step ct20.afteroff.
+    - It says "Debug recording is on.".
+    - With the setting off the macro keeps the text of the step where you cleared it.
     verify:
     - player
     - assertions
@@ -282,10 +329,16 @@ sections:
     title: "Turn the setting on again"
     action:
       kind: manual
-      text: "Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced. Tick |cffffd100Keep the CT macro on the current step|r. Press your |cffffd100macro key|r once, do not click Run, then press Pass on the card."
+      text:
+      - 'Open the CheckThat settings: press Esc, then Options, AddOns, CheckThat, Advanced.'
+      - Tick |cffffd100Keep the CT macro on the current step|r.
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
       commands:
       - "/ct status"
-    expect: "Chat shows a status line and no warning. Turning the setting on rewrites the macro for this step."
+    expect:
+    - Chat shows a status line and no warning.
+    - Turning the setting on rewrites the macro for this step.
     verify:
     - player
     - assertions
@@ -317,7 +370,13 @@ sections:
     title: "Change the macro yourself"
     action:
       kind: manual
-      text: "Press Esc, then Macros. Open the macro CheckThat named. Leave the first line. Swap the other two lines: put /ct debug on before /ct status. Save it and close the window. Press Pass on the card."
+      text:
+      - Press Esc, then Macros.
+      - Open the macro CheckThat named.
+      - Leave the first line.
+      - 'Swap the other two lines: put /ct debug on before /ct status.'
+      - Save it and close the window.
+      - Press Pass on the card.
       commands:
       - "/ct status"
       - "/ct debug on"
@@ -329,10 +388,14 @@ sections:
     title: "CheckThat leaves your macro alone"
     action:
       kind: manual
-      text: "Press your |cffffd100macro key|r once. Do not click Run. Then press Pass on the card."
+      text:
+      - Press your |cffffd100macro key|r once. Do not click Run.
+      - Press Pass on the card.
       commands:
       - "/ct debug on"
-    expect: "Chat says \"Debug recording is on.\", shows a status line and warns that the macro is for step ct20.edit. CheckThat did not replace your lines."
+    expect:
+    - Chat says "Debug recording is on.", shows a status line and warns that the macro is for step ct20.edit.
+    - CheckThat did not replace your lines.
     verify:
     - player
     - assertions
