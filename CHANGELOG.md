@@ -12,6 +12,7 @@ New: **Steps for one class or profession.** Such a step does not apply on anothe
 New: **Checks for the whole run.** A plan check can read every line since the run started, also after a reload. A last "no Lua error" step then sees the errors of this run only.
 Changed: **A calmer card.** Setup folds to one line. The note opens from "Add note". A small heading names the checks that CheckThat makes. The step title is larger.
 Changed: **Pause after each result.** The card shows the result in one large word for 3 seconds. Then it fades to the next step.
+Fixed: **A plan for the other game client.** The start screen asked you to select a category. It now says that the plan is not for this game client.
 
 ## 0.20.1
 

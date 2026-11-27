@@ -319,6 +319,70 @@ class Recordings(unittest.TestCase):
             self.assertEqual(ct.main(["recordings", "--src", bare, "-o", out]), 2)
         self.assertIn("/ctp record", err.getvalue())
 
+class WindowRecordings(unittest.TestCase):
+    """Calls CTProbe recorded with a vendor, trainer or auction window open carry a window tag. The file keeps format 1 and gains rev 2."""
+    SV = '''CTProbeDB = {
+["version"] = 4,
+["fixtures"] = {
+["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.15.9" }, { ["type"] = "string", ["value"] = "70576" }, { ["type"] = "string", ["value"] = "Oct 22 2026" }, { ["type"] = "number", ["value"] = 11509 } } },
+["GetNumAuctionItems(list)"] = { ["window"] = "auction", ["n"] = 2, ["values"] = { { ["type"] = "number", ["value"] = 2 }, { ["type"] = "number", ["value"] = 40 } } },
+["GetAuctionItemInfo(list,1)"] = { ["window"] = "auction", ["n"] = 16, ["values"] = { { ["type"] = "string", ["value"] = "Ore" }, { ["type"] = "number", ["value"] = 1 }, { ["type"] = "number", ["value"] = 20 }, { ["type"] = "number", ["value"] = 1 }, { ["type"] = "boolean", ["value"] = true }, { ["type"] = "number", ["value"] = 10 }, { ["type"] = "string", ["value"] = "" }, { ["type"] = "number", ["value"] = 100 }, { ["type"] = "number", ["value"] = 5 }, { ["type"] = "number", ["value"] = 500 }, { ["type"] = "number", ["value"] = 0 }, { ["type"] = "string", ["value"] = "BidderOne" }, { ["type"] = "string", ["value"] = "BidderOne-Realm" }, { ["type"] = "string", ["value"] = "SellerOne" }, { ["type"] = "string", ["value"] = "SellerOne-Realm" }, { ["type"] = "number", ["value"] = 0 } } },
+["GetMerchantItemLink(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "|cffffffff|Hitem:2092::::::::25:262:::::|h[Worn Dagger]|h|r" } } },
+["GetNumTrainerServices()"] = { ["window"] = "trainer", ["error"] = "attempt to call a nil value" },
+["GetTrainerServiceInfo(1)"] = { ["window"] = "bogus", ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Spell" } } },
+["GetLocale()"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "enUS" } } },
+},
+}
+'''
+
+    def make(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "CTProbe.lua")
+        with open(path, "w") as f: f.write(self.SV)
+        return path
+
+    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_2(self):
+        client, rec, skipped = ct.probe_recordings(self.make())
+        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 2))
+        self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["window"], "auction")
+        self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["args"], ["list"], "a plain word argument reads back")
+        self.assertEqual(rec["calls"]["GetAuctionItemInfo(list,1)"]["args"], ["list", 1])
+        self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["window"], "merchant")
+        self.assertNotIn("window", rec["calls"]["GetLocale()"], "a call recorded with no window has no tag")
+        self.assertNotIn("window", rec["calls"]["GetTrainerServiceInfo(1)"] if "GetTrainerServiceInfo(1)" in rec["calls"] else {}, "an unknown tag is dropped")
+        self.assertIn("error", dict(skipped)["GetNumTrainerServices()"])
+
+    def test_an_auction_row_names_no_bidder_or_seller(self):
+        _, rec, _ = ct.probe_recordings(self.make())
+        r = rec["calls"]["GetAuctionItemInfo(list,1)"]["returns"]
+        self.assertEqual(r[:3], ["Ore", 1, 20])
+        self.assertEqual(r[11:15], ["", "", "", ""], "highBidder, bidderFullName, owner and ownerFullName are blank")
+        self.assertNotIn("Seller", json.dumps(rec)); self.assertNotIn("Bidder", json.dumps(rec))
+        self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["returns"][0], "|cffffffff|Hitem:2092::::::::::::::|h[Worn Dagger]|h|r")
+
+    def test_a_recording_without_tags_still_loads(self):
+        _, rec, _ = ct.probe_recordings(Recordings.make(Recordings(), None)[1])
+        self.assertTrue(rec["calls"])
+        self.assertFalse([c for c in rec["calls"].values() if "window" in c], "a v3 probe file has no tags")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_the_offline_runner_reads_a_rev_2_file_with_tags(self):
+        root = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, root)
+        for name in ("CheckThat", "tests"):
+            os.symlink(os.path.join(ROOT, name), os.path.join(root, name))
+        os.makedirs(os.path.join(root, "tools", "recordings"))
+        for name in os.listdir(os.path.join(ROOT, "tools")):
+            if name != "recordings":
+                os.symlink(os.path.join(ROOT, "tools", name), os.path.join(root, "tools", name))
+        with open(os.path.join(ROOT, "tools", "recordings", "era.json")) as f: rec = json.load(f)
+        rec["rev"] = 2; rec["calls"]["GetItemInfo(6948)"]["window"] = "merchant"
+        with open(os.path.join(root, "tools", "recordings", "era.json"), "w") as f: json.dump(rec, f)
+        spec = {"toc": "tests/fixtures/MockAddon/Rec_Vanilla.toc", "level": 5, "mocks": {"GetItemInfo": {"recording": "GetItemInfo(6948)"}},
+                "steps": [{"call": {"addon": "MockAddon", "entry": "info_old", "args": [6948]}, "returns": ["Hearthstone"]}]}
+        with open(os.path.join(root, "spec.json"), "w") as f: json.dump(spec, f)
+        p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
         plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))
