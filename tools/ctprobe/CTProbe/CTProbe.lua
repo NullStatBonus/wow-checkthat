@@ -508,7 +508,7 @@ captureModern = function(scene, ...)
     if n > 0 then CTProbeDB.armed[scene] = nil; opened[scene] = true end
     say(("window auction: %s, %d table results recorded as %s"):format(MODERN[scene].event, n, scene))
 end
-local function arm()
+local function arm(only)
     if not CTProbeDB then say("record arm: saved variables are not loaded yet") return end
     CTProbeDB.fixtures = CTProbeDB.fixtures or {}
     for l, entry in pairs(CTProbeDB.fixtures) do if entry.window then CTProbeDB.fixtures[l] = nil end end -- a new run starts with no old window rows
@@ -521,13 +521,23 @@ local function arm()
         CTProbeDB.armed.auction = nil
         CTProbeDB.fixtures["GetNumAuctionItems(list)"] = { error = "AUCTION_ITEM_LIST_UPDATE is not an event on this client", window = "auction" }
     end
+    if only and only ~= "" then -- /ctp record arm class browse: only the named scenes, so a focused run ends with nothing left
+        local want, unknown = {}, {}
+        for w in only:gmatch("%S+") do if CTProbeDB.armed[w] then want[w] = true else unknown[#unknown + 1] = w end end
+        for s in pairs(CTProbeDB.armed) do if not want[s] then CTProbeDB.armed[s] = nil end end
+        if #unknown > 0 then say("record arm: not a scene on this client: " .. table.concat(unknown, ", ")) end
+    end
+    CTProbeDB.armedList = {}
+    for _, s in ipairs({ "gear", "merchant", "class", "trainer", "auction", "browse", "itemsearch", "commodity" }) do
+        if CTProbeDB.armed[s] then CTProbeDB.armedList[#CTProbeDB.armedList + 1] = s end
+    end
     say("armed: open an armor or weapon vendor and another vendor, a class trainer and a profession trainer, and search the auction house; /ctp record status shows what is left; then /reload. Run /ctp record first")
 end
 local function status()
     if not (CTProbeDB and CTProbeDB.armed) then say("record status: not armed") return end
     local left, done = {}, {}
-    for _, s in ipairs({ "gear", "merchant", "class", "trainer", "auction", "browse", "itemsearch", "commodity" }) do
-        if CTProbeDB.armed[s] then left[#left + 1] = s elseif s ~= "browse" and s ~= "itemsearch" and s ~= "commodity" or opened[s] then done[#done + 1] = s end
+    for _, s in ipairs(CTProbeDB.armedList or {}) do -- only what this arm asked for
+        if CTProbeDB.armed[s] then left[#left + 1] = s else done[#done + 1] = s end
     end
     say(("record status: recorded %s; still waiting for %s"):format(#done > 0 and table.concat(done, ", ") or "nothing", #left > 0 and table.concat(left, ", ") or "nothing"))
 end
@@ -538,7 +548,7 @@ SlashCmdList.CTPROBE = function(msg)
     elseif msg == "clear" then if log then wipe(log) end; say("cleared")
     elseif msg == "now" then probe()
     elseif msg == "tooltip" then tooltip()
-    elseif msg == "record arm" then arm()
+    elseif msg == "record arm" or msg:match("^record arm ") then arm(msg:match("^record arm%s+(.+)$"))
     elseif msg == "record status" then status()
     elseif msg == "record" then record()
     elseif msg:match("^budget") then budget(msg:match("^budget%s*(%S*)"))

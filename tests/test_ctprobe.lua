@@ -547,4 +547,49 @@ test("v8: a client without C_AuctionHouse does not arm the Forever auction scene
     T.eq(CTProbeDB.armed.browse, nil); T.eq(CTProbeDB.armed.commodity, nil)
 end)
 
+test("v8: /ctp record arm with scene names arms only those, and names one the client lacks", function()
+    probe({})
+    _G.C_AuctionHouse = nil
+    SlashCmdList.CTPROBE("record arm class merchant browse")
+    T.same(CTProbeDB.armed, { class = true, merchant = true })
+    T.ok(has("not a scene on this client: browse"), "Era has no browse scene")
+    SlashCmdList.CTPROBE("record status")
+    T.ok(has("record status: recorded nothing; still waiting for merchant, class"), tostring(has("record status")))
+end)
+
+test("the focused in-game run: Forever vendor, class trainer and auction searches, then Era's class trainer, end with nothing left", function()
+    local _, fire = probe({ client = "forever", noEvents = { AUCTION_ITEM_LIST_UPDATE = true } })
+    forever()
+    vendorFakes(3)
+    _G.GetMerchantItemInfo = nil -- a nil global on Forever
+    _G.C_MerchantFrame = { GetItemInfo = function(i) return { name = "Thread" .. i, texture = 1, price = 10 * i, stackCount = 1, numAvailable = -1, isPurchasable = true, isUsable = true, hasExtendedCost = false, isQuestStartItem = false } end }
+    _G.C_Item = _G.C_Item or {}; _G.C_Item.GetItemInfoInstant = function(id) return id, "Trade Goods", "Cloth", "", 1, 7, 0 end
+    _G.IsTradeskillTrainer = function() return false end
+    _G.GetNumTrainerServices = function() return 3 end
+    _G.GetTrainerServiceInfo = function(i) return "Spell" .. i, i == 1 and "header" or "available", 1, 2, "Rank 1", "" end
+    SlashCmdList.CTPROBE("record")
+    SlashCmdList.CTPROBE("record arm merchant class browse itemsearch commodity")
+    fire("MERCHANT_SHOW"); fire("MERCHANT_UPDATE"); fire("MERCHANT_CLOSED")
+    fire("TRAINER_SHOW"); fire("TRAINER_UPDATE"); fire("TRAINER_CLOSED")
+    fire("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+    fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
+    fire("ITEM_SEARCH_RESULTS_UPDATED", { itemID = 2589, itemLevel = 5, itemSuffix = 0, battlePetSpeciesID = 0 })
+    SlashCmdList.CTPROBE("record status")
+    T.ok(has("recorded merchant, class, browse, itemsearch, commodity; still waiting for nothing"), tostring(has("record status")))
+    local fx = CTProbeDB.fixtures
+    T.eq(fx["C_MerchantFrame.GetItemInfo(2)"].values[1].value.price.value, 20, "the Forever vendor price")
+    T.ok(fx["GetMerchantItemInfo(1)"].error, "the missing legacy call is an error entry")
+    T.eq(fx["class:GetTrainerServiceInfo(2)"].values[1].value, "Spell2", "the header row 1 is skipped")
+    T.ok(fx["GetNumAuctionItems(list)"].error:find("not an event", 1, true))
+    local _, fireEra = probe({})
+    _G.C_AuctionHouse = nil
+    _G.IsTradeskillTrainer = function() return nil end
+    _G.GetNumTrainerServices = function() return 2 end
+    _G.GetTrainerServiceInfo = function(i) return "Spell" .. i, "Rank " .. i, "available", 1 end
+    SlashCmdList.CTPROBE("record"); SlashCmdList.CTPROBE("record arm class")
+    fireEra("TRAINER_SHOW")
+    SlashCmdList.CTPROBE("record status")
+    T.ok(has("recorded class; still waiting for nothing"), tostring(has("record status")))
+end)
+
 finish()
