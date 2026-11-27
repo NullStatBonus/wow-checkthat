@@ -2293,7 +2293,7 @@ def save_errors(dest, glob_db, h, rids=()):
     if errs or stacks:
         os.makedirs(os.path.join(dest, "errors"), exist_ok=True)
         with open(os.path.join(dest, "errors", h + ".json"), "w", encoding="utf-8") as fh:
-            json.dump({"runs": list(rids), "errors": errs, "errorStacks": stacks}, fh, indent=1)
+            json.dump({"format": JSON_FORMAT, "runs": list(rids), "errors": errs, "errorStacks": stacks}, fh, indent=1)
 
 def load_errors(dest, rid=None):
     """({key: error line}, {key: call stack}) from the collected saved-variables copies. The key is <time>.<counter> and is only
@@ -2875,13 +2875,24 @@ def models(runs, dest=None, with_stacks=False, with_lines=False):
 def bad_steps(ms):
     return sum(m["counts"].get("fail", 0) + m["counts"].get("unverified", 0) for m in ms)
 
+# Every JSON document ct.py prints or writes for a reader carries "format" (#251). It rises when a key changes
+# meaning or goes; a new key does not raise it, and readers ignore keys they do not know.
+JSON_FORMAT = 1
+# The commands whose arguments and output are a promise from 1.0 (docs/tools-guide.md lists them). The others are
+# maintainer tools: their help says the output may change.
+# from-md, sv2json and drift are stable because the shipped skills run them.
+STABLE_COMMANDS = ("validate", "compile", "coverage", "replay", "offline", "replay-flow", "lines", "decode", "from-md", "sv2json",
+                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend")
+MAINTAINER_COMMANDS = ("recordings", "census")
+MAINTAINER_NOTE = "maintainer tool, output may change: "
+
 def report_json(runs, dest=None, with_stacks=False, with_lines=False):
     ms = models(runs, dest, with_stacks, with_lines)
     totals = {}
     for m in ms:
         for k, n in m["counts"].items():
             totals[k] = totals.get(k, 0) + n
-    return json.dumps({"runs": ms, "totals": totals, "ok": bool(ms) and bad_steps(ms) == 0}, indent=1, sort_keys=True)
+    return json.dumps({"format": JSON_FORMAT, "runs": ms, "totals": totals, "ok": bool(ms) and bad_steps(ms) == 0}, indent=1, sort_keys=True)
 
 def report_junit(runs, dest=None, with_stacks=False, with_lines=False):
     """JUnit XML: a suite for each run category, a case for each step. Fail and unverified are failures (type tells them apart);
@@ -3489,8 +3500,8 @@ def main(argv=None):
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
-    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
-    p = sub.add_parser("census", help="write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
+    p = sub.add_parser("recordings", help=MAINTAINER_NOTE + "turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
+    p = sub.add_parser("census", help=MAINTAINER_NOTE + "write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
@@ -3541,7 +3552,7 @@ def main(argv=None):
             d = coverage_data(plans, a.addon_src, specs, latest_runs(a.dest) if a.evidence else None, tests, a.harness)
         except ValueError as e:
             print("error:", e, file=sys.stderr); return 2
-        print(json.dumps(d, indent=1, sort_keys=True) if a.format == "json" else coverage_text(d))
+        print(json.dumps(dict(d, format=JSON_FORMAT), indent=1, sort_keys=True) if a.format == "json" else coverage_text(d))
         return 0
     if a.cmd == "compile":
         plan = load_yaml(a.plan)
@@ -3696,7 +3707,7 @@ def main(argv=None):
             rep = drift_report(predictions(plan, a.addons, plan_requirements(plan, a.plan, a.specs)), latest_runs(a.dest), plan.get("addon"), plan.get("title"), a.expect_version)
         except (ValueError, RuntimeError) as e:
             print("error:", e, file=sys.stderr); return 2
-        print(json.dumps(rep, indent=1) if a.format == "json" else drift_text(rep))
+        print(json.dumps(dict(rep, format=JSON_FORMAT), indent=1) if a.format == "json" else drift_text(rep))
         return 1 if a.strict and (rep["drift"] or not any(s["total"] for s in rep["flavors"].values())) else 0
     if a.cmd == "report":
         skipped = []
@@ -3752,7 +3763,7 @@ def main(argv=None):
         d["warnings"] += ["run %s: %s: %s" % s for s in skipped if s[0] in ids]
         for w in d["warnings"]:
             print("warning:", w, file=sys.stderr)
-        print(json.dumps(d, indent=1, sort_keys=True) if a.format == "json" else diff_text(d))
+        print(json.dumps(dict(d, format=JSON_FORMAT), indent=1, sort_keys=True) if a.format == "json" else diff_text(d))
         if a.strict and d["counts"].get("regressed"):
             print("strict: %d step(s) regressed" % d["counts"]["regressed"], file=sys.stderr); return 1
         return 0
@@ -3765,7 +3776,7 @@ def main(argv=None):
             print("warning:", w, file=sys.stderr)
         if not t["groups"]:
             print("error: no %srun matches" % ("" if a.include_open else "finished "), file=sys.stderr); return 2
-        print(json.dumps(t, indent=1, sort_keys=True) if a.format == "json" else trend_text(t))
+        print(json.dumps(dict(t, format=JSON_FORMAT), indent=1, sort_keys=True) if a.format == "json" else trend_text(t))
         return 0
     if a.cmd == "browse":
         import ct_tui   # only here: the viewer and Textual stay optional
@@ -3783,7 +3794,7 @@ def main(argv=None):
             return status_watch(a.dest, a.interval, tty=sys.stdout.isatty())
         rows, problems, extra = status_data(a.dest)
         if a.json:
-            print(json.dumps({"runs": rows, "problems": problems, **extra, "ok": not problems}, indent=1, sort_keys=True))
+            print(json.dumps({"format": JSON_FORMAT, "runs": rows, "problems": problems, **extra, "ok": not problems}, indent=1, sort_keys=True))
         else:
             print(status_text(rows, problems, extra, a.dest))
         return 1 if problems else 0

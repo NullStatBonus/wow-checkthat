@@ -3046,6 +3046,7 @@ class Drift(unittest.TestCase):
         self.assertIn("era: 0 of 1 predictions matched", text)
         self.assertIn("predicted pass, the run fail (offline.1)", text)
         self.assertEqual(json.loads(self.drift_cli("fail", "--format", "json")[1])["drift"][0]["actual"], "fail")
+        self.assertEqual(json.loads(self.drift_cli("fail", "--format", "json")[1])["format"], ct.JSON_FORMAT)
 
     @unittest.skipUnless(shutil.which("luajit"), "needs luajit")
     def test_a_run_of_another_version_is_left_out_and_strict_fails_when_nothing_was_compared(self):
@@ -3157,6 +3158,38 @@ class ReportTable(unittest.TestCase):
         text = ct.report_text({"R-1": {"planTitle": "t", "addon": "K", "revision": 1, "order": ["p", "f"], "steps": steps}})
         self.assertIn("- f: fail", text); self.assertIn("attempt 1: fail note=broke", text)
         self.assertNotIn("- p:", text)
+
+
+class StableCommands(unittest.TestCase):
+    """#251: each command is stable or a maintainer tool, the docs list the stable ones, and every JSON file has format."""
+    def subcommands(self):
+        with open(os.path.join(ROOT, "tools", "ct.py"), encoding="utf-8") as fh:
+            return set(re.findall(r'sub\.add_parser\("([\w-]+)"', fh.read()))
+
+    def test_every_command_is_stable_or_a_maintainer_tool(self):
+        self.assertEqual(set(ct.STABLE_COMMANDS) | set(ct.MAINTAINER_COMMANDS), self.subcommands())
+        self.assertFalse(set(ct.STABLE_COMMANDS) & set(ct.MAINTAINER_COMMANDS))
+
+    def test_maintainer_help_says_the_output_may_change(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            ct.main(["--help"])
+        text = re.sub(r"\s+", " ", out.getvalue())
+        for name in ct.MAINTAINER_COMMANDS:
+            self.assertRegex(text, r"\b%s maintainer tool, output may change:" % re.escape(name))
+        self.assertEqual(text.count("maintainer tool, output may change"), len(ct.MAINTAINER_COMMANDS))
+
+    def test_the_docs_list_the_stable_commands(self):
+        with open(os.path.join(ROOT, "docs", "tools-guide.md"), encoding="utf-8") as fh:
+            page = fh.read()
+        sec = page.split("## Stable commands", 1)[1].split("\n## ", 1)[0]
+        self.assertEqual(set(re.findall(r"^- `([\w-]+)`", sec, re.M)), set(ct.STABLE_COMMANDS))
+
+    def test_the_saved_error_lines_file_has_format(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        ct.save_errors(d, {"errors": ["x"]}, "h1", ["R-1"])
+        with open(os.path.join(d, "errors", "h1.json"), encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh)["format"], ct.JSON_FORMAT)
 
 
 class Names(unittest.TestCase):
@@ -3609,6 +3642,7 @@ class Results(unittest.TestCase):
 
     def test_json_totals_and_ok(self):
         d = json.loads(ct.report_json(self.run_with(self.steps())))
+        self.assertEqual(d["format"], ct.JSON_FORMAT)
         self.assertFalse(d["ok"]); self.assertEqual(d["totals"]["fail"], 1); self.assertEqual(d["runs"][0]["steps"][0]["id"], "a")
         clean = self.run_with({"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}})
         self.assertTrue(json.loads(ct.report_json(clean))["ok"])
@@ -3688,6 +3722,7 @@ class Results(unittest.TestCase):
             fh.write("{broken")
         code, out, _ = self.cli("status", "--dest", d, "--json")
         data = json.loads(out)
+        self.assertEqual(data["format"], ct.JSON_FORMAT)
         self.assertEqual(code, 1); self.assertFalse(data["ok"]); self.assertEqual(data["runs"][0]["revision"], 2)   # the healthy revision still shows
         self.assertTrue(any("r3.json is unreadable" in p for p in data["problems"]))
         self.assertIn("R-1", ct.latest_runs(d))
@@ -4102,7 +4137,10 @@ class CompareRuns(unittest.TestCase):
     def diff(self, a, b, *extra, store=None):
         d = self.dest({"A-1": a, "B-1": b}, store)
         code, out, err = self.cli("diff", "A-1", "B-1", "--dest", d, "--format", "json", *extra)
-        return code, (json.loads(out) if out.strip() else None), err
+        got = json.loads(out) if out.strip() else None
+        if got is not None:
+            self.assertEqual(got.pop("format"), ct.JSON_FORMAT, "every JSON output names its format (#251)")
+        return code, got, err
 
     def labels(self, data):
         return {r["id"]: r["label"] for r in data["steps"]}
@@ -4129,6 +4167,7 @@ class CompareRuns(unittest.TestCase):
         runs["R-3"].pop("targetVersion")
         d = self.dest(runs)
         t = json.loads(self.cli("trend", "--dest", d, "--format", "json", "--by", "target")[1])
+        self.assertEqual(t["format"], ct.JSON_FORMAT)
         self.assertEqual([r["label"] for r in t["groups"][0]["runs"]], ["1.0.0", "1.1.0", None])
         self.assertIn("R-2  1.1.0", self.cli("trend", "--dest", d, "--by", "target")[1])
         self.assertEqual(json.loads(self.cli("trend", "--dest", d, "--format", "json", "--by", "version")[1])["groups"][0]["runs"][1]["label"], None,
@@ -4269,7 +4308,10 @@ class Coverage(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = ct.main(["coverage", *dirs, "--addon-src", self.SRC, "--format", "json", *extra])
-        return code, (json.loads(out.getvalue()) if out.getvalue().strip() else None), err.getvalue()
+        d = json.loads(out.getvalue()) if out.getvalue().strip() else None
+        if d is not None:
+            self.assertEqual(d.pop("format"), ct.JSON_FORMAT, "every JSON output names its format (#251)")
+        return code, d, err.getvalue()
 
     def by(self, d, kind):
         return {i["name"]: i for i in d[kind]}
