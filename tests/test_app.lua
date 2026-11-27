@@ -32,6 +32,15 @@ test("app import stores plan, rejects bad ones without state change", function()
     local r, e2 = App.ImportPlan(assert(ns.Codec.Encode({ kind = "results", ct = 1 })))
     T.ok(r == nil and e2:find("results"))
 end)
+test("a plan that needs a newer CheckThat is refused with that sentence, and nothing is stored", function()
+    local db = boot()
+    local p = plan(); p.needs = ns.Plan.REV + 1; p.brandNewKey = { 1 }
+    local v, err = App.ImportPlan(assert(ns.Codec.Encode(p)))
+    T.eq(v, nil)
+    T.ok(err:find(("This plan needs a newer CheckThat. It uses plan revision %d, and this version reads up to %d."):format(ns.Plan.REV + 1, ns.Plan.REV), 1, true), err)
+    T.ok(next(db.plans) == nil, "nothing stored")
+end)
+
 test("a started run records the tested addon's version from the client, and none when the client cannot say", function()
     H.stub(_G, "GetAddOnMetadata", _G.GetAddOnMetadata)
     local asked

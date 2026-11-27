@@ -17,6 +17,11 @@
     "kind": {
       "const": "plan"
     },
+    "needs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The plan revision the plan needs (#245). compile writes it when the plan uses a key added after revision 1; leave it out otherwise. CheckThat refuses a plan that needs more than it reads."
+    },
     "addon": {
       "enum": [
         "CheckThat",

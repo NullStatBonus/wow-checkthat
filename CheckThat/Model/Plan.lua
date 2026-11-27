@@ -4,6 +4,10 @@ local Plan = {}
 ns.Plan = Plan
 
 Plan.CLIENTS = { ["classic-era"] = true, ["forever-camelot"] = true }
+-- The highest plan revision this version reads. A plan says the revision it needs in "needs" (ct.py compile writes it when a plan
+-- uses a key added after revision 1); a plan without "needs" is revision 1, the format as of 0.21.0. Raise this with each addition
+-- to the plan format, and add the key to PLAN_NEEDS in tools/ct.py, so an older CheckThat refuses the plan instead of skipping a check.
+Plan.REV = 1
 Plan.ACTIONS = { manual = true, ["copy-slash"] = true, ["secure-macro"] = true, reload = true, ["wait-event"] = true }
 Plan.VERIFY = { player = true, assertions = true, reviewer = true }
 -- Runner-shipped slash allow list per addon. A plan can never extend it.
@@ -325,6 +329,12 @@ end
 function Plan.Validate(plan)
     local errs = {}
     if type(plan) ~= "table" then return { "plan is not a table" } end
+    -- First, and alone: a newer plan may hold keys this version does not know, and their errors would hide the reason.
+    local needs = plan.needs
+    if needs ~= nil then
+        if type(needs) ~= "number" or needs < 1 or needs % 1 ~= 0 then return { "needs is not a plan revision number" } end
+        if needs > Plan.REV then return { ("needs plan revision %d; this version reads up to %d"):format(needs, Plan.REV) } end
+    end
     -- Text shown by the game is not Markdown: reject backticks and ** (use native color codes instead).
     local function md(s) return type(s) == "string" and (s:find("`", 1, true) or s:find("**", 1, true)) end
     local function checkText(box, key, where)

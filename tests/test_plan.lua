@@ -12,6 +12,19 @@ local function good()
             { id = "a.2", title = "B", action = { kind = "manual", text = "t" }, expect = "e", verify = { "player" } },
         } } } }
 end
+test("needs: a plan of a higher revision is refused with that reason alone, before keys this version does not know", function()
+    local p = good(); p.needs = ns.Plan.REV + 1; p.sections[1].steps[1].within = { seconds = 2 }; p.sections[1].steps[2].action.kind = "teleport"
+    T.same(ns.Plan.Validate(p), { ("needs plan revision %d; this version reads up to %d"):format(ns.Plan.REV + 1, ns.Plan.REV) })
+    local q = good(); q.needs = ns.Plan.REV
+    T.eq(#ns.Plan.Validate(q), 0, "a plan that needs this revision is valid")
+    local r = good(); r.needs = nil
+    T.eq(#ns.Plan.Validate(r), 0, "a plan without needs is revision 1")
+    for _, bad in ipairs({ 0, 1.5, "1", -1 }) do
+        local b = good(); b.needs = bad
+        T.same(ns.Plan.Validate(b), { "needs is not a plan revision number" }, tostring(bad))
+    end
+end)
+
 test("plan valid", function() T.eq(#ns.Plan.Validate(good()), 0, table.concat(ns.Plan.Validate(good()), ";")) end)
 local function bad(mut, needle)
     local p = good(); mut(p)
