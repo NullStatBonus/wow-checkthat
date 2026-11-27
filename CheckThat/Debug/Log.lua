@@ -58,7 +58,7 @@ function Log.Report()
         ns.App and ns.App.Client() or "?", ns.App and ns.App.Build() or "?"), "", "Settings:" }
     local db = ns.addon and ns.addon.db
     if db then
-        out[#out + 1] = "  scope = " .. ((db:GetCurrentProfile() == "Default") and "shared" or "character")
+        out[#out + 1] = "  profile = " .. tostring(ns.Settings.ProfileName())
         flatten(db.profile, "", out)
     end
     out[#out + 1] = "  presentation contract = v1"

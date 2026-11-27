@@ -13,10 +13,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 ## 2. Settings window
 
 1. **Open the window.** Type `/ct settings`.
-   Check: a window titled CheckThat opens at about 600 by 460 with a tree: Home, Plans, Appearance, Advanced, About.
+   Check: a window titled CheckThat opens at about 600 by 460 with a tree: Home, Plans, Appearance, Advanced, About, Profiles.
    Log: none; on screen only.
 2. **Game Settings entries.** Open Esc, Options, AddOns, CheckThat.
-   Check: CheckThat and its four pages are listed and open.
+   Check: CheckThat and its five pages are listed and open.
    Log: none; on screen only.
 3. **Scale.** On Appearance, set Scale to 150, then `/ct set card.scale 100`.
    Check: the card resizes with each change and the slider shows 100 afterwards.
@@ -24,6 +24,12 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 4. **Zero opacity.** Set Background opacity to 0.
    Check: no background or border is drawn. The text stays readable.
    Log: none; on screen only.
+5. **New profile.** Needs `/ct debug on`. On Profiles (`/ct settings profiles`), type `Test` in New and press Enter.
+   Check: chat says "Profile changed. Profile in use: Test." The card has the default size and opacity.
+   Log: `profile changed to Test`.
+6. **Back to Default.** Choose Default in Existing profiles.
+   Check: chat names Default, and the card looks as it did before check 5.
+   Log: `profile changed to Default`; saved variable `profileKeys` names Default for this character.
 
 ## 3. Run
 

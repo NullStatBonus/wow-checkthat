@@ -1301,7 +1301,9 @@ ns.Start(function()
     end
     ns.Settings.onChange = apply
     local db = ns.addon.db
+    -- Another profile's values: also the CT macro, which follows the step only when that profile says so.
+    local function profileApply() apply(); Card.FollowMacro(true); Card.Refresh() end
     for _, event in ipairs({ "OnProfileChanged", "OnProfileCopied", "OnProfileReset" }) do
-        db.RegisterCallback(Card, event, apply)
+        db.RegisterCallback(Card, event, profileApply)
     end
 end)

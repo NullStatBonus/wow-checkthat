@@ -22,7 +22,8 @@ local function boot(expect, enabled)
     ns.Facts.API().Entry("KeepThat", "add", function(a, b) return a + b end)
     assert(ns.App.ImportPlan(assert(ns.Codec.Encode(plan(expect)))))
     local said = {}
-    ns.Slash.Print = function(t) said[#said + 1] = t end
+    -- The login line that names the profile is not part of the self-check (tests/test_options.lua covers it).
+    ns.Slash.Print = function(t) if not t:find("^Profile in use: ") then said[#said + 1] = t end end
     ns.Adapter.After = function(_, fn) fn() end
     return said
 end

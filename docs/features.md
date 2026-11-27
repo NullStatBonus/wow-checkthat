@@ -78,6 +78,16 @@ Pick a run, then choose:
 
 Debug log: `run open asked <id>`, `run opened <id>`, `run delete asked <id>`, `run deleted <id>`, `run pruned <id>` and `run exported <id>`. A cancelled question leaves no `run opened` line.
 
+## Profiles
+
+Settings live in an Ace profile. Every character starts on the shared **Default** profile. The Profiles page (`/ct settings profiles`) names the profile in use and holds the standard Ace control, **Manage profiles**:
+
+- **Existing profiles** switches this character to another profile. **New** makes one with default settings. **Copy from** copies another profile's settings into the current one. **Reset profile** sets the current one back to defaults. **Delete a profile** removes any profile but the one in use. A character that used it goes back to Default at its next login.
+- A character profile from the old "Use separate settings for this character" checkbox is named for the character (`Name - Realm`) and shows in the list.
+- Plans, runs, the debug log and **Runs to keep** are account-wide and do not change with the profile.
+
+Each login prints "Profile in use: <name>.", so a profile deleted on another character does not go unseen. A switch prints "Profile changed. Profile in use: <name>." and logs `profile changed to <name>`. Copy, reset and delete log `profile copied from <name>`, `profile reset` and `profile deleted <name>`. Debug recording keeps its value across a switch, a copy and a reset, so a problem report goes on. A bar in a profile name shows as typed. The card, the CT macro and the settings pages show the new profile's values at once, also after a copy or a reset. `/ct status` says "Profile in use: <name>.", and the debug report prints `profile = <name>` under Settings.
+
 ## Result sounds
 
 When a step gets its result, CheckThat plays one short sound of its own (`CheckThat/Media/Sounds`), so a tester who watches the game hears what happened. The sounds play on the game's sound effects channel, so its volume and mute apply, and they play while the card is hidden or collapsed too.

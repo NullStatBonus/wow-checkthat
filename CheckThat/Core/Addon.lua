@@ -6,6 +6,28 @@ ns.addon = addon
 
 function addon:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("CheckThatDB", ns.defaults, true)
+    -- A switch to another profile keeps the debug switch as it was, and chat names the profile in use.
+    self.db.RegisterCallback(self, "OnProfileShutdown", function() self.debugBefore = self.db.profile.debug end)
+    self.db.RegisterCallback(self, "OnProfileChanged", function()
+        local debug = self.debugBefore; self.debugBefore = nil
+        ns.Settings.ProfileChanged(debug)
+    end)
+    -- Reset and copy keep the debug switch too, so recording goes on and their log line is written. The db's own
+    -- methods (every caller, the Profiles page included) note it just before the change.
+    for _, method in ipairs({ "ResetProfile", "CopyProfile" }) do
+        local original = self.db[method]
+        self.db[method] = function(db, ...)
+            self.debugBefore = db.profile.debug
+            return original(db, ...)
+        end
+    end
+    local function keepDebug()
+        local debug = self.debugBefore; self.debugBefore = nil
+        if debug ~= nil then self.db.profile.debug = debug end
+    end
+    self.db.RegisterCallback(self, "OnProfileCopied", function(_, _, source) keepDebug(); ns.App.Log("profile copied from " .. tostring(source)) end)
+    self.db.RegisterCallback(self, "OnProfileReset", function() keepDebug(); ns.App.Log("profile reset") end)
+    self.db.RegisterCallback(self, "OnProfileDeleted", function(_, _, name) ns.App.Log("profile deleted " .. tostring(name)) end)
     ns.LibDeflate = LibStub("LibDeflate")
     ns.App.Init(self.db.global, ns.Adapter.Env(), { debug = function() return self.db.profile.debug end })
     ns.Adapter.Export("CheckThat", ns.Facts.API())
@@ -25,6 +47,9 @@ function ns.Listen(target, event, fn)
 end
 
 function addon:OnEnable()
+    -- Each login names the profile in use: a profile deleted on another character leaves this one on Default.
+    local line = ns.Settings.ProfileLine()
+    if line then ns.Slash.Print(line) end
     -- A run from before a reload resumes: the open attempt asks for verification, not another reload.
     -- Only the character's open run resumes. The card may show an ended run from Past runs instead.
     local run = ns.App.OpenRecord()

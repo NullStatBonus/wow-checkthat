@@ -12,7 +12,7 @@ test("the tree validates and has the shared pages in order", function()
     T.ok(pcall(reg.ValidateOptionsTable, reg, tree, "CheckThat"))
     local order = {}
     for key, g in pairs(tree.args) do order[g.order] = key end
-    T.eq(table.concat(order, ","), "home,plans,appearance,advanced,about")
+    T.eq(table.concat(order, ","), "home,plans,appearance,advanced,about,profiles")
     T.eq(tree.childGroups, "tree")
 end)
 test("sliders and toggles write through the shared validators", function()
@@ -24,13 +24,99 @@ test("sliders and toggles write through the shared validators", function()
     g.args["card.locked"].set(nil, true); T.eq(ns.addon.db.profile.card.locked, true)
     g.args["reset"].func(); T.ok(ns.addon.db.profile.card.pos == nil)
 end)
-test("scope switch keeps both profiles and copies nothing", function()
-    ns.addon.db.profile.card.scale = 111
-    ns.Options.SetCharacterProfile(true)
-    T.ok(ns.Options.CharacterProfileOn())
-    T.eq(ns.addon.db.profile.card.scale, 100, "character profile starts at defaults")
-    ns.Options.SetCharacterProfile(false)
-    T.eq(ns.addon.db.profile.card.scale, 111, "shared profile kept its value")
+test("Profiles page holds the standard control and names the profile in use", function()
+    local g = ns.Options.Profiles(6)
+    local m = g.args.manage
+    T.ok(m and m.inline, "AceDBOptions control shown inline")
+    T.eq(m.name, "Manage profiles")
+    T.ok(m.args.choose and m.args.copyfrom and m.args.reset and m.args.delete and m.args.new, "choose, copy, reset, delete, new")
+    T.ok(g.args.current.name():find("Profile in use: Default", 1, true))
+    local reg = LibStub("AceConfigRegistry-3.0")
+    T.ok(pcall(reg.ValidateOptionsTable, reg, ns.Options.Build(), "CheckThat"))
+    T.ok(ns.Options.Advanced(4).args.charProfile == nil, "the old checkbox is gone")
+end)
+test("Profiles page without AceDBOptions keeps its purpose and profile line", function()
+    local real = LibStub.libs["AceDBOptions-3.0"]
+    LibStub.libs["AceDBOptions-3.0"] = nil
+    T.finally(function() LibStub.libs["AceDBOptions-3.0"] = real end)
+    local g = ns.Options.Profiles(6)
+    T.ok(g.args.manage == nil); T.ok(g.args.intro and g.args.current)
+end)
+test("choosing another profile switches, keeps both, names it and keeps debug", function()
+    local db, said = ns.addon.db, {}
+    H.stub(ns.Slash, "Print", function(s) said[#said + 1] = s end)
+    T.finally(function() db:SetProfile("Default"); pcall(db.DeleteProfile, db, "Alt", true) end)
+    db.profile.card.scale = 111; db.profile.debug = true
+    local m = ns.Options.Profiles(6).args.manage
+    T.eq(m.args.choose.set, "SetProfile")
+    m.handler[m.args.choose.set](m.handler, {}, "Alt") -- what the control's Existing profiles list calls
+    T.eq(db:GetCurrentProfile(), "Alt")
+    T.eq(db.profile.card.scale, 100, "new profile starts at defaults; nothing copied")
+    T.eq(db.profile.debug, true, "debug recording kept across the switch")
+    T.eq(said[#said], "Profile changed. Profile in use: Alt.")
+    local found = false
+    for _, e in ipairs(ns.App.db.log.entries or ns.App.db.log) do if tostring(e.msg or e):find("profile changed to Alt", 1, true) then found = true end end
+    T.ok(found, "log line")
+    T.ok(ns.Log.Report():find("  profile = Alt", 1, true), "debug report names it")
+    T.ok(table.concat(ns.Slash.Run("status", {}), "\n"):find("Profile in use: Alt.", 1, true), "/ct status names it")
+    db:SetProfile("Default")
+    T.eq(db.profile.card.scale, 111, "Default kept its value")
+end)
+test("a change with no switch before it leaves debug to the profile", function()
+    H.stub(ns.Slash, "Print", function() end)
+    ns.addon.db.profile.debug = false
+    ns.Settings.ProfileChanged(nil)
+    T.eq(ns.addon.db.profile.debug, false)
+end)
+test("copy, reset and delete redraw the pages, refresh the CT macro and log a line", function()
+    local db = ns.addon.db
+    H.stub(ns.Slash, "Print", function() end)
+    db:SetProfile("Src"); db:SetProfile("Gone"); db:SetProfile("Default") -- profiles to copy from and delete
+    T.finally(function() db:SetProfile("Default"); for _, p in ipairs({ "Src", "Gone" }) do pcall(db.DeleteProfile, db, p, true) end end)
+    local n, macro = 0, 0
+    H.stub(ns.Options, "Notify", function() n = n + 1 end)
+    H.stub(ns.Card, "FollowMacro", function(fresh) if fresh then macro = macro + 1 end end)
+    local function logged(s)
+        for _, e in ipairs(ns.App.db.log.entries or ns.App.db.log) do if tostring(e.msg or e):find(s, 1, true) then return true end end
+        return false
+    end
+    db.profile.debug = true
+    db:ResetProfile()
+    T.eq(db.profile.debug, true, "reset keeps debug recording")
+    T.eq(n, 1, "reset redraws"); T.eq(macro, 1, "reset refreshes the macro"); T.ok(logged("profile reset"))
+    db:CopyProfile("Src")
+    T.eq(db.profile.debug, true, "copy keeps debug recording")
+    T.eq(n, 2, "copy redraws"); T.eq(macro, 2, "copy refreshes the macro"); T.ok(logged("profile copied from Src"))
+    db:DeleteProfile("Gone")
+    T.eq(n, 3, "delete redraws"); T.ok(logged("profile deleted Gone"))
+    db:SetProfile("Src")
+    T.ok(n >= 4, "a switch redraws"); T.eq(macro, 3, "a switch refreshes the macro")
+end)
+test("a bar in a profile name is doubled in chat, /ct status and the page", function()
+    local db, said = ns.addon.db, {}
+    H.stub(ns.Slash, "Print", function(s) said[#said + 1] = s end)
+    T.finally(function() db:SetProfile("Default"); pcall(db.DeleteProfile, db, "a|cffff0000b", true) end)
+    db:SetProfile("a|cffff0000b")
+    T.eq(said[#said], "Profile changed. Profile in use: a||cffff0000b.")
+    T.ok(table.concat(ns.Slash.Run("status", {}), "\n"):find("Profile in use: a||cffff0000b.", 1, true))
+    T.ok(ns.Options.Profiles(6).args.current.name():find("a||cffff0000b", 1, true))
+end)
+test("each login names the profile in use", function()
+    local said = {}
+    H.stub(ns.Slash, "Print", function(s) said[#said + 1] = s end)
+    H.stub(ns.Adapter, "After", function() end)
+    ns.addon:OnEnable()
+    T.eq(said[1], "Profile in use: Default.")
+end)
+test("the game's Settings window lists Profiles under CheckThat", function()
+    local seen = {}
+    ns.Options.RegisterPanels({ AddToBlizOptions = function(_, app, name, parent, key) seen[#seen + 1] = tostring(parent) .. "/" .. key end })
+    T.eq(table.concat(seen, ","), "nil/home,CheckThat/plans,CheckThat/appearance,CheckThat/advanced,CheckThat/about,CheckThat/profiles")
+end)
+test("/ct settings profiles opens the Profiles page", function()
+    local opened
+    ns.Slash.Run("settings profiles", { open = function(p) opened = p end })
+    T.eq(opened, "profiles")
 end)
 test("plans page lists and removes plans; runs stay", function()
     local f = io.open("build/dontdothat.ct"); local s = f:read("*a"); f:close()

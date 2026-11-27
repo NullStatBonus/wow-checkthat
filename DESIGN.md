@@ -8,7 +8,7 @@ CheckThat follows the shared presentation contract documented in KeepThat's `DES
 2. **Stay recognizably native.** Use Ace and Blizzard controls and tooltip chrome. Do not reskin the game.
 3. **Keep the interface compact.** The checklist card is small, movable and collapsible. It must not cover the thing under test.
 4. **Use color for meaning.** Name a result as well as coloring it. Amber means missing evidence, not an error.
-5. **Preserve player choices.** Disabled controls keep their values. Switching settings scope copies nothing.
+5. **Preserve player choices.** Disabled controls keep their values. Switching profile copies nothing.
 6. **Never play for the player.** Every protected action is a player click or keypress.
 7. **Remain independently installable.** Missing APIs and other addons give an explained fallback, not a Lua error.
 
@@ -40,14 +40,15 @@ The same pages are registered in the game's Settings window.
 | 1 | Home | Current run with its categories, start a run with the categories to test, import a plan, export results |
 | 2 | Plans | Imported plans and removal |
 | 3 | Appearance | Card scale, background opacity, text opacity, lock, reset position |
-| 4 | Advanced | Settings scope and debug recording and report |
+| 4 | Advanced | Runs to keep, the CT macro, the self-check, and debug recording and report |
 | 5 | About | Name, version, purpose and commands |
+| 6 | Profiles | The profile in use and the standard AceDBOptions-3.0 control, inline |
 
 Every page works when opened directly (`/ct settings <page>`). Each page starts with a heading, a purpose of one or two short sentences, then sections per task.
 
 ### Scope
 
-Settings use the shared Default profile. A checkbox in Advanced switches to a character profile after confirmation, copies nothing, and keeps both. Plans, runs and the log are account-wide and never copied between profiles.
+Settings use the shared Default profile until the player chooses another on the Profiles page. It holds the standard AceDBOptions-3.0 control (choose, create, copy, reset, delete) under "Manage profiles", as DontDoThat does. Each login and each switch names the profile in chat. A switch, copy or reset keeps the debug switch. Plans, runs and the log are account-wide and never copied between profiles.
 
 ## 3. The checklist card
 
