@@ -34,6 +34,8 @@ Other stamps:
 
 ## What CheckThat does with a run from a newer major
 
+`CheckThatDB.global.dbRev` is the shape revision of the saved table around the runs (see [Features](features.md)); it is not part of a run record and never appears in a results string.
+
 A run with a higher `ct`, or one whose `ct` is not a whole number, moves out of `runs` into `CheckThatDB.global.future` when the addon loads (for example after you go back to an older CheckThat). It is never counted, shown, resumed, pruned or changed. The plan it names stays; when it names none, the plans stored at that moment stay, and plans imported later are pruned as usual. A new run never takes its id, and it never moves back over a readable run with the same id. A chat line says how many there are. It moves back when a CheckThat that reads its major loads it.
 
 `ct.py collect` stores nothing of it and writes `refused.json` in the evidence folder. `status` lists the refusal and `report` warns. `report --strict` fails until a later `collect` stores a revision of that run at least as new as the refused one.

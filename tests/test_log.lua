@@ -22,6 +22,13 @@ test("report names the stored runs, the run limit and the plan copies", function
     local r = ns.Log.Report()
     T.ok(r:find("Stored: 2 runs %(limit 30%), 1 plan copies"), r)
 end)
+test("report names the saved data rev, and says when it is newer than this version reads", function()
+    ns.App.Init({ runs = {}, planStore = {} }, {})
+    T.ok(ns.Log.Report():find(("Saved data: rev %d\n"):format(ns.App.DB_REV), 1, true), ns.Log.Report())
+    ns.App.Init({ runs = {}, planStore = {}, dbRev = ns.App.DB_REV + 1 }, {})
+    T.ok(ns.Log.Report():find(("Saved data: rev %d (newer than this version's %d, left as it is)"):format(ns.App.DB_REV + 1, ns.App.DB_REV), 1, true), ns.Log.Report())
+end)
+
 test("report writes a line with the stored counts, and the report holds it", function()
     local store = { enabled = true, entries = {} }
     ns.App.Init({ runs = { a = {} }, planStore = {}, runLimit = 30, log = store }, {})
