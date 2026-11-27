@@ -90,7 +90,22 @@ A plan written for the default settings fails for a tester who changed them. A s
 - The plan's setup step runs, in this order: debug on, `testsettings on`, `/reload`. It asserts that the debug log is on, then the login line, then that test settings are on at login. Debug goes on first, because the addon drops lines while its log is off.
 - The plan's last step runs `testsettings off` and asserts the restore line in that attempt.
 
-A subcommand after the addon's slash prefix needs no CheckThat change: the allow list holds the prefix. A plan has no run-level setup or teardown, so a run that a tester abandons leaves the mode on until `off` (#171).
+A subcommand after the addon's slash prefix needs no CheckThat change: the allow list holds the prefix (see [Commands of the addon under test](#commands-of-the-addon-under-test)). A plan has no run-level setup or teardown, so a run that a tester abandons leaves the mode on until `off` (#171).
+
+## Commands of the addon under test
+
+A plan names any addon by its folder name (`addon: MyAddon`). Step commands, copy text and macros may use the shared commands (`/reload`, `/reloadui`, `/console scriptErrors 0|1`) and the addon's own slash commands. CheckThat knows the commands of a few addons already. For any other addon, list its command prefixes in the plan:
+
+```yaml
+addon: MyAddon
+commands: [/my, /myaddon]
+```
+
+- A prefix is one word after the slash. `/my` covers `/my` and `/my debug on`. At most 8.
+- `validate` and the import refuse `/run`, `/script`, `/dump`, `/console`, the game's debug tools (`/fstack`, `/etrace`, `/tinspect`, `/api`), `/macro`, `/logout`, `/quit` and `/camp`, and the commands of another addon CheckThat knows. A step command whose prefix is not listed fails `validate` with "list its prefix in commands".
+- In game, CheckThat offers a listed prefix as a Run button or in the CT macro only when the addon under test registered that slash command: the game says which addon wrote the `SLASH_<NAME>1` global. A command another addon or the game registered is never offered; the tester can still type it. The start screen says which commands the plan may offer and which it does not, and the log reads `plan commands offered: /my; not offered: /x` at start.
+- The addon under test can declare its commands itself, so they are offered without that check: `CheckThat.Commands("MyAddon", { "/my", "/myaddon" })` (see [Adopt CheckThat](adopting.md)). A plan should still list them in `commands`, so `validate` can check the steps.
+- `commands` is plan revision 2: `compile` writes `needs: 2`, and an older CheckThat says the plan needs a newer CheckThat.
 
 ## Plans in this repository
 

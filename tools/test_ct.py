@@ -175,9 +175,49 @@ class Compile(unittest.TestCase):
             self.assertEqual(code, 0, s)
             self.assertEqual(ct.decode(s)["needs"], 2)
 
+    def test_a_plan_for_any_addon_lists_its_own_commands_and_compiles_as_revision_2(self):
+        p = good(); p["addon"] = "MyAddon"; p["macros"][0]["text"] = "/my debug on\n/reload"
+        errs = ct.validate(p)
+        self.assertTrue(any("macro m: text not allowed" in e for e in errs), errs)
+        p["commands"] = ["/my"]
+        self.assertEqual(ct.validate(p), [], "a listed prefix is allowed for any addon")
+        code, s = self.compile_out(p)
+        self.assertEqual(code, 0, s)
+        self.assertEqual(ct.decode(s)["needs"], 2, "commands is a revision 2 key")
+        for bad, why in ((["/my", "/run"], "/run is not allowed (a command CheckThat never adds)"), (["/my", "/kt"], "/kt is not allowed (a command of KeepThat)"),
+                         (["/my", "/my thing"], "commands/1"), (["/my", "my"], "commands/1"), ([], "commands"), (["/my"] + ["/a%d" % i for i in range(8)], "commands")):
+            errs = ct.validate(dict(p, commands=bad))
+            self.assertTrue(any(why in e for e in errs), (bad, errs))
+        self.assertTrue(ct.validate(dict(good(), addon="Bad Name")), "a name with a space is refused")
+        self.assertEqual(ct.validate(dict(good(), commands=["/kt"])), [], "a known addon may list its own command")
+        step = dict(good()["sections"][0]["steps"][1]); step["action"] = {"kind": "manual", "text": "t", "commands": ["/oth go"]}
+        r = dict(p); r["sections"] = [dict(p["sections"][0], steps=[step])]
+        self.assertTrue(any("list its prefix in commands" in e for e in ct.validate(r)), ct.validate(r))
+
+    def test_listed_commands_hold_on_steps_after_one_with_an_assertion(self):
+        p = good(); p["addon"] = "MyAddon"; p["commands"] = ["/my"]; p["macros"][0]["text"] = "/reload"
+        p["sections"][0]["steps"][1]["action"] = {"kind": "manual", "text": "t", "commands": ["/my go"]}   # step a.1 has a log assertion
+        self.assertEqual(ct.validate(p), [], "a later step's command is checked against the plan's commands, not a leftover value")
+
+    def test_the_deny_list_and_command_rules_match_the_addon(self):
+        with open(os.path.join(ROOT, "CheckThat", "Model", "Plan.lua")) as f:
+            src = f.read()
+        block = re.search(r"^Plan\.DENY = \{(.*?)\}$", src, re.M | re.S).group(1)
+        self.assertEqual(set(re.findall(r'\["(/[a-z]+)"\]', block)), ct.DENY)
+        self.assertEqual(int(re.search(r"^Plan\.COMMANDS_MAX = (\d+)", src, re.M).group(1)), ct.COMMANDS_MAX)
+
+    def test_from_md_takes_any_addon(self):
+        with tempfile.TemporaryDirectory() as d:
+            md = os.path.join(d, "p.md")
+            with open(md, "w") as fh:
+                fh.write("# T\n\n## 1. Sec\n\n- [ ] Do it.\n  Check: it works.\n  Log: none; on screen only.\n")
+            plan = ct.from_md(md, "MyAddon")
+            self.assertEqual((plan["addon"], plan["logs"]), ("MyAddon", {}))
+            self.assertTrue(plan["sections"][0]["steps"][0]["id"].startswith("myaddon"))
+
     def test_plan_rev_matches_the_addon(self):
         with open(os.path.join(ROOT, "CheckThat", "Model", "Plan.lua")) as f:
-            m = re.search(r"^Plan\.REV = (\d+)$", f.read(), re.M)
+            m = re.search(r"^Plan\.REV = (\d+)\b", f.read(), re.M)
         self.assertEqual(int(m.group(1)), ct.PLAN_REV, "ct.py PLAN_REV and Plan.REV move together")
 
     def test_section_fields_merge_into_steps(self):

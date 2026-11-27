@@ -9,9 +9,12 @@ ns.Slash = Slash
 
 Slash.pages = { home = true, plans = true, appearance = true, advanced = true, about = true }
 
--- The addon a plan can name, in the spelling of Plan.SLASH, whatever case the player typed.
+-- The addon a plan can name, in the spelling of its imported plan (or of Plan.SLASH), whatever case the player typed.
 local function addonName(text)
     local want = tostring(text):lower()
+    for name in pairs(ns.App.db and ns.App.db.plans or {}) do
+        if name:lower() == want then return name end
+    end
     for name in pairs(ns.Plan.SLASH) do
         if name:lower() == want then return name end
     end

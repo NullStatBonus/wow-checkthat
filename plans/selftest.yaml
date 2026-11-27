@@ -396,19 +396,19 @@ sections:
       name: CheckThat
       path: API_VERSION
       op: approx
-      value: 3
+      value: 4
       tolerance: 0.5
-      label: API version is 3, give or take 0.5
+      label: API version is 4, give or take 0.5
     - kind: state
       probe: global-value
       name: CheckThat
       path: API_VERSION
       op: in
       value:
-      - 1
       - 2
       - 3
-      label: API version is 1, 2 or 3
+      - 4
+      label: API version is 2, 3 or 4
     - kind: state
       probe: global-value
       name: CheckThat

@@ -111,10 +111,30 @@ test("plan rejects executable macro bodies", function()
     bad(function(p) p.macros[1].text = "/cast Fireball" end, "macro not allowed")
     bad(function(p) p.macros[1].text = "/console scriptErrors 1\n/script x=1" end, "macro not allowed")
 end)
-test("unknown addon name is named in the error, not blamed on the macro", function()
-    local p = good(); p.addon = "WoWCheckThat"
-    local errs = ns.Plan.Validate(p)
-    T.eq(#errs, 1); T.ok(errs[1]:find("addon not supported") and errs[1]:find("WoWCheckThat"), errs[1])
+test("a plan may name any addon; another addon's commands stay refused (#244)", function()
+    local p = good(); p.addon = "MyAddon"; p.macros[1].text = "/reload"
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    local q = good(); q.addon = "MyAddon" -- its macro is /kt debug on: KeepThat's command
+    local errs = ns.Plan.Validate(q)
+    T.ok(errs[1]:find("macro not allowed"), errs[1])
+    local r = good(); r.addon = "Bad Name/../x"
+    T.ok(ns.Plan.Validate(r)[1]:find("not an addon name"), "a name with a space or a slash is refused")
+    local s = good(); s.addon = "!BugGrabber"; s.macros[1].text = "/reload"
+    T.eq(#ns.Plan.Validate(s), 0, "a folder name with ! is a name")
+end)
+
+test("commands: a plan adds its addon's own prefixes; denied, other addons' and malformed ones are refused", function()
+    local p = good(); p.addon = "MyAddon"; p.commands = { "/my", "/MyAddon" }; p.macros[1].text = "/my debug on\n/myaddon show"
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    for _, bad in ipairs({ { "/run" }, { "/script" }, { "/kt" }, { "/my thing" }, { "my" }, {}, { "/a", "/b", "/c", "/d", "/e", "/f", "/g", "/h", "/i" } }) do
+        local q = good(); q.addon = "MyAddon"; q.macros[1].text = "/reload"; q.commands = bad
+        T.ok(#ns.Plan.Validate(q) > 0, table.concat(bad, " "))
+    end
+    local k = good(); k.commands = { "/kt" }
+    T.eq(#ns.Plan.Validate(k), 0, "a known addon may list its own command")
+    local u = good(); u.addon = "MyAddon"; u.macros[1].text = "/my debug on"
+    T.ok(ns.Plan.Validate(u)[1]:find("macro not allowed"), "a prefix neither listed nor declared is refused")
+    T.eq(#ns.Plan.Validate(u, { ["/my"] = true }), 0, "a prefix the addon declared is allowed")
 end)
 test("plan cannot extend the slash allow list", function()
     bad(function(p) p.slash = { "/run" }; p.macros[1].text = "/run x" end, "macro not allowed")

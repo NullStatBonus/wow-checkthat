@@ -365,7 +365,7 @@ function App.ImportPlan(str)
     if not tbl then App.Log("import failed: " .. tostring(err)); return nil, L["The string could not be read. %s"]:format(readError(err)) end
     if type(tbl) ~= "table" then return nil, L["The string could not be read. %s"]:format(readError("damaged")) end
     if tbl.kind ~= "plan" then return nil, L["This string holds %s, not a plan."]:format(tostring(tbl.kind):gsub("[^%w ]", "")) end
-    local vok, errs = pcall(ns.Plan.Validate, tbl)
+    local vok, errs = pcall(ns.Plan.Validate, tbl, App.commands[tbl.addon])
     if not vok then errs = { "validator error: " .. tostring(errs) } end
     if #errs > 0 then
         App.Log("import rejected: " .. errs[1])
@@ -488,6 +488,10 @@ function App.Start(addon, picks)
     App.db.ui.pendingStart = nil
     App.PruneRuns()
     App.Log("run started " .. run.runId)
+    local offered, missing = App.CommandsCheck(rec.plan, true)
+    if #offered + #missing > 0 then
+        App.Log(("plan commands offered: %s; not offered: %s"):format(#offered > 0 and table.concat(offered, " ") or "none", #missing > 0 and table.concat(missing, " ") or "none"))
+    end
     App.JudgeAtStart(run, ctx)
     changed(before, "replaced")
     return run
@@ -521,6 +525,61 @@ function App.Copyables(step, plan)
     return out
 end
 
+-- Commands an addon declared through CheckThat.Commands: [addon] = { ["/cmd"] = true }. The addon's own code says them, so
+-- they need no check in game; a plan can never add to them.
+App.commands = App.commands or {}
+function App.DeclareCommands(addon, list)
+    if type(addon) ~= "string" or #addon > ns.Plan.ADDON_MAX or not addon:match(ns.Plan.ADDON_NAME) then return false end
+    if type(list) ~= "table" or #list == 0 or #list > ns.Plan.COMMANDS_MAX then return false end
+    local set = {}
+    for _, c in ipairs(list) do
+        if ns.Plan.CommandProblem(c, addon) then return false end
+        set[c:lower()] = true
+    end
+    App.commands[addon] = set
+    App.Log(("commands declared by %s: %d"):format(addon, #list))
+    return true
+end
+
+-- The plan's own commands, split by what the game says: offered when the addon under test registered the command
+-- (a SLASH_ global it wrote), not offered otherwise (another addon's, the game's, or not registered yet). Kept per plan
+-- until the next Start, because the check walks the game's command list.
+local verified = setmetatable({}, { __mode = "k" })
+function App.CommandsCheck(plan, fresh)
+    if not fresh and verified[plan] then return verified[plan].offered, verified[plan].missing end
+    local offered, missing = {}, {}
+    local owner = App.env.SlashOwner
+    for _, c in ipairs(type(plan.commands) == "table" and plan.commands or {}) do
+        local cmd = type(c) == "string" and c:lower()
+        local known = cmd and ((ns.Plan.SLASH[plan.addon] or {})[cmd] or (App.commands[plan.addon] or {})[cmd])
+        if cmd and not ns.Plan.CommandProblem(cmd, plan.addon) and (known or (type(owner) == "function" and owner(cmd) == plan.addon)) then
+            offered[#offered + 1] = cmd
+        elseif cmd then missing[#missing + 1] = cmd end
+    end
+    verified[plan] = { offered = offered, missing = missing }
+    return offered, missing
+end
+
+-- Every command a Run button or the CT macro may run for this plan: the known list, the addon's declared commands, and the
+-- plan's commands the game says belong to the addon under test.
+function App.AllowedCommands(plan)
+    local allow = {}
+    for c in pairs(ns.Plan.SLASH[plan.addon] or {}) do allow[c] = true end
+    for c in pairs(App.commands[plan.addon] or {}) do allow[c] = true end
+    for _, c in ipairs((App.CommandsCheck(plan))) do allow[c] = true end
+    return allow
+end
+
+-- The start screen line about a plan's own commands, or nil when it lists none.
+function App.CommandsNote(plan)
+    local offered, missing = App.CommandsCheck(plan, true)
+    if #offered == 0 and #missing == 0 then return nil end
+    local parts = {}
+    if #offered > 0 then parts[#parts + 1] = L["This plan may offer these commands: %s."]:format(table.concat(offered, ", ")) end
+    if #missing > 0 then parts[#parts + 1] = L["Not offered, because the addon under test has not registered them: %s."]:format(table.concat(missing, ", ")) end
+    return table.concat(parts, " ")
+end
+
 -- The card has this many copy boxes. A macro with more lines is not offered as one button: it would run
 -- commands the tester cannot see.
 App.MAX_COPY = 4
@@ -534,7 +593,7 @@ function App.MacroText(step, plan)
     elseif a.kind == "copy-slash" then text = a.text
     elseif a.kind == "reload" then text = "/reload"
     elseif type(a.commands) == "table" and #a.commands > 0 then text = table.concat(a.commands, "\n") end -- manual step with commands: Run does them in order
-    if text and ns.Plan.MacroAllowed(text, ns.Plan.SLASH[plan.addon]) then
+    if text and ns.Plan.MacroAllowed(text, App.AllowedCommands(plan)) then
         local lines = 0
         for line in (text .. "\n"):gmatch("(.-)\n") do if line ~= "" then lines = lines + 1 end end
         if lines <= App.MAX_COPY then return text end

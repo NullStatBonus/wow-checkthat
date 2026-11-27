@@ -802,7 +802,11 @@ function refreshCard()
         place(card.context, 12, y); setText(card.context, msg, none and AMBER or BODY)
         y = y + card.context:GetStringHeight() + 12
         local reads = rec and not none and App.ReadsNote(rec.plan)
-        if reads then place(card.reads, 12, y - 4); setText(card.reads, reads, GREY); y = y + card.reads:GetStringHeight() + 8 end
+        local cmds = rec and not none and App.CommandsNote(rec.plan)
+        if reads or cmds then
+            place(card.reads, 12, y - 4); setText(card.reads, reads and cmds and (reads .. " " .. cmds) or reads or cmds, GREY)
+            y = y + card.reads:GetStringHeight() + 8
+        end
         card.start:SetEnabled(not none)
         local list = rec and not none and App.Picks(pendingAddon or App.db.ui.lastImport) or {} -- no categories to pick from
         if #list > 1 and #list <= Card.MAX_SEGMENTS then

@@ -34,7 +34,7 @@ function Adapter.Env()
         return loaded and true or false
     end
     -- Reads for the client census (Model/Census.lua); the functions are below.
-    for _, name in ipairs({ "After", "Clock", "CensusNextKey", "CensusType", "CensusOpen", "CensusMember", "CensusWidget", "CensusWidgetKinds", "LoadedAddons" }) do
+    for _, name in ipairs({ "After", "Clock", "CensusNextKey", "CensusType", "CensusOpen", "CensusMember", "CensusWidget", "CensusWidgetKinds", "LoadedAddons", "SlashOwner" }) do
         env[name] = function(...) return Adapter[name](...) end
     end
     return setmetatable(env, { __index = _G })
@@ -117,6 +117,32 @@ function Adapter.CensusNextKey(cursor)
     local ok, k = pcall(next, _G, cursor)
     if ok then return true, k end
     return false
+end
+-- Who registered a slash command (#244): the addon that wrote the SLASH_<KEY><n> global whose value is cmd, "game" when the game
+-- defined it, or nil when no registered command has that text or the client cannot say. issecurevariable names the addon that
+-- last wrote a global (measured on both clients, docs/contracts.md).
+function Adapter.SlashOwner(cmd)
+    if type(cmd) ~= "string" then return nil end
+    local list, check = rawget(_G, "SlashCmdList"), rawget(_G, "issecurevariable")
+    if type(list) ~= "table" or type(check) ~= "function" then return nil end
+    cmd = cmd:lower()
+    local ok, found = pcall(function()
+        for key in pairs(list) do
+            if type(key) == "string" then
+                for n = 1, 20 do
+                    local name = "SLASH_" .. key .. n
+                    local v = rawget(_G, name)
+                    if v == nil then break end
+                    if type(v) == "string" and v:lower() == cmd then return name end
+                end
+            end
+        end
+    end)
+    if not ok or not found then return nil end
+    local ok2, secure, by = pcall(check, found)
+    if not ok2 then return nil end
+    if secure then return "game" end
+    return type(by) == "string" and by ~= "" and by or nil
 end
 -- The Lua type of one global, or nil when it is gone. The second value is false for a name an addon defined
 -- (issecurevariable), true for one the game defined, and nil when the client cannot tell.

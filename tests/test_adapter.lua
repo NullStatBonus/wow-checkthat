@@ -42,6 +42,19 @@ local function walkTable(name)
     end
     return members, isFrame, filtered and not unknown
 end
+test("SlashOwner names the addon that wrote the SLASH_ global, the game for a secure one, and nil when unknown (#244)", function()
+    H.stub(_G, "SlashCmdList", { MYADDON = function() end, HELP = function() end, OTHER = function() end })
+    H.stub(_G, "SLASH_MYADDON1", "/my"); H.stub(_G, "SLASH_MYADDON2", "/MyAddon")
+    H.stub(_G, "SLASH_HELP1", "/help"); H.stub(_G, "SLASH_OTHER1", "/oth")
+    local owners = { SLASH_MYADDON1 = "MyAddon", SLASH_MYADDON2 = "MyAddon", SLASH_OTHER1 = "OtherAddon" }
+    H.stub(_G, "issecurevariable", function(name) if owners[name] then return false, owners[name] end return true end)
+    T.eq(A.SlashOwner("/my"), "MyAddon"); T.eq(A.SlashOwner("/myaddon"), "MyAddon", "any case")
+    T.eq(A.SlashOwner("/help"), "game"); T.eq(A.SlashOwner("/oth"), "OtherAddon")
+    T.eq(A.SlashOwner("/none"), nil, "not registered")
+    H.stub(_G, "issecurevariable", nil)
+    T.eq(A.SlashOwner("/my"), nil, "a client that cannot say")
+end)
+
 test("census reads use rawget and next, skip frames, and fail to nil", function()
     _G.CensusProbe = setmetatable({ Alpha = function() end, [1] = true }, { __index = function() error("an __index ran") end })
     T.eq(A.CensusType("CensusProbe"), "table"); T.eq(A.CensusType("CensusNoSuchName"), nil)

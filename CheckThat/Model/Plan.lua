@@ -7,10 +7,12 @@ Plan.CLIENTS = { ["classic-era"] = true, ["forever-camelot"] = true }
 -- The highest plan revision this version reads. A plan says the revision it needs in "needs" (ct.py compile writes it when a plan
 -- uses a key added after revision 1); a plan without "needs" is revision 1, the format as of 0.21.0. Raise this with each addition
 -- to the plan format, and add the key to PLAN_NEEDS in tools/ct.py, so an older CheckThat refuses the plan instead of skipping a check.
-Plan.REV = 1
+Plan.REV = 2 -- 2: commands (#244)
 Plan.ACTIONS = { manual = true, ["copy-slash"] = true, ["secure-macro"] = true, reload = true, ["wait-event"] = true }
 Plan.VERIFY = { player = true, assertions = true, reviewer = true }
--- Runner-shipped slash allow list per addon. A plan can never extend it.
+-- Runner-shipped slash allow list for the addons CheckThat knows. Any other addon's commands come from the addon itself
+-- (CheckThat.Commands) or from the plan's commands, which the runner offers only after the game says the addon under test
+-- registered them (App.AllowedCommands). A plan can never add a command another addon or the game owns.
 Plan.SLASH = {
     CheckThat = { ["/ct"] = true, ["/checkthat"] = true },
     KeepThat = { ["/kt"] = true, ["/keepthat"] = true },
@@ -24,12 +26,44 @@ Plan.TYPES = { number = true, boolean = true, string = true }
 Plan.WHICH = { last = true, any = true, all = true }
 Plan.ID = "^[a-z0-9][a-z0-9._-]*$"
 Plan.BUILTIN_SLASH = { ["/reload"] = true, ["/reloadui"] = true, ["/console"] = true }
+-- An addon a plan may name: its folder name, the way the game spells it (letters, digits, _ - . !).
+Plan.ADDON_NAME, Plan.ADDON_MAX = "^[%w_%-%.!]+$", 64
+-- A command prefix an addon or a plan may add: one word after the slash. These are never added, whoever asks:
+-- they run code, change the client, or are the game's debug tools.
+Plan.COMMAND = "^/[%w_]+$"
+Plan.COMMANDS_MAX = 8
+Plan.DENY = { ["/run"] = true, ["/script"] = true, ["/dump"] = true, ["/console"] = true, ["/reload"] = true, ["/reloadui"] = true,
+    ["/eventtrace"] = true, ["/etrace"] = true, ["/framestack"] = true, ["/fstack"] = true, ["/tinspect"] = true, ["/tableinspect"] = true,
+    ["/api"] = true, ["/macro"] = true, ["/logout"] = true, ["/quit"] = true, ["/exit"] = true, ["/camp"] = true }
+
 -- Class tokens a requirement may name (the second value of UnitClass).
 Plan.CLASSES = { WARRIOR = true, PALADIN = true, HUNTER = true, ROGUE = true, PRIEST = true, DEATHKNIGHT = true, SHAMAN = true,
     MAGE = true, WARLOCK = true, MONK = true, DRUID = true, DEMONHUNTER = true, EVOKER = true }
 Plan.LIST_MIN, Plan.LIST_MAX = 2, 6 -- items in a list of actions or results
 
 local function isStr(v) return type(v) == "string" and v ~= "" end
+
+-- Why one command prefix cannot be added for addon, or nil when it can.
+function Plan.CommandProblem(cmd, addon)
+    if not isStr(cmd) or not cmd:match(Plan.COMMAND) then return "not one word after a slash" end
+    cmd = cmd:lower()
+    if Plan.DENY[cmd] then return "a command CheckThat never adds" end
+    for owner, list in pairs(Plan.SLASH) do
+        if owner ~= addon and list[cmd] then return "a command of " .. owner end
+    end
+end
+
+-- The commands a plan may use at import: the known list, what the addon declared, and the plan's own commands. At run time
+-- App.AllowedCommands offers the plan's own commands only once the game says the addon under test registered them.
+function Plan.Allow(plan, declared)
+    local allow = {}
+    for c in pairs(Plan.SLASH[plan.addon] or {}) do allow[c] = true end
+    for c in pairs(declared or {}) do allow[c] = true end
+    for _, c in ipairs(type(plan.commands) == "table" and plan.commands or {}) do
+        if isStr(c) and not Plan.CommandProblem(c, plan.addon) then allow[c:lower()] = true end
+    end
+    return allow
+end
 local function isNum(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 local function isCount(v) return isNum(v) and v % 1 == 0 and v >= 0 and v <= 1000 end
 
@@ -326,7 +360,7 @@ function Plan.CheckAuto(st, w, errs)
 end
 
 -- Returns a list of error strings (empty when valid).
-function Plan.Validate(plan)
+function Plan.Validate(plan, addonCommands)
     local errs = {}
     if type(plan) ~= "table" then return { "plan is not a table" } end
     -- First, and alone: a newer plan may hold keys this version does not know, and their errors would hide the reason.
@@ -415,11 +449,21 @@ function Plan.Validate(plan)
     if plan.ct ~= 1 then errs[#errs + 1] = "unsupported plan format version" end
     if not isStr(plan.addon) then errs[#errs + 1] = "addon missing" end
     if not isStr(plan.title) then errs[#errs + 1] = "title missing" end
-    if isStr(plan.addon) and not Plan.SLASH[plan.addon] then
-        errs[#errs + 1] = "addon not supported by this CheckThat version: " .. plan.addon
+    if isStr(plan.addon) and (#plan.addon > Plan.ADDON_MAX or not plan.addon:match(Plan.ADDON_NAME)) then
+        errs[#errs + 1] = "addon is not an addon name: " .. plan.addon:sub(1, 64)
         return errs
     end
-    local allow = Plan.SLASH[plan.addon] or {}
+    if plan.commands ~= nil then
+        if type(plan.commands) ~= "table" or #plan.commands == 0 or #plan.commands > Plan.COMMANDS_MAX then
+            errs[#errs + 1] = "commands must be a list of 1 to " .. Plan.COMMANDS_MAX .. " command prefixes"
+        else
+            for _, c in ipairs(plan.commands) do
+                local why = Plan.CommandProblem(c, plan.addon)
+                if why then errs[#errs + 1] = "command not allowed: " .. tostring(c) .. " (" .. why .. ")" end
+            end
+        end
+    end
+    local allow = Plan.Allow(plan, addonCommands)
     local macros = {}
     for _, m in ipairs(type(plan.macros) == "table" and plan.macros or {}) do
         if not (type(m) == "table" and isStr(m.id) and Plan.MacroAllowed(m.text, allow)) then

@@ -60,6 +60,49 @@ test("App.Init stamps the saved data once, logs the step, and leaves a newer rev
     T.eq(App.Migrate({ dbRev = "x" }), "unreadable")
 end)
 
+local function anyPlan(extra)
+    local p = { kind = "plan", ct = 1, addon = "MyAddon", title = "Mine",
+        sections = { { id = "s", title = "S", steps = {
+            { id = "m.1", title = "Debug", action = { kind = "manual", text = "Turn debug on.", commands = { "/my debug on" } }, expect = "ok", verify = { "player" } },
+            { id = "m.2", title = "Other", action = { kind = "manual", text = "x", commands = { "/oth go" } }, expect = "ok", verify = { "player" } } } } } }
+    for k, v in pairs(extra or {}) do p[k] = v end
+    return p
+end
+test("a plan's own commands are offered only when the game says the addon under test registered them (#244)", function()
+    local db, env = boot()
+    local owner = {}
+    env.SlashOwner = function(cmd) return owner[cmd] end
+    local p = anyPlan({ commands = { "/my", "/oth" } })
+    T.ok(App.ImportPlan(assert(ns.Codec.Encode(p))), "imports: both are well-formed prefixes")
+    local plan = db.plans.MyAddon.plan
+    local st1, st2 = plan.sections[1].steps[1], plan.sections[1].steps[2]
+    T.eq(App.MacroText(st1, plan), nil, "not registered yet: no Run button")
+    owner["/my"], owner["/oth"] = "MyAddon", "OtherAddon"
+    App.CommandsCheck(plan, true)
+    T.eq(App.MacroText(st1, plan), "/my debug on", "registered by the addon under test: offered")
+    T.eq(App.MacroText(st2, plan), nil, "registered by another addon: never offered")
+    T.eq(App.CommandsNote(plan), "This plan may offer these commands: /my. Not offered, because the addon under test has not registered them: /oth.")
+    local logged = {}
+    H.stub(App, "Log", function(m) logged[#logged + 1] = m end)
+    T.ok(App.Start("MyAddon"))
+    local found
+    for _, m in ipairs(logged) do if m:find("plan commands offered: /my; not offered: /oth", 1, true) then found = true end end
+    T.ok(found, "the start logs what is offered")
+end)
+
+test("commands an addon declared are offered without the game check, and let a plan import without listing them (#244)", function()
+    local db, env = boot()
+    env.SlashOwner = function() return nil end
+    T.ok(App.DeclareCommands("MyAddon", { "/my" }))
+    T.finally(function() App.commands.MyAddon = nil end)
+    T.ok(App.ImportPlan(assert(ns.Codec.Encode(anyPlan()))) == nil, "the /oth step is still refused at import")
+    local p = anyPlan(); p.sections[1].steps[2] = nil
+    T.ok(App.ImportPlan(assert(ns.Codec.Encode(p))), "a plan that uses only the declared /my imports")
+    T.eq(App.MacroText(db.plans.MyAddon.plan.sections[1].steps[1], db.plans.MyAddon.plan), "/my debug on")
+    T.eq(App.CommandsNote(db.plans.MyAddon.plan), nil, "a plan that lists no commands has no note")
+    T.eq(App.DeclareCommands("MyAddon", { "/script" }), false)
+end)
+
 test("a plan that needs a newer CheckThat is refused with that sentence, and nothing is stored", function()
     local db = boot()
     local p = plan(); p.needs = ns.Plan.REV + 1; p.brandNewKey = { 1 }

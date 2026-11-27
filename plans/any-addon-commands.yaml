@@ -1,0 +1,51 @@
+ct: 1
+kind: plan
+addon: CTProbe
+title: Commands of an addon CheckThat does not know
+purpose: feature
+preamble: |-
+  Install CTProbe (the CTProbe folder beside this plan) and log in. Out of combat.
+commands:
+- /ctp
+- /help
+sections:
+- id: any
+  title: Any addon
+  steps:
+  - id: any.version
+    title: This CheckThat reads plan commands
+    action:
+      kind: manual
+      text: Wait a moment.
+    expect: The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    assertions:
+    - kind: state
+      probe: global-value
+      name: CheckThat
+      path: API_VERSION
+      op: ge
+      value: 4
+      label: CheckThat API version is 4 or later
+  - id: any.own
+    title: The addon's own command has a Run button
+    action:
+      kind: manual
+      text: Click Run.
+      commands:
+      - /ctp record status
+    expect: Chat shows a CTProbe line that starts with "record status".
+    verify:
+    - player
+  - id: any.game
+    title: A game command has no Run button
+    action:
+      kind: manual
+      text: Look at the card. Then type the command yourself.
+      commands:
+      - /help
+    expect: The card shows the help command in a copy box with nothing to click beside it. Typing it prints the game's help in chat.
+    verify:
+    - player

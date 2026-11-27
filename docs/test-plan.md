@@ -98,6 +98,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: chat says "Reloaded. Your run continues on the same step." and names the second run. Open the second run from Past runs. Its step says "Reloaded" under Do and does not ask for another reload.
    Log: `[ct] resumed run <id>` names the second run.
 
+24. **A plan for an addon CheckThat does not know.** Install CTProbe from the CTProbe folder and log in. Type `/ct import`, paste `build/any-addon-commands.ct`, and look at the start screen. Select Start run and play the three steps.
+   Check: the start screen says "This plan may offer these commands: /ctp." and "Not offered, because the addon under test has not registered them: /help." The second step has a Run button, and clicking it prints a CTProbe "record status" line. The third step shows /help in a copy box with no Run button.
+   Log: `[ct] plan commands offered: /ctp; not offered: /help`, and `/ct log` shows `Plan commands: offered /ctp; not offered /help`.
+
 ## 4. Evidence
 
 1. **Auto-check ticks.** On a step with the green "CheckThat checks" heading, do the action.

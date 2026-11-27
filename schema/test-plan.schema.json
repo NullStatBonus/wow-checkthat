@@ -23,13 +23,17 @@
       "description": "The plan revision the plan needs (#245). compile writes it when the plan uses a key added after revision 1; leave it out otherwise. CheckThat refuses a plan that needs more than it reads."
     },
     "addon": {
-      "enum": [
-        "CheckThat",
-        "KeepThat",
-        "DontDoThat",
-        "ClosestVendor"
-      ],
-      "description": "Slash allow list is shipped in the runner, never in the plan."
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.!-]{1,64}$",
+      "description": "The addon's folder name. The runner ships the command list of the addons it knows; any other addon's commands are listed in commands (#244)."
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^/[A-Za-z0-9_]+$" },
+      "description": "Plan revision 2. The addon's own slash command prefixes (one word each), for Run buttons and the CT macro. CheckThat offers one only when the game says the addon under test registered it (or the addon declared it with CheckThat.Commands). /run, /script, /dump, /console and other addons' commands are refused."
     },
     "title": {
       "type": "string",

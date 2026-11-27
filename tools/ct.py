@@ -30,10 +30,33 @@ def load_yaml(path):
         return yaml.safe_load(f)
 
 
-def macro_allowed(text, addon):
+# A command prefix a plan may add for its addon (#244): one word after the slash, never one of DENY, never another known addon's.
+# Mirrors Plan.COMMAND, Plan.DENY and Plan.CommandProblem in CheckThat/Model/Plan.lua (a test compares DENY).
+COMMAND = re.compile(r"^/\w+$")
+COMMANDS_MAX = 8
+DENY = {"/run", "/script", "/dump", "/console", "/reload", "/reloadui", "/eventtrace", "/etrace", "/framestack", "/fstack", "/tinspect",
+        "/tableinspect", "/api", "/macro", "/logout", "/quit", "/exit", "/camp"}
+
+def command_problem(cmd, addon):
+    """Why cmd cannot be one of addon's plan commands, or None."""
+    if not isinstance(cmd, str) or not COMMAND.match(cmd) or not cmd.isascii():
+        return "not one word after a slash"
+    cmd = cmd.lower()
+    if cmd in DENY:
+        return "a command CheckThat never adds"
+    for owner, cmds in SLASH.items():
+        if owner != addon and cmd in cmds:
+            return "a command of %s" % owner
+    return None
+
+def plan_commands(plan):
+    """The plan's own command prefixes that are well formed, lower case."""
+    return {c.lower() for c in plan.get("commands") or [] if not command_problem(c, plan.get("addon"))}
+
+def macro_allowed(text, addon, extra=()):
     if not isinstance(text, str) or not text or len(text.encode("utf-8")) > 255:
         return False
-    allow = set(SLASH.get(addon, [])) | set(BUILTIN) | {"/console"}
+    allow = set(SLASH.get(addon, [])) | set(extra) | set(BUILTIN) | {"/console"}
     for line in text.split("\n"):
         if not line:
             continue
@@ -289,8 +312,8 @@ def expand_cases(plan):
 # checks). Revision 1 is the plan format as of 0.21.0. Each addition to the plan format raises both and adds a rule here: (revision, what, test),
 # where test(plan) is true when the plan uses the addition. compile writes "needs" from the rules, so an older CheckThat refuses the plan
 # with "needs a newer CheckThat" instead of skipping a check it does not know.
-PLAN_REV = 1
-PLAN_NEEDS = []
+PLAN_REV = 2
+PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p)]
 
 def plan_needs(plan):
     """(revision, what): the highest revision the plan's keys need, and the addition that needs it (None for revision 1)."""
@@ -337,9 +360,14 @@ def validate(plan, requirements=None):
         if any(isinstance(s, str) and MARKDOWN.search(s) for s in lines_of(box[key])):
             errs.append("markdown in %s: use native color codes (|cffffd100text|r), not backticks or **" % key)
             break
+    for c in plan.get("commands") or []:
+        why = command_problem(c, addon)
+        if why:
+            errs.append("commands: %s is not allowed (%s)" % (c, why))
+    plan_cmds = plan_commands(plan)
     seen, macros = set(), {m["id"] for m in plan.get("macros", [])}
     for m in plan.get("macros", []):
-        if not macro_allowed(m["text"], addon):
+        if not macro_allowed(m["text"], addon, plan_cmds):
             errs.append("macro %s: text not allowed" % m["id"])
     reqs = plan.get("requirements", {})
     for name, r in reqs.items():
@@ -389,11 +417,11 @@ def validate(plan, requirements=None):
                     if not a.get("diagnostic") and (a.get("absent") or (a["kind"] == "fact" and a.get("op") == "missing") or "exactly" in c or "max" in c):
                         errs.append("%s: async cannot check that something did not happen (absence, missing, exactly or max): that needs a time window" % sid)
                         break
-            if act["kind"] == "copy-slash" and not macro_allowed(act.get("text"), addon):
-                errs.append("%s: slash text not allowed" % sid)
+            if act["kind"] == "copy-slash" and not macro_allowed(act.get("text"), addon, plan_cmds):
+                errs.append("%s: slash text not allowed%s" % (sid, "" if addon in SLASH else ": list its prefix in commands"))
             for c in act.get("commands", []):
-                if not macro_allowed(c, addon):
-                    errs.append("%s: command not allowed: %s" % (sid, c))
+                if not macro_allowed(c, addon, plan_cmds):
+                    errs.append("%s: command not allowed: %s%s" % (sid, c, "" if addon in SLASH else " (list its prefix in commands)"))
             if st.get("auto") and "timeout" not in st:
                 for a in st.get("assertions", []):
                     c = a.get("count") or {}
@@ -441,7 +469,7 @@ def offline_step_ids(block):
 
 def warnings(plan):
     """(step id, command) for each allowed slash command that step text names but the step's commands lack."""
-    known = set(SLASH.get(plan.get("addon"), [c for cmds in SLASH.values() for c in cmds])) | set(BUILTIN) | {"/console"}
+    known = set(SLASH.get(plan.get("addon"), [c for cmds in SLASH.values() for c in cmds])) | plan_commands(plan) | set(BUILTIN) | {"/console"}
     out = []
     for sec in plan["sections"]:
         for st in sec["steps"]:
@@ -558,7 +586,7 @@ def wording_warnings(plan):
     purpose = plan.get("purpose")
     if not purpose:
         return []
-    known = set(SLASH.get(plan.get("addon"), [c for cmds in SLASH.values() for c in cmds])) | set(BUILTIN) | {"/console"}
+    known = set(SLASH.get(plan.get("addon"), [c for cmds in SLASH.values() for c in cmds])) | plan_commands(plan) | set(BUILTIN) | {"/console"}
     def commands(text):
         text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", text or "")
         return [m.group(1) for m in re.finditer(r"(?<![\w/])(/[A-Za-z]+(?: [A-Za-z0-9]+)*)", text) if m.group(1).split(" ")[0].lower() in known]
@@ -854,14 +882,14 @@ def from_md(path, addon):
         text = fh.read()
     parts = re.split(r"^## ", text, flags=re.M)
     pre = parts[0]
-    prefix = {"KeepThat": "kt", "DontDoThat": "ddt", "ClosestVendor": "cv"}[addon]
+    prefix = {"KeepThat": "kt", "DontDoThat": "ddt", "ClosestVendor": "cv"}.get(addon) or (re.sub(r"[^a-z0-9]", "", addon.lower())[:12] or "step")
     plan = {"ct": 1, "kind": "plan", "addon": addon,
             "title": "%s in-game test plan" % addon,
             "preamble": re.sub(r"^# .*\n", "", pre).strip(),
-            "logs": copy.deepcopy(LOGS[addon]),
+            "logs": copy.deepcopy(LOGS.get(addon, {})),
             "requirements": {"addon-loaded": {"text": "%s is loaded" % addon, "probe": "addon-loaded", "name": addon}},
             "sections": []}
-    allow = SLASH[addon]
+    allow = SLASH.get(addon, [])
     for part in parts[1:]:
         head, _, body = part.partition("\n")
         m = re.match(r"^(\d+)\.?\s*(.*)$", head.strip())
@@ -3241,7 +3269,7 @@ def step_touches(plan):
     """[(step id, covers, commands [(subcommand, rest of the line)], fact and state names)] for each step of the expanded plan."""
     plan = expand_cases(plan)
     macros = {m["id"]: m["text"] for m in plan.get("macros", [])}
-    aliases = set(SLASH.get(plan["addon"], []))
+    aliases = set(SLASH.get(plan["addon"], [])) | plan_commands(plan)
     out = []
     for sec in plan["sections"]:
         for st in sec["steps"]:
@@ -3311,8 +3339,8 @@ def coverage_data(plans, src, specs=None, runs=None, tests=None, harness=False):
     addons = {p["addon"] for p in plans}
     if len(addons) != 1:
         raise ValueError("the plans belong to %d addons (%s); give the plans of one addon" % (len(addons), ", ".join(sorted(addons))))
-    if not SLASH.get(plans[0]["addon"]):
-        raise ValueError("unknown addon %s: no slash aliases known" % plans[0]["addon"])
+    if not SLASH.get(plans[0]["addon"]) and not any(p.get("commands") for p in plans):
+        raise ValueError("unknown addon %s: no slash aliases known; list its command prefixes in the plan's commands" % plans[0]["addon"])
     cmds = slash_commands(src)
     if not cmds:
         raise ValueError("no subcommand found in %s: looked for cmd == \"name\" in Slash*.lua files and in the Lua files its TOC lists" % src)
@@ -3444,7 +3472,7 @@ def main(argv=None):
     p = sub.add_parser("replay-flow", help="play a plan's steps in the fake client and report plan mistakes (needs luajit). Log lines the plan expects are written by the replay: it checks the plan, not the addon"); p.add_argument("plan"); p.add_argument("--hooks", help="Lua hooks file for steps that need more than a Pass (see docs/authoring-plans.md)"); p.add_argument("--specs", help=specs_help)
     p = sub.add_parser("lines", help="check that each log line and fact key a plan asserts appears in the addon's Lua source"); p.add_argument("plan"); p.add_argument("--addon-src", dest="addon_src", required=True, help="the addon's folder (the one with its TOC)"); p.add_argument("--strict", action="store_true", help="exit 1 when a line is missing")
     p = sub.add_parser("decode"); p.add_argument("string_or_file")
-    p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, choices=sorted(SLASH)); p.add_argument("-o", required=True)
+    p = sub.add_parser("from-md"); p.add_argument("md"); p.add_argument("--addon", required=True, help="the addon's folder name; the log sources of %s are filled in, any other addon's are left for you to write" % ", ".join(sorted(LOGS))); p.add_argument("-o", required=True)
     p = sub.add_parser("sv2json"); p.add_argument("file")
     p = sub.add_parser("collect"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; collects _classic_era_ and _forever_ (WTF and Screenshots)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence"))
     p.add_argument("--shots", default=os.environ.get("CT_SHOTS"), help="folder with game screenshots (default: Screenshots next to --src, if it exists)")
