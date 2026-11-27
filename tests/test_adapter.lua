@@ -51,8 +51,12 @@ test("SlashOwner names the addon that wrote the SLASH_ global, the game for a se
     T.eq(A.SlashOwner("/my"), "MyAddon"); T.eq(A.SlashOwner("/myaddon"), "MyAddon", "any case")
     T.eq(A.SlashOwner("/help"), "game"); T.eq(A.SlashOwner("/oth"), "OtherAddon")
     T.eq(A.SlashOwner("/none"), nil, "not registered")
+    T.eq(select(2, A.SlashOwner("/my")), "SLASH_MYADDON1 by MyAddon", "the debug log says how")
+    T.eq(select(2, A.SlashOwner("/help")), "SLASH_HELP1 secure")
+    T.eq(select(2, A.SlashOwner("/none")), "no SLASH_ global holds it (3 keys)")
     H.stub(_G, "issecurevariable", nil)
     T.eq(A.SlashOwner("/my"), nil, "a client that cannot say")
+    T.eq(select(2, A.SlashOwner("/my")), "no issecurevariable")
 end)
 
 test("census reads use rawget and next, skip frames, and fail to nil", function()

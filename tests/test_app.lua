@@ -71,7 +71,7 @@ end
 test("a plan's own commands are offered only when the game says the addon under test registered them (#244)", function()
     local db, env = boot()
     local owner = {}
-    env.SlashOwner = function(cmd) return owner[cmd] end
+    env.SlashOwner = function(cmd) return owner[cmd], owner[cmd] and ("SLASH_X1 by " .. owner[cmd]) or "no SLASH_ global holds it (3 keys)" end
     local p = anyPlan({ commands = { "/my", "/oth" } })
     T.ok(App.ImportPlan(assert(ns.Codec.Encode(p))), "imports: both are well-formed prefixes")
     local plan = db.plans.MyAddon.plan
@@ -88,6 +88,9 @@ test("a plan's own commands are offered only when the game says the addon under 
     local found
     for _, m in ipairs(logged) do if m:find("plan commands offered: /my; not offered: /oth", 1, true) then found = true end end
     T.ok(found, "the start logs what is offered")
+    local how = {}
+    for _, m in ipairs(logged) do local c, d = m:match("^plan command (%S+): (.+)$"); if c then how[c] = d end end
+    T.same(how, { ["/my"] = "SLASH_X1 by MyAddon", ["/oth"] = "SLASH_X1 by OtherAddon" }, "and how the game answered for each, for an in-game miss")
 end)
 
 test("commands an addon declared are offered without the game check, and let a plan import without listing them (#244)", function()

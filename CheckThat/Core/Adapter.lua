@@ -121,28 +121,36 @@ end
 -- Who registered a slash command (#244): the addon that wrote the SLASH_<KEY><n> global whose value is cmd, "game" when the game
 -- defined it, or nil when no registered command has that text or the client cannot say. issecurevariable names the addon that
 -- last wrote a global (measured on both clients, docs/contracts.md).
+-- The second value says how it was decided, for the debug log: the SLASH_ global and its owner, or why there is none.
 function Adapter.SlashOwner(cmd)
-    if type(cmd) ~= "string" then return nil end
-    local list, check = rawget(_G, "SlashCmdList"), rawget(_G, "issecurevariable")
-    if type(list) ~= "table" or type(check) ~= "function" then return nil end
+    if type(cmd) ~= "string" then return nil, "not text" end
+    local list, check = _G.SlashCmdList, _G.issecurevariable
+    if type(list) ~= "table" then return nil, "no SlashCmdList" end
+    if type(check) ~= "function" then return nil, "no issecurevariable" end
     cmd = cmd:lower()
-    local ok, found = pcall(function()
-        for key in pairs(list) do
-            if type(key) == "string" then
-                for n = 1, 20 do
-                    local name = "SLASH_" .. key .. n
-                    local v = rawget(_G, name)
-                    if v == nil then break end
-                    if type(v) == "string" and v:lower() == cmd then return name end
-                end
+    local keys = {}
+    local okKeys = pcall(function() for key in pairs(list) do keys[#keys + 1] = key end end)
+    if not okKeys then return nil, "SlashCmdList cannot be listed" end
+    local found
+    for _, key in ipairs(keys) do
+        -- One key at a time: a key that cannot be read skips itself, never the rest.
+        local ok, name = pcall(function()
+            if type(key) ~= "string" then return nil end
+            for n = 1, 20 do
+                local g = "SLASH_" .. key .. n
+                local v = _G[g]
+                if v == nil then return nil end
+                if type(v) == "string" and v:lower() == cmd then return g end
             end
-        end
-    end)
-    if not ok or not found then return nil end
+        end)
+        if ok and name then found = name; break end
+    end
+    if not found then return nil, ("no SLASH_ global holds it (%d keys)"):format(#keys) end
     local ok2, secure, by = pcall(check, found)
-    if not ok2 then return nil end
-    if secure then return "game" end
-    return type(by) == "string" and by ~= "" and by or nil
+    if not ok2 then return nil, found .. ": issecurevariable failed" end
+    if secure then return "game", found .. " secure" end
+    if type(by) == "string" and by ~= "" then return by, found .. " by " .. by end
+    return nil, found .. " insecure, owner not named"
 end
 -- The Lua type of one global, or nil when it is gone. The second value is false for a name an addon defined
 -- (issecurevariable), true for one the game defined, and nil when the client cannot tell.

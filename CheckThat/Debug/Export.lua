@@ -132,7 +132,8 @@ local function aceImport(title, content, onAccept, label, hint, opts)
     edit:SetLabel("")
     edit:SetNumLines(12)
     edit:SetFullWidth(true)
-    edit:SetButtonText(label or L["Import"])
+    -- MultiLineEditBox has no SetButtonText: its button is a plain frame (#246 in-game finding).
+    if type(edit.button) == "table" and edit.button.SetText then edit.button:SetText(label or L["Import"]) end
     edit:SetText(content or "")
     edit:SetCallback("OnEnterPressed", function(_, _, text) close(); onAccept(text) end)
     w:AddChild(edit)

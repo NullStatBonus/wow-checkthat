@@ -149,6 +149,9 @@ Added for CTProbe v5 to v7 (source-reviewed 2026-11-27, #240):
 
 ## Pending in-game
 
+- **Slash command ownership on Forever (#244).** In the first 3.24 run (Forever 1.60.1.71139, 2026-11-27) `/ctp` was not offered: the log said `plan commands offered: none; not offered: /ctp /help`. The reason is not recorded; the start now logs one `plan command <cmd>: ...` line each. Era not yet run.
+
+
 - **Protected actions with a tainted global (#98).** Not tried: the probe only reads `issecurevariable`. No `ADDON_ACTION_BLOCKED` was observed because none was provoked. Measuring whether a tainted `GetMoney` blocks a vendor purchase needs a Blizzard path that reads it and then calls a protected function. It does not change the decision, which already drops in-game mocks.
 
 - **Error capture on a real client.** That the handler is set on Era and Forever without BugGrabber (`handler: current`), that an error raised by another addon is recorded in both cases, and what `geterrorhandler()` returns before any addon sets one. With BugGrabber, `handler: blocked`, a recorded self-test error and its kept stack are measured on Forever (above). `debugstack(4, 20, 0)` inside our own handler works on Forever with BugGrabber disabled (2026-11-24). The first frames it returned were our own handler frames, so `Errors.lua` drops them (unit-tested, not yet confirmed in the game). No slowdown was reported. With BugGrabber disabled and `seterrorhandler` replaced by a no-op, the amber warning showed on a step that reads the error list. Era is unmeasured. Check with section 5 of `docs/test-plan.md`, check 3.

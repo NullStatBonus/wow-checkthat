@@ -62,6 +62,7 @@ test("the import window is the same frame, with a recent plans list and an Impor
     local made, freed = {}, {}
     gui.Create = function(_, kind)
         local w = { kind = kind, callbacks = {}, args = {} }
+        if kind == "MultiLineEditBox" then w.button = { SetText = function(b, t) b.text = t end } end -- the widget's own button frame
         setmetatable(w, { __index = function(t, k) return function(self, ...) self.args[k] = { ... } end end })
         function w:SetCallback(n, fn) self.callbacks[n] = fn end
         function w:AddChild(c) end
@@ -75,7 +76,7 @@ test("the import window is the same frame, with a recent plans list and an Impor
     local frame, dd, box = made[1], made[2], made[3]
     T.eq(frame.kind, "Frame"); T.eq(dd.kind, "Dropdown"); T.eq(box.kind, "MultiLineEditBox")
     T.eq(frame.args.SetTitle[1], "Paste a plan")
-    T.eq(box.args.SetButtonText[1], "Import", "the box carries the Import button")
+    T.eq(box.button.text, "Import", "the box carries the Import button")
     T.eq(dd.args.SetList[1].A, "Plan A"); T.eq(dd.args.SetList[2][2], "B", "plans keep their order")
     box.callbacks.OnEnterPressed(box, "OnEnterPressed", "!CT1!abc")
     gui.Create, gui.Release = create, release
@@ -94,6 +95,36 @@ test("the report falls back to the plain window when AceGUI is missing", functio
     ns.Export.Show("Report", "fallback text")
     gui.Create = create
     T.ok(_G.CheckThatTextBox and _G.CheckThatTextBox.shown, "the plain window opens")
+end)
+-- The stub widgets above answer any method, so they cannot catch a call the real widget lacks (in game the import window
+-- fell back to the plain one: MultiLineEditBox has no SetButtonText). Check each call against the shipped widget source.
+test("every method the text windows call on an AceGUI widget exists in the shipped widget", function()
+    local function read(p) local f = assert(io.open(p)); local s = f:read("*a"); f:close(); return s end
+    local core = read("CheckThat/Libs/AceGUI-3.0/AceGUI-3.0.lua")
+    local function methods(widget)
+        local have = {}
+        for m in core:gmatch("WidgetBase%.(%w+) = function") do have[m] = true end
+        for m in core:gmatch("WidgetContainerBase%.(%w+) = function") do have[m] = true end
+        local f = io.open(("CheckThat/Libs/AceGUI-3.0/widgets/AceGUIWidget-%s.lua"):format(widget))
+        local src = f and f:read("*a") or read(("CheckThat/Libs/AceGUI-3.0/widgets/AceGUIContainer-%s.lua"):format(widget))
+        if f then f:close() end
+        for m in src:gmatch('%["(%w+)"%]%s*=%s*function') do have[m] = true end
+        for m in src:gmatch('self%.(%u%w+)%s*=%s*%w') do have[m] = true end -- DropDown sets its methods one by one
+        return have
+    end
+    local kinds = { w = "Frame", edit = "MultiLineEditBox", dd = "DropDown" }
+    local whole = read("CheckThat/Debug/Export.lua")
+    -- Only the AceGUI windows: the plain window's own frames (box.edit) are game frames, not AceGUI widgets.
+    local src = whole:match("local function aceShow.-\nfunction Export%.Show") .. whole:match("local function aceImport.-\nfunction Export%.Prompt")
+    local checked = 0
+    for var, widget in pairs(kinds) do
+        local have = methods(widget)
+        for m in src:gmatch("%f[%w]" .. var .. ":(%w+)%(") do
+            checked = checked + 1
+            T.ok(have[m], ("%s:%s: the shipped %s widget has no such method"):format(var, m, widget))
+        end
+    end
+    T.ok(checked > 15, "the calls were found: " .. checked)
 end)
 test("a note goes before the copy hint in the text window (#250)", function()
     local gui = LibStub("AceGUI-3.0")

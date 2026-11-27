@@ -831,3 +831,10 @@ The window that shows a results string SHALL say that the results include the ch
 #### Scenario: Export results
 - **WHEN** the player exports a run
 - **THEN** the line under the string says "The results include your character and realm name." before the copy hint
+
+### Requirement: Plan command checks are explained in the log
+At run start CheckThat SHALL log, for each plan command it checks with the game, which `SLASH_` global it found and who owns it, or why it found no owner.
+
+#### Scenario: A command the addon registered
+- **WHEN** CTProbe registered `/ctp` and a run of its plan starts
+- **THEN** the log has `plan command /ctp: SLASH_CTPROBE1 by CTProbe`

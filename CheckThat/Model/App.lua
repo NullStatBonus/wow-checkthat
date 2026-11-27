@@ -595,9 +595,12 @@ function App.CommandsCheck(plan, fresh)
     for _, c in ipairs(type(plan.commands) == "table" and plan.commands or {}) do
         local cmd = type(c) == "string" and c:lower()
         local known = cmd and ((ns.Plan.SLASH[plan.addon] or {})[cmd] or (App.commands[plan.addon] or {})[cmd])
-        if cmd and not ns.Plan.CommandProblem(cmd, plan.addon) and (known or (type(owner) == "function" and owner(cmd) == plan.addon)) then
+        local who, how
+        if cmd and not known and type(owner) == "function" then who, how = owner(cmd) end
+        if cmd and not ns.Plan.CommandProblem(cmd, plan.addon) and (known or who == plan.addon) then
             offered[#offered + 1] = cmd
         elseif cmd then missing[#missing + 1] = cmd end
+        if fresh and cmd and not known then App.Log(("plan command %s: %s"):format(cmd, tostring(how or who or "no owner"))) end
     end
     verified[plan] = { offered = offered, missing = missing }
     return offered, missing
