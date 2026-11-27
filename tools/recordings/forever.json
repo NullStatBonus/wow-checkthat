@@ -11,6 +11,66 @@
     20
    ]
   },
+  "C_Item.GetItemInfo(12640)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    12640
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Lionheart Helm",
+    "|cnIQ4:|Hitem:12640::::::::::::::::::|h[Lionheart Helm]|h|r",
+    4,
+    61,
+    56,
+    "Armor",
+    "Plate",
+    1,
+    "INVTYPE_HEAD",
+    133138,
+    21894,
+    4,
+    4,
+    2,
+    0,
+    false,
+    false,
+    ""
+   ]
+  },
+  "C_Item.GetItemInfo(12784)": {
+   "api": "C_Item.GetItemInfo",
+   "args": [
+    12784
+   ],
+   "n": 18,
+   "nils": [
+    16
+   ],
+   "returns": [
+    "Arcanite Reaper",
+    "|cnIQ3:|Hitem:12784::::::::::::::::::|h[Arcanite Reaper]|h|r",
+    3,
+    63,
+    58,
+    "Weapon",
+    "Two-Handed Axes",
+    1,
+    "INVTYPE_2HWEAPON",
+    132400,
+    73036,
+    2,
+    1,
+    2,
+    0,
+    false,
+    false,
+    ""
+   ]
+  },
   "C_Item.GetItemInfo(6948)": {
    "api": "C_Item.GetItemInfo",
    "args": [
@@ -70,6 +130,186 @@
     "enUS"
    ]
   },
+  "GetMerchantItemLink(1)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:2320::::::::::::::::::|h[Coarse Thread]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "GetMerchantItemLink(2)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:2321::::::::::::::::::|h[Fine Thread]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "GetMerchantItemLink(3)": {
+   "api": "GetMerchantItemLink",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    "|cnIQ1:|Hitem:4291::::::::::::::::::|h[Silken Thread]|h|r"
+   ],
+   "window": "merchant"
+  },
+  "GetMerchantNumItems()": {
+   "api": "GetMerchantNumItems",
+   "args": [],
+   "n": 1,
+   "returns": [
+    17
+   ],
+   "window": "merchant"
+  },
+  "GetNumTrainerServices()": {
+   "api": "GetNumTrainerServices",
+   "args": [],
+   "n": 1,
+   "returns": [
+    35
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceCost(1)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    1
+   ],
+   "n": 1,
+   "returns": [
+    50
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceCost(2)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    2
+   ],
+   "n": 1,
+   "returns": [
+    50
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceCost(3)": {
+   "api": "GetTrainerServiceCost",
+   "args": [
+    3
+   ],
+   "n": 1,
+   "returns": [
+    100
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceInfo(1)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    1
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Linen Belt",
+    "available",
+    132494,
+    0,
+    false,
+    "Belts"
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceInfo(2)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    2
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Simple Linen Boots",
+    "available",
+    132539,
+    0,
+    false,
+    "Shoes"
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceInfo(3)": {
+   "api": "GetTrainerServiceInfo",
+   "args": [
+    3
+   ],
+   "n": 6,
+   "nils": [
+    5
+   ],
+   "returns": [
+    "Faction Banner",
+    "available",
+    132484,
+    0,
+    false,
+    "Camping"
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceSkillReq(1)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    1
+   ],
+   "n": 3,
+   "returns": [
+    "Tailoring",
+    15,
+    true
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceSkillReq(2)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    2
+   ],
+   "n": 3,
+   "returns": [
+    "Tailoring",
+    20,
+    true
+   ],
+   "window": "trainer"
+  },
+  "GetTrainerServiceSkillReq(3)": {
+   "api": "GetTrainerServiceSkillReq",
+   "args": [
+    3
+   ],
+   "n": 3,
+   "returns": [
+    "Tailoring",
+    20,
+    true
+   ],
+   "window": "trainer"
+  },
   "InCombatLockdown()": {
    "api": "InCombatLockdown",
    "args": [],
@@ -88,5 +328,6 @@
   }
  },
  "client": "forever",
- "format": 1
+ "format": 1,
+ "rev": 2
 }
