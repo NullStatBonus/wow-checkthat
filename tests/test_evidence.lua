@@ -383,6 +383,79 @@ test("an absence check on a capped quiet source passes over old lines that are a
     env.DB.errors[4] = nil
     T.eq((E.CheckLog(a, snaps, p, env)), "unverified", "without the cap it stays unverified")
 end)
+test("ReadLog gives the entries' times only when every entry has one", function()
+    local _, t = E.ReadLog(plan.logs.e, env({}, { { t = 1, msg = "x" }, { t = 2.5, msg = "y" } }))
+    T.same(t, { 1, 2.5 })
+    T.eq(select(2, E.ReadLog(plan.logs.e, env({}, { { t = 1, msg = "x" }, { msg = "y" } }))), nil, "one without t")
+    T.eq(select(2, E.ReadLog(plan.logs.s, env({ "a" }))), nil, "strings have no times")
+end)
+-- #158: a full ring of { t, msg } entries whose last lines repeat an earlier block. Without times the boundary is
+-- inexact and an absence cannot be shown; with times it is found once and exact.
+test("a full timed log with repeated blocks still proves an absence (#158)", function()
+    local p = { logs = { q = { global = "DB", path = "ent", format = "entries", cap = 30 } } }
+    local a = { kind = "log", source = "q", contains = "sold junk", absent = true }
+    local ent, clock = {}, 100
+    local function write(msg) clock = clock + 1; ent[#ent + 1] = { t = clock, msg = msg }; if #ent > 30 then table.remove(ent, 1) end end
+    for _ = 1, 10 do write("merchant opened"); write("scan done"); write("merchant closed") end
+    local en = { DB = { ent = ent } }
+    local snaps = E.Snapshot(p, en, { assertions = { a } })
+    T.eq(#snaps.q.times, E.TAIL, "the position keeps the tail lines' times")
+    local runA = { kind = "log", source = "q", contains = "x", scope = "run" }
+    local _, runPos = next(E.Snapshot(p, en, { assertions = { runA } }, snaps))
+    T.same(runPos.times, snaps.q.times, "a run-scoped copy keeps them")
+    write("merchant opened"); write("scan done"); write("merchant closed")
+    T.eq((E.CheckLog(a, snaps, p, en)), "pass", "the new block is found after the right place")
+    write("sold junk")
+    T.eq((E.CheckLog(a, snaps, p, en)), "fail")
+    -- the same log and position without times: the repeated block leaves the place open
+    local old = { q = { n = snaps.q.n, tail = snaps.q.tail } }
+    ent[#ent] = nil
+    T.eq((E.CheckLog(a, old, p, en)), "unverified", "a position saved before #158 keeps the old rule")
+end)
+test("a timed tail that the clock wrote twice is not exact", function()
+    local snap = { n = 4, tail = { "a", "b", "c", "x" }, times = { 1, 2, 3, 4 } }
+    local cur = { "q", "a", "b", "c", "x", "a", "b", "c", "x", "y" } -- not at position 4 any more: the place is searched
+    local lines, exact = E.NewLines(snap, cur, 10, { 0, 1, 2, 3, 4, 1, 2, 3, 4, 5 })
+    T.eq(exact, false, "the clock ran back: two places"); T.same(lines, { "y" })
+    local one, ex1 = E.NewLines({ n = 3, tail = { "z", "z", "z" }, times = { 7, 7, 7 } }, { "z", "z", "z", "z" }, 4, { 7, 7, 7, 7 })
+    T.eq(ex1, false, "a tail written within one tick falls back to the old rules"); T.ok(one ~= nil)
+end)
+-- The ring model again, with a clock that may stand still between lines: exact must still mean every new line is there.
+test("NewLines with times never claims an exact boundary it cannot prove (timed ring model)", function()
+    local seed = 777
+    local function rnd(n) seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n + 1 end
+    local blocks = { { "a", "b", "c" }, { "x", "y" }, { "z" } }
+    local checked, exacts, untimed = 0, 0, 0
+    for _ = 1, 600 do
+        local cap = rnd(16) + 3
+        local ring, rt, all, clock = {}, {}, {}, 0
+        local function write(l)
+            if rnd(3) > 1 then clock = clock + 1 end
+            all[#all + 1] = l; ring[#ring + 1] = l; rt[#rt + 1] = clock
+            if #ring > cap then table.remove(ring, 1); table.remove(rt, 1) end
+        end
+        local function some(n) for _ = 1, n do if rnd(3) == 1 then for _, l in ipairs(blocks[rnd(#blocks)]) do write(l) end else write("u" .. rnd(4)) end end end
+        some(rnd(20))
+        local tail, tt = {}, {}
+        for i = math.max(1, #ring - E.TAIL + 1), #ring do tail[#tail + 1] = ring[i]; tt[#tt + 1] = rt[i] end
+        local snap, at = { n = #ring, tail = tail, times = tt }, #all
+        some(rnd(10) - 1)
+        local trueNew = {}
+        for i = at + 1, #all do trueNew[#trueNew + 1] = all[i] end
+        local got, exact = E.NewLines(snap, ring, cap, rt)
+        if got then
+            checked = checked + 1
+            local off = #trueNew - #got
+            local suffix = off >= 0
+            if suffix then for i = 1, #got do if got[i] ~= trueNew[off + i] then suffix = false end end end
+            T.ok(suffix, "window is the end of the true new lines")
+            if exact then exacts = exacts + 1; T.eq(#got, #trueNew, "exact means every new line is there") end
+            if select(2, E.NewLines({ n = snap.n, tail = tail }, ring, cap)) then untimed = untimed + 1 end
+        end
+    end
+    T.ok(checked > 100, ("the model exercised many windows (%d)"):format(checked))
+    T.ok(exacts > untimed + 20, ("times prove more boundaries: %d exact with times, %d without"):format(exacts, untimed))
+end)
 test("an upper-bound count stays pending on the card until the verdict", function()
     local a = fact({ op = "exists", value = nil, count = { exactly = 1 } })
     local items = E.Preview({ assertions = { a } }, nil, fplan, fenv({ "[KT] level=1" }))

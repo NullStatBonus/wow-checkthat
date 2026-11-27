@@ -2,7 +2,7 @@
 
 The saved run record is the contract between CheckThat and every tool that reads a run: `tools/ct.py`, the viewer, the `ct-verify` skill and your own scripts. It lives in three places with the same layout: `CheckThatDB.global.runs` in the saved variables, the string `/ct export` makes, and `evidence/runs/<id>/r<revision>.json` after `ct.py collect`. `schema/run-results.schema.json` describes it. How the keys behave is in [Features](features.md).
 
-Current: **ct 1, formatRev 6.**
+Current: **ct 1, formatRev 7.**
 
 ## Two version numbers
 
@@ -46,6 +46,7 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 | formatRev | Since | Adds |
 | --- | --- | --- |
+| 7 | 0.21.0 | `times` in a saved log position (an attempt's or the run's `snapshots`): the times of the tail lines of a log of `{ t, msg }` entries. Saved variables only, like `snapshots`. |
 | 6 | 0.21.0 | `ticks` on an attempt: one entry for each listed action, the time the player ticked it or false. `at: "start"` on an attempt CheckThat judged when the run started (an async step). `unmet` on an inapplicable step record: the text of the requirement the character does not meet. `unchecked` on a check that did not pass: how many lines or facts a pattern could not be run on because they took too long (neither matches nor misses). |
 | 5 | 0.21.0 | `since` on a check that did not pass: `run` when it read the lines after the run started (a plan's `scope: run`); `scope` is then absent. A run also saves `snapshots`, the log positions at its start, in the saved variables only: the results string and a finished run leave them out. |
 | 4 | 0.20.1 | `macroStale` on a step record: how many times the CT macro ran while the card showed another step. Absent means none. |
