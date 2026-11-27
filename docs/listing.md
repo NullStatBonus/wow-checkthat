@@ -28,6 +28,17 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - The start screen names the variables a plan reads, so you know what a results string can include before you start. `/ct start` takes the addon name in any letter case.
 - Commands: `/ct`, `/ct settings`, `/ct import`, `/ct start <addon>`, `/ct categories`, `/ct run <category or step id>`, `/ct rerun <category or failed>`, `/ct end`, `/ct export`, `/ct log`, `/ct census`. `/checkthat` works the same as `/ct`.
 
+### For addon developers
+
+CheckThat is half of a toolkit. The other half lives on GitHub: https://github.com/NullStatBonus/wow-checkthat
+
+- **Plan tools.** Write a plan in YAML, then validate and compile it to the string players import. Run it offline in a fake game client before anyone plays it. Collect the saved results and verify them against the plan.
+- **Plan format.** The schema and the rules for steps, checks, categories and the commands a plan may offer.
+- **Integration API.** Report facts with `CheckThat.Report`, register entry points for automatic steps with `CheckThat.Entry`, learn when a run starts or ends with `CheckThat.OnRun`, and declare your addon's commands with `CheckThat.Commands`. These names are stable from 1.0.0.
+- **Skills** that draft a test plan for a change and read a finished run back against its plan.
+
+Start with the README, then "Adopting CheckThat" in the docs folder. Report problems and ask for features in the GitHub issues.
+
 ### Good to know
 
 - A plan is written for the addon it tests, in the plan format in the project repository.
