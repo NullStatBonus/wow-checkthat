@@ -98,7 +98,7 @@ A subcommand after the addon's slash prefix needs no CheckThat change: the allow
 - `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-0.16.yaml` tests Remove from run and the result keys on its own run, in forever-camelot only.
 - `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen (so it gets the size warning).
-- `plans/checkthat-0.21.yaml` is the feature plan for the 0.21 card: the action checklist, the pause after an automatic result, a step checked at run start, a step for a Mage and a final run-scoped error check. Run it on a character that is not a Mage, on each client.
+- `plans/checkthat-0.21.yaml` is the feature plan for the 0.21 card: the action checklist, the pause after a result, a step checked at run start, a step for a Mage and a final run-scoped error check. Run it on a character that is not a Mage, on each client.
 - `plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account. The owner leaves a run open. The viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill.
 
 ## First live run

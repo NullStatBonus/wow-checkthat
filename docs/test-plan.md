@@ -85,12 +85,12 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 19. **Tick the actions of a step.** Import `build/checkthat-0.21.ct`, start it and play to "Tick each action". Click the first box, then the text of the second action, then the second box again.
    Check: each click ticks or clears its box. The Setup line was open when the step first showed. Pass works with a box empty.
    Log: `[ct] step ct2100.checklist action 1 ticked`, then `action 2 ticked` and `action 2 cleared`.
-20. **The card pauses on an automatic result.** On "The card pauses on an automatic result", click Run.
-   Check: the card keeps the step on screen with a green "Recorded: Pass (recorded by CheckThat)" line, fades for about 3 seconds, then shows the next step at full brightness.
-   Log: `[ct] card holds ct2100.pause for 3 s`.
+20. **The card pauses on each result.** Press Pass on "Tick each action". On "The card pauses on an automatic result", click Run.
+   Check: each time the card keeps the step title, shows "Passed" in large green letters with "Recorded by you" the first time and "Recorded by CheckThat" the second, fades for about 3 seconds, then shows the next step at full brightness.
+   Log: `[ct] card holds ct2100.checklist for 3 s` and `[ct] card holds ct2100.pause for 3 s`.
 21. **A result key during the pause.** Bind a key to Pass. Press the back arrow, press Redo on "The card pauses on an automatic result", click Run, and press the key while the card fades.
-   Check: chat says "CheckThat recorded that step by itself. The card now shows the next step." The next step has no result.
-   Log: `[ct] result pass ignored: the card was showing an automatic result`.
+   Check: chat says "The card was still showing the last result. It now shows the next step." The next step has no result.
+   Log: `[ct] result pass ignored: the card was showing a result`.
 22. **The step title stands out.** Look at any step title on each client.
    Check: the title is larger than the other text and has a dark outline. Take a screenshot for the listing page.
    Log: none; on screen only.

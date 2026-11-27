@@ -11,7 +11,7 @@ New: **Checks when a run starts.** A step can pass when the run starts. The card
 New: **Steps for one class or profession.** Such a step does not apply on another character. It does not fail at its time limit.
 New: **Checks for the whole run.** A plan check can read every line since the run started, also after a reload. A last "no Lua error" step then sees the errors of this run only.
 Changed: **A calmer card.** Setup folds to one line. The note opens from "Add note". A small heading names the checks that CheckThat makes. The step title is larger.
-Changed: **Pause after an automatic result.** The card shows the result for 3 seconds and then fades to the next step.
+Changed: **Pause after each result.** The card shows the result in one large word for 3 seconds. Then it fades to the next step.
 
 ## 0.20.1
 

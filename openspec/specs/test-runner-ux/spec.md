@@ -199,7 +199,7 @@ An auto step SHALL show on the card that CheckThat records the result when the c
 
 #### Scenario: Result recorded
 - **WHEN** the runner records an automatic pass, partial or fail while the card is shown and expanded and the run moves on
-- **THEN** the card keeps the recorded step on screen with "Recorded: Pass (recorded by CheckThat)" and fades to the next step over 3 seconds
+- **THEN** the card pauses on the recorded step as for any result, with "Recorded by CheckThat"
 
 #### Scenario: Unverified at the timeout
 - **WHEN** an automatic result is unverified and the step stays open
@@ -535,3 +535,28 @@ When a step lists its actions, the card SHALL show one standard checkbox for eac
 #### Scenario: Pass with an action unticked
 - **WHEN** the player presses Pass with one action unticked
 - **THEN** the step is judged as today
+
+### Requirement: The card pauses on every result
+When a result is recorded, by the player or by CheckThat, and the run moves on while the card is shown and expanded, the card SHALL keep the recorded step on screen for 3 seconds and fade to the next step. An unverified result SHALL NOT pause the card. A result press during the pause SHALL be ignored with a chat line.
+
+#### Scenario: Double press
+- **WHEN** the player presses Pass twice in quick succession
+- **THEN** the first press records the step, the second is ignored with a chat line, and the next step has no result
+
+#### Scenario: Last step
+- **WHEN** the player records the last step
+- **THEN** the card pauses on its result and then shows Run complete
+
+### Requirement: The paused card shows the result simply
+While the card pauses, it SHALL show only the step title, the result as one large word in its color ("Passed" green, "Partial" amber, "Failed" red, "Skipped" grey), "Recorded by you" or "Recorded by CheckThat", and the note.
+
+#### Scenario: Player presses Fail
+- **WHEN** the player types a note and presses Fail on a step with listed actions
+- **THEN** the card shows the step title, "Failed" in red and "Recorded by you" with the note, without Do, Expect or the checkboxes
+
+### Requirement: A result cue marks each pause
+Each pause SHALL call one result cue with the verdict and who recorded it, so a sound can be added there later.
+
+#### Scenario: Result cue
+- **WHEN** a pause starts
+- **THEN** the result cue runs once with the verdict and `player` or `auto`

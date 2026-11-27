@@ -7,7 +7,7 @@ local Card = {}
 ns.Card = Card
 
 local card, text
-local hold -- { id = step id } while an automatic result stays on screen (Card.Hold)
+local hold -- { id = step id, verdict, by } while a recorded result stays on screen (Card.Hold)
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 local A = ns.Adapter
 
@@ -169,17 +169,18 @@ end
 -- never allowed to look like a stuck step.
 function Card.Verdict(v)
     if hold then
-        -- The press was meant for the step that just passed by itself; it never judges the next one.
+        -- The press came while the last result was on screen (a double press, or one meant for that step); it never judges the next one.
         Card.EndHold()
-        App.Log(("result %s ignored: the card was showing an automatic result"):format(v))
-        ns.Slash.Print(L["CheckThat recorded that step by itself. The card now shows the next step."])
+        App.Log(("result %s ignored: the card was showing a result"):format(v))
+        ns.Slash.Print(L["The card was still showing the last result. It now shows the next step."])
         Card.Refresh()
         return
     end
     local note = card.note:GetText()
     if note == "" then note = nil end
     pcall(function() card.note:SetText(""); card.note:ClearFocus() end)
-    local _, _, step = App.Verdict(v, note)
+    local a, _, step = App.Verdict(v, note)
+    if a then Card.Settled(step, a.verdict, "player") end
     local ok, err = pcall(function() Card.AfterVerdict(step); Card.Refresh() end)
     if not ok and ns.Log then ns.Log.Failure("card", "after " .. v .. ": " .. tostring(err)) end
 end
@@ -310,6 +311,7 @@ local function build()
     card.addNote:SetScript("OnClick", function() card.noteOpen = true; Card.Refresh(); pcall(function() card.note:SetFocus() end) end)
     card.acts, card.setupOpen = {}, {}
     card.recorded = fs("GameFontHighlight", BODY, INNER)
+    card.result = fs(titleFont, BODY, INNER) -- the result word while the card holds it
     card.redo = makeButton(card, L["Redo this step"], 120); card.redo:SetHeight(24)
     card.redo:SetPoint("BOTTOMLEFT", 12, 12)
     card.redo:SetScript("OnClick", function() App.Begin(); Card.Refresh() end)
@@ -514,7 +516,7 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "result", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide(); card.caption:Hide(); card.catBtn:Hide()
     for _, s in ipairs(card.segs) do s.back:Hide(); for _, t in ipairs(s.parts) do t:Hide() end; s.hit:Hide() end
@@ -710,24 +712,38 @@ function Card.SetupOpen(key)
 end
 function Card.ToggleSetup(key) if key then card.setupOpen[key] = not Card.SetupOpen(key) end end
 
--- After an automatic result the card keeps the recorded step on screen and fades to the next step (Card.HOLD seconds).
--- A press on the card or a result key ends it. Without timers there is no hold.
+-- After every recorded result the card keeps the step on screen with the result and fades to the next step
+-- (Card.HOLD seconds). A press on the card or a result key ends it. Without timers there is no hold.
 Card.HOLD, Card.FADE_STEPS = 3, 6
 function Card.EndHold()
     if not card then return end
     hold = nil
     card:SetAlpha(1)
 end
-function Card.Hold(stepId)
+function Card.Hold(stepId, verdict, by)
     if Card.HOLD <= 0 then return false end
-    local h = { id = stepId }
+    local h = { id = stepId, verdict = verdict, by = by }
     hold = h
     if not A.After(Card.HOLD, function() if hold == h then Card.EndHold(); Card.Refresh() end end) then hold = nil; return false end
     for i = 1, Card.FADE_STEPS - 1 do
         A.After(Card.HOLD * i / Card.FADE_STEPS, function() if hold == h then card:SetAlpha(1 - 0.6 * i / Card.FADE_STEPS) end end)
     end
     App.Log(("card holds %s for %d s"):format(stepId, Card.HOLD))
+    pcall(Card.ResultCue, verdict, by)
     return true
+end
+
+-- The moment a result shows on the card: verdict is pass, partial, fail or skip; by is "player" or "auto".
+-- Nothing plays yet. A sound for each result goes here (issue #229).
+function Card.ResultCue(verdict, by) end
+
+-- A result was recorded for step. The card pauses on it only when the run moved on and the card is shown expanded:
+-- an unverified result keeps the step open for the player.
+function Card.Settled(step, verdict, by)
+    if not (card and step) or verdict == "unverified" then return end
+    local _, _, now = App.Current()
+    if now and now.id == step.id then return end
+    if card:IsShown() and not cfg().collapsed then pcall(Card.Hold, step.id, verdict, by) end
 end
 
 local refreshCard
@@ -880,6 +896,18 @@ function refreshCard()
     local y = 36 + top
     place(card.title, 12, y); setText(card.title, step.title)
     y = y + card.title:GetStringHeight() + 6
+    if holding then
+        -- The result, simply: one word in its color, who recorded it, and the note.
+        local word = ({ pass = L["Passed"], partial = L["Partial"], fail = L["Failed"], skip = L["Skipped"] })[hold.verdict] or hold.verdict
+        local color = ({ pass = GREEN, partial = AMBER, fail = RED })[hold.verdict] or GREY
+        place(card.result, 12, y + 4); setText(card.result, word, color)
+        y = y + 4 + card.result:GetStringHeight() + 6
+        local who = hold.by == "auto" and L["Recorded by CheckThat"] or L["Recorded by you"]
+        place(card.recorded, 12, y)
+        setText(card.recorded, who .. ((lastA and lastA.note) and ("  -  " .. lastA.note) or ""), GREY)
+        y = y + card.recorded:GetStringHeight() + 12
+        card:SetHeight(y + 40); return
+    end
     local autoLive = step.auto and not (open and open.noauto) -- after an automatic unverified result the retry waits for the player
     -- Setup folds to one line. It holds the step's setup, the plan's preamble at the start and the section intro, and
     -- opens by itself the first time the step shows in this run.
@@ -1108,9 +1136,7 @@ function Card.AutoSettle()
     end
     if a then
         pcall(function() card.note:SetText(""); card.note:ClearFocus() end) -- the note went with the result
-        -- Pause only when the run moved on: an unverified result keeps the step open for the player.
-        local _, _, now = App.Current()
-        if a.verdict ~= "unverified" and not (now and now.id == step.id) and card:IsShown() and not cfg().collapsed then pcall(Card.Hold, step.id) end
+        Card.Settled(step, a.verdict, "auto")
         local ok2, err = pcall(function() Card.AfterVerdict(step); Card.Refresh() end)
         if not ok2 and ns.Log then ns.Log.Failure("card", "after auto: " .. tostring(err)) end
     end

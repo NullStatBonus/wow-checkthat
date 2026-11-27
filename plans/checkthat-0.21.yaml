@@ -103,6 +103,7 @@ sections:
     - Each box shows a tick when you click it or its text.
     - The second box clears and ticks again.
     - Pass, Fail and Skip work at any time. Press Pass.
+    - 'The card shows "Passed" and "Recorded by you", then fades to the next step.'
     verify:
     - player
     notes: The ticks are saved with the attempt; the report shows the actions left unticked on a failed step.
@@ -113,7 +114,7 @@ sections:
       kind: copy-slash
       text: /ct status
     expect:
-    - 'The step shows "Recorded: Pass (recorded by CheckThat)" in green.'
+    - 'The step shows "Passed" in large green letters and "Recorded by CheckThat".'
     - The card fades for about 3 seconds, then shows the next step at full brightness.
     verify:
     - assertions
@@ -141,6 +142,11 @@ sections:
       equals: '[ct] card holds ct2100.pause for 3 s'
       scope: run
       label: The card held the automatic result
+    - kind: log
+      source: debug
+      equals: '[ct] card holds ct2100.checklist for 3 s'
+      scope: run
+      label: The card held the result you recorded
 - id: s3
   title: Steps decided early
   requires:

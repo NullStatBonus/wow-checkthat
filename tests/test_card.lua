@@ -4,6 +4,7 @@ local st = H.stubClient()
 H.loadToc(ns, "CheckThat/CheckThat_Vanilla.toc")
 CheckThatDB = nil
 ns.addon:OnInitialize(); ns.addon:OnEnable()
+ns.Card.HOLD = 0 -- most tests press results back to back; the pause tests turn it on (pausing)
 
 local LONG = "An extremely long title that cannot possibly fit inside the minimized card without being cut"
 
@@ -555,6 +556,7 @@ end)
 -- The step card: a checklist of the player's actions, Expect as short lines, the checks under a heading, Setup that folds,
 -- a note behind "Add note", and a pause on an automatic result.
 local function runPlan(steps, extra)
+    ns.Card.EndHold()
     _G.KeepThatDB = { global = { log = { "[kt] boot" } } }
     local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "Card",
         logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings" } },
@@ -568,6 +570,7 @@ local function runPlan(steps, extra)
     return run, _G.CheckThatCard
 end
 local function kt(line) KeepThatDB.global.log[#KeepThatDB.global.log + 1] = line end
+local function pausing() H.stub(ns.Card, "HOLD", 3); st.timers = {}; T.finally(function() ns.Card.EndHold(); st.timers = {} end) end
 local manual = function(id, extra)
     local s = { id = id, title = "Step " .. id, action = { kind = "manual", text = "Do it." }, expect = "It works.", verify = { "player" } }
     for k, v in pairs(extra or {}) do s[k] = v end
@@ -665,6 +668,7 @@ test("after a reload the hint line says Reloaded", function()
 end)
 
 test("an automatic result stays on screen and fades to the next step; a result press then judges nothing", function()
+    pausing()
     local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Open your bags." }, expect = "Bags open.",
         verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "bags opened" } } }
     local run, card = runPlan({ auto, manual("b"), manual("c") })
@@ -673,7 +677,8 @@ test("an automatic result stays on screen and fades to the next step; a result p
     T.ok(ns.Card.AutoSettle(), "recorded")
     T.eq(run.steps.a.verdict, "pass"); T.eq(select(3, ns.App.Current()).id, "b", "the run moved on")
     T.eq(card.title.text, "Auto", "the card still shows the recorded step")
-    T.ok(card.recorded.text:find("recorded by CheckThat", 1, true)); T.ok(not card.pass.shown and not card.redo.shown)
+    T.eq(card.result.text, "Passed"); T.eq(card.recorded.text, "Recorded by CheckThat")
+    T.ok(not card.pass.shown and not card.redo.shown)
     T.eq(#run.steps.b.attempts, 0, "the next step has not opened: its time starts when it shows")
     T.eq(ns.Card.AutoSettle(), nil, "nothing settles during the pause")
     local said = {}
@@ -681,10 +686,10 @@ test("an automatic result stays on screen and fades to the next step; a result p
     ns.Card.KeyVerdict("pass")
     ns.Slash.Print = print0
     T.eq(run.steps.b.verdict, "pending", "a key press meant for the passed step does not judge the next one")
-    T.eq(said[1], "CheckThat recorded that step by itself. The card now shows the next step.")
+    T.eq(said[1], "The card was still showing the last result. It now shows the next step.")
     T.eq(card.title.text, "Step b", "the press ended the pause")
     -- a second result held to its end by the timers, with the card fading
-    local run2, card2 = runPlan({ auto, manual("b") })
+    local _, card2 = runPlan({ auto, manual("b") })
     st.timers = {}
     kt("bags opened"); ns.Card.AutoSettle()
     T.eq(card2.title.text, "Auto")
@@ -696,6 +701,7 @@ test("an automatic result stays on screen and fades to the next step; a result p
 end)
 
 test("a collapsed or hidden card does not pause on an automatic result", function()
+    pausing()
     local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
         verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
     local _, card = runPlan({ auto, manual("b") })
@@ -740,6 +746,7 @@ test("the title uses the card's title font, or the stock large font without Crea
 end)
 
 test("an automatic unverified result does not pause the card: the step stays open for the player", function()
+    pausing()
     local auto = { id = "a", title = "Auto", auto = true, timeout = 5, action = { kind = "wait-event", text = "Go." }, expect = "e",
         verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "never" } } }
     local run, card = runPlan({ auto, manual("b") })
@@ -754,6 +761,7 @@ test("an automatic unverified result does not pause the card: the step stays ope
 end)
 
 test("ending the run during the pause shows the results at once, and a key with the game UI hidden leaves the pause alone", function()
+    pausing()
     local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
         verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
     local run, card = runPlan({ auto, manual("b") })
@@ -772,6 +780,7 @@ test("ending the run during the pause shows the results at once, and a key with 
 end)
 
 test("a hidden card does not pause on an automatic result", function()
+    pausing()
     local auto = { id = "a", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
         verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
     local _, card = runPlan({ auto, manual("b") })
@@ -779,6 +788,67 @@ test("a hidden card does not pause on an automatic result", function()
     kt("went"); T.ok(ns.Card.AutoSettle())
     ns.Card.Show()
     T.eq(card.title.text, "Step b")
+end)
+
+test("a result the player records pauses the card too: one result word, who recorded it, the note, and nothing else", function()
+    pausing()
+    local cues = {}
+    H.stub(ns.Card, "ResultCue", function(v, by) cues[#cues + 1] = v .. "/" .. by end)
+    H.stub(ns.addon.db.profile, "debug", true)
+    local run, card = runPlan({ manual("a", { action = { kind = "manual", text = { "Walk in.", "Walk out." } } }), manual("b") })
+    card.addNote.scripts.OnClick(card.addNote); card.note:SetText("slow door")
+    ns.Card.Verdict("fail")
+    T.eq(run.steps.a.verdict, "fail"); T.eq(select(3, ns.App.Current()).id, "b", "the run moved on")
+    T.eq(card.title.text, "Step a", "the card still shows the recorded step")
+    T.eq(card.result.text, "Failed"); T.ok(card.result.shown)
+    T.eq(card.recorded.text, "Recorded by you  -  slow door")
+    T.ok(not card.rows[2].label.shown and not card.rows[3].label.shown, "no Do and no Expect while it holds")
+    T.ok(not card.acts[1].box.shown, "no checkboxes while it holds")
+    T.ok(not card.pass.shown and not card.redo.shown and not card.addNote.shown)
+    T.same(cues, { "fail/player" }, "the result cue runs once, for the sound to come")
+    local lines = {}
+    for _, e in ipairs(ns.Log.Entries()) do lines[#lines + 1] = e.msg end
+    T.ok(table.concat(lines, "\n"):find("card holds a for 3 s", 1, true))
+    ns.Card.Verdict("pass") -- a double press
+    T.eq(run.steps.b.verdict, "pending", "a second press never judges the next step")
+    T.eq(card.title.text, "Step b")
+    T.ok(not card.result.shown, "the result word goes with the pause")
+end)
+
+test("each result word has its own color, and an automatic result names CheckThat to the cue", function()
+    pausing()
+    local cues = {}
+    H.stub(ns.Card, "ResultCue", function(v, by) cues[#cues + 1] = v .. "/" .. by end)
+    local _, card = runPlan({ manual("a"), manual("b"), manual("c"), manual("d"), manual("e") })
+    local seen = {}
+    for _, v in ipairs({ "pass", "partial", "fail", "skip" }) do
+        ns.Card.Verdict(v)
+        seen[#seen + 1] = card.result.text
+        local c = card.result.calls.SetTextColor
+        seen[#seen + 1] = c and table.concat({ c[1], c[2], c[3] }, ",")
+        ns.Card.EndHold(); ns.Card.Refresh()
+    end
+    T.same(seen, { "Passed", "0.6,1,0.6", "Partial", "1,0.67,0", "Failed", "1,0.4,0.4", "Skipped", "0.67,0.67,0.67" })
+    local auto = { id = "x", title = "Auto", auto = true, action = { kind = "wait-event", text = "Go." }, expect = "e",
+        verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "went" } } }
+    runPlan({ auto, manual("y") })
+    cues = {}
+    kt("went"); T.ok(ns.Card.AutoSettle())
+    T.same(cues, { "pass/auto" })
+end)
+
+test("the last step pauses on its result, then shows Run complete; an unverified press does not pause", function()
+    pausing()
+    local run, card = runPlan({ manual("a"), manual("b", { verify = { "player", "assertions" }, assertions = { { kind = "log", source = "debug", contains = "never" } } }) })
+    ns.Card.Verdict("pass"); ns.Card.EndHold(); ns.Card.Refresh()
+    ns.Card.Verdict("pass")
+    T.eq(run.steps.b.verdict, "unverified")
+    T.ok(card.pass.shown and not card.result.shown, "the step stays open: no pause")
+    ns.Card.Verdict("skip")
+    T.eq(card.title.text, "Step b"); T.eq(card.result.text, "Skipped")
+    local queued = st.timers; st.timers = {}
+    for _, fn in ipairs(queued) do fn() end
+    T.eq(card.title.text, "Run complete", "the results show when the pause ends")
 end)
 
 test("the title font is the large font two points larger with an outline when the client has CreateFont", function()
