@@ -243,6 +243,44 @@ test("follow: a macro without the marker stays the player's in every run", funct
     T.eq(st.macroBody, "/dance")
 end)
 
+test("follow: a body the game hands back with a trailing new line is still ours", function()
+    resetFollow(true)
+    H.stub(_G, "GetMacroInfo", function() return "n", "i", st.macroBody and (st.macroBody .. "\n") end)
+    local n = logHas("macro set")
+    slash("skip")
+    T.eq(st.macroBody, marked(macroOf() or "/ct status"), "the macro follows the step")
+    T.eq(logHas("macro set"), n + 1)
+    T.eq(logHas("macro not set"), 0)
+end)
+
+test("follow: a macro left at /ct status, written with no step open, is taken back in a new run", function()
+    resetFollow(true)
+    st.macroBody = "/ct status" -- what CheckThat wrote after a run ended, changed since by the player or the game
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    slash("start KeepThat")
+    T.eq(st.macroBody, marked(macroOf() or "/ct status"))
+end)
+
+test("follow: a macro the game will not change is named in chat once and logged once", function()
+    resetFollow(true)
+    H.stub(_G, "EditMacro", function() end)
+    local said = {}
+    H.stub(ns.Slash, "Print", function(s) said[#said + 1] = s end)
+    ns.Card.FollowMacro(true)
+    slash("skip"); ns.Card.Refresh()
+    T.eq(logHas("macro not set [^ ]+: edit not taken"), 1, "one log line")
+    local n = 0
+    for _, s in ipairs(said) do if s:find("could not be changed", 1, true) then n = n + 1 end end
+    T.eq(n, 1, "one chat line")
+end)
+
+test("follow: a macro the player changed is logged once with the reason", function()
+    resetFollow(true)
+    st.macroBody = "/dance"
+    slash("skip"); slash("skip")
+    T.eq(logHas("macro not set [^ ]+: changed by the player"), 1)
+end)
+
 test("follow: a step whose commands do not fit gets /ct status and a card line", function()
     resetFollow(true)
     local _, ctx, step = ns.App.Current()

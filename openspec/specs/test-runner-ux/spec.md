@@ -435,7 +435,7 @@ The game's key bindings window SHALL list CheckThat actions for Pass, Partial, F
 - **THEN** chat shows the version and no fact is recorded
 
 ### Requirement: The CT macro can follow the current step
-When the setting "Keep the CT macro on the current step" is on, CheckThat SHALL rewrite the CT macro each time the current step changes. The body SHALL be the line `/ct macrorun <step id>` followed by the step's commands, never a result command. A step with no usable commands SHALL get the marker and `/ct status`. CheckThat SHALL rewrite only a macro it made. A macro the player changed SHALL stay as it is for the rest of the run. A new run, or turning the setting on, SHALL take it back while its first line is still the marker.
+When the setting "Keep the CT macro on the current step" is on, CheckThat SHALL rewrite the CT macro each time the current step changes. The body SHALL be the line `/ct macrorun <step id>` followed by the step's commands, never a result command. A step with no usable commands SHALL get the marker and `/ct status`. CheckThat SHALL rewrite only a macro it made. A macro the player changed SHALL stay as it is for the rest of the run. A new run, or turning the setting on, SHALL take it back while its first line is still the marker, or while it holds only `/ct status`, the body CheckThat writes when no step is open. Bodies SHALL compare without trailing spaces or new lines, because the game can return a body with them.
 
 #### Scenario: Step changes
 - **WHEN** the setting is on, the tester is out of combat and the current step changes
@@ -465,6 +465,14 @@ When the setting "Keep the CT macro on the current step" is on, CheckThat SHALL 
 - **WHEN** the setting is off and the step changes
 - **THEN** the CT macro is not rewritten
 
+#### Scenario: Macro left from an ended run
+- **WHEN** the CT macro holds only `/ct status`, which CheckThat wrote after a run ended, and a new run shows its first step
+- **THEN** the CT macro holds the marker and commands of that step
+
+#### Scenario: Body read back with a trailing new line
+- **WHEN** the game returns the CT macro body with a trailing new line and the step changes
+- **THEN** CheckThat treats the macro as its own and rewrites it
+
 ### Requirement: A macro change waits for the end of combat
 CheckThat SHALL NOT create or edit a macro in combat. A step change in combat SHALL queue one rewrite for the step that is current when combat ends.
 
@@ -480,11 +488,15 @@ When the setting is on and the current step has commands that no macro can hold,
 - **THEN** the macro holds the marker and `/ct status`, and the card line says the step has no macro
 
 ### Requirement: A macro rewrite is logged
-Each rewrite SHALL log `macro set <step id>` in the debug log.
+Each rewrite SHALL log `macro set <step id>` in the debug log. When a rewrite fails, CheckThat SHALL log `macro not set <step id>: <reason>` once for each new reason, where the reason is `changed by the player`, `edit not taken`, `no free name` or `create failed`. When the game does not take an edit, chat SHALL say so once and tell the tester to delete the macro.
 
 #### Scenario: Log line
 - **WHEN** the macro is rewritten for step `ct.abc`
 - **THEN** the debug log has the line `macro set ct.abc`
+
+#### Scenario: The game does not take the edit
+- **WHEN** the game leaves the CT macro unchanged after an edit, on two refreshes
+- **THEN** the debug log has one line `macro not set <step id>: edit not taken` and chat has one line that names the fix
 
 ### Requirement: A macro press names its step
 The body that `/ct macro` writes SHALL follow the same layout as the follow setting: the marker line first. The Run button SHALL NOT run the marker. When the marker runs, CheckThat SHALL tell a press for the current step from a press for another step, so a plan and a reviewer can see a macro pressed out of sync.

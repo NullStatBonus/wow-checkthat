@@ -985,32 +985,41 @@ function Card.Toggle() if card and card:IsShown() then card:Hide() else Card.Sho
 -- Make the CT macro hold the current step's commands (or /ct status). Never in combat. Never overwrites a macro
 -- the player made or changed. follow: a changed macro is left alone and no second one is made; returns nil.
 -- Returns the macro name, and true when the game was told to change it.
--- reclaim: a macro the player changed is taken back when its first line is still our marker.
+-- reclaim: a macro the player changed is taken back when its first line is still our marker, or when it holds only
+-- /ct status, the body CheckThat writes when no step is open.
+-- On failure returns nil and the reason, for the debug log.
+local EMPTY_BODY = "/ct status"
+-- The game may hand a body back with a trailing new line or space, so bodies compare without them.
+local function same(a, b) return a ~= nil and b ~= nil and (a:gsub("%s+$", "")) == (b:gsub("%s+$", "")) end
 local function writeMacro(body, follow, silent, reclaim)
     local ui = App.db.ui
     local name, idx = ui.macroName, nil
     if name then
         idx = A.MacroIndex(name)
-        if idx > 0 and A.MacroBody(idx) ~= ui.macroBody then -- the player changed it
-            local ours = reclaim and (A.MacroBody(idx) or ""):find("^/ct macrorun ")
+        local now = idx > 0 and A.MacroBody(idx)
+        if now and not same(now, ui.macroBody) then -- the player changed it
+            local ours = reclaim and (now:find("^/ct macrorun ") or same(now, EMPTY_BODY))
             if not ours then
-                if follow then return nil end
+                if follow then return nil, "changed by the player" end
                 idx = 0
             end
         end
         if idx == 0 then idx, name = nil, nil end
     end
     if idx then
-        if follow and A.MacroBody(idx) == body then ui.macroBody = body; return name, false end
+        if follow and same(A.MacroBody(idx), body) then ui.macroBody = body; return name, false end
         A.EditMacro(idx, name, body)
-        if A.MacroBody(idx) ~= body then return nil end -- the game did not take it: keep the saved body
+        if not same(A.MacroBody(idx), body) then -- the game did not take it: keep the saved body
+            if not silent then ns.Slash.Print(L["The CT macro could not be changed. Delete it in the Macros window, and CheckThat makes a new one."]) end
+            return nil, "edit not taken"
+        end
     else
         for n = 1, 9 do
             local cand = n == 1 and "CT" or ("CT" .. n)
             if A.MacroIndex(cand) == 0 then name = cand; break end
         end
-        if not name then if not silent then ns.Slash.Print(L["No free macro name between CT and CT9."]) end; return nil end
-        if not A.CreateMacro(name, body) then if not silent then ns.Slash.Print(L["The macro could not be created. The macro slots may be full."]) end; return nil end
+        if not name then if not silent then ns.Slash.Print(L["No free macro name between CT and CT9."]) end; return nil, "no free name" end
+        if not A.CreateMacro(name, body) then if not silent then ns.Slash.Print(L["The macro could not be created. The macro slots may be full."]) end; return nil, "create failed" end
     end
     ui.macroName, ui.macroBody = name, body
     return name, true
@@ -1029,7 +1038,7 @@ local MACRO_CHARS = 255 -- the game's limit for a macro body
 -- gets the marker: it runs App.MacroText.
 function Card.MacroBody()
     local _, ctx, step = App.Current()
-    if not step then return "/ct status" end
+    if not step then return EMPTY_BODY end
     local marker = "/ct macrorun " .. step.id
     local cmds = App.MacroText(step, ctx.plan)
     local fits = cmds and #marker + 1 + #cmds <= MACRO_CHARS
@@ -1046,10 +1055,10 @@ end
 
 -- With the setting on, keep the CT macro on the current step. Runs on every card refresh, and when the setting
 -- turns on. Nothing is written when the body is unchanged, so a refresh after combat is the whole queue.
-local failedOnce
+local failedOnce, lastFail
 function Card.FollowMacro(fresh)
     if not (App.db and ns.addon.db.profile.macroFollow) or A.InCombat() then return end
-    if fresh then failedOnce = nil end
+    if fresh then failedOnce, lastFail = nil, nil end
     local body, step = Card.MacroBody()
     local ui = App.db.ui
     local before = ui.macroName
@@ -1059,8 +1068,13 @@ function Card.FollowMacro(fresh)
     local name, changed = writeMacro(body, true, failedOnce, reclaim)
     if name and run then ui.macroRun = run.runId end
     if name and name ~= before then ns.Slash.Print(L["Macro %s is set. Drag it to a bar and click it."]:format(name)) end
-    if name == nil then failedOnce = true end
-    if changed then App.Log("macro set " .. (step and step.id or "none")) end
+    if name == nil then
+        failedOnce = true
+        local why = changed or "unknown"
+        if why ~= lastFail then App.Log("macro not set " .. (step and step.id or "none") .. ": " .. why) end -- once for each new reason
+        lastFail = why
+    else lastFail = nil end
+    if name and changed then App.Log("macro set " .. (step and step.id or "none")) end
 end
 
 ns.Start(function()

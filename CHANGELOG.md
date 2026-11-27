@@ -5,6 +5,7 @@
 New: **Client census.** Type `/ct census` to record the names this game client gives addons. Wait for the completion message, then type /reload to save it. The census changes no setting and does no game action.
 New: **Offline checks match the game client.** A plan can ask for the client version from the addon's TOC file. Older plans keep their results. An offline run reports each name the addon read that the test client did not have.
 New: **Lua 5.1 check.** Offline runs and the package check now find code that the game's Lua cannot load or reads differently.
+Fixed: **The CT macro stopped following the step.** After a run ended, the macro could keep `/ct status` in every later run. A new run now takes it back. Chat says when the game refuses a macro change.
 
 ## 0.20.1
 
