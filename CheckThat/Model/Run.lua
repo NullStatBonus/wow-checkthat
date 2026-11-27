@@ -48,7 +48,7 @@ function Run.New(ctx)
         for _, id in ipairs(ctx.selected) do picked[id] = true end
     end
     local run = {
-        kind = "results", ct = 1,
+        kind = "results", ct = Run.MAJOR,
         runId = ("%s-%d-%s"):format(ctx.plan.addon, ctx.now, Run.Tag(ctx.character)),
         revision = 0, addon = ctx.plan.addon, planDigest = ctx.planDigest, planTitle = ctx.plan.title,
         client = ctx.client, build = ctx.build, character = ctx.character,

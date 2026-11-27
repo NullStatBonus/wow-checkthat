@@ -8,7 +8,7 @@ Current: **ct 1, formatRev 7.**
 
 | Key | Meaning | Rises when |
 | --- | --- | --- |
-| `ct` | The **major** version of the record. | A change breaks a reader: a key is removed or renamed, a key means something else, or a closed list of values (a verdict, a result) gets a new value. |
+| `ct` | The **major** version of the record. | A change breaks a reader: a key is removed or renamed, a key means something else, or a closed list of values (`verdict`, an outcome's `result`) gets a new value. |
 | `formatRev` | The **revision** inside a major. | Every additive change: a new optional key. |
 
 Other stamps:
@@ -24,6 +24,7 @@ Other stamps:
 1. **Refuse a higher `ct`, and a `ct` that is not a whole number** (`2.0` is 2, `"2"` and `1.5` are refused). An absent `ct` is a run from before it was kept: read it. Name the file and the number, and say the tool needs updating. Do this before you read any other key: a new major may have changed them. `ct.py` does so and `status` shows why.
 2. **Accept a higher `formatRev`.** It only adds optional keys. Ignore the keys you do not know.
 3. **A missing key means unknown.** Never read it as zero, false or empty. A run saved before 0.15.0 has no `formatRev`: do not invent one. A key that is there tells you at least what that revision had.
+4. **Accept a value you do not know in an open list.** `by`, `evidence` and `at` on an attempt, and `kind`, `scope` and `since` on an outcome, are open: a newer CheckThat may add a value without a new major (#252). Show it as it is. `verdict` and `result` are closed: a new value there needs a new major.
 4. **Do not use the stamp as proof of a key.** An attempt can lose text to the size budget (`trimmed`), and a normalized older run gets `categories`. Test for the key you need.
 5. **Write nothing back into a collected run.**
 

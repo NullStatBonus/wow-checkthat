@@ -2224,6 +2224,27 @@ class Doctor(unittest.TestCase):
         self.assertIn("_retail_: has a WTF folder, but collect does not read it", text)
         self.assertIn("result: collect would read 1 saved-variables file(s)", text)
 
+    def install(self, d, client, version):
+        folder = os.path.join(d, client, "Interface", "AddOns", "CheckThat")
+        os.makedirs(folder, exist_ok=True)
+        for name in ("CheckThat_Vanilla.toc", "CheckThat_Camelot.toc"):
+            with open(os.path.join(folder, name), "w") as f: f.write("## Interface: 11509\n## Version: %s\n" % version)
+
+    def test_the_installed_version_is_compared_with_the_checkout(self):
+        mine = ct.toc_version_raw(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"))
+        d = self.game(clients=("_classic_era_", "_forever_"), sv=())
+        self.install(d, "_classic_era_", "0.16.0")
+        self.install(d, "_forever_", mine)
+        text = "\n".join(ct.doctor_report(wow=d, env={})[0])
+        self.assertRegex(text, r"_classic_era_: [^\n]+\n(?:  [^\n]+\n)*?  warning: installed CheckThat 0\.16\.0, checkout %s: copy" % re.escape(mine))
+        self.assertIn("installed CheckThat %s, the same as this checkout" % mine, text)
+        self.assertEqual(text.count("warning: installed"), 1, "no warning when they match")
+
+    def test_a_missing_install_is_a_note(self):
+        d = self.game(clients=("_classic_era_",), sv=())
+        text = "\n".join(ct.doctor_report(wow=d, env={})[0])
+        self.assertIn("installed CheckThat: none in", text); self.assertNotIn("warning: installed", text)
+
     def test_a_missing_client_folder_and_a_missing_game_folder_say_why(self):
         d = self.game(clients=("_classic_era_",), sv=())
         text = "\n".join(ct.doctor_report(wow=d, env={})[0])
@@ -3160,6 +3181,17 @@ class ReportTable(unittest.TestCase):
         self.assertNotIn("- p:", text)
 
 
+class ClientNames(unittest.TestCase):
+    def test_short_client_names_validate_and_compile_to_the_long_ones(self):
+        p = good()
+        p["sections"][0]["clients"] = ["era"]
+        p["sections"][0]["steps"][1]["clients"] = ["forever", "forever-camelot"]
+        self.assertEqual(ct.validate(p), [])
+        steps = ct.merge_sections(p)["sections"][0]["steps"]
+        self.assertEqual(steps[0]["clients"], ["classic-era"], "a section's short name is written long")
+        self.assertEqual(steps[1]["clients"], ["forever-camelot"], "and duplicates collapse")
+
+
 class StableCommands(unittest.TestCase):
     """#251: each command is stable or a maintainer tool, the docs list the stable ones, and every JSON file has format."""
     def subcommands(self):
@@ -3583,6 +3615,27 @@ class Results(unittest.TestCase):
             ct.write_revision(d, {**run, "runId": rid})
         return d
 
+    def test_readers_accept_values_they_do_not_know_in_the_open_lists(self):
+        """#252: by, evidence, at, and an outcome's kind, scope and since are open lists: a value a newer CheckThat adds is read,
+        never a crash, so it needs no new major."""
+        new = {"by": "macro", "evidence": "screenshot", "at": "reload", "started": 1, "finished": 2,
+               "outcomes": [{"result": "fail", "kind": "sound", "scope": "zone", "since": "login", "why": "w"}]}
+        steps = {"a": {"verdict": "fail", "attempts": [dict(new, n=1, verdict="fail")]},
+                 "b": {"verdict": "pass", "attempts": [dict(new, n=1, verdict="pass", outcomes=[dict(new["outcomes"][0], result="pass")])]}}
+        runs = self.run_with(steps, ct=1, endedAt=5)
+        self.assertIn("a: fail", ct.report_text(runs))
+        self.assertIn("sound", ct.report_json(runs, None, False, True), "the new value is kept, not dropped")
+        self.assertIn("<testsuite", ct.report_junit(runs))
+
+    def test_the_run_schema_keeps_verdict_and_result_closed_and_the_rest_open(self):
+        with open(os.path.join(ROOT, "schema", "run-results.schema.json"), encoding="utf-8") as fh:
+            s = json.load(fh)
+        self.assertIn("enum", s["$defs"]["verdict"]); self.assertIn("enum", s["$defs"]["outcome"]["properties"]["result"])
+        for where, key in (("attempt", "by"), ("attempt", "evidence"), ("attempt", "at"), ("outcome", "kind"), ("outcome", "scope"), ("outcome", "since")):
+            prop = s["$defs"][where]["properties"][key]
+            self.assertNotIn("enum", prop, key); self.assertEqual(prop["type"], "string", key)
+            self.assertTrue(prop.get("examples"), "%s lists the values known today" % key)
+
     def test_report_shows_the_earlier_failure_under_a_later_pass(self):
         text = ct.report_text(self.run_with(self.steps()))
         self.assertIn("- a: pass, after 1 earlier failed or unverified attempt", text)
@@ -3899,9 +3952,11 @@ class Results(unittest.TestCase):
         self.assertEqual(list(check({"steps": {"a": {"verdict": "pass", "attempts": [{"n": 1, "verdict": "pass"}]}}})), [], "an older run has none of the new keys")
         self.assertEqual(list(check({"steps": {"a": {"verdict": "pending", "reopened": True, "attempts": []}}})), [])
         self.assertTrue(list(check({"steps": {"a": {"verdict": "pending", "reopened": "yes"}}})), "reopened is a boolean")
-        for bad in ({"hits": [{"n": 0}]}, {"result": "bogus"}, {"matched": -1}, {"scope": "everywhere"}, {"hits": [{"n": 1}] * 4}, {"trimmed": False}):
+        for bad in ({"hits": [{"n": 0}]}, {"result": "bogus"}, {"matched": -1}, {"scope": 7}, {"hits": [{"n": 1}] * 4}, {"trimmed": False}):
             run = {"steps": {"a": {"attempts": [{"n": 1, "outcomes": [dict({"result": "fail"}, **bad)]}]}}}
             self.assertTrue(list(check(run)), bad)
+        run = {"steps": {"a": {"attempts": [{"n": 1, "outcomes": [{"result": "fail", "scope": "everywhere"}]}]}}}
+        self.assertEqual(list(check(run)), [], "scope is an open list (#252): a value a newer CheckThat adds is valid")
 
     def test_every_export_of_a_played_run_passes_the_schema(self):
         import jsonschema

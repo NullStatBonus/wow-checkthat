@@ -79,9 +79,25 @@ After a reload the runner SHALL mark the open attempt of the character's open ru
 - **WHEN** the character has no open run after a reload
 - **THEN** no resume line is printed and no attempt is marked
 
+<<<<<<< HEAD
 ### Requirement: Pruned runs are named in chat
 When starting a run deletes runs beyond Runs to keep, CheckThat SHALL say in chat which runs it deleted, whether or not they were exported.
 
 #### Scenario: Over the limit
 - **WHEN** a sixth run starts with Runs to keep at 5
 - **THEN** chat says "Deleted the oldest run (<plan>) to keep 5."
+=======
+### Requirement: An unknown client is not guessed
+CheckThat SHALL name the client `classic-era` for an interface number from 11000 to 11999 and `forever-camelot` from 16000 to 16999, and SHALL leave it unknown otherwise. With an unknown client only the steps without `clients` SHALL run.
+
+#### Scenario: Another client
+- **WHEN** the interface number is 20505
+- **THEN** the client is unknown and a step tagged `classic-era` does not run
+
+### Requirement: Open lists in the run record
+Readers of a run SHALL accept a value they do not know in `by`, `evidence` and `at` on an attempt and in `kind`, `scope` and `since` on an outcome. A new value in `verdict` or `result` SHALL need a new major.
+
+#### Scenario: A newer evidence kind
+- **WHEN** a run has an outcome with `kind: sound`
+- **THEN** `ct.py report` reads it and shows the value
+>>>>>>> main

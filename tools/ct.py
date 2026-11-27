@@ -675,6 +675,8 @@ def merge_sections(plan):
                 st["setup"] = (ssetup + " " + st["setup"]).strip() if st.get("setup") else ssetup
             if scl and "clients" not in st:
                 st["clients"] = scl
+            if st.get("clients"):   # the short names (#252) compile to the long ones, which every CheckThat reads
+                st["clients"] = list(dict.fromkeys(CLIENT_ALIAS.get(c, c) for c in st["clients"]))
         sec.pop("clients", None)
     return out
 
@@ -1111,6 +1113,7 @@ def run_luajit(cmd, cwd=None, timeout=None):
 
 
 CLIENTS = (("forever-camelot", "16000"), ("classic-era", "11507"))
+CLIENT_ALIAS = {"era": "classic-era", "forever": "forever-camelot"}   # mirrors Plan.CLIENT_ALIAS (#252)
 
 
 def replay_flow(plan, hooks=None, requirements=None):
@@ -2115,6 +2118,22 @@ def default_src():
     return os.path.join(os.path.dirname(ROOT), "shared-addon-resources", "saved")
 
 
+def installed_version_lines(client_dir, root=ROOT):
+    """#253: the ## Version: of the CheckThat installed in this client folder against this checkout's. A second checkout can overwrite
+    the installed addon, and a plan then runs against the wrong version. A missing install is a note, not an error."""
+    mine = toc_version_raw(os.path.join(root, "CheckThat", "CheckThat_Vanilla.toc"))
+    folder = os.path.join(client_dir, "Interface", "AddOns", "CheckThat")
+    tocs = sorted(glob.glob(os.path.join(folder, "CheckThat_*.toc")))
+    if not tocs:
+        return ["  installed CheckThat: none in %s" % folder]
+    toc = next((t for t in tocs if t.endswith("_Vanilla.toc")), tocs[0])
+    have = toc_version_raw(toc)
+    if not have:
+        return ["  installed CheckThat: no ## Version: in %s" % toc]
+    if not mine or have == mine:
+        return ["  installed CheckThat %s%s" % (have, ", the same as this checkout" if mine else "")]
+    return ["  warning: installed CheckThat %s, checkout %s: copy this checkout's CheckThat folder to %s before a run" % (have, mine, folder)]
+
 def doctor_report(src=None, wow=None, env=None, want=(WATCH, ())):
     """Lines that say where collect looks, what it finds there and the likely reason for a miss. Returns (lines, found): found is the
     number of saved-variables files collect would read. want is (file names, globals), as collect --plan gives. It reads nothing but
@@ -2165,6 +2184,7 @@ def doctor_report(src=None, wow=None, env=None, want=(WATCH, ())):
                 wtf = os.path.join(wow, c, "WTF")
                 if os.path.isdir(wtf):
                     report_src(c, wtf, wow)
+                    lines.extend(installed_version_lines(os.path.join(wow, c)))
                     shots = os.path.join(wow, c, "Screenshots")
                     try:
                         lines.append("  screenshots: %s" % (("%d file(s) in %s" % (len(os.listdir(shots)), shots)) if os.path.isdir(shots) else "no Screenshots folder (collect skips it)"))

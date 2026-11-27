@@ -124,12 +124,16 @@ function App.Log(msg)
     if ns.Log then ns.Log.Record("ct", msg) end
 end
 
--- "classic-era" or "forever-camelot", from the interface number (checked by number, not by client name).
+-- "classic-era" or "forever-camelot", from the interface number (checked by number, not by client name). nil when the
+-- number is unknown or names neither (#252): a step tagged for one client then does not run.
 function App.Client()
     local gb = App.env.GetBuildInfo
-    local toc = 0
-    if gb then local _, _, _, t = gb(); toc = t or 0 end
-    return (toc or 0) >= 16000 and "forever-camelot" or "classic-era"
+    local toc
+    if gb then local _, _, _, t = gb(); toc = tonumber(t) end
+    if not toc then return nil end
+    if toc >= 16000 and toc < 17000 then return "forever-camelot" end
+    if toc >= 11000 and toc < 12000 then return "classic-era" end
+    return nil
 end
 
 function App.Build()

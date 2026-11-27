@@ -577,3 +577,10 @@ Before a Run button or the CT macro offers a command from the plan's `commands`,
 #### Scenario: Registered by another addon
 - **WHEN** the plan lists `/oth` and another addon wrote the global
 - **THEN** no Run button offers `/oth`, and the start screen names it as not offered
+
+### Requirement: Short client names
+A plan's `clients` SHALL accept `era` and `forever` as names for `classic-era` and `forever-camelot`. Compilation SHALL write the long names.
+
+#### Scenario: Short name in a section
+- **WHEN** a section has `clients: [era]` and the plan is compiled
+- **THEN** each step of the section has `clients: [classic-era]`

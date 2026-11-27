@@ -219,6 +219,13 @@ test("app detects client by interface number", function()
     T.eq(App.Client(), "classic-era")
     env.GetBuildInfo = function() return "1.60", "1", "x", 16001 end
     T.eq(App.Client(), "forever-camelot")
+    -- #252: a client CheckThat cannot name is nil, never guessed as Era
+    env.GetBuildInfo = function() return "2.5", "1", "x", 20505 end
+    T.eq(App.Client(), nil, "another client")
+    env.GetBuildInfo = function() return "x", "1", "x", nil end
+    T.eq(App.Client(), nil, "no interface number")
+    env.GetBuildInfo = nil
+    T.eq(App.Client(), nil, "no GetBuildInfo")
 end)
 test("app run, reload resume, export and decode", function()
     local db, env = boot()

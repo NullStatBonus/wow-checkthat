@@ -4,6 +4,8 @@ local Plan = {}
 ns.Plan = Plan
 
 Plan.CLIENTS = { ["classic-era"] = true, ["forever-camelot"] = true }
+-- The short names the tools use (ct.py --client, census manifests, tools/clients) name the same clients in a plan (#252).
+Plan.CLIENT_ALIAS = { era = "classic-era", forever = "forever-camelot" }
 -- The highest plan revision this version reads. A plan says the revision it needs in "needs" (ct.py compile writes it when a plan
 -- uses a key added after revision 1); a plan without "needs" is revision 1, the format as of 0.21.0. Raise this with each addition
 -- to the plan format, and add the key to PLAN_NEEDS in tools/ct.py, so an older CheckThat refuses the plan instead of skipping a check.
@@ -502,7 +504,7 @@ function Plan.Validate(plan, addonCommands)
                 if why then errs[#errs + 1] = w .. ": action text " .. why end
             end
             for _, c in ipairs(type(st.clients) == "table" and st.clients or {}) do
-                if not Plan.CLIENTS[c] then errs[#errs + 1] = w .. ": unknown client " .. tostring(c) end
+                if not Plan.CLIENTS[c] and not Plan.CLIENT_ALIAS[c] then errs[#errs + 1] = w .. ": unknown client " .. tostring(c) end
             end
             for _, r in ipairs(type(st.requires) == "table" and st.requires or {}) do
                 if not reqs[r] then errs[#errs + 1] = w .. ": unresolved requirement " .. tostring(r) end
@@ -556,7 +558,7 @@ function Plan.Steps(plan, client)
     for _, sec in ipairs(plan.sections) do
         for _, st in ipairs(sec.steps) do
             local ok = not st.clients or #st.clients == 0
-            for _, c in ipairs(st.clients or {}) do if c == client then ok = true end end
+            for _, c in ipairs(st.clients or {}) do if client and (Plan.CLIENT_ALIAS[c] or c) == client then ok = true end end
             local entry = { step = st, section = sec.title, intro = sec.intro, sectionId = sec.id,
                 category = st.category or sec.category or (not declared and sec.id or nil) }
             if ok then steps[#steps + 1] = entry else skipped[#skipped + 1] = entry end

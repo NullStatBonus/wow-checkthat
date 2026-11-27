@@ -181,18 +181,22 @@
      "$ref": "#/$defs/verdict"
     },
     "by": {
-     "enum": [
+     "type": "string",
+     "examples": [
       "player",
       "auto"
-     ]
+     ],
+     "description": "An open list (#252): a reader accepts a value it does not know."
     },
     "evidence": {
-     "enum": [
+     "type": "string",
+     "examples": [
       "matched",
       "contradicts",
       "unverified",
       "diagnostic-only"
-     ]
+     ],
+     "description": "An open list (#252): a reader accepts a value it does not know."
     },
     "note": {
      "type": "string"
@@ -212,10 +216,11 @@
      "description": "Since formatRev 6. One entry per listed action of the step: the time the player ticked it, or false. Absent when the step lists no actions or nothing was ticked. Ticks never change the verdict."
     },
     "at": {
-     "enum": [
+     "type": "string",
+     "description": "Since formatRev 6. start: CheckThat judged this async step when the run started. Absent otherwise. An open list (#252): a reader accepts a value it does not know.",
+     "examples": [
       "start"
-     ],
-     "description": "Since formatRev 6. start: CheckThat judged this async step when the run started. Absent otherwise."
+     ]
     },
     "excerpt": {
      "type": "object",
@@ -259,26 +264,29 @@
      "description": "A diagnostic check never gates the verdict."
     },
     "kind": {
-     "enum": [
+     "type": "string",
+     "description": "This key and the ones after it are kept only for a check that did not pass. An open list (#252): a reader accepts a value it does not know.",
+     "examples": [
       "log",
       "log-sequence",
       "fact",
       "state"
-     ],
-     "description": "This key and the ones after it are kept only for a check that did not pass."
+     ]
     },
     "scope": {
-     "enum": [
+     "type": "string",
+     "description": "attempt: the lines after the step opened. session: the whole retained log. Absent on a check with since. An open list (#252): a reader accepts a value it does not know.",
+     "examples": [
       "attempt",
       "session"
-     ],
-     "description": "attempt: the lines after the step opened. session: the whole retained log. Absent on a check with since."
+     ]
     },
     "since": {
-     "enum": [
+     "type": "string",
+     "description": "Since formatRev 5. run: the check read the lines after the run started (a plan's scope: run). Absent otherwise. An open list (#252): a reader accepts a value it does not know.",
+     "examples": [
       "run"
-     ],
-     "description": "Since formatRev 5. run: the check read the lines after the run started (a plan's scope: run). Absent otherwise."
+     ]
     },
     "source": {
      "type": "string",
