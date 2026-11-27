@@ -40,7 +40,8 @@
       "minLength": 1
     },
     "version": {
-      "type": "string"
+      "type": "string",
+      "description": "The plan author's own label for this plan file, such as 1.2. CheckThat and ct.py do not read it."
     },
     "preamble": {
       "type": "string",

@@ -55,16 +55,21 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct back`, `/ct next` | Move to the previous or next step. The card has < and > buttons too. |
 | `/ct export` | Show the results string. |
 | `/ct macro` | Create a macro for the current step. With **Keep the CT macro on the current step** on, the macro follows each step. |
-| `/ct macrorun <step id>` | The first line of that macro. It compares the id with the step on the card and logs `macro run` or `macro stale`. It records no result. |
 | `/ct categories` | List each category of the run with its state (failed, partial or unverified, passed, untested, in progress, all skipped, not picked) and its passed, failed and open counts. |
 | `/ct tracker` | Open or close the Categories window: one row for each category with its color, state in words and passed, failed and open counts. Click a row to add it, go to its first open step or rerun it. The plus button on a row lists its steps. |
 | `/ct run <category or step id>` | Show the first open step of a category, adding the category to the run if it was not picked. Or show one step. |
 | `/ct rerun <category or failed>` | Reopen the steps of a category, or every failed or unverified step with `failed`. Earlier attempts stay in the export. |
-| `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
 | `/ct version` | Show the CheckThat version. During a run it also reports the version as the test fact `version` (0.17.0 is 1700), so a plan can check for a version or newer. |
+| `/ct reload` | Reload the interface so saved variables are written. |
+
+Developer commands. The self-test and the tools use them. They work, but they are not stable: a later version may change or move them.
+
+| Command | What it does |
+| --- | --- |
+| `/ct macrorun <step id>` | The first line of the CT macro (see `/ct macro`). It compares the id with the step on the card and logs `macro run` or `macro stale`. It records no result. |
+| `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
 | `/ct fact` | Report a test fact during a run. The self-test uses it. |
 | `/ct census` | Record the names this game client provides (globals, API tables, widget methods) in the saved variables, for `ct.py census`. It refuses in combat and waits while you fight. |
-| `/ct reload` | Reload the interface so saved variables are written. |
 
 ## Settings
 
@@ -78,7 +83,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 | Advanced | Profile (separate settings for this character), **Runs to keep**, **Keep the CT macro on the current step** (off by default; see [Macro that follows the step](docs/features.md#macro-that-follows-the-step)), **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
 | About | The command list and help. |
 
-**Runs to keep** is 5 to 100, default 20, for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run. The debug report prints every setting and `Stored: <n> runs (limit <n>), <n> plan copies`.
+**Runs to keep** is 5 to 100, default 20, for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run, exported or not, and says so in chat: "Deleted the oldest run (<plan>) to keep 20." The debug report prints every setting and `Stored: <n> runs (limit <n>), <n> plan copies`.
 
 ## Good to know
 

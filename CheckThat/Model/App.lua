@@ -266,7 +266,8 @@ local function sortedRuns()
     return list
 end
 
--- Keep at most RunLimit runs: the oldest go first. A character's current run always stays.
+-- Keep at most RunLimit runs: the oldest go first. A character's current run always stays. Chat names each deleted run
+-- (#252): it goes whether or not it was exported.
 function App.PruneRuns()
     local list, current = sortedRuns(), {}
     for _, id in pairs(App.db.currentByChar) do current[id] = true end
@@ -274,9 +275,13 @@ function App.PruneRuns()
     for i = #list, 1, -1 do
         if excess <= 0 then break end
         if not current[list[i].id] then
+            local run = list[i].run
             App.db.runs[list[i].id] = nil
             excess = excess - 1
             App.Log("run pruned " .. list[i].id)
+            if ns.Slash and ns.Slash.Print then
+                ns.Slash.Print(L["Deleted the oldest run (%s) to keep %d."]:format(ns.Slash.Esc(tostring(run.planTitle or run.addon or list[i].id)), App.RunLimit()))
+            end
         end
     end
     App.PrunePlans()
