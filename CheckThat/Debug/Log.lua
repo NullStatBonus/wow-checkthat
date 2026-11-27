@@ -65,6 +65,13 @@ function Log.Report()
     out[#out + 1] = ""
     out[#out + 1] = "Run: " .. (ns.App and ns.App.db and ns.App.Status() or "none")
     if ns.App and ns.App.db then
+        local _, ctx = ns.App.Current()
+        if ctx then
+            local reads = ns.App.PlanReads(ctx.plan)
+            out[#out + 1] = "Plan reads: " .. (#reads > 0 and table.concat(reads, ", ") or "none")
+        end
+    end
+    if ns.App and ns.App.db then
         local runs, plans = 0, 0
         for _ in pairs(ns.App.db.runs) do runs = runs + 1 end
         for _ in pairs(ns.App.db.planStore) do plans = plans + 1 end

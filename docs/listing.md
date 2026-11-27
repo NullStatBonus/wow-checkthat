@@ -24,6 +24,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - End a run you will not finish from the Run menu in the card header or with `/ct end`. The results stay for export. The same menu imports another plan or clears the current plan.
 - Set card size, opacity and position. Use shared or per-character settings.
 - Better with (all optional): BugGrabber and BugSack for error capture, and the addon you test. See the README, "Which tool to use".
+- The start screen names the variables a plan reads, so you know what a results string can include before you start. `/ct start` takes the addon name in any letter case.
 - Commands: `/ct`, `/ct settings`, `/ct import`, `/ct start <addon>`, `/ct categories`, `/ct run <category or step id>`, `/ct rerun <category or failed>`, `/ct end`, `/ct export`, `/ct log`, `/ct census`. `/checkthat` works the same as `/ct`.
 
 ### Good to know

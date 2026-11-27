@@ -30,6 +30,19 @@ test("report writes a line with the stored counts, and the report holds it", fun
     T.eq(store.entries[#store.entries].msg, "[ct] report requested: Stored: 1 runs (limit 30), 0 plan copies")
     T.ok(r:find("report requested: Stored: 1 runs", 1, true), "the report shows its own line")
 end)
+test("report lists the variables the plan of the run reads", function()
+    local env = { time = function() return 1000 end, UnitName = function() return "T" end, GetRealmName = function() return "R" end }
+    ns.App.Init({}, env)
+    local p = { kind = "plan", ct = 1, addon = "KeepThat", title = "t", logs = { kt = { global = "KeepThatDB", path = "global.log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = { { id = "a", title = "A", action = { kind = "manual", text = "x" }, expect = "e", verify = { "player" } } } } } }
+    ns.App.db.plans.KeepThat = { plan = p, digest = "d" }
+    ns.App.db.planStore.d = p
+    T.ok(not ns.Log.Report():find("Plan reads:", 1, true), "no run, no line")
+    T.ok(ns.App.Start("KeepThat"))
+    T.ok(ns.Log.Report():find("Plan reads: KeepThatDB\n", 1, true), ns.Log.Report())
+    p.logs = nil
+    T.ok(ns.Log.Report():find("Plan reads: none\n", 1, true), "a plan that reads nothing says so")
+end)
 test("report names version, settings area and log state", function()
     ns.Log.Bind({ entries = { { t = 1, msg = "[ct] hello" } } }, function() return true end)
     local r = ns.Log.Report()

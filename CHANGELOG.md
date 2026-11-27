@@ -12,11 +12,16 @@ New: **Steps for one class or profession.** Such a step does not apply on anothe
 New: **Checks for the whole run.** A plan check can read every line since the run started, also after a reload. A last "no Lua error" step then sees the errors of this run only.
 Changed: **A calmer card.** Setup folds to one line. The note opens from "Add note". A small heading names the checks that CheckThat makes. The step title is larger.
 Changed: **Pause after each result.** The card shows the result in one large word for 3 seconds. Then it fades to the next step.
+Changed: **The start screen lists what a plan reads.** A plan can read the variables of any addon. Your results string can include them. The start screen now names them before you start.
 Fixed: **A plan for the other game client.** The start screen asked you to select a category. It now says that the plan is not for this game client.
 Fixed: **A plan pattern could freeze the game.** A pattern with stacked wildcards took seconds to check on a line, and the freeze came back after each reload. CheckThat now stops a match that takes too long. The step stays unverified and says why.
 Fixed: **A plan with a text pattern that Lua cannot read.** The plan imported, then its check raised an error. Import now refuses it.
 Fixed: **A damaged plan string broke the card.** A plan with a wrong field type imported, then raised an error twice a second. Import now refuses it and stores nothing.
 Fixed: **Plan tools accepted what the game rejects.** `ct.py` passed an empty value (`null`), empty step text, and a string over the 120000-character import limit. The tool now names each one.
+Fixed: **A reload while the card showed a past run.** Your open run did not count as reloaded. A step then asked for a second reload. The reload now marks your open run, and chat names it.
+Fixed: **A bar in a category title.** `/ct categories` printed a broken line. Chat now shows the bar.
+Fixed: **`/ct start` in lower case.** `/ct start keepthat` printed the usage line. It now starts the run.
+Fixed: **Categories window after a profile change.** The window kept the old profile's place until a reload. It now moves at once.
 Fixed: **The CT macro stopped following the step.** After a run ended, the macro could keep `/ct status` in every later run. A new run now takes it back. Chat says when the game refuses a macro change.
 
 ## 0.20.1

@@ -283,6 +283,7 @@ local function build()
         card.titleHit:SetScript(ev, function() local f = card:GetScript(ev); if f then f(card) end end)
     end
     card.context = fs("GameFontHighlightSmall", GREY, INNER)
+    card.reads = fs("GameFontHighlightSmall", GREY, INNER) -- the variables of other addons a plan reads (start screen)
     card.evidence = fs("GameFontHighlight", AMBER, INNER)
     card.hint = fs("GameFontHighlightSmall", GREY, INNER)
     card.noteLabel = fs("GameFontHighlightSmall", GREY, 46)
@@ -516,7 +517,7 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "result", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "reads", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "result", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide(); card.caption:Hide(); card.catBtn:Hide()
     for _, s in ipairs(card.segs) do s.back:Hide(); for _, t in ipairs(s.parts) do t:Hide() end; s.hit:Hide() end
@@ -800,6 +801,8 @@ function refreshCard()
         y = 36 + card.title:GetStringHeight() + 8
         place(card.context, 12, y); setText(card.context, msg, none and AMBER or BODY)
         y = y + card.context:GetStringHeight() + 12
+        local reads = rec and not none and App.ReadsNote(rec.plan)
+        if reads then place(card.reads, 12, y - 4); setText(card.reads, reads, GREY); y = y + card.reads:GetStringHeight() + 8 end
         card.start:SetEnabled(not none)
         local list = rec and not none and App.Picks(pendingAddon or App.db.ui.lastImport) or {} -- no categories to pick from
         if #list > 1 and #list <= Card.MAX_SEGMENTS then
@@ -1268,7 +1271,10 @@ function Card.FollowMacro(fresh)
 end
 
 ns.Start(function()
-    local function apply() Card.ApplyPosition(); Card.ApplyAppearance() end
+    local function apply()
+        Card.ApplyPosition(); Card.ApplyAppearance()
+        if ns.Tracker then ns.Tracker.ApplyPosition() end -- the Categories window keeps its own place in each profile
+    end
     ns.Settings.onChange = apply
     local db = ns.addon.db
     for _, event in ipairs({ "OnProfileChanged", "OnProfileCopied", "OnProfileReset" }) do

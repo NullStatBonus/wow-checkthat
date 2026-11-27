@@ -9,7 +9,23 @@ ns.Slash = Slash
 
 Slash.pages = { home = true, plans = true, appearance = true, advanced = true, about = true }
 
-local ADDONS = { KeepThat = true, DontDoThat = true, ClosestVendor = true, CheckThat = true }
+-- The addon a plan can name, in the spelling of Plan.SLASH, whatever case the player typed.
+local function addonName(text)
+    local want = tostring(text):lower()
+    for name in pairs(ns.Plan.SLASH) do
+        if name:lower() == want then return name end
+    end
+end
+
+-- "Step pass (matched)." in the player's language: the result and the evidence are each a localized word.
+function Slash.VerdictLine(a)
+    local verdicts = { pass = L["pass"], partial = L["partial"], fail = L["fail"], skip = L["skip"], unverified = L["unverified"] }
+    local evidence = { matched = L["matched"], contradicts = L["contradicts"], unverified = L["unverified"], ["diagnostic-only"] = L["diagnostic-only"] }
+    local word = verdicts[a.verdict] or tostring(a.verdict)
+    local ev = a.evidence and (evidence[a.evidence] or tostring(a.evidence))
+    if ev then return L["Step %s (%s)."]:format(word, ev) end
+    return L["Step %s."]:format(word)
+end
 
 local function pageList() return L["Pages: home, plans, appearance, advanced, about."] end
 
@@ -81,7 +97,8 @@ function Slash.Run(args, deps)
             local run = App.Current()
             addon = run and run.addon or ""
         end
-        if not ADDONS[addon] then return { L["Usage: /ct start <addon name>."] } end
+        addon = addonName(addon)
+        if not addon then return { L["Usage: /ct start <addon name>."] } end
         local run, err = App.Start(addon)
         if not run then return { err } end
         deps.card(true) -- show, never toggle: an open card would hide the new run
@@ -105,7 +122,7 @@ function Slash.Run(args, deps)
         local rows, overall, total = App.Categories()
         if not rows then return { L["There is no run."] } end
         local out = {}
-        for _, row in ipairs(rows) do out[#out + 1] = App.CategoryLine(row) end
+        for _, row in ipairs(rows) do out[#out + 1] = Slash.Esc(App.CategoryLine(row)) end -- a title is plan text: chat reads | as an escape
         out[#out + 1] = L["Overall: %s, %d passed, %d failed, %d open"]:format(App.StateWord(overall, total), total.pass, total.fail, total.open)
         return out
     elseif cmd == "tracker" then
@@ -201,7 +218,7 @@ function Slash.Register(addon)
             local a, err, step = ns.App.Verdict(cmd, note)
             if ns.Card then ns.Card.AfterVerdict(step); ns.Card.Refresh() end
             if not a then return { err } end
-            return { L["Step %s%s."]:format(a.verdict, a.evidence and (" (" .. a.evidence .. ")") or "") }
+            return { Slash.VerdictLine(a) }
         end,
     }
     local function handler(msg)

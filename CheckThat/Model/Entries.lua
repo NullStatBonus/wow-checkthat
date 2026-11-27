@@ -21,7 +21,7 @@ function Entries.ValidName(addon, name)
         and type(name) == "string" and #name >= 1 and #name <= Entries.ENTRY and not name:find("[^%w_%.%-]")
 end
 
--- Allowed at any time: a run survives /reload and CheckThat loads before the addons that register, so a run can already be open.
+-- Allowed at any time: a run survives /reload and CheckThat loads after the addons that register (OptionalDeps), so a run can already be open.
 -- An entry only runs when a plan step names it. Returns true when the entry is stored.
 function Entries.Register(addon, name, fn)
     if not Entries.ValidName(addon, name) or type(fn) ~= "function" then

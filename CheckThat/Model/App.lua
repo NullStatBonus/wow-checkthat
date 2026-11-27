@@ -368,6 +368,37 @@ function App.Ctx(run)
         character = run.character, now = now(App), env = App.env }
 end
 
+-- The globals a plan reads, sorted: each log source's global and each global-value probe's name. What they hold can reach the
+-- results string (log lines, excerpts, "observed"). A frame-shown probe is left out: it saves only whether the frame is shown.
+function App.PlanReads(plan)
+    local seen, out = {}, {}
+    local function add(name)
+        if type(name) == "string" and name ~= "" and not seen[name] then seen[name] = true; out[#out + 1] = name end
+    end
+    for _, src in pairs(type(plan.logs) == "table" and plan.logs or {}) do add(type(src) == "table" and src.global or nil) end
+    for _, sec in ipairs(plan.sections or {}) do
+        for _, st in ipairs(sec.steps or {}) do
+            for _, a in ipairs(type(st.assertions) == "table" and st.assertions or {}) do
+                if a.probe == "global-value" then add(a.name) end
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+-- The note for the start screen: what the plan reads, so the tester knows what the results string may include. nil when it reads nothing.
+App.READS_SHOWN = 6
+function App.ReadsNote(plan)
+    local names = App.PlanReads(plan)
+    if #names == 0 then return nil end
+    local shown = {}
+    for i = 1, math.min(#names, App.READS_SHOWN) do shown[i] = (names[i]:sub(1, 40):gsub("|", "||")) end
+    local list = table.concat(shown, ", ")
+    if #names > App.READS_SHOWN then list = L["%s, and %d more"]:format(list, #names - App.READS_SHOWN) end
+    return L["This plan reads these variables: %s. A results string can include what they hold."]:format(list)
+end
+
 -- The categories of a plan with how many steps each has for this client: { { id, title, steps } }.
 function App.CategoryChoices(plan)
     local out, byId = {}, {}
@@ -670,13 +701,25 @@ function App.SelfCheck()
     return total, matched, miss
 end
 
--- The open attempt survived a reload: the card should ask for verification, not another reload.
+-- The open run of this character when its plan is saved, else nil. It is not always the run the card shows:
+-- an ended run opened from Past runs is shown instead.
+function App.OpenRecord()
+    local run = openRun()
+    return run and App.Ctx(run) and run or nil
+end
+
+-- The open attempt of the character's open run survived a reload: the card should ask for verification, not another reload.
+-- Returns that run, or nil when the character has none (a past run that the card shows is not marked).
 function App.MarkReloaded()
-    local run, ctx, step = App.Current()
-    if not step then return end
-    local rec = run.steps[step.id]
-    local a = rec.attempts[#rec.attempts]
+    local run = openRun()
+    if not run then return nil end
+    local ctx = App.Ctx(run)
+    local sid = ctx and ns.Run.CurrentId(run)
+    local step = sid and ns.Run.stepOf(ctx, sid)
+    local rec = step and run.steps[step.id]
+    local a = rec and rec.attempts[#rec.attempts]
     if a and not a.verdict then a.reloaded = true end
+    return run
 end
 
 function App.Goto(delta)
@@ -940,8 +983,9 @@ function App.Rerun(what)
     return n, (key == ns.Run.FAILED and not ns.Run.CategoryOf(run, key)) and L["failed and unverified steps"] or name(run, key)
 end
 
-function App.Status()
-    local run = App.db.runs[shownId() or ""]
+-- The status line of the run the card shows, or of the run given.
+function App.Status(run)
+    run = run or App.db.runs[shownId() or ""]
     if not run then return L["No run."] end
     local c = ns.Run.Counts(run)
     local line = L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client or character (revision %d, saved on reload)"]:format(

@@ -546,6 +546,24 @@ test("a bound key records the same result as the button, only with a step on the
     _G.SlashCmdList["ACECONSOLE_CT"]("debug off")
 end)
 
+test("the start screen names the variables the plan reads, and says nothing for a plan that reads none", function()
+    ns.addon.db.profile.card.collapsed = false
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(catPlan(2)))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.ok(not card.reads.shown, "no variables, no note")
+    local plan = ns.App.db.plans.KeepThat.plan
+    plan.logs = { kt = { global = "KeepThatDB", path = "global.log", format = "strings" } }
+    plan.sections[1].steps[1].assertions = { { kind = "state", probe = "global-value", name = "OtherAddonDB", op = "exists" } }
+    ns.Card.Refresh()
+    T.ok(card.reads.shown, "the note shows")
+    T.eq(card.reads.text, "This plan reads these variables: KeepThatDB, OtherAddonDB. A results string can include what they hold.")
+    ns.App.db.currentByChar = {}; ns.App.db.plans = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.lastImport = nil
+    ns.Card.Refresh()
+    T.ok(not card.reads.shown, "no plan, no note")
+end)
+
 test("a plan with no step for this client says so on the start screen and turns Start run off", function()
     ns.addon.db.profile.card.collapsed = false
     local p = catPlan(3)

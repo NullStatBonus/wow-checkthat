@@ -245,6 +245,8 @@ sections:
 
 A step can only be checked from a log if the addon writes the line. See [Debug logging](debug-logging.md).
 
+A plan may read any global, and the results string holds what a log source or a `global-value` check read. The start screen lists those variables before the tester starts. Name only the globals the plan needs.
+
 ## Categories
 
 ```yaml

@@ -246,6 +246,25 @@ test("a slash verdict on a step that has a result needs Redo or Undo first", fun
     T.eq(run.steps["kt.1"].verdict, "skip"); T.eq(#run.steps["kt.1"].attempts, 1)
     App.Begin(); T.ok(App.Verdict("pass"), "after Redo a verdict is taken")
 end)
+test("PlanReads lists each log global and each global-value name once, sorted, and leaves frame probes out", function()
+    local p = { logs = { kt = { global = "KeepThatDB", path = "global.log" }, again = { global = "KeepThatDB", path = "global.other" },
+            ddt = { global = "DontDoThatDB", path = "log" } },
+        sections = { { id = "s", title = "S", steps = {
+            { id = "a", assertions = { { kind = "state", probe = "global-value", name = "ZetaVar", op = "exists" },
+                { kind = "state", probe = "frame-shown", name = "SomeFrame", op = "eq", value = true },
+                { kind = "state", probe = "addon-loaded", name = "KeepThat" },
+                { kind = "state", probe = "global-value", name = "KeepThatDB", path = "x", op = "exists" } } },
+            { id = "b" } } } } }
+    T.same(App.PlanReads(p), { "DontDoThatDB", "KeepThatDB", "ZetaVar" })
+    T.same(App.PlanReads({ sections = {} }), {})
+    T.eq(App.ReadsNote({ sections = {} }), nil, "a plan that reads nothing has no note")
+    T.eq(App.ReadsNote(p), "This plan reads these variables: DontDoThatDB, KeepThatDB, ZetaVar. A results string can include what they hold.")
+    for i = 1, 8 do p.logs["n" .. i] = { global = "Aaa" .. i, path = "x" } end
+    local note = App.ReadsNote(p)
+    T.ok(note:find("Aaa1, Aaa2, Aaa3, Aaa4, Aaa5, Aaa6, and 5 more.", 1, true), "six names, then a count: " .. note)
+    T.ok(App.ReadsNote({ logs = { bar = { global = "A|cffff0000x", path = "x" } }, sections = {} }):find("A||cffff0000x", 1, true),
+        "a name is escaped: the card shows it as text")
+end)
 test("reload mark on the open attempt", function()
     boot(); App.ImportPlan(assert(ns.Codec.Encode(plan()))); App.Start("KeepThat")
     App.Begin(); App.MarkReloaded()

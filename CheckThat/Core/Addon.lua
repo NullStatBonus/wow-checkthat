@@ -26,14 +26,15 @@ end
 
 function addon:OnEnable()
     -- A run from before a reload resumes: the open attempt asks for verification, not another reload.
-    local run = ns.App.Current()
+    -- Only the character's open run resumes. The card may show an ended run from Past runs instead.
+    local run = ns.App.OpenRecord()
     if run then
         ns.Errors.Rebase()
         ns.App.MarkReloaded()
         ns.App.Log("resumed run " .. run.runId .. " after load")
         if ns.Card then ns.Card.Show() end
         ns.Slash.Print(L["Reloaded. Your run continues on the same step."])
-        ns.Slash.Print(ns.App.Status())
+        ns.Slash.Print(ns.App.Status(run))
     end
     local newer = ns.App.FutureCount()
     if newer > 0 then
