@@ -73,14 +73,15 @@ end
 -- Read-only text, selected for Ctrl+A / Ctrl+C, in the standard AceGUI window.
 -- It falls back to the plain text window when AceGUI is missing.
 local window
-local function aceShow(title, text)
+local function aceShow(title, text, note)
     local gui = LibStub and LibStub("AceGUI-3.0", true)
     if not (gui and gui.Create) then return false end
     if window then gui:Release(window); window = nil end
     local w = gui:Create("Frame")
     window = w
     w:SetTitle(title)
-    w:SetStatusText(L["Press Ctrl+A to select everything, then Ctrl+C to copy."])
+    local press = L["Press Ctrl+A to select everything, then Ctrl+C to copy."]
+    w:SetStatusText(note and (note .. " " .. press) or press)
     w:SetLayout("Fill")
     w:SetCallback("OnClose", function(f) gui:Release(f); if window == f then window = nil end end)
     local edit = gui:Create("MultiLineEditBox")
@@ -94,11 +95,13 @@ local function aceShow(title, text)
     return true
 end
 
-function Export.Show(title, text)
-    local ok, shown = pcall(aceShow, title, text or "")
+-- note: one sentence before the copy hint, such as what the text includes.
+function Export.Show(title, text, note)
+    local ok, shown = pcall(aceShow, title, text or "", note)
     if ok and shown then if box then box:Hide() end return end
     if window then pcall(function() window:Release() end); window = nil end
-    Export.Prompt(title, text, nil, L["Close"], L["Press Ctrl+C to copy."], true)
+    local press = L["Press Ctrl+C to copy."]
+    Export.Prompt(title, text, nil, L["Close"], note and (note .. " " .. press) or press, true)
 end
 
 -- The editable import window in the same AceGUI frame: a "Choose a plan" dropdown above a text box with the button.

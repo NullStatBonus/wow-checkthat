@@ -742,6 +742,13 @@ test("an automatic result stays on screen and fades to the next step; a result p
     T.eq(card2.calls.SetAlpha[1], 1, "at full opacity")
 end)
 
+test("the results window says the results include the character and realm (#250)", function()
+    local run = startRun()
+    local got
+    H.stub(ns.Export, "Show", function(title, text, note) got = { title, note } end)
+    ns.Card.ExportNow(run.runId)
+    T.same(got, { "Results string", "The results include your character and realm name." })
+end)
 test("a step's cleanup shows on the next step until that one has a result (#247)", function()
     local run, card = runPlan({ manual("a", { cleanup = "Turn the addon on again." }), manual("b"), manual("c") })
     T.ok(not card.cleanup.shown, "nothing before a result")

@@ -482,7 +482,7 @@ end
 
 function Card.ExportNow(runId)
     local s, err = App.Export(runId)
-    if s then ns.Export.Show(L["Results string"], s) else ns.Slash.Print(err) end
+    if s then ns.Export.Show(L["Results string"], s, L["The results include your character and realm name."]) else ns.Slash.Print(err) end
 end
 
 function Card.ImportPrompt()

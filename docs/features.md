@@ -73,7 +73,7 @@ Pick a run, then choose:
   - Opening the current run asks nothing.
   - The attempt that the opened run left open starts again, so lines that came from other runs do not count.
   - A run that has not ended and belongs to another character cannot be opened, only exported or deleted.
-- **Export run.** Shows the results string.
+- **Export run.** Shows the results string. The line under it says "The results include your character and realm name.": every run records `character` as `Name-Realm`.
 - **Delete run.** Names the run in full and asks first.
 
 Debug log: `run open asked <id>`, `run opened <id>`, `run delete asked <id>`, `run deleted <id>`, `run pruned <id>` and `run exported <id>`. A cancelled question leaves no `run opened` line.
@@ -136,7 +136,7 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 - **Which outcomes.** Every outcome that is not a pass, also in an attempt that passed (a failing diagnostic never gates it). Passing outcomes keep none of these keys, and the check does not build them.
 - **Position and excerpt.** For `scope: attempt` the position `n` is the same position as line `n` of the excerpt of that source, when `n` is 20 or less. Hits carry their own text, so a hit past line 20 is still shown.
 - **Size.** Hit text and `observed` count toward the byte budget of a run with the excerpt, for every attempt that kept them (also a passing one). The oldest attempts lose them first, keep `rule`, `shape`, `matched`, `window` and `why`, and set `trimmed` on each check that lost text.
-- **Privacy.** Hit lines and values come from debug logs and can hold private data, as the excerpt can. A plan may read any global of any addon, and the `observed` value, the hits and the excerpts hold what it read. The start screen lists those variables before you start, and the debug report shows `Plan reads: <names>` for the run on the card (`none` when it reads none). Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
+- **Privacy.** A results string names the character and realm (`character`), and the export window says so. Hit lines and values come from debug logs and can hold private data, as the excerpt can. A plan may read any global of any addon, and the `observed` value, the hits and the excerpts hold what it read. The start screen lists those variables before you start, and the debug report shows `Plan reads: <names>` for the run on the card (`none` when it reads none). Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
 - **Contract.** `schema/run-results.schema.json` describes the run record. `tools/ct.py` rejects a revision whose hits are malformed and names it in `status`.
 
 ## Step card
