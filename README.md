@@ -93,6 +93,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 - A long plan or step title ends with "..." and shows in full when you point at it.
 - Each run saves the version of the addon you test (the plan's addon), when the game can tell it. `ct.py diff` and `ct.py trend --by target` show it. A run from an older CheckThat has none.
 - A step that checks a log with no saved position stays unverified. It never counts the whole log as new.
+- Import refuses a plan whose text pattern Lua cannot read (an open `(` or `[`, a lone `%`). A log line that takes too long to match leaves its check unverified, and a very long log may show "still checking the log" for a refresh or two. [Details](docs/features.md#unit-test-checks)
 
 ## Plans, evidence and skills
 

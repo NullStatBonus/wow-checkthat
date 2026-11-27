@@ -3118,6 +3118,125 @@ class Cases(unittest.TestCase):
 
 
 
+class PlanHardening(unittest.TestCase):
+    """What the game's own reader and matcher cannot take: null, a long import string, a pattern that could freeze the client."""
+
+    def test_pattern_problem_agrees_with_the_lua_validator_on_the_shared_set(self):
+        with open(os.path.join(ROOT, "tests", "fixtures", "parity-patterns.json"), encoding="utf-8") as fh: cases = json.load(fh)   # tests/test_plan.lua reads the same file
+        self.assertGreaterEqual(len(cases), 50)
+        for c in cases:
+            self.assertEqual(ct.pattern_problem(c["pattern"]), c.get("problem"), c["pattern"])
+        self.assertEqual(ct.pattern_problem(5), "pattern must be text")
+
+    def test_ordinary_patterns_are_accepted_and_only_a_pattern_lua_cannot_read_is_refused(self):
+        for p in (".-.-.-Z", ".*.*", ".*%d+", "a-a-", "%s*.-", "%d+%.?%d*", "(%S+)%s+(.+)", ": *.*", "%[(.-)%]%s*(.*)", "%a+%s*%a*", "^%s*(.-)%s*$",
+                  "(%d+) (%d+) (%d+) (%d+) (%d+)", "%d+:%d+:%d+%.%d+ %a+", "^(%w+)%s+(%w+)", ")", "a]"):
+            self.assertIsNone(ct.pattern_problem(p), p)
+        for p in ("(", "%", "[a", "%b", "%f", "(a)%2", "%0", "a" * 201):
+            self.assertTrue(ct.pattern_problem(p), p)
+
+    def test_validate_refuses_a_log_sequence_or_matches_pattern_that_lua_cannot_read(self):
+        for a, needle in (({"kind": "log", "source": "debug", "pattern": "("}, "opens a capture"),
+                          ({"kind": "log-sequence", "source": "debug", "sequence": [{"contains": "a"}, {"pattern": "x[a"}]}, "no closing ]"),
+                          ({"kind": "log-sequence", "source": "debug", "sequence": [{"contains": "a", "equals": "b"}]}, "sequence item needs exactly one"),
+                          ({"kind": "fact", "source": "debug", "addon": "A", "key": "k", "op": "matches", "value": "abc%"}, "matches pattern ends with a lone %"),
+                          ({"kind": "state", "probe": "global-value", "name": "G", "op": "matches", "value": "(a)%2"}, "not closed")):
+            p = good(); p["sections"][0]["steps"][0]["assertions"] = [a]
+            self.assertTrue(any(needle in e for e in ct.validate(p)), (a, ct.validate(p)))
+        p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "pattern": ".-.-.-.-Z", "absent": True},
+                                                                  {"kind": "fact", "source": "debug", "addon": "A", "key": "k", "op": "matches", "value": "%d+%.?%d*"}]
+        self.assertEqual(ct.validate(p), [])
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_pattern_problem_agrees_with_the_lua_validator_on_a_generated_set(self):
+        import random
+        rng = random.Random(11)
+        atoms = ["a", "b", "x", " ", ".", "%d", "%a", "%s", "%w", "%p", "%u", "%l", "%x", "%c", "%z", "%D", "%S", "%.", "%%", "%q", "[abc]", "[^abc]", "[a-c]",
+                 "[%d_]", "[]]", "[^]]", "[%a-]", "(", ")", "()", "%1", "%2", "%b()", "%bxy", "%f[%w]", "%f[%W]", "^", "$", "*", "+", "-", "?", "1", "(a)", "(%w+)", "[", "]", "%",
+                 "é", "é+", chr(0)]
+        pats = ["".join(rng.choice(atoms) for _ in range(rng.randint(1, 9))) for _ in range(4000)]
+        with open(os.path.join(ROOT, "tests", "fixtures", "parity-patterns.json"), encoding="utf-8") as fh:
+            pats += [c["pattern"] for c in json.load(fh)]
+        pats += ["()" * 40, "(" * 33, "a" * 200, "a" * 201, "%" + "b" * 3]
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "p.json")
+        with open(path, "w", encoding="utf-8") as fh: json.dump(pats, fh)
+        r = subprocess.run(["luajit", os.path.join(ROOT, "tests", "pattern_problems.lua"), path], capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lua = r.stdout.split("\n")[:-1]
+        self.assertEqual(len(lua), len(pats))
+        self.assertGreater(len(set(lua)), 8, "the set holds many kinds of problem")
+        for p, want in zip(pats, lua):
+            self.assertEqual(ct.pattern_problem(p) or "nil", want, p)
+
+    def test_every_pattern_of_the_repository_plans_is_accepted(self):
+        import yaml
+        found = []
+        def scan(v):
+            if isinstance(v, dict):
+                for m in (v.get("sequence") or [v]) if v.get("kind") in ("log", "log-sequence", "fact", "state") else []:
+                    pat = m.get("pattern") or (v.get("value") if v.get("op") == "matches" else None)
+                    if isinstance(pat, str):
+                        found.append(pat)
+                v = list(v.values())
+            if isinstance(v, list):
+                for c in v: scan(c)
+        for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]:
+            with open(path, encoding="utf-8") as fh: scan(yaml.safe_load(fh))
+        self.assertGreaterEqual(len(found), 5)
+        for pat in found:
+            self.assertIsNone(ct.pattern_problem(pat), pat)
+
+    def test_null_is_refused_with_its_path_because_the_game_cannot_read_it(self):
+        p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "global-value", "name": "G", "op": "eq", "value": None}]
+        errs = ct.validate(p)
+        self.assertEqual(len(errs), 1); self.assertIn("sections/0/steps/0/assertions/0/value: null is not allowed", errs[0])
+        import yaml
+        q = yaml.safe_load(yaml.safe_dump(good()).replace("expect: e", "expect: e\n    value:", 1))   # an empty YAML value reads as null
+        self.assertTrue(any("null is not allowed" in e for e in ct.validate(q)))
+        p = good(); p["offline"] = {"steps": [{"x": None}]}   # tools-only block: the game never gets it
+        self.assertFalse(any("null" in e for e in ct.validate(p)))
+        with open(ct.SCHEMA, encoding="utf-8") as fh: schema = json.load(fh)
+        import jsonschema
+        for a in ({"kind": "state", "probe": "global-value", "name": "G", "op": "eq", "value": None},
+                  {"kind": "fact", "source": "debug", "addon": "A", "key": "k", "op": "eq", "value": None}):
+            p = good(); p["sections"][0]["steps"][0]["assertions"] = [a]
+            self.assertTrue(list(jsonschema.Draft202012Validator(schema).iter_errors(p)), "the schema alone refuses a null value too: " + a["kind"])
+        for v in (3, "a", True, [1, 2], {"a": 1}):
+            p["sections"][0]["steps"][0]["assertions"][0]["value"] = v
+            self.assertEqual(ct.validate(p), [], v)
+
+    def compiled(self, plan):
+        import yaml
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "p.yaml")
+        with open(path, "w", encoding="utf-8") as fh: yaml.safe_dump(plan, fh)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = ct.main(["compile", path])
+        return rc, out.getvalue().strip(), err.getvalue()
+
+    def test_compile_refuses_a_string_the_game_would_not_import(self):
+        import random
+        rng = random.Random(7)
+        p = good(); p["preamble"] = "".join(rng.choice("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") for _ in range(130000))
+        rc, out, err = self.compiled(p)
+        self.assertEqual(rc, 1); self.assertEqual(out, "")
+        self.assertIn("the game imports at most 120000", err)
+        self.assertEqual(ct.MAX_ENCODED, 120000)
+        rc, out, _ = self.compiled(good())
+        self.assertEqual(rc, 0); n = len(out)
+        with unittest.mock.patch.object(ct, "MAX_ENCODED", n):
+            self.assertEqual(self.compiled(good())[0], 0, "exactly the cap is fine")
+        with unittest.mock.patch.object(ct, "MAX_ENCODED", n - 1):
+            self.assertEqual(self.compiled(good())[0], 1, "one over the cap is not")
+
+    def test_the_cap_matches_the_addon_codec(self):
+        with open(os.path.join(ROOT, "CheckThat", "Model", "Codec.lua"), encoding="utf-8") as fh:
+            m = re.search(r"LIMITS = \{ encoded = (\d+), inflated = (\d+) \}", fh.read())
+        self.assertEqual((ct.MAX_ENCODED, ct.MAX_INFLATED), (int(m.group(1)), int(m.group(2))))
+
+
 class Results(unittest.TestCase):
     def run_with(self, steps, **extra):
         return {"R-1": {"planTitle": "t", "addon": "KeepThat", "revision": 2, "client": "classic-era", "build": "1", "character": "X",

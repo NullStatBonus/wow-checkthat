@@ -342,4 +342,88 @@ test("an auto step with a required fact missing check needs a timeout", function
     T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
 end)
 
+-- Plan patterns: the game cannot stop a pattern that runs long, so the rules below keep every one quick (see Plan.PatternProblem).
+local function readJson(p) local f = assert(io.open(p, "rb")); local s = f:read("*a"); f:close(); return assert(ns.Json.Decode(s)) end
+test("PatternProblem agrees with tools/ct.py on the shared pattern set, reasons included", function()
+    local cases = readJson("tests/fixtures/parity-patterns.json")
+    T.ok(#cases >= 50, "the set is not empty")
+    local rejected = 0
+    for _, c in ipairs(cases) do
+        T.eq(ns.Plan.PatternProblem(c.pattern), c.problem, c.pattern)
+        if c.problem then rejected = rejected + 1 end
+    end
+    T.ok(rejected >= 20 and rejected < #cases, "the set holds both kinds")
+    T.eq(ns.Plan.PatternProblem(5), "pattern must be text"); T.eq(ns.Plan.PatternProblem(nil), "pattern must be text")
+end)
+test("patterns that are ordinary and linear are accepted, as they were before: only a pattern Lua cannot read is refused", function()
+    for _, p in ipairs({ "%d+%.?%d*", "(%S+)%s+(.+)", ".*%d+", ": *.*", "%[(.-)%]%s*(.*)", "%a+%s*%a*", "^%s*(.-)%s*$",
+        "(%d+) (%d+) (%d+) (%d+) (%d+)", "%d+:%d+:%d+%.%d+ %a+", ".-.-.-Z", ".*.*", "a.-a.-a.-a.-Z", "%d+%.%d+", "^(%w+)%s+(%w+)" }) do
+        T.eq(ns.Plan.PatternProblem(p), nil, p)
+    end
+    for _, p in ipairs({ "(", "%", "[a", "%b", "%f", "(a)%2", "%0" }) do T.ok(ns.Plan.PatternProblem(p), p) end
+    T.eq(ns.Plan.PatternProblem(")"), nil, "no special character: string.find searches for the text")
+    T.ok(ns.Plan.PatternProblem(string.rep("a", 201)):find("longer than 200", 1, true))
+end)
+test("Validate refuses a log, sequence or matches pattern that Lua cannot read, and a log pattern over 200 characters", function()
+    local function logWith(m) return function(q) q.sections[1].steps[1].assertions[1] = m end end
+    bad(logWith({ kind = "log", source = "debug", pattern = "(" }), "pattern opens a capture it does not close")
+    bad(logWith({ kind = "log", source = "debug", pattern = string.rep("a", 201) }), "pattern is longer than 200 characters")
+    bad(logWith({ kind = "log-sequence", source = "debug", sequence = { { contains = "a" }, { pattern = "x[a" } } }), "pattern has a set with no closing ]")
+    bad(logWith({ kind = "fact", source = "debug", addon = "KT", key = "k", op = "matches", value = "abc%" }), "matches pattern ends with a lone %")
+    bad(logWith({ kind = "state", probe = "global-value", name = "G", op = "matches", value = "(a)%2" }), "pattern names a capture that is not closed")
+    local p = good()
+    p.sections[1].steps[1].assertions = { { kind = "log", source = "debug", pattern = "^(%w+)%s+(%w+)" },
+        { kind = "log-sequence", source = "debug", sequence = { { pattern = "%d+%.%d+" }, { equals = "x" } } },
+        { kind = "log", source = "debug", pattern = ".-.-.-.-Z", absent = true },
+        { kind = "fact", source = "debug", addon = "KT", key = "k", op = "matches", value = "%d+%.?%d*" },
+        { kind = "state", probe = "global-value", name = "G", op = "matches", value = "%a+%s*%a*" } }
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+end)
+test("every pattern in the repository's plans is accepted", function()
+    local list = io.popen("ls build/*.ct 2>/dev/null")
+    local found, seen = 0, {}
+    local function scan(v)
+        if type(v) ~= "table" then return end
+        if (v.kind == "log" or v.kind == "log-sequence" or v.kind == "fact" or v.kind == "state") then
+            local items = v.sequence or { v }
+            for _, m in ipairs(items) do
+                local pat = m.pattern or (v.op == "matches" and v.value) or nil
+                if pat then found = found + 1; T.eq(ns.Plan.PatternProblem(pat), nil, pat) end
+            end
+        end
+        for _, c in pairs(v) do scan(c) end
+    end
+    for path in list:lines() do
+        local f = assert(io.open(path)); local s = f:read("*a"); f:close()
+        scan(assert(ns.Codec.Decode(s))); seen[#seen + 1] = path
+    end
+    list:close()
+    T.ok(#seen >= 5, "built plans found (run make build)")
+    T.ok(found >= 5, "the plans hold patterns: " .. found)
+end)
+test("the validator refuses a plan whose fields have the wrong type, as the card and the evidence code cannot read them", function()
+    bad(function(q) q.logs.debug = "x" end, "log source debug must be a table")
+    bad(function(q) q.logs = "x" end, "logs must be a table")
+    bad(function(q) q.requirements.loaded = "x" end, "requirement loaded must be a table")
+    bad(function(q) q.requirements.loaded.text = 5 end, "text must be text")
+    bad(function(q) q.requirements = "x" end, "requirements must be a table")
+    bad(function(q) q.handoff = 5 end, "handoff must be text"); bad(function(q) q.preamble = {} end, "preamble must be text")
+    bad(function(q) q.sections[1].intro = 5 end, "intro must be text"); bad(function(q) q.sections[1].setup = 5 end, "setup must be text")
+    bad(function(q) q.sections[1].title = 5 end, "title must be text")
+    bad(function(q) q.sections[1].steps[1].setup = {} end, "setup must be text")
+    bad(function(q) q.sections[1].steps[1].assertions[1].label = 5 end, "label must be text")
+    bad(function(q) q.sections[1].steps[1].assertions[1].contains = 5 end, "contains must be text")
+    bad(function(q) q.sections[1].steps[1].assertions[1] = { kind = "log", source = "debug", equals = {} } end, "equals must be text")
+    bad(function(q) q.sections[1].steps[1].assertions[1] = { kind = "log", source = "debug", pattern = 5 } end, "pattern must be text")
+    bad(function(q) q.sections[1].steps[1].assertions[1] = { kind = "log-sequence", source = "debug", sequence = { { contains = 7 } } } end, "sequence item contains must be text")
+    bad(function(q) q.sections[1].steps[1].assertions[1] = { kind = "log-sequence", source = "debug", sequence = { 7 } } end, "sequence item not a table")
+    bad(function(q) q.sections[1].steps[1].assertions[1] = { kind = "log-sequence", source = "debug", sequence = { { contains = "a", equals = "b" } } } end, "sequence item needs exactly one")
+    bad(function(q) q.logs.debug.global = 5 end, "global must be text"); bad(function(q) q.logs.debug.path = 5 end, "path must be text")
+    bad(function(q) q.sections[1].steps[1].requires = "loaded" end, "requires must be a list")
+    bad(function(q) q.sections[1].steps[2].action.commands = "/kt log" end, "commands must be a list")
+    bad(function(q) q.macros = "x" end, "macros must be a list")
+    local p = good(); p.logs.debug.path = nil; p.sections[1].steps[1].assertions[1].label = "A label"
+    T.eq(#ns.Plan.Validate(p), 0, "an absent path or global stays valid")
+end)
+
 finish()

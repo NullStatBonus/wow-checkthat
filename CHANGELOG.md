@@ -13,6 +13,10 @@ New: **Checks for the whole run.** A plan check can read every line since the ru
 Changed: **A calmer card.** Setup folds to one line. The note opens from "Add note". A small heading names the checks that CheckThat makes. The step title is larger.
 Changed: **Pause after each result.** The card shows the result in one large word for 3 seconds. Then it fades to the next step.
 Fixed: **A plan for the other game client.** The start screen asked you to select a category. It now says that the plan is not for this game client.
+Fixed: **A plan pattern could freeze the game.** A pattern with stacked wildcards took seconds to check on a line, and the freeze came back after each reload. CheckThat now stops a match that takes too long. The step stays unverified and says why.
+Fixed: **A plan with a text pattern that Lua cannot read.** The plan imported, then its check raised an error. Import now refuses it.
+Fixed: **A damaged plan string broke the card.** A plan with a wrong field type imported, then raised an error twice a second. Import now refuses it and stores nothing.
+Fixed: **Plan tools accepted what the game rejects.** `ct.py` passed an empty value (`null`), empty step text, and a string over the 120000-character import limit. The tool now names each one.
 Fixed: **The CT macro stopped following the step.** After a run ended, the macro could keep `/ct status` in every later run. A new run now takes it back. Chat says when the game refuses a macro change.
 
 ## 0.20.1

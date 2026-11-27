@@ -1,0 +1,326 @@
+[
+ {
+  "pattern": "x"
+ },
+ {
+  "pattern": "."
+ },
+ {
+  "pattern": "a.-b"
+ },
+ {
+  "pattern": "%d+%.%d+"
+ },
+ {
+  "pattern": "^(%w+)%s+(%w+)"
+ },
+ {
+  "pattern": "^%[ct%] report requested: Stored: %d+ runs %(limit %d+%), %d+ plan copies$"
+ },
+ {
+  "pattern": "[%w_]+=[%w_]+"
+ },
+ {
+  "pattern": "%f[%w]%w+%f[%W]"
+ },
+ {
+  "pattern": "%b()"
+ },
+ {
+  "pattern": "(%d+)-(%d+)"
+ },
+ {
+  "pattern": "a?b?c?"
+ },
+ {
+  "pattern": ".?.?.*"
+ },
+ {
+  "pattern": "%a+%d+"
+ },
+ {
+  "pattern": "[^%s]+%s+"
+ },
+ {
+  "pattern": "x*y*"
+ },
+ {
+  "pattern": "%d+x%d+"
+ },
+ {
+  "pattern": "[a-c]+[d-f]+"
+ },
+ {
+  "pattern": "[^a]+a+"
+ },
+ {
+  "pattern": "a^b+"
+ },
+ {
+  "pattern": "x$y"
+ },
+ {
+  "pattern": "^%s*$"
+ },
+ {
+  "pattern": "()"
+ },
+ {
+  "pattern": "(a)%1"
+ },
+ {
+  "pattern": "[]]+"
+ },
+ {
+  "pattern": "[^]]-x"
+ },
+ {
+  "pattern": "%q+%Q-"
+ },
+ {
+  "pattern": "é+x"
+ },
+ {
+  "pattern": "^.-%[(%d+)%]$"
+ },
+ {
+  "pattern": "%d+%.?%d*"
+ },
+ {
+  "pattern": "(%S+)%s+(.+)"
+ },
+ {
+  "pattern": ".*%d+"
+ },
+ {
+  "pattern": ": *.*"
+ },
+ {
+  "pattern": "%[(.-)%]%s*(.*)"
+ },
+ {
+  "pattern": "%a+%s*%a*"
+ },
+ {
+  "pattern": "^%s*(.-)%s*$"
+ },
+ {
+  "pattern": "(%d+) (%d+) (%d+) (%d+) (%d+)"
+ },
+ {
+  "pattern": "%d+:%d+:%d+%.%d+ %a+"
+ },
+ {
+  "pattern": ".-.-.-Z"
+ },
+ {
+  "pattern": ".-.-.-.-Z"
+ },
+ {
+  "pattern": ".-.-.-.-.-Z"
+ },
+ {
+  "pattern": ".*.*"
+ },
+ {
+  "pattern": "%s*.-"
+ },
+ {
+  "pattern": "%w+%d+"
+ },
+ {
+  "pattern": "a-a-"
+ },
+ {
+  "pattern": "%a+%s?%a+"
+ },
+ {
+  "pattern": "%d+x?%d+"
+ },
+ {
+  "pattern": "[a-c]+[b-d]+"
+ },
+ {
+  "pattern": "[^a]+b+"
+ },
+ {
+  "pattern": "%w+x%w+y%w+z%w+u%w+v"
+ },
+ {
+  "pattern": "%S+%w-"
+ },
+ {
+  "pattern": "%u+%l+%a+"
+ },
+ {
+  "pattern": "%.+%p+"
+ },
+ {
+  "pattern": "a.-a.-a.-a.-Z"
+ },
+ {
+  "pattern": "%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d?%d? ms"
+ },
+ {
+  "pattern": "%w*%s*%w*"
+ },
+ {
+  "pattern": "^$"
+ },
+ {
+  "pattern": "$"
+ },
+ {
+  "pattern": "^"
+ },
+ {
+  "pattern": "[%]]"
+ },
+ {
+  "pattern": "[a-]"
+ },
+ {
+  "pattern": "%%"
+ },
+ {
+  "pattern": "[%a-z]"
+ },
+ {
+  "pattern": "(()())"
+ },
+ {
+  "pattern": "%f[%a]%a+%f[%A]"
+ },
+ {
+  "pattern": "[[]"
+ },
+ {
+  "pattern": "[%%]"
+ },
+ {
+  "pattern": "(",
+  "problem": "pattern opens a capture it does not close"
+ },
+ {
+  "pattern": "(a",
+  "problem": "pattern opens a capture it does not close"
+ },
+ {
+  "pattern": ")"
+ },
+ {
+  "pattern": "%",
+  "problem": "pattern ends with a lone %"
+ },
+ {
+  "pattern": "[a",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "[%]",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "%b",
+  "problem": "pattern has %b without its two characters"
+ },
+ {
+  "pattern": "%bx",
+  "problem": "pattern has %b without its two characters"
+ },
+ {
+  "pattern": "%f",
+  "problem": "pattern has %f without a set after it"
+ },
+ {
+  "pattern": "%fx",
+  "problem": "pattern has %f without a set after it"
+ },
+ {
+  "pattern": "%f[a",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "%1",
+  "problem": "pattern names a capture that is not closed"
+ },
+ {
+  "pattern": "(a)%2",
+  "problem": "pattern names a capture that is not closed"
+ },
+ {
+  "pattern": "%0",
+  "problem": "pattern names a capture that is not closed"
+ },
+ {
+  "pattern": "(a%1)",
+  "problem": "pattern names a capture that is not closed"
+ },
+ {
+  "pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "problem": "pattern is longer than 200 characters"
+ },
+ {
+  "pattern": "()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()",
+  "problem": "pattern has too many captures"
+ },
+ {
+  "pattern": "[",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "a[",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "[^",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "x[]",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "(%1)",
+  "problem": "pattern names a capture that is not closed"
+ },
+ {
+  "pattern": "%b(",
+  "problem": "pattern has %b without its two characters"
+ },
+ {
+  "pattern": "a%",
+  "problem": "pattern ends with a lone %"
+ },
+ {
+  "pattern": "^%",
+  "problem": "pattern ends with a lone %"
+ },
+ {
+  "pattern": "(%f)",
+  "problem": "pattern has %f without a set after it"
+ },
+ {
+  "pattern": "%f[%]",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "[a-",
+  "problem": "pattern has a set with no closing ]"
+ },
+ {
+  "pattern": "(a)(b)%3",
+  "problem": "pattern names a capture that is not closed"
+ },
+ {
+  "pattern": "a\u0000b",
+  "problem": "pattern has a NUL byte; write %z"
+ },
+ {
+  "pattern": "\u0000",
+  "problem": "pattern has a NUL byte; write %z"
+ },
+ {
+  "pattern": "%z+x"
+ }
+]

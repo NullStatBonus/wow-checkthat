@@ -781,4 +781,48 @@ test("a step passed at run start keeps the preamble and the section intro, and a
     T.eq(run.steps["kt.w"].verdict, "pass", "judged when its category joined the run"); T.eq(run.steps["kt.w"].attempts[1].at, "start")
 end)
 
+-- A hand-made string can carry a field of the wrong type. The card and the evidence code index and call methods on these fields,
+-- so such a plan must be refused at import, not stored and then fail on every refresh.
+test("a hand-made plan with a wrong-typed field is refused at import and stored nowhere", function()
+    local function mut(f) local p = plan(); f(p); return p end
+    local cases = {
+        mut(function(p) p.logs.debug = "x" end), mut(function(p) p.logs = "x" end), mut(function(p) p.requirements = { r = "x" } end),
+        mut(function(p) p.requirements = { r = { text = 5 } } end), mut(function(p) p.handoff = 5 end), mut(function(p) p.preamble = 5 end),
+        mut(function(p) p.sections[1].intro = 5 end), mut(function(p) p.sections[1].setup = 5 end), mut(function(p) p.sections[1].steps[1].setup = 5 end),
+        mut(function(p) p.sections[1].steps[1].assertions[1].label = 5 end),
+        mut(function(p) p.sections[1].steps[1].assertions[1].contains = 5 end),
+        mut(function(p) p.sections[1].steps[1].assertions[1] = { kind = "log", source = "debug", pattern = 5 } end),
+        mut(function(p) p.sections[1].steps[1].assertions[1] = { kind = "log-sequence", source = "debug", sequence = { { equals = {} } } } end),
+        mut(function(p) p.sections[1].steps[1].assertions[1] = { kind = "log", source = "debug", pattern = "(unclosed" } end),
+        mut(function(p) p.sections[1].steps[1].requires = "x" end),
+    }
+    for i, p in ipairs(cases) do
+        local db = boot()
+        local ok, v, err = pcall(App.ImportPlan, assert(ns.Codec.Encode(p)))
+        T.ok(ok, "import raised for case " .. i .. ": " .. tostring(v))
+        T.ok(v == nil and tostring(err):find("not valid"), "case " .. i .. " was accepted")
+        T.ok(next(db.plans) == nil and next(db.planStore) == nil, "case " .. i .. " was stored")
+    end
+    boot(); T.ok(App.ImportPlan(assert(ns.Codec.Encode(plan()))), "the unchanged plan still imports")
+end)
+test("a plan stored before these checks cannot crash the run: a log source that is not a table reads as unreadable", function()
+    local db = boot()
+    local p = plan(); p.logs.debug = 5      -- as an older version stored it
+    db.plans.KeepThat = { plan = p, digest = "old" }; db.planStore.old = p
+    local ok, snaps = pcall(ns.Evidence.Snapshot, p, {}, p.sections[1].steps[1])
+    T.ok(ok, tostring(snaps))
+    T.eq((ns.Evidence.CheckLog(p.sections[1].steps[1].assertions[1], snaps, p, {})), "unverified")
+end)
+
+-- tests/fixtures/bad-pattern.ct is the string the manual check in docs/test-plan.md imports: a plan whose pattern Lua cannot read.
+test("the bad-pattern string of the manual check is refused at import and stored nowhere", function()
+    local f = assert(io.open("tests/fixtures/bad-pattern.ct")); local s = f:read("*a"); f:close()
+    local db = boot()
+    local v, err = App.ImportPlan(s)
+    T.ok(v == nil and tostring(err):find("not valid"), tostring(err))
+    T.ok(next(db.plans) == nil and next(db.planStore) == nil, "nothing stored")
+    T.ok(tostring(err):find("text pattern that the game cannot read", 1, true), "the player is told about the pattern: " .. tostring(err))
+    T.ok(tostring(err):find("The plan has a missing or wrong field", 1, true) == nil, "not the generic sentence")
+end)
+
 finish()

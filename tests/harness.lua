@@ -306,7 +306,7 @@ function H.plain(ns)
     assert(loadfile("CheckThat/Libs/LibStub/LibStub.lua"))()
     assert(loadfile("CheckThat/Libs/LibDeflate/LibDeflate.lua"))()
     ns.LibDeflate = LibStub("LibDeflate")
-    for _, m in ipairs({ "Locales/enUS", "Core/Init", "Core/Adapter", "Core/Defaults", "Model/Json", "Model/Codec", "Model/Plan",
+    for _, m in ipairs({ "Locales/enUS", "Core/Init", "Core/Adapter", "Core/Defaults", "Model/Json", "Model/Codec", "Model/Plan", "Model/Pattern",
         "Model/Evidence", "Model/Facts", "Model/Entries", "Model/RunEvents", "Model/Errors", "Model/Run", "Model/App", "Core/Settings", "Debug/Log", "Core/Slash" }) do
         H.module(ns, m)
     end

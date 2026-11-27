@@ -53,6 +53,101 @@ def is_num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
+# A plan pattern is a Lua 5.1 pattern of up to 200 characters. string.find raises on a malformed one, so one that Lua cannot read is
+# refused. pattern_problem mirrors Plan.PatternProblem in CheckThat/Model/Plan.lua, reason text included
+# (tests/fixtures/parity-patterns.json holds the cases both read). Lua works on bytes, so this does too.
+PATTERN_MAX = 200   # CheckThat/Model/Plan.lua Plan.PATTERN_MAX
+
+
+def _set_end(p, i):
+    """p[i] is [: the index after the closing ], or None when it is missing. Like Lua, a ] first is a member."""
+    n = len(p)
+    i += 1
+    if p[i:i + 1] == b"^":
+        i += 1
+    while True:
+        if i >= n:
+            return None
+        c = p[i]
+        i += 1
+        if c == 37 and i < n:
+            i += 1
+        if p[i:i + 1] == b"]":
+            return i + 1
+
+
+def _pattern_error(p):
+    """Why Lua would raise on the pattern bytes p, or None."""
+    if not any(c in p for c in b"^$*+?.([%-"):
+        return None   # no special character: string.find searches for the text, whatever it is
+    n, i = len(p), 0
+    caps, closed, stack = 0, {}, []
+    if p[:1] == b"^":
+        i = 1
+    while i < n:
+        c, last = p[i:i + 1], None
+        if c == b"(":
+            if caps >= 32:
+                return "pattern has too many captures"
+            caps += 1; closed[caps] = False; stack.append(caps)
+            i += 1
+        elif c == b")":
+            if not stack:
+                return "pattern closes a capture it did not open"
+            closed[stack.pop()] = True
+            i += 1
+        elif c == b"$" and i == n - 1:
+            i += 1
+        elif c == b"%":
+            d = p[i + 1:i + 2]
+            if d == b"":
+                return "pattern ends with a lone %"
+            if d == b"b":
+                if i + 3 >= n:
+                    return "pattern has %b without its two characters"
+                i += 4
+            elif d == b"f":
+                if p[i + 2:i + 3] != b"[":
+                    return "pattern has %f without a set after it"
+                e = _set_end(p, i + 2)
+                if e is None:
+                    return "pattern has a set with no closing ]"
+                i = e
+            elif d.isdigit():
+                k = int(d)
+                if k == 0 or k > caps or not closed[k]:
+                    return "pattern names a capture that is not closed"
+                i += 2
+            else:
+                last = i + 1
+        elif c == b"[":
+            e = _set_end(p, i)
+            if e is None:
+                return "pattern has a set with no closing ]"
+            last = e - 1
+        else:
+            last = i
+        if last is not None:
+            if p[last + 1:last + 2] in (b"*", b"+", b"-", b"?"):
+                last += 1
+            i = last + 1
+    if stack:
+        return "pattern opens a capture it does not close"
+    return None
+
+
+def pattern_problem(p):
+    """None when this is a Lua pattern string.find can run, else why not (a phrase that starts with "pattern")."""
+    if not isinstance(p, str):
+        return "pattern must be text"
+    raw = p.encode("utf-8")
+    if len(raw) > PATTERN_MAX:
+        return "pattern is longer than %d characters" % PATTERN_MAX
+    if b"\0" in raw:
+        return "pattern has a NUL byte; write %z"   # Lua 5.1 ends a pattern at a NUL
+    return _pattern_error(raw)
+
+
 def check_op(a, sid, errs):
     """Value shapes for an operator (mirror of checkOp in CheckThat/Model/Plan.lua)."""
     op, v = a.get("op"), a.get("value")
@@ -73,11 +168,35 @@ def check_op(a, sid, errs):
     elif op == "matches":
         if not (isinstance(v, str) and 0 < len(v) <= 200):
             errs.append("%s: matches needs a pattern of up to 200 characters" % sid)
+        elif pattern_problem(v):
+            errs.append("%s: matches %s" % (sid, pattern_problem(v)))
     elif op in ("ge", "le"):
         if not is_num(v):
             errs.append("%s: %s needs a number value" % (sid, op))
     if "tolerance" in a and op != "approx":
         errs.append("%s: tolerance belongs to approx" % sid)
+
+
+def check_matcher(m, sid, what, errs):
+    """One of equals, contains, pattern, and a pattern Lua can read (mirror of checkMatcher in Plan.lua)."""
+    if sum(k in m for k in ("equals", "contains", "pattern")) != 1:
+        errs.append("%s: %s needs exactly one of equals, contains, pattern" % (sid, what))
+    if isinstance(m.get("pattern"), str) and pattern_problem(m["pattern"]):
+        errs.append("%s: %s" % (sid, pattern_problem(m["pattern"])))
+
+
+def null_paths(obj, path=""):
+    """The paths of every null in obj. The game's JSON reader refuses null, so a plan that holds one cannot be imported."""
+    if obj is None:
+        return [path or "<root>"]
+    out = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out += null_paths(v, "%s/%s" % (path, k) if path else str(k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out += null_paths(v, "%s/%d" % (path, i) if path else str(i))
+    return out
 
 
 def check_covers(box, where, requirements, errs):
@@ -172,6 +291,10 @@ def validate(plan, requirements=None):
     with open(SCHEMA, encoding="utf-8") as f:
         schema = json.load(f)
     errs = []
+    # The game's JSON reader refuses null; an empty YAML value (value:) is one. Offline blocks never reach the game.
+    holes = null_paths({k: v for k, v in plan.items() if k != "offline"}) if isinstance(plan, dict) else []
+    if holes:
+        return ["%s: null is not allowed (the game cannot read it): give a value or leave the key out" % h for h in holes]
     v = jsonschema.Draft202012Validator(schema)
     for e in sorted(v.iter_errors(plan), key=lambda e: list(map(str, e.path))):
         errs.append("%s: %s" % ("/".join(map(str, e.path)) or "<root>", e.message[:200]))
@@ -272,8 +395,10 @@ def validate(plan, requirements=None):
                 if a["kind"] in ("fact", "log"):
                     check_count(a, sid, errs)
                     c = a.get("count") or {}
-                if a["kind"] == "log" and sum(k in a for k in ("equals", "contains", "pattern")) != 1:
-                    errs.append("%s: log assertion needs exactly one of equals, contains, pattern" % sid)
+                if a["kind"] == "log":
+                    check_matcher(a, sid, "log assertion", errs)
+                for m in a.get("sequence", []) if a["kind"] == "log-sequence" else []:
+                    check_matcher(m, sid, "sequence item", errs)
                 own = "[ct] step %s " % sid   # the game judges a result before it writes this line
                 if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
                     errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope run" % (sid, own))
@@ -509,6 +634,7 @@ def encode(obj):
 
 
 MAX_INFLATED = 2000000  # CheckThat/Model/Codec.lua LIMITS.inflated
+MAX_ENCODED = 120000   # CheckThat/Model/Codec.lua LIMITS.encoded: the longest string the game imports
 
 
 def safe_name(s):
@@ -3224,6 +3350,9 @@ def main(argv=None):
         if w:
             print("warning: " + w, file=sys.stderr)  # stdout may be the compiled string
         s = encode(merge_sections(plan))
+        if len(s) > MAX_ENCODED:
+            print("error: the compiled plan is %d characters; the game imports at most %d. Split it into a plan set, or shorten its text" % (len(s), MAX_ENCODED), file=sys.stderr)
+            return 1
         if a.o:
             open(a.o, "w", encoding="utf-8").write(s + "\n")
         else:
