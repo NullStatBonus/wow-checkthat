@@ -2224,6 +2224,27 @@ class Doctor(unittest.TestCase):
         self.assertIn("_retail_: has a WTF folder, but collect does not read it", text)
         self.assertIn("result: collect would read 1 saved-variables file(s)", text)
 
+    def install(self, d, client, version):
+        folder = os.path.join(d, client, "Interface", "AddOns", "CheckThat")
+        os.makedirs(folder, exist_ok=True)
+        for name in ("CheckThat_Vanilla.toc", "CheckThat_Camelot.toc"):
+            with open(os.path.join(folder, name), "w") as f: f.write("## Interface: 11509\n## Version: %s\n" % version)
+
+    def test_the_installed_version_is_compared_with_the_checkout(self):
+        mine = ct.toc_version_raw(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"))
+        d = self.game(clients=("_classic_era_", "_forever_"), sv=())
+        self.install(d, "_classic_era_", "0.16.0")
+        self.install(d, "_forever_", mine)
+        text = "\n".join(ct.doctor_report(wow=d, env={})[0])
+        self.assertRegex(text, r"_classic_era_: [^\n]+\n(?:  [^\n]+\n)*?  warning: installed CheckThat 0\.16\.0, checkout %s: copy" % re.escape(mine))
+        self.assertIn("installed CheckThat %s, the same as this checkout" % mine, text)
+        self.assertEqual(text.count("warning: installed"), 1, "no warning when they match")
+
+    def test_a_missing_install_is_a_note(self):
+        d = self.game(clients=("_classic_era_",), sv=())
+        text = "\n".join(ct.doctor_report(wow=d, env={})[0])
+        self.assertIn("installed CheckThat: none in", text); self.assertNotIn("warning: installed", text)
+
     def test_a_missing_client_folder_and_a_missing_game_folder_say_why(self):
         d = self.game(clients=("_classic_era_",), sv=())
         text = "\n".join(ct.doctor_report(wow=d, env={})[0])
