@@ -260,6 +260,17 @@ test("the import list pins the built-in self-test first, and lists it once after
     local digest = App.db.plans.CheckThat.digest
     T.ok(App.ImportPlan(s)); T.eq(App.db.plans.CheckThat.digest, digest, "importing it again reuses the stored copy")
 end)
+test("a long recent plan title is cut to one line in the import list", function()
+    boot()
+    local p = plan(); p.title = "CheckThat 0.20.1 Undo, stale macro press, result needs Redo and closing the card"
+    App.ImportPlan(assert(ns.Codec.Encode(p)))
+    local text = App.Recent()[1].text
+    T.eq(text, "CheckThat 0.20.1 Undo, stale macro press, res... (KeepThat)")
+    T.eq(App.ShortTitle("short"), "short", "a short title stays")
+    T.eq(App.ShortTitle("|cffffd100Gold|r title"), "Gold title", "color codes removed")
+    T.eq(App.ShortTitle("abcd\195\169fgh", 8), "abcd...", "never cut inside a UTF-8 character")
+    T.eq(App.ShortTitle("abc def ghi", 7), "abc...", "no space before the dots")
+end)
 test("the import list is the recent plans when no plan is built in", function()
     boot()
     App.ImportPlan(assert(ns.Codec.Encode(plan())))

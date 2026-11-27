@@ -177,11 +177,23 @@ function App.RememberRecent(plan, digest)
     App.db.ui.lastImport = plan.addon
 end
 
--- Entries whose plan is still stored: { id = digest, text = "Title (Addon)" }.
+-- A title cut for a one-line list entry: color codes removed, at most max bytes with "..." in place of the rest,
+-- never cut inside a UTF-8 character. A long plan title ran past both edges of the import dropdown.
+App.ENTRY_TITLE_MAX = 48
+function App.ShortTitle(s, max)
+    s = tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    max = max or App.ENTRY_TITLE_MAX
+    if #s <= max then return s end
+    local cut = max - 3
+    while cut > 0 and (s:byte(cut + 1) or 0) >= 0x80 and s:byte(cut + 1) < 0xC0 do cut = cut - 1 end
+    return s:sub(1, cut):gsub("%s+$", "") .. "..."
+end
+
+-- Entries whose plan is still stored: { id = digest, text = "Title (Addon)" }, the title cut to fit one line.
 function App.Recent()
     local out = {}
     for _, e in ipairs(App.db and App.db.ui.recent or {}) do
-        if App.db.planStore[e.digest] then out[#out + 1] = { id = e.digest, text = ("%s (%s)"):format(e.title, e.addon) } end
+        if App.db.planStore[e.digest] then out[#out + 1] = { id = e.digest, text = ("%s (%s)"):format(App.ShortTitle(e.title), e.addon) } end
     end
     return out
 end

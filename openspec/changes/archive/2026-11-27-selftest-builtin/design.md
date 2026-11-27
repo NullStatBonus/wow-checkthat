@@ -9,6 +9,8 @@ The design was reviewed outside the project and approved on issue #246 (2026-11-
 - **One entry.** The dropdown leaves out a recent entry whose digest is the one in the shipped string's header (`!CT1!<digest>!`). A digest with a collision suffix (`-2`) is not matched and may list twice; that needs a 32-bit checksum collision with another stored plan.
 - **Generic Export code.** `Export.Prompt` still takes any choices list. Only its label changes from "Recent plans" to "Choose a plan". "No recent plans" stays for a list with no entry, which the import window no longer passes while a plan is built in.
 
+- **One line per entry.** The in-game test showed a long recent title running past both edges of the dropdown. `App.Recent` cuts the title to 48 bytes with "...", drops color codes and never splits a UTF-8 character.
+
 ## Non-Goals
 
 - The self-test plan text still says to run the harvest script at the end. A CurseForge user can export the results instead. Plan wording is a separate change.
