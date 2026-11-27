@@ -144,8 +144,9 @@ test("the start screen shows the plan title, the step count under it, and the fu
     local run, plan, card = startRun()
     local p = importAgain()
     local rec = ns.App.db.plans[ns.App.db.ui.pendingStart]
-    local n = 0
-    for _, s in ipairs(rec.plan.sections) do n = n + #s.steps end
+    local n, all = #ns.Plan.Steps(rec.plan, ns.App.Client()), 0 -- the count is of the steps this client runs
+    for _, s in ipairs(rec.plan.sections) do all = all + #s.steps end
+    T.ok(n < all, "the sample plan has a step for the other client")
     ns.Card.Refresh()
     T.eq(card.title.text, rec.plan.title, "heading is the plan title")
     T.eq(card.context.text, ("%d steps. Ready to test. Select Start run."):format(n), "count, status and instruction under it")
@@ -369,6 +370,11 @@ test("the checks list carries an amber warning only when asked", function()
     local items = { { assertion = { kind = "log" }, state = "waiting" } }
     T.ok(not ns.Card.ChecksText(items, false, nil, false):find("cannot see Lua errors", 1, true))
     T.ok(ns.Card.ChecksText(items, false, nil, true):find("|cffffaa00CheckThat cannot detect new Lua errors.", 1, true))
+    -- one blank line between the checks and the lines under them, and none among those lines or above a list alone
+    local met = { { assertion = { kind = "log" }, state = "met" } }
+    local text = ns.Card.ChecksText(met, false, 12, true)
+    T.ok(text:find("|r\n\n|cff66ff66All checks detected. Press Pass.|r\n|cffffaa00CheckThat cannot detect new Lua errors.|r\nCheckThat records the result in 12 s.$"), text)
+    T.ok(not ns.Card.ChecksText({ { assertion = { kind = "log" }, state = "waiting" } }):find("\n"), "no gap without a line under the checks")
 end)
 
 test("a step that reads the Lua error list shows the warning while nothing records errors", function()
@@ -538,6 +544,24 @@ test("a bound key records the same result as the button, only with a step on the
     T.eq(run.steps.s2a.verdict, "pending", "an ended run takes no key")
     run.endedAt = nil
     _G.SlashCmdList["ACECONSOLE_CT"]("debug off")
+end)
+
+test("a plan with no step for this client says so on the start screen and turns Start run off", function()
+    ns.addon.db.profile.card.collapsed = false
+    local p = catPlan(3)
+    for _, s in ipairs(p.sections) do s.clients = { "forever-camelot" }; for _, st in ipairs(s.steps) do st.clients = { "forever-camelot" } end end
+    H.stub(ns.App, "Client", function() return "classic-era" end)
+    assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p))))
+    ns.App.db.currentByChar = {}; ns.App.db.ui.pendingStart = nil
+    ns.Card.Show(); ns.Card.Refresh()
+    local card = _G.CheckThatCard
+    T.eq(card.context.text, "This plan is not for this game client. None of its steps run here.")
+    T.eq(card.start.calls.SetEnabled[1], false, "Start run is off")
+    T.ok(not card.pickNote.shown, "no category note")
+    T.ok(not (card.picks[1] and card.picks[1].check.shown), "no category boxes")
+    H.stub(ns.App, "Client", function() return "forever-camelot" end)
+    ns.Card.Refresh()
+    T.ok(card.context.text:find("Ready to test", 1, true)); T.eq(card.start.calls.SetEnabled[1], true)
 end)
 
 test("with more than eight categories all cleared, the card start screen turns Start run off", function()

@@ -44,7 +44,7 @@ Choose Clear plan... in the Run menu. CheckThat names the plan and asks first. I
 - The recorded results stay. The card shows "Run ended" with Export results, and the results string still works. The stored copy of the plan stays for the ended run.
 - The ended card offers Import a plan in place of Main window.
 
-The start screen shows the plan title as its heading, with the step count and "Ready to test. Select Start run." under it. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge.
+The start screen shows the plan title as its heading, with the count of steps this game client runs and "Ready to test. Select Start run." under it. A plan with no step for this client says "This plan is not for this game client. None of its steps run here." in amber, lists no categories and turns Start run off. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge.
 
 Debug log: `plan cleared <addon>`.
 

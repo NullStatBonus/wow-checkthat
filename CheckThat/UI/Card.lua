@@ -784,22 +784,24 @@ function refreshCard()
         local rec = (pendingAddon or App.db.ui.lastImport) and App.db.plans[pendingAddon or App.db.ui.lastImport]
         place(card.title, 12, 36)
         local y, msg
+        local none -- the plan has no step for this game client
         if rec then
-            local steps = 0
-            for _, s in ipairs(rec.plan.sections) do steps = steps + #s.steps end
+            local steps = #ns.Plan.Steps(rec.plan, App.Client()) -- only the steps this client runs
+            none = steps == 0
             setText(card.title, rec.plan.title)
             card.titleHit.full = rec.plan.title; card.titleHit:Show() -- the full title on hover, as in the collapsed card
-            msg = steps == 1 and L["1 step. Ready to test. Select Start run."] or L["%d steps. Ready to test. Select Start run."]:format(steps)
+            msg = none and L["This plan is not for this game client. None of its steps run here."]
+                or steps == 1 and L["1 step. Ready to test. Select Start run."] or L["%d steps. Ready to test. Select Start run."]:format(steps)
             card.start:Show()
         else
             setText(card.title, L["No plan yet"])
             msg = L["Select Import a plan and paste a plan string."]
         end
         y = 36 + card.title:GetStringHeight() + 8
-        place(card.context, 12, y); setText(card.context, msg, BODY)
+        place(card.context, 12, y); setText(card.context, msg, none and AMBER or BODY)
         y = y + card.context:GetStringHeight() + 12
-        card.start:SetEnabled(true)
-        local list = rec and App.Picks(pendingAddon or App.db.ui.lastImport) or {}
+        card.start:SetEnabled(not none)
+        local list = rec and not none and App.Picks(pendingAddon or App.db.ui.lastImport) or {} -- no categories to pick from
         if #list > 1 and #list <= Card.MAX_SEGMENTS then
             -- Choose what to run: one checkbox per category, all checked until the tester clears one.
             local any = false
@@ -1083,9 +1085,12 @@ function Card.ChecksText(items, reserve, left, blind)
         local tail = it.state == "later" and ("  " .. L["(checked when you press Pass)"]) or ""
         lines[#lines + 1] = ICON[it.state] .. " " .. TINT[it.state] .. label .. tail .. "|r"
     end
-    if allMet or reserve then lines[#lines + 1] = L["|cff66ff66All checks detected. Press Pass.|r"] end
-    if blind then lines[#lines + 1] = L["|cffffaa00CheckThat cannot detect new Lua errors.|r"] end
-    if left then lines[#lines + 1] = "\n" .. L["CheckThat records the result in %d s."]:format(left) end -- a blank line sets the countdown apart
+    local below = {} -- the lines under the checks, set apart from them by one blank line
+    if allMet or reserve then below[#below + 1] = L["|cff66ff66All checks detected. Press Pass.|r"] end
+    if blind then below[#below + 1] = L["|cffffaa00CheckThat cannot detect new Lua errors.|r"] end
+    if left then below[#below + 1] = L["CheckThat records the result in %d s."]:format(left) end
+    if #below > 0 and #lines > 0 then lines[#lines + 1] = "" end
+    for _, b in ipairs(below) do lines[#lines + 1] = b end
     return table.concat(lines, "\n")
 end
 
