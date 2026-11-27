@@ -21,3 +21,30 @@ CheckThat needs no other addon. These make it better when they are installed. No
 ## Sources read
 
 - BugGrabber: WowAce project page (version 12.1.1), read 2026-11-24. BugSack: GitHub page, read 2026-11-24.
+
+## Stable commands
+
+From 1.0 these `tools/ct.py` commands keep their arguments and output: a change only adds. Each JSON output and each JSON file they write for a reader has `"format": 1`. It rises only when a key changes meaning or goes. A new key does not raise it, so ignore keys you do not know.
+
+- `validate`
+- `compile`
+- `coverage`
+- `replay`
+- `offline`
+- `replay-flow`
+- `lines`
+- `decode`
+- `from-md`
+- `sv2json`
+- `collect`
+- `doctor`
+- `drift`
+- `report`
+- `show`
+- `browse`
+- `status`
+- `import-results`
+- `diff`
+- `trend`
+
+`recordings` and `census` are maintainer tools. Their help starts with "maintainer tool, output may change". The census manifests and the recordings have their own `format`. `from-md` writes a plan and `sv2json` prints saved variables as they are, so their output follows the plan format and the game's data. `decode` prints the plan or run as it is, and those carry `ct` and `formatRev` ([Results format](results-format.md)). The evidence folder's bookkeeping file `refused.json` is not a promise.
