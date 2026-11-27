@@ -100,7 +100,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 
 24. **A plan for an addon CheckThat does not know.** Install CTProbe from the CTProbe folder and log in. Type `/ct import`, paste `build/any-addon-commands.ct`, and look at the start screen. Select Start run and play the three steps.
    Check: the start screen says "This plan may offer these commands: /ctp." and "Not offered, because the addon under test has not registered them: /help." The second step has a Run button, and clicking it prints a CTProbe "record status" line. The third step shows /help in a copy box with no Run button.
-   Log: `[ct] plan commands offered: /ctp; not offered: /help`, and `/ct log` shows `Plan commands: offered /ctp; not offered /help`.
+   Log: `[ct] plan commands offered: /ctp; not offered: /help`, then `[ct] plan command /ctp: SLASH_CTPROBE1 by CTProbe` and `[ct] plan command /help: SLASH_HELP1 secure`, and `/ct log` shows `Plan commands: offered /ctp; not offered /help`.
 
 25. **A step's cleanup.** In the self-test, play the "Record a Lua error" step: click Run.
    Check: under the result the card says "Then: Close the game's error window if it opened." The next step starts with "First, after the last step: Close the game's error window if it opened." in amber, and the line is gone after that step has a result.
