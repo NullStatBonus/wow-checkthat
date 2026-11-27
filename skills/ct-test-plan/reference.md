@@ -12,7 +12,7 @@ Sources: `schema/test-plan.schema.json`, `openspec/specs/test-plan-format/spec.m
 - Steps for one client carry a `clients` tag; shared behavior runs on both.
 
 ## Assertions
-- No step asserts its own result line (`[ct] step <its id> ...`); that proof belongs on a later step with `scope: session`.
+- No step asserts its own result line (`[ct] step <its id> ...`); that proof belongs on a later step with `scope: run`.
 - The first step checks the version under test (`/ct version` and a `version` fact with `op: ge` for CheckThat).
 - A required assertion backs every step where the addon logs the evidence.
 - `absent` checks cover "must not happen".

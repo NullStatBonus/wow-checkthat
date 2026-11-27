@@ -11,7 +11,9 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Import a plan from a pasted string, or pick a recent plan. Export your results as a string.
 - Copy each command from its own box, or click Run to run the step's commands. CheckThat never sends input for you.
 - Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
-- See which steps CheckThat checks itself and which you confirm. Checks turn green as the addon's debug log shows your action.
+- Tick off each action of a step as you do it. See what CheckThat checks itself: checks turn green as the addon's debug log shows your action.
+- After each result, the card shows it in one large word, then fades to the next step.
+- Steps for one class or profession do not apply to other characters, and startup checks pass when the run starts.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
 - An addon under test can learn when a run starts or ends, so it can restore its own test settings.
 - An addon under test can report a fact with `CheckThat.Report`, and a plan or an automatic step checks it like a log line.

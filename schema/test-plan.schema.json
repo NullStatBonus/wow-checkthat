@@ -696,6 +696,22 @@
         "text": {
           "type": "string"
         },
+        "class": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "MONK", "DRUID", "DEMONHUNTER", "EVOKER"] },
+          "description": "Holds when the character's class token is listed."
+        },
+        "profession": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Holds when the character knows one of these professions, named as the plan's locale shows them."
+        },
+        "unmet": {
+          "enum": ["blocked", "inapplicable"],
+          "description": "blocked (the default): the card shows the requirement as blocked. inapplicable: the step does not apply to this character."
+        },
         "probe": {
           "enum": [
             "addon-loaded",
@@ -837,7 +853,11 @@
           ]
         },
         "text": {
-          "type": "string"
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } }
+          ],
+          "description": "What the player does: one sentence, or a list of two to six actions the card shows as checkboxes the player ticks. A copy-slash step's text is its one command."
         },
         "macro": {
           "type": "string"
@@ -903,7 +923,7 @@
             "value": {},
             "tolerance": { "type": "number", "minimum": 0 },
             "which": { "enum": ["last", "any", "all"] },
-            "scope": { "enum": ["attempt", "session"] },
+            "scope": { "enum": ["attempt", "run", "session"] },
             "count": { "$ref": "#/$defs/count" },
             "diagnostic": { "type": "boolean" },
             "label": { "type": "string", "description": "Player-readable name of this check, shown on the card while CheckThat watches for it." }
@@ -936,6 +956,7 @@
             "scope": {
               "enum": [
                 "attempt",
+                "run",
                 "session"
               ]
             },
@@ -979,6 +1000,7 @@
             "scope": {
               "enum": [
                 "attempt",
+                "run",
                 "session"
               ]
             },
@@ -1082,7 +1104,15 @@
           "$ref": "#/$defs/action"
         },
         "expect": {
-          "type": "string"
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } }
+          ],
+          "description": "What the player should see: one sentence, or a list of two to six short results."
+        },
+        "async": {
+          "type": "boolean",
+          "description": "Auto steps only: judge the required checks once when the run starts. A pass is recorded then and the card skips the step."
         },
         "verify": {
           "type": "array",

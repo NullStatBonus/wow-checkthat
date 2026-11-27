@@ -20,10 +20,34 @@ Plan.TYPES = { number = true, boolean = true, string = true }
 Plan.WHICH = { last = true, any = true, all = true }
 Plan.ID = "^[a-z0-9][a-z0-9._-]*$"
 Plan.BUILTIN_SLASH = { ["/reload"] = true, ["/reloadui"] = true, ["/console"] = true }
+-- Class tokens a requirement may name (the second value of UnitClass).
+Plan.CLASSES = { WARRIOR = true, PALADIN = true, HUNTER = true, ROGUE = true, PRIEST = true, DEATHKNIGHT = true, SHAMAN = true,
+    MAGE = true, WARLOCK = true, MONK = true, DRUID = true, DEMONHUNTER = true, EVOKER = true }
+Plan.LIST_MIN, Plan.LIST_MAX = 2, 6 -- items in a list of actions or results
 
 local function isStr(v) return type(v) == "string" and v ~= "" end
 local function isNum(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 local function isCount(v) return isNum(v) and v % 1 == 0 and v >= 0 and v <= 1000 end
+
+-- Action text and expect are one sentence or a list of them. Lines gives the list (a string is one line), Join one string.
+function Plan.Lines(v)
+    if type(v) == "table" then return v end
+    if v == nil then return {} end
+    return { v }
+end
+function Plan.Join(v) return type(v) == "table" and table.concat(v, " ") or v end
+-- Nil when v is a sentence or a list of 2 to 6 sentences, else why not.
+local function textOrList(v)
+    if isStr(v) then return nil end
+    if type(v) ~= "table" then return "must be text or a list" end
+    local n = 0
+    for _ in pairs(v) do n = n + 1 end
+    if n ~= #v then return "must be a list" end
+    if n == 1 then return "is a list of one: write it as text" end
+    if n < Plan.LIST_MIN or n > Plan.LIST_MAX then return ("is a list of %d: give %d to %d items"):format(n, Plan.LIST_MIN, Plan.LIST_MAX) end
+    for _, s in ipairs(v) do if not isStr(s) then return "has an item that is not text" end end
+    return nil
+end
 
 -- An operator needs a value of the right shape. Older operators keep their loose rules so saved plans stay valid.
 local function checkOp(a, errs, where)
@@ -90,14 +114,14 @@ local function checkAssertion(a, i, errs, logs, where)
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         local n = (a.equals and 1 or 0) + (a.contains and 1 or 0) + (a.pattern and 1 or 0)
         if n ~= 1 then errs[#errs + 1] = where .. ": log assertion needs exactly one of equals, contains, pattern" end
-        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
+        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "run" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
         checkCount(a, errs, where)
     elseif a.kind == "fact" then
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         if not isStr(a.addon) then errs[#errs + 1] = where .. ": fact needs an addon" end
         if not isStr(a.key) then errs[#errs + 1] = where .. ": fact needs a key" end
         if a.which ~= nil and not Plan.WHICH[a.which] then errs[#errs + 1] = where .. ": which must be last, any or all" end
-        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
+        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "run" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
         checkOp(a, errs, where)
         checkCount(a, errs, where)
     elseif a.kind == "log-sequence" then
@@ -153,6 +177,15 @@ function Plan.CheckAuto(st, w, errs)
             errs[#errs + 1] = w .. ": timeout must be a whole number from 5 to 300"
         end
     end
+    if st.async ~= nil then
+        if type(st.async) ~= "boolean" then errs[#errs + 1] = w .. ": async must be boolean"
+        elseif st.async then
+            if not isAuto then errs[#errs + 1] = w .. ": async needs auto" end
+            if st.setup ~= nil or st.call ~= nil or st.reload == "after_action" then
+                errs[#errs + 1] = w .. ": async cannot have setup, a call or a reload: it is judged before the player does anything"
+            end
+        end
+    end
     if not isAuto then return end
     local hasA, hasP
     for _, v in ipairs(type(st.verify) == "table" and st.verify or {}) do
@@ -171,6 +204,9 @@ function Plan.CheckAuto(st, w, errs)
         end
     end
     if hasA and required == 0 then errs[#errs + 1] = w .. ": auto step needs a required assertion" end
+    if timed > 0 and st.async then
+        errs[#errs + 1] = w .. ": async cannot check that something did not happen (absence, missing, exactly or max): that needs a time window"
+    end
     if timed > 0 and st.timeout == nil then
         errs[#errs + 1] = w .. ": auto step needs a timeout for a check that is judged at the end (absence, missing, exactly or max)"
     end
@@ -183,12 +219,31 @@ function Plan.Validate(plan)
     -- Text shown by the game is not Markdown: reject backticks and ** (use native color codes instead).
     local function md(s) return type(s) == "string" and (s:find("`", 1, true) or s:find("**", 1, true)) end
     local function checkText(box, key, where)
-        if md(box[key]) then errs[#errs + 1] = "markdown in " .. where .. " " .. key .. ": use color codes, not backticks or **" end
+        local v = box[key]
+        local any = md(v)
+        if type(v) == "table" then for _, s in ipairs(v) do any = any or md(s) end end
+        if any then errs[#errs + 1] = "markdown in " .. where .. " " .. key .. ": use color codes, not backticks or **" end
     end
     checkText(plan, "title", "plan"); checkText(plan, "preamble", "plan"); checkText(plan, "handoff", "plan")
     if type(plan.requirements) == "table" then
         for name, def in pairs(plan.requirements) do
-            if type(def) == "table" then checkText(def, "text", "requirement " .. tostring(name)) end
+            if type(def) == "table" then
+                local w = "requirement " .. tostring(name)
+                checkText(def, "text", w)
+                if def.class ~= nil then
+                    if type(def.class) ~= "table" or #def.class == 0 then errs[#errs + 1] = w .. ": class must be a list of class tokens"
+                    else for _, c in ipairs(def.class) do if not Plan.CLASSES[c] then errs[#errs + 1] = w .. ": unknown class " .. tostring(c) end end end
+                end
+                if def.profession ~= nil then
+                    local ok = type(def.profession) == "table" and #def.profession > 0
+                    for _, p in ipairs(ok and def.profession or {}) do ok = ok and isStr(p) end
+                    if not ok then errs[#errs + 1] = w .. ": profession must be a list of names" end
+                end
+                if def.unmet ~= nil and def.unmet ~= "blocked" and def.unmet ~= "inapplicable" then errs[#errs + 1] = w .. ": unmet must be blocked or inapplicable" end
+                if def.unmet ~= nil and def.probe == nil and def.class == nil and def.profession == nil then
+                    errs[#errs + 1] = w .. ": unmet needs a probe, class or profession"
+                end
+            end
         end
     end
     for _, sec in ipairs(type(plan.sections) == "table" and plan.sections or {}) do
@@ -261,7 +316,12 @@ function Plan.Validate(plan)
             if st.cases ~= nil then errs[#errs + 1] = w .. ": cases must be expanded when the plan compiles" end
             if st.category ~= nil and not cats[st.category] then errs[#errs + 1] = w .. ": unknown category " .. tostring(st.category)
             elseif declared and st.category == nil and sec.category == nil then errs[#errs + 1] = w .. ": no category (the plan declares categories)" end
-            if not isStr(st.expect) then errs[#errs + 1] = w .. ": expect missing" end
+            if st.expect == nil then errs[#errs + 1] = w .. ": expect missing"
+            else local why = textOrList(st.expect); if why then errs[#errs + 1] = w .. ": expect " .. why end end
+            if type(st.action) == "table" and st.action.text ~= nil then
+                local why = textOrList(st.action.text)
+                if why then errs[#errs + 1] = w .. ": action text " .. why end
+            end
             for _, c in ipairs(st.clients or {}) do
                 if not Plan.CLIENTS[c] then errs[#errs + 1] = w .. ": unknown client " .. tostring(c) end
             end

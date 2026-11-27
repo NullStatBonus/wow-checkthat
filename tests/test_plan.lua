@@ -19,6 +19,38 @@ local function bad(mut, needle)
     T.ok(#errs > 0, "expected errors for " .. needle)
     T.ok(table.concat(errs, ";"):find(needle, 1, true), needle .. " not in: " .. table.concat(errs, ";"))
 end
+test("an assertion may read the lines since the run started, and an unknown scope is rejected", function()
+    local p = good(); p.sections[1].steps[1].assertions[1].scope = "run"
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    bad(function(q) q.sections[1].steps[1].assertions[1].scope = "forever" end, "bad scope")
+end)
+test("action text and expect may be lists of two to six sentences", function()
+    local p = good()
+    p.sections[1].steps[2].action.text = { "Walk into the dungeon.", "Wait 10 seconds.", "Walk out." }
+    p.sections[1].steps[2].expect = { "The question closes.", "It shows again outside." }
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    bad(function(q) q.sections[1].steps[2].expect = { "one" } end, "expect is a list of one: write it as text")
+    bad(function(q) q.sections[1].steps[2].action.text = { "1", "2", "3", "4", "5", "6", "7" } end, "action text is a list of 7")
+    T.same(ns.Plan.Lines("x"), { "x" }); T.same(ns.Plan.Lines({ "a", "b" }), { "a", "b" }); T.eq(ns.Plan.Join({ "a", "b" }), "a b")
+end)
+test("a requirement may name classes and professions and make a step inapplicable", function()
+    local p = good()
+    p.requirements.caster = { text = "A Mage or Priest", class = { "MAGE", "PRIEST" }, profession = { "Tailoring" }, unmet = "inapplicable" }
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    bad(function(q) q.requirements.loaded.class = { "WIZARD" } end, "unknown class WIZARD")
+    p.requirements.caster.unmet = "blocked"; T.eq(#ns.Plan.Validate(p), 0, "blocked is the default, written out")
+    bad(function(q) q.requirements.loaded.unmet = "inapplicable" end, "unmet needs a probe, class or profession")
+end)
+test("async is for an auto step that needs nothing from the player and no time window", function()
+    local p = good()
+    local st = p.sections[1].steps[1]
+    st.verify = { "assertions" }; st.auto = true; st.async = true; st.action = { kind = "manual", text = "Wait." }
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    bad(function(q) q.sections[1].steps[2].async = true end, "async needs auto")
+    bad(function(q) local s = q.sections[1].steps[1]; s.verify = { "assertions" }; s.auto = true; s.async = true; s.action = { kind = "manual", text = "w" }; s.setup = "x" end, "async cannot have setup")
+    bad(function(q) local s = q.sections[1].steps[1]; s.verify = { "assertions" }; s.auto = true; s.async = true; s.timeout = 30; s.action = { kind = "manual", text = "w" }
+        s.assertions[1].absent = true end, "async cannot check that something did not happen")
+end)
 test("plan rejects step and section ids the macro marker cannot carry", function()
     bad(function(p) p.sections[1].steps[2].id = "a b" end, "step id is not valid")
     bad(function(p) p.sections[1].steps[2].id = "a.2\n/run x" end, "step id is not valid")

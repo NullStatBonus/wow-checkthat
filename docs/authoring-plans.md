@@ -26,6 +26,31 @@ A plan is for what a fake game cannot prove: real game data and events, end-to-e
 - Measure coverage, do not guess it: map each spec requirement to the plan steps that cover it ([Check what the plans cover](#check-what-the-plans-cover)) and, by hand or with the addon's own coverage report, to unit tests. List the rest.
 - A long plan also fills the addon's debug log during a run, so a late absence check or count cannot be proven, and state carried along a long chain of steps gives false results.
 
+## Lists, async steps and steps for one character
+
+- **Several actions.** `action.text` can be a list of two to six actions. The card shows one checkbox for each, and the player ticks them as they go. Ticks are saved on the attempt and the report names the ones left empty, but they never record a result. A `copy-slash` step's text stays one command.
+- **Several results.** `expect` can be a list of two to six short results. The card shows one line for each. A plan that keeps both as strings looks as before.
+- **Checked when the run starts.** `async: true` on an `auto` step makes CheckThat judge its required checks once, against the whole retained log, when the run starts or a rerun reopens it. A pass is recorded then (`at: "start"`) and the card never stops there. Otherwise the step waits for its turn as an auto step does. Use it for a check only this build can meet, such as a `version` fact with `eq` or a state probe: the whole log also holds lines from earlier sessions. Validation rejects it with `setup`, a `call`, a reload, or a check that something did not happen.
+- **For some characters only.** A requirement can name `class` (tokens such as `MAGE`) or `profession` (names as the plan's locale shows them) and set `unmet: inapplicable`. A step that needs it is recorded as not applying when it opens on another character, with the requirement's text as the reason, and its timer never starts. Without `unmet`, an unmet requirement blocks as before. When the game cannot say the class or the professions, the requirement holds.
+
+```yaml
+requirements:
+  caster: { text: This step needs a Mage or a Priest., class: [MAGE, PRIEST], unmet: inapplicable }
+# in a step:
+  requires: [caster]
+  action:
+    kind: manual
+    text:
+    - Walk into the dungeon.
+    - Wait 10 seconds inside.
+    - Walk out again.
+  expect:
+  - The question closes when you enter the dungeon.
+  - The question is asked again outside.
+```
+
+`ct replay-flow` writes an async step's lines before the run starts, so it passes at start. A hooks file can set `unmet = { caster = true }` to take the inapplicable branch.
+
 ## Foundation and feature plans
 
 Every plan says what it is for with `purpose`. The field is for the tools only; the compiler drops it.
@@ -49,7 +74,7 @@ A plan without `purpose` keeps its old warnings.
 
 Split a larger feature scope into a set of plans by area, for example `<name>.core.yaml`, `<name>.ui.yaml` and `<name>.addons.yaml`. One character runs them one after another. A set by area is not the release gate: the foundation plan is.
 
-- Each plan has its own version step, setup step and final no-Lua-error step (the quiet errors source, see [Unit-test checks](#unit-test-checks)). With `scope: session` that step also sees errors from an earlier plan of the set in the same session (#161).
+- Each plan has its own version step, setup step and final no-Lua-error step (the quiet errors source, see [Unit-test checks](#unit-test-checks)). Give it `scope: run`, so it sees every error since the run started and none from an earlier run or plan.
 - Give each plan its own section range, so no section id or step id appears in two plans.
 - Each preamble names every partner plan file.
 - CheckThat keeps one plan for each addon, and a run starts from the last plan imported. Import, start and finish one plan before you import the next.
@@ -69,10 +94,11 @@ A subcommand after the addon's slash prefix needs no CheckThat change: the allow
 
 ## Plans in this repository
 
-- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. KeepThat and ClosestVendor keep their plans in their own repositories, so none is kept here (`tests/fixtures/keepthat.yaml` is a short fixture for the tests, not the plan of record; the tests validate the KeepThat plan from `../wow-keepthat/plans/` when that checkout is present). `plans/selftest.yaml` is the runner's own plan, not a sample. It has 15 steps (16 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`. Its one section gets the size warning, because it checks the runner, not a feature.
+- `plans/<addon>.yaml` are short samples (4 to 7 steps each) that `make build` compiles. KeepThat and ClosestVendor keep their plans in their own repositories, so none is kept here (`tests/fixtures/keepthat.yaml` is a short fixture for the tests, not the plan of record; the tests validate the KeepThat plan from `../wow-keepthat/plans/` when that checkout is present). `plans/selftest.yaml` is the runner's own plan, not a sample. It has 16 steps (17 after `cases` expand) and uses every kind of check: log lines, fact operators, counts, state probes, the quiet error source and `cases`. Its one section gets the size warning, because it checks the runner, not a feature.
 - `plans/full/` holds the full conversions of the sibling test plans. The tests validate them and `make build` does not compile them. Compile one with `tools/ct.py compile plans/full/<name>.yaml -o build/<name>-full.ct`.
 - `plans/checkthat-0.16.yaml` tests Remove from run and the result keys on its own run, in forever-camelot only.
 - `plans/checkthat-0.16-picker.yaml` tests the category picker and the paged Home list. It needs `plans/checkthat-picker-fixture.yaml`, a ClosestVendor plan with 26 categories that is only for looking at the start screen (so it gets the size warning).
+- `plans/checkthat-0.21.yaml` is the feature plan for the 0.21 card: the action checklist, the pause after a result, a step checked at run start, a step for a Mage and a final run-scoped error check. Run it on a character that is not a Mage, on each client.
 - `plans/checkthat-openrun.owner.yaml` and `plans/checkthat-openrun.viewer.yaml` are a plan set for two characters on one account. The owner leaves a run open. The viewer checks that Open run is unavailable for it and that Export run and Delete run work. Run the owner plan first. Read both runs back with the verify skill.
 
 ## First live run

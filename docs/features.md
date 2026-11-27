@@ -44,7 +44,7 @@ Choose Clear plan... in the Run menu. CheckThat names the plan and asks first. I
 - The recorded results stay. The card shows "Run ended" with Export results, and the results string still works. The stored copy of the plan stays for the ended run.
 - The ended card offers Import a plan in place of Main window.
 
-The start screen shows the plan title as its heading, with the step count and "Ready to test. Select Start run." under it. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge.
+The start screen shows the plan title as its heading, with the count of steps this game client runs and "Ready to test. Select Start run." under it. A plan with no step for this client says "This plan is not for this game client. None of its steps run here." in amber, lists no categories and turns Start run off. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge.
 
 Debug log: `plan cleared <addon>`.
 
@@ -111,6 +111,7 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 | --- | --- |
 | `kind` | `log`, `log-sequence`, `fact` or `state`. |
 | `scope` | `attempt` (the lines after the step opened) or `session` (the whole retained log). Logs and facts only. |
+| `since` | `run` for a check that read the lines after the run started (a plan's `scope: run`); then `scope` is absent. |
 | `source` | The log source the check read. |
 | `label` | The label the plan gave the check, if any. |
 | `rule` | What the check required, in words, at most 120 characters: `absent: contains "FAILED"`, `count at most 1: pattern "ERR"`, `sequence of 3 lines`, `fact [KT] level eq 3, all`. It holds the plan's literals, which can be a log line. |
@@ -129,6 +130,21 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 - **Privacy.** Hit lines and values come from debug logs and can hold private data, as the excerpt can. Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
 - **Contract.** `schema/run-results.schema.json` describes the run record. `tools/ct.py` rejects a revision whose hits are malformed and names it in `status`.
 
+## Step card
+
+- **Title.** The step title is the strongest text: the game's large font, two points larger, with an outline. Without `CreateFont` the stock large font stays.
+- **Setup.** Setup, the plan's preamble at the start and the section intro sit in one line that folds. It opens by itself the first time a step shows in a run. Blocked requirements stay outside it.
+- **Do.** One sentence, or one checkbox for each listed action. A click on the box or its text ticks it. Ticks are yours: they never record a result, and Pass needs none. A finished step shows its ticks read-only. Without the checkbox template a text box shows `[ ]` or `[x]`. Debug log: `step <id> action <n> ticked` or `cleared`.
+- **Hints.** Under Do: Reloaded after a reload, Print Screen, the reload request and the macro that does not fit.
+- **Expect.** One sentence, or one short line for each listed result.
+- **Checks.** A step with required checks lists them under a small green "CheckThat checks" heading ("CheckThat checks and records the result" on an automatic step). A step with none is yours and shows no heading.
+- **Note.** "+ Add note" until you click it. A note you typed stays with the attempt.
+- **Pause after each result.** When you or CheckThat record a result and the run moves on, while the card is shown and expanded, the card keeps that step on screen and fades to the next step over 3 seconds. It shows only the step title, the result in one large word in its color (Passed, Partial, Failed, Skipped), "Recorded by you" or "Recorded by CheckThat", and the note. The next step opens, and an auto step's timer starts, when it shows. A click on < or > ends the pause. A result key or button during the pause records nothing and says so in chat, so a double press never judges the next step. An unverified result, a collapsed card and a hidden card do not pause. Debug log: `card holds <id> for 3 s`, and `result <verdict> ignored: the card was showing a result`.
+
+## Steps for one character
+
+A requirement with `class` or `profession` and `unmet: inapplicable` makes a step inapplicable on a character that does not match. CheckThat checks it when the step opens, records no attempt, and moves on. The step leaves progress, like a step for the other client. Going back to it shows "Does not apply:" and the requirement's text, with no Redo: a rerun of its category checks it again. It keeps its place when you add or remove a category. Unknown data counts as met. Debug log: `step <id> inapplicable: <text>`. The run saves the text as `unmet` on the step.
+
 ## Automatic steps
 
 A plan step can set `auto: true`. It must verify by assertions only (no `player`) and have at least one required check. A check that something did not happen (an absence, a missing fact, a count of exactly or at most n) needs a `timeout`.
@@ -141,6 +157,7 @@ A plan step can set `auto: true`. It must verify by assertions only (no `player`
 - The card says "recorded by CheckThat" on a step recorded this way.
 - A hidden game interface, or a Start screen for another plan, stops recording until the run shows again. A hidden card does not stop it.
 - After an automatic unverified result the step waits for you and does not retry by itself.
+- A step with `async: true` is judged once when the run starts (or a rerun reopens it), against the whole retained log. A pass is recorded then, the attempt carries `at: "start"`, and the card goes past it. Going back to it shows "checked by CheckThat when the run started". A step that does not pass at start settles on its turn. The window is the whole retained log, also lines from earlier sessions, so use a check only this build can meet (a `version` fact with `eq`, a state probe). Undo or Redo reads the whole log again. A category you add during a run has its async steps judged when it joins. Debug log: `step <id> pass auto at start evidence matched`.
 - The `wait-event` action kind is valid only on an auto step. The card shows "Wait. CheckThat records the result when the checks below are met." unless the step has its own text.
 
 Debug log: `step <id> <verdict> auto evidence <result>`. The report adds `auto=<count>` to the counts and marks the step.

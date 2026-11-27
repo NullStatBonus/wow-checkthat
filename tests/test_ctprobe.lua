@@ -109,4 +109,119 @@ test("/ctp taint run still measures the replaced global, and the other commands 
     SlashCmdList.CTPROBE(""); SlashCmdList.CTPROBE("clear")
 end)
 
+-- Armed window capture: the calls return nothing unless the window is open, so the probe records them on the window's event.
+local function vendorFakes(rows)
+    _G.GetMerchantNumItems = function() return rows end
+    _G.GetMerchantItemInfo = function(i) return "Item" .. i, 130000 + i, 250 * i, 1, -1, true, true end
+    _G.GetMerchantItemLink = function(i) return "|cffffffff|Hitem:" .. i .. ":::::::::::::::::|h[Item" .. i .. "]|h|r" end
+end
+
+test("armed: a vendor window records its count and first rows once, tagged with the window", function()
+    local _, fire = probe({})
+    vendorFakes(5)
+    fire("MERCHANT_SHOW")
+    T.eq(CTProbeDB.fixtures, nil, "nothing is recorded before the probe is armed")
+    SlashCmdList.CTPROBE("record arm")
+    fire("MERCHANT_SHOW")
+    local fx = CTProbeDB.fixtures
+    T.eq(fx["GetMerchantNumItems()"].values[1].value, 5)
+    T.eq(fx["GetMerchantNumItems()"].window, "merchant")
+    T.eq(fx["GetMerchantItemInfo(1)"].values[1].value, "Item1"); T.eq(fx["GetMerchantItemInfo(3)"].values[3].value, 750)
+    T.eq(fx["GetMerchantItemInfo(3)"].window, "merchant")
+    T.ok(fx["GetMerchantItemLink(2)"].values[1].value:find("item:2:", 1, true), "the link is recorded")
+    T.eq(fx["GetMerchantItemInfo(4)"], nil, "only the first three rows")
+    T.ok(has("window merchant: recorded"), "the log says what was recorded")
+    _G.GetMerchantItemInfo = function() return "Changed" end
+    fire("MERCHANT_SHOW"); fire("MERCHANT_UPDATE") -- the window is disarmed after one capture
+    T.eq(CTProbeDB.fixtures["GetMerchantItemInfo(1)"].values[1].value, "Item1", "a second window opening records nothing more")
+end)
+
+test("armed: a vendor window with no rows yet is tried again on the next update", function()
+    local _, fire = probe({})
+    vendorFakes(0)
+    SlashCmdList.CTPROBE("record arm")
+    fire("MERCHANT_SHOW")
+    T.eq(CTProbeDB.fixtures["GetMerchantNumItems()"].values[1].value, 0)
+    T.eq(CTProbeDB.fixtures["GetMerchantItemInfo(1)"], nil, "no row is recorded for an empty list")
+    T.ok(has("window merchant: no rows yet"), "the log says so")
+    vendorFakes(2)
+    fire("MERCHANT_UPDATE")
+    T.eq(CTProbeDB.fixtures["GetMerchantItemInfo(2)"].values[1].value, "Item2")
+    T.eq(CTProbeDB.fixtures["GetMerchantItemInfo(3)"], nil, "a list of two has two rows")
+end)
+
+test("armed: trainer and auction windows record their own calls, and a missing function is an error entry", function()
+    local _, fire = probe({})
+    _G.GetNumTrainerServices = function() return 4 end
+    _G.GetTrainerServiceInfo = function(i) return "Spell" .. i, "Rank 1", "available", true end
+    _G.GetTrainerServiceCost = function(i) return 100 * i, false end
+    _G.GetTrainerServiceSkillReq = function() return nil end
+    _G.GetNumAuctionItems = function(kind) return kind == "list" and 2 or 0, 40 end
+    _G.GetAuctionItemInfo = function(kind, i) return "Ore" .. i, 1, 20, 1, true, 10, "", 100, 5, 500, 0, false, "", "Seller", "", 0, 2770 + i, true end
+    SlashCmdList.CTPROBE("record arm")
+    fire("TRAINER_SHOW"); fire("AUCTION_ITEM_LIST_UPDATE")
+    local fx = CTProbeDB.fixtures
+    T.eq(fx["GetNumTrainerServices()"].window, "trainer")
+    T.eq(fx["GetTrainerServiceInfo(2)"].values[2].value, "Rank 1")
+    T.eq(fx["GetTrainerServiceCost(3)"].values[1].value, 300)
+    T.eq(fx["GetTrainerServiceSkillReq(1)"].values[1].type, "nil", "a nil return is kept")
+    T.eq(fx["GetNumAuctionItems(list)"].values[1].value, 2, "a string argument is written as a plain word in the label")
+    T.eq(fx["GetAuctionItemInfo(list,2)"].values[1].value, "Ore2"); T.eq(fx["GetAuctionItemInfo(list,2)"].window, "auction")
+    T.eq(fx["GetAuctionItemInfo(list,3)"], nil, "two results, two rows")
+    _G.GetNumTrainerServices = nil
+    SlashCmdList.CTPROBE("record arm"); fire("TRAINER_SHOW")
+    T.ok(CTProbeDB.fixtures["GetNumTrainerServices()"].error, "a function the client lacks is recorded as an error, so ct.py can say why it is skipped")
+    T.eq(CTProbeDB.armed.trainer, nil, "and the window is disarmed, because nothing will change")
+    T.ok(has("raised an error, so nothing more is recorded"), "the log says so")
+end)
+
+test("armed: nothing is recorded for a window that was not armed, and /ctp record keeps window captures", function()
+    local _, fire = probe({})
+    vendorFakes(2)
+    fire("TRAINER_SHOW")
+    T.eq(CTProbeDB.fixtures, nil, "a window that is not armed records nothing")
+    SlashCmdList.CTPROBE("record arm")
+    CTProbeDB.armed.trainer = nil
+    fire("TRAINER_SHOW")
+    T.eq(CTProbeDB.fixtures["GetNumTrainerServices()"], nil, "a window that was disarmed records nothing")
+    fire("MERCHANT_SHOW")
+    SlashCmdList.CTPROBE("record")
+    T.ok(CTProbeDB.fixtures["GetMerchantNumItems()"], "a second /ctp record keeps what the windows recorded")
+    T.ok(CTProbeDB.fixtures["GetBuildInfo()"], "and records its own list")
+end)
+
+test("armed capture calls nothing that changes state", function()
+    local _, fire = probe({})
+    local f = assert(io.open(PATH)); local src = f:read("*a"); f:close()
+    for _, name in ipairs({ "BuyMerchantItem", "PickupMerchantItem", "BuyTrainerService", "PlaceAuctionBid", "StartAuction", "CloseMerchant" }) do
+        T.ok(not src:find(name, 1, true), name .. " is not in the probe")
+    end
+    local called = {}
+    for _, name in ipairs({ "BuyMerchantItem", "PickupMerchantItem", "BuyTrainerService", "PlaceAuctionBid", "StartAuction", "CloseMerchant" }) do
+        _G[name] = function() called[#called + 1] = name end
+    end
+    vendorFakes(3)
+    SlashCmdList.CTPROBE("record arm")
+    fire("MERCHANT_SHOW"); fire("TRAINER_SHOW"); fire("AUCTION_ITEM_LIST_UPDATE")
+    T.same(called, {})
+end)
+
+test("/ctp record asks for the candidate armor and weapon and records them when the client delivers them", function()
+    local _, fire = probe({})
+    local asked, cached = {}, {}
+    _G.C_Item = _G.C_Item or {}
+    _G.C_Item.RequestLoadItemDataByID = function(id) asked[#asked + 1] = id end
+    _G.GetItemInfo = function(id) if cached[id] then return "Name" .. id, "|Hitem:" .. id .. "|h", 3, 60, 55, "Armor", "Plate", 1, "INVTYPE_HEAD", 1, 4321 end end
+    SlashCmdList.CTPROBE("record")
+    T.same(asked, { 12640, 12784 }, "both candidates are requested")
+    T.eq(CTProbeDB.fixtures["GetItemInfo(12640)"].n, 0, "an uncached item records no value")
+    cached[12640] = true
+    fire("GET_ITEM_INFO_RECEIVED", 12640, true)
+    T.eq(CTProbeDB.fixtures["GetItemInfo(12640)"].values[1].value, "Name12640", "the delivery replaces the empty record")
+    T.eq(CTProbeDB.fixtures["GetItemInfo(12640)"].values[11].value, 4321, "with the sell price")
+    T.ok(has("item 12640 delivered"), "the log says so")
+    fire("GET_ITEM_INFO_RECEIVED", 6948, true)
+    T.eq(CTProbeDB.fixtures["GetItemInfo(12784)"].n, 0, "an item that has not arrived stays empty")
+end)
+
 finish()

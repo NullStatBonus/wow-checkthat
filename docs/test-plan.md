@@ -40,7 +40,7 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: chat shows a status line, and the card moves on by itself without Pass.
    Log: `[ct] status requested`, then `[ct] step self.secure pass auto evidence matched`.
 5. **Reload resume.** Open the third step and click Run.
-   Check: after the reload the card is on the same step, a green "Reloaded" line shows under the title, and chat says the run continues. Within a minute the card moves on by itself.
+   Check: after the reload the card is on the same step, the hint under Do says "Reloaded", and chat says the run continues. Within a minute the card moves on by itself.
    Log: `[ct] resumed run`, then `[ct] step self.reload pass auto evidence matched`.
 6. **Card in combat.** Start a fight with a training dummy. Drag, collapse and expand the card.
    Check: the card moves and collapses and no "action blocked" message shows.
@@ -82,10 +82,22 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 18. **A result needs Redo.** Pass a step, press the back arrow to show it, then type `/ct fail`.
    Check: chat says the step has a result and to use Redo this step or Undo first. The step still shows Pass.
    Log: `[ct] verdict refused <step id>: step has a result`, and no `[ct] step <id> fail` line for it.
+19. **Tick the actions of a step.** Import `build/checkthat-0.21.ct`, start it and play to "Tick each action". Click the first box, then the text of the second action, then the second box again.
+   Check: each click ticks or clears its box. The Setup line was open when the step first showed. Pass works with a box empty.
+   Log: `[ct] step ct2100.checklist action 1 ticked`, then `action 2 ticked` and `action 2 cleared`.
+20. **The card pauses on each result.** Press Pass on "Tick each action". On "The card pauses on an automatic result", click Run.
+   Check: each time the card keeps the step title, shows "Passed" in large green letters with "Recorded by you" the first time and "Recorded by CheckThat" the second, fades for about 3 seconds, then shows the next step at full brightness.
+   Log: `[ct] card holds ct2100.checklist for 3 s` and `[ct] card holds ct2100.pause for 3 s`.
+21. **A result key during the pause.** Bind a key to Pass. Press the back arrow, press Redo on "The card pauses on an automatic result", click Run, and press the key while the card fades.
+   Check: chat says "The card was still showing the last result. It now shows the next step." The next step has no result.
+   Log: `[ct] result pass ignored: the card was showing a result`.
+22. **The step title stands out.** Look at any step title on each client.
+   Check: the title is larger than the other text and has a dark outline. Take a screenshot for the listing page.
+   Log: none; on screen only.
 
 ## 4. Evidence
 
-1. **Auto-check ticks.** On a step with the green CHECKTHAT CHECKS THIS STEP banner, do the action.
+1. **Auto-check ticks.** On a step with the green "CheckThat checks" heading, do the action.
    Check: the listed check changes from the waiting icon to a green check within a second, and "All checks detected. Press Pass." shows.
    Log: none; on screen only.
 2. **Back and forward.** Press < then Redo, then >.
@@ -127,6 +139,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 13. **The run names the version under test.** Setup: KeepThat is installed and enabled, and its plan is imported. Start a run for KeepThat, then type `/reload`.
     Check: the run starts and the card opens as usual.
     Log: the run in `CheckThatDB.global.runs` holds `formatRev = 3` and `targetVersion` equal to the `## Version:` line of `KeepThat.toc`.
+14. **A step for another class, and a step checked at run start.** On a character that is not a Mage, import `build/checkthat-0.21.ct` and play it past "Checked when the run starts".
+   Check: the card never shows "A step for a Mage" or "Checked when the run starts". With the back arrow, the Mage step says it does not apply, with the reason, and the other says CheckThat checked it when the run started.
+   Log: `[ct] step ct2100.mage inapplicable: This step is for a Mage.` The report shows `attempt 1: pass at run start` for ct2100.start and "not for this character" for ct2100.mage.
+
 ## 5. Categories and unit-test checks
 
 Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
@@ -182,6 +198,9 @@ Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categor
 16. **A run tells an addon when it ends.** Type `/run CheckThat.OnRun("CheckThat", function(e, i) print("run " .. e .. " " .. tostring(i.reason)) end)`. Start the self-test, then click End run on the card and accept.
     Check: chat shows "run start nil" when the run starts and "run end ended" when you end it.
     Log: `[runevents] called CheckThat start` and `[runevents] called CheckThat end ended`.
+17. **A last check sees an error from an earlier step.** Play the self-test to "Record a Lua error" and click Run. When the card shows "The run kept the error", type `/reload`.
+    Check: after the reload the card records the step as passed by itself.
+    Log: `[ct] step self.runerror pass auto evidence matched`.
 
 ## 6. Plan skills (no game needed)
 

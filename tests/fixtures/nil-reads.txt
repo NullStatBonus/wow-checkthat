@@ -22,3 +22,6 @@ UIDropDownMenu_Initialize
 StaticPopup_Hide
 YES
 NO
+
+# Both clients have it (tests/manifests); the fake client does not model fonts. Card.lua builds the card title font with it and keeps GameFontHighlightLarge without it.
+CreateFont

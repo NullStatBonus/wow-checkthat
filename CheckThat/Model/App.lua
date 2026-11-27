@@ -432,6 +432,7 @@ function App.Start(addon, picks)
     App.db.ui.pendingStart = nil
     App.PruneRuns()
     App.Log("run started " .. run.runId)
+    App.JudgeAtStart(run, ctx)
     changed(before, "replaced")
     return run
 end
@@ -498,6 +499,13 @@ function App.MacroRun(id)
 end
 
 -- Section intro for the card, shown on the first step of a section that has no verdicts yet.
+-- A result CheckThat recorded at run start (an async step) or a step that does not apply is not the tester's progress.
+local function untouched(rec)
+    if rec.verdict == "pending" or rec.verdict == "inapplicable" or rec.verdict == "deselected" then return true end
+    local last = rec.attempts and rec.attempts[#rec.attempts]
+    return last ~= nil and last.at == "start" and #rec.attempts == 1
+end
+
 function App.SectionIntro(run, ctx, stepId)
     local steps = ns.Plan.Steps(ctx.plan, run.client)
     local mine
@@ -505,8 +513,7 @@ function App.SectionIntro(run, ctx, stepId)
     if not (mine and mine.intro) then return nil end
     for _, e in ipairs(steps) do
         if e.sectionId == mine.sectionId then
-            local v = run.steps[e.step.id].verdict
-            if v ~= "pending" then return nil end
+            if not untouched(run.steps[e.step.id]) then return nil end
         end
     end
     return mine.intro
@@ -515,7 +522,7 @@ end
 -- True until any step has a verdict: show the plan's preamble.
 function App.AtStart(run)
     for _, rec in pairs(run.steps) do
-        if rec.verdict ~= "pending" and rec.verdict ~= "inapplicable" then return false end
+        if not untouched(rec) then return false end
     end
     return true
 end
@@ -529,11 +536,28 @@ local function opening(run, step, fn)
     return a, err
 end
 
+-- The player ticked (on) or cleared listed action i of the current step. Logged; never a result.
+function App.Tick(i, on)
+    local run, ctx, step = App.Current()
+    if not step then return false end
+    ctx.now = now(App)
+    local ok = ns.Run.Tick(run, ctx, step.id, i, on)
+    if ok then App.Log(("step %s action %d %s"):format(step.id, i, on and "ticked" or "cleared")) end
+    return ok
+end
+
 function App.Begin()
     local run, ctx, step = App.Current()
     if not step then return nil end
     if ns.Errors then ns.Errors.Watch(); ns.Errors.Sample() end
     local rec = run.steps[step.id]
+    -- A requirement the character cannot meet (a class, a profession) makes the step inapplicable: no timer, no call.
+    local unmet = rec and rec.verdict == "pending" and ns.Run.Unmet(ctx, step)
+    if unmet then
+        ns.Run.MarkInapplicable(run, ctx, step.id, unmet)
+        App.Log(("step %s inapplicable: %s"):format(step.id, unmet))
+        return nil, step, unmet
+    end
     local last = rec and rec.attempts[#rec.attempts]
     local fresh = not (last and not last.verdict) -- a reload keeps its open attempt and its call
     local a = opening(run, step, function() return ns.Run.Begin(run, ctx, step.id) end)
@@ -544,8 +568,23 @@ end
 local function logResult(step, a)
     local why
     for _, o in ipairs(a.outcomes or {}) do if o.result ~= "pass" and not o.diagnostic then why = o.why; break end end
-    App.Log(("step %s %s%s%s%s"):format(step.id, a.verdict, a.by == "auto" and " auto" or "",
+    App.Log(("step %s %s%s%s%s%s"):format(step.id, a.verdict, a.by == "auto" and " auto" or "", a.at == "start" and " at start" or "",
         a.evidence and (" evidence " .. a.evidence) or "", why and (": " .. why) or ""))
+end
+
+-- Async steps are judged when the run starts (or after a rerun), before any of them opens. Logs each pass.
+function App.JudgeAtStart(run, ctx, ids)
+    local before = {}
+    for _, id in ipairs(run.order) do before[id] = run.steps[id].verdict end
+    local n = ns.Run.JudgeAtStart(run, ctx, ids)
+    if n > 0 then
+        for _, id in ipairs(run.order) do
+            local rec = run.steps[id]
+            local a = rec.attempts[#rec.attempts]
+            if before[id] == "pending" and rec.verdict == "pass" and a and a.at == "start" then logResult(ns.Run.stepOf(ctx, id), a) end
+        end
+    end
+    return n
 end
 
 function App.Verdict(verdict, note)
@@ -819,7 +858,12 @@ function App.Select(what)
     local key = tostring(what or ""):lower()
     local ok, why = ns.Run.Select(run, ctx, key)
     if ok == nil then return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or "")) end
-    if ok then App.Log("select " .. key) end
+    if ok then
+        App.Log("select " .. key)
+        local added = {}
+        for _, id in ipairs(run.order) do if run.cat[id] == key then added[#added + 1] = id end end
+        App.JudgeAtStart(run, ctx, added) -- an added category's async steps are judged as at run start
+    end
     return ok
 end
 
@@ -881,12 +925,17 @@ function App.Rerun(what)
     local run, ctx, err = activeRun()
     if not run then return nil, err end
     local key = tostring(what or ""):lower()
+    local was = {}
+    for _, id in ipairs(run.order) do was[id] = run.steps[id].verdict end
     local n, why = ns.Run.Rerun(run, ctx, what)
     if not n then
         if why == "not picked" then return nil, L["%s is not part of this run. Use /ct run %s to add it."]:format(name(run, key), ns.Slash.Esc(key)) end
         return nil, L["There is no category called %s."]:format(ns.Slash.Esc(what or ""))
     end
     App.Log(("rerun %s: %d steps reopened"):format(key, n))
+    local reopened = {}
+    for _, id in ipairs(run.order) do if was[id] ~= "pending" and run.steps[id].verdict == "pending" then reopened[#reopened + 1] = id end end
+    ctx.now = now(App); App.JudgeAtStart(run, ctx, reopened)
     return n, (key == ns.Run.FAILED and not ns.Run.CategoryOf(run, key)) and L["failed and unverified steps"] or name(run, key)
 end
 
@@ -894,7 +943,7 @@ function App.Status()
     local run = App.db.runs[shownId() or ""]
     if not run then return L["No run."] end
     local c = ns.Run.Counts(run)
-    local line = L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client (revision %d, saved on reload)"]:format(
+    local line = L["%s: %d pass, %d partial, %d fail, %d unverified, %d skipped, %d left, %d not for this client or character (revision %d, saved on reload)"]:format(
         run.runId, c.pass, c.partial, c.fail, c.unverified, c.skip, c.pending, c.inapplicable, run.revision)
     if c.deselected > 0 then line = L["%s, %d not picked"]:format(line, c.deselected) end
     return run.endedAt and L["%s (run ended)"]:format(line) or line

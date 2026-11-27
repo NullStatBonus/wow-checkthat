@@ -2,7 +2,7 @@
 
 The saved run record is the contract between CheckThat and every tool that reads a run: `tools/ct.py`, the viewer, the `ct-verify` skill and your own scripts. It lives in three places with the same layout: `CheckThatDB.global.runs` in the saved variables, the string `/ct export` makes, and `evidence/runs/<id>/r<revision>.json` after `ct.py collect`. `schema/run-results.schema.json` describes it. How the keys behave is in [Features](features.md).
 
-Current: **ct 1, formatRev 4.**
+Current: **ct 1, formatRev 6.**
 
 ## Two version numbers
 
@@ -44,6 +44,8 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 | formatRev | Since | Adds |
 | --- | --- | --- |
+| 6 | 0.21.0 | `ticks` on an attempt: one entry for each listed action, the time the player ticked it or false. `at: "start"` on an attempt CheckThat judged when the run started (an async step). `unmet` on an inapplicable step record: the text of the requirement the character does not meet. |
+| 5 | 0.21.0 | `since` on a check that did not pass: `run` when it read the lines after the run started (a plan's `scope: run`); `scope` is then absent. A run also saves `snapshots`, the log positions at its start, in the saved variables only: the results string and a finished run leave them out. |
 | 4 | 0.20.1 | `macroStale` on a step record: how many times the CT macro ran while the card showed another step. Absent means none. |
 | 3 | 0.19.0 | `targetVersion` on a run: the TOC version of the addon under test (the plan's addon) when the run started. Absent when the client could not say. |
 | 2 | 0.17.0 | `reopened` on a step record: true after Undo or a rerun reopened a step that had a result. |

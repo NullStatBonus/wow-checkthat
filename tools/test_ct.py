@@ -319,6 +319,70 @@ class Recordings(unittest.TestCase):
             self.assertEqual(ct.main(["recordings", "--src", bare, "-o", out]), 2)
         self.assertIn("/ctp record", err.getvalue())
 
+class WindowRecordings(unittest.TestCase):
+    """Calls CTProbe recorded with a vendor, trainer or auction window open carry a window tag. The file keeps format 1 and gains rev 2."""
+    SV = '''CTProbeDB = {
+["version"] = 4,
+["fixtures"] = {
+["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.15.9" }, { ["type"] = "string", ["value"] = "70576" }, { ["type"] = "string", ["value"] = "Oct 22 2026" }, { ["type"] = "number", ["value"] = 11509 } } },
+["GetNumAuctionItems(list)"] = { ["window"] = "auction", ["n"] = 2, ["values"] = { { ["type"] = "number", ["value"] = 2 }, { ["type"] = "number", ["value"] = 40 } } },
+["GetAuctionItemInfo(list,1)"] = { ["window"] = "auction", ["n"] = 16, ["values"] = { { ["type"] = "string", ["value"] = "Ore" }, { ["type"] = "number", ["value"] = 1 }, { ["type"] = "number", ["value"] = 20 }, { ["type"] = "number", ["value"] = 1 }, { ["type"] = "boolean", ["value"] = true }, { ["type"] = "number", ["value"] = 10 }, { ["type"] = "string", ["value"] = "" }, { ["type"] = "number", ["value"] = 100 }, { ["type"] = "number", ["value"] = 5 }, { ["type"] = "number", ["value"] = 500 }, { ["type"] = "number", ["value"] = 0 }, { ["type"] = "string", ["value"] = "BidderOne" }, { ["type"] = "string", ["value"] = "BidderOne-Realm" }, { ["type"] = "string", ["value"] = "SellerOne" }, { ["type"] = "string", ["value"] = "SellerOne-Realm" }, { ["type"] = "number", ["value"] = 0 } } },
+["GetMerchantItemLink(1)"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "|cffffffff|Hitem:2092::::::::25:262:::::|h[Worn Dagger]|h|r" } } },
+["GetNumTrainerServices()"] = { ["window"] = "trainer", ["error"] = "attempt to call a nil value" },
+["GetTrainerServiceInfo(1)"] = { ["window"] = "bogus", ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Spell" } } },
+["GetLocale()"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "enUS" } } },
+},
+}
+'''
+
+    def make(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "CTProbe.lua")
+        with open(path, "w") as f: f.write(self.SV)
+        return path
+
+    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_2(self):
+        client, rec, skipped = ct.probe_recordings(self.make())
+        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 2))
+        self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["window"], "auction")
+        self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["args"], ["list"], "a plain word argument reads back")
+        self.assertEqual(rec["calls"]["GetAuctionItemInfo(list,1)"]["args"], ["list", 1])
+        self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["window"], "merchant")
+        self.assertNotIn("window", rec["calls"]["GetLocale()"], "a call recorded with no window has no tag")
+        self.assertNotIn("window", rec["calls"]["GetTrainerServiceInfo(1)"] if "GetTrainerServiceInfo(1)" in rec["calls"] else {}, "an unknown tag is dropped")
+        self.assertIn("error", dict(skipped)["GetNumTrainerServices()"])
+
+    def test_an_auction_row_names_no_bidder_or_seller(self):
+        _, rec, _ = ct.probe_recordings(self.make())
+        r = rec["calls"]["GetAuctionItemInfo(list,1)"]["returns"]
+        self.assertEqual(r[:3], ["Ore", 1, 20])
+        self.assertEqual(r[11:15], ["", "", "", ""], "highBidder, bidderFullName, owner and ownerFullName are blank")
+        self.assertNotIn("Seller", json.dumps(rec)); self.assertNotIn("Bidder", json.dumps(rec))
+        self.assertEqual(rec["calls"]["GetMerchantItemLink(1)"]["returns"][0], "|cffffffff|Hitem:2092::::::::::::::|h[Worn Dagger]|h|r")
+
+    def test_a_recording_without_tags_still_loads(self):
+        _, rec, _ = ct.probe_recordings(Recordings.make(Recordings(), None)[1])
+        self.assertTrue(rec["calls"])
+        self.assertFalse([c for c in rec["calls"].values() if "window" in c], "a v3 probe file has no tags")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_the_offline_runner_reads_a_rev_2_file_with_tags(self):
+        root = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, root)
+        for name in ("CheckThat", "tests"):
+            os.symlink(os.path.join(ROOT, name), os.path.join(root, name))
+        os.makedirs(os.path.join(root, "tools", "recordings"))
+        for name in os.listdir(os.path.join(ROOT, "tools")):
+            if name != "recordings":
+                os.symlink(os.path.join(ROOT, "tools", name), os.path.join(root, "tools", name))
+        with open(os.path.join(ROOT, "tools", "recordings", "era.json")) as f: rec = json.load(f)
+        rec["rev"] = 2; rec["calls"]["GetItemInfo(6948)"]["window"] = "merchant"
+        with open(os.path.join(root, "tools", "recordings", "era.json"), "w") as f: json.dump(rec, f)
+        spec = {"toc": "tests/fixtures/MockAddon/Rec_Vanilla.toc", "level": 5, "mocks": {"GetItemInfo": {"recording": "GetItemInfo(6948)"}},
+                "steps": [{"call": {"addon": "MockAddon", "entry": "info_old", "args": [6948]}, "returns": ["Hearthstone"]}]}
+        with open(os.path.join(root, "spec.json"), "w") as f: json.dump(spec, f)
+        p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
         plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))
@@ -368,7 +432,8 @@ class NativeText(unittest.TestCase):
         for path in glob.glob(os.path.join(ROOT, "plans", "**", "*.yaml"), recursive=True) + [os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml")]:
             d = ct.load_yaml(path)
             for box, key, _ in ct.display_fields(d):
-                self.assertNotRegex(box[key], r"`|\*\*", path + " " + key)
+                for text in ct.lines_of(box[key]):   # action text and expect may be lists
+                    self.assertNotRegex(text, r"`|\*\*", path + " " + key)
 
 
 class SamplePlans(unittest.TestCase):
@@ -950,7 +1015,8 @@ class PlanSkill(unittest.TestCase):
                        "**Purpose and depth.**", "set `purpose`", "### Foundation plans", "pillars", "**One character.**",
                        "not the release gate", "**Player language.**", "foundation plan over 12 steps",
                        "**Name earlier steps by what the player did.**", "--addon-src <addon folder>", "older build than the addon's TOC",
-                       "replay <plan> --run <run id>", "not judged offline"):
+                       "replay <plan> --run <run id>", "not judged offline",
+                       "**Actions as a list.**", "`async: true`", "`unmet: inapplicable`"):
             self.assertIn(needle, text)
 
     def test_step_cannot_assert_its_own_result_line(self):
@@ -961,6 +1027,46 @@ class PlanSkill(unittest.TestCase):
         p["sections"][0]["steps"][1].update({"verify": ["player", "assertions"], "assertions": [{"kind": "log", "source": "debug", "contains": "[ct] step a.1 pass", "scope": "session"}]})
         p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "[ct] step a.10 pass"}]
         self.assertEqual(ct.validate(p), [])
+
+    def test_lists_async_and_class_requirements_are_valid(self):
+        p = good()
+        st = p["sections"][0]["steps"][1]
+        st["action"]["text"] = ["Walk in.", "Wait 10 seconds.", "Walk out."]
+        st["expect"] = ["It closes.", "It shows again outside."]
+        p["requirements"]["caster"] = {"text": "A Mage", "class": ["MAGE"], "profession": ["Tailoring"], "unmet": "inapplicable"}
+        self.assertEqual(ct.validate(p), [])
+        self.assertIn("Walk in. Wait 10 seconds. Walk out.", ct.joined(st["action"]["text"]))
+        q = good(); a = q["sections"][0]["steps"][0]
+        inherited = dict(a, verify=["assertions"], auto=True, action={"kind": "manual", "text": "w"}); inherited["async"] = True
+        errs = ct.validate(dict(q, sections=[dict(q["sections"][0], steps=[inherited])]))
+        self.assertTrue(any("async cannot have setup" in e for e in errs), "a section's setup counts")
+        del q["sections"][0]["setup"]
+        a.update({"verify": ["assertions"], "auto": True, "async": True, "action": {"kind": "manual", "text": "Wait."}})
+        self.assertEqual(ct.validate(q), [])
+        a["timeout"] = 30; a["assertions"][0]["absent"] = True
+        self.assertTrue(any("async cannot check" in e for e in ct.validate(q)))
+
+    def test_coverage_reads_a_list_of_actions(self):
+        p = good(); p["sections"][0]["steps"][1]["action"]["text"] = ["Type /kt log.", "Press Pass."]
+        touches = {sid: cmds for sid, _, cmds, _ in ct.step_touches(p)}
+        self.assertIn("log", [c for c, _ in touches["a.2"]])
+
+    def test_a_list_item_with_markdown_becomes_color_codes(self):
+        p = good(); p["sections"][0]["steps"][1]["action"]["text"] = ["Open the bag.", "Press **Run**."]
+        self.assertEqual(ct.nativize(p)["sections"][0]["steps"][1]["action"]["text"][1], "Press |cffffd100Run|r.")
+
+    def test_scope_run_is_valid_and_an_unknown_scope_is_not(self):
+        p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "x", "scope": "run"}]
+        self.assertEqual(ct.validate(p), [])
+        p["sections"][0]["steps"][0]["assertions"][0]["scope"] = "forever"
+        self.assertTrue(ct.validate(p))
+
+    def test_a_run_scoped_check_reads_as_since_the_run_started(self):
+        o = {"result": "fail", "rule": "absent: a line", "source": "errors", "since": "run", "window": 2, "matched": 1}
+        self.assertTrue(ct.outcome_ok(o))
+        self.assertIn("errors, since the run started", "\n".join(ct.check_lines({"outcomes": [o]})))
+        self.assertIn("errors, whole log", "\n".join(ct.check_lines({"outcomes": [dict(o, since=None, scope="session")]})))
+        self.assertFalse(ct.outcome_ok(dict(o, since="forever")))
 
     def test_first_step_without_a_version_check_warns(self):
         p = good()
@@ -2536,6 +2642,21 @@ class ReportAuto(unittest.TestCase):
         self.assertIn("      one\n      two", text)
         self.assertNotIn("new line", ct.report_text(self.run_fixture(verdict="fail")))
 
+    def test_report_names_the_actions_left_unticked_on_a_failed_attempt(self):
+        text = ct.report_text(self.run_fixture(verdict="fail", ticks=[100, False, False]))
+        self.assertIn("actions not ticked: 2, 3 (of 3)", text)
+        self.assertNotIn("not ticked", ct.report_text(self.run_fixture(verdict="pass", ticks=[100, False])))
+        m = ct.run_model("KeepThat-1", self.run_fixture(verdict="fail", ticks=[100, False])["KeepThat-1"])
+        self.assertEqual(m["steps"][0]["unticked"], [2])
+
+    def test_report_says_a_step_passed_at_run_start_and_why_a_step_does_not_apply(self):
+        run = self.run_fixture(by="auto", at="start", verdict="fail")
+        self.assertIn("attempt 1: fail at run start", ct.report_text(run))
+        self.assertTrue(ct.run_model("KeepThat-1", run["KeepThat-1"])["steps"][0]["atStart"])
+        rec = {"verdict": "inapplicable", "unmet": "This step needs a Mage.", "attempts": []}
+        self.assertEqual(ct.classify(rec), ("skipped", "not for this character: This step needs a Mage."))
+        self.assertEqual(ct.classify({"verdict": "inapplicable", "attempts": []}), ("skipped", "not for this client"))
+
     def test_report_marks_an_automatic_failure_attempt(self):
         text = ct.report_text(self.run_fixture(by="auto", verdict="fail"))
         self.assertIn("recorded by CheckThat", text)
@@ -3182,6 +3303,13 @@ class Results(unittest.TestCase):
         self.assertEqual(ct.write_revision(d, exported), "same")   # /ct export strips snapshots
         exported["steps"]["a"]["attempts"][0]["n"] = 2
         self.assertEqual(ct.write_revision(d, exported), "conflict")
+
+    def test_the_runs_start_positions_are_not_a_conflict(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        run = {"runId": "R-1", "revision": 1, "snapshots": {"errors": {"n": 2}}, "steps": {}}
+        exported = {"runId": "R-1", "revision": 1, "steps": {}}
+        self.assertEqual(ct.write_revision(d, run), "new")
+        self.assertEqual(ct.write_revision(d, exported), "same")   # /ct export and a finished run leave them out
 
     def test_junit_stays_valid_xml_with_control_characters_in_a_note(self):
         from xml.etree import ElementTree as ET

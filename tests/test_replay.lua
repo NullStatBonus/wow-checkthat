@@ -117,6 +117,45 @@ test("a step that ends in Fail although the replay did what its checks need is a
     T.ok(has(out.problems, "a: the step failed"), table.concat(out.problems, "; "))
 end)
 
+test("a run-scoped absence check replays like an attempt-scoped one", function()
+    local out = Replay.run(ns, otherPlan({ step("a"), auto("z", { { kind = "log", source = "debug", contains = "ok", scope = "run", label = "ok" },
+        { kind = "log", source = "debug", contains = "boom", absent = true, scope = "run", label = "no boom" } }) }))
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+end)
+
+test("an async step passes at run start and is never shown; hooks can make a requirement unmet", function()
+    local p = assert(ns.Codec.Encode({ ct = 1, kind = "plan", addon = "KeepThat", title = "t",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings", cap = 300 } },
+        requirements = { caster = { text = "This step needs a Mage.", class = { "MAGE" }, unmet = "inapplicable" } },
+        sections = { { id = "s", title = "S", steps = {
+            step("v", { auto = true, async = true, verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "version 2", label = "v" } } }),
+            step("m", { requires = { "caster" } }), step("n") } } } }))
+    local out = Replay.run(ns, p, { hooks = { unmet = { caster = true } } })
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+    T.ok(has(out.trace, "v                    pass (at run start)"), table.concat(out.trace, " | "))
+    T.ok(has(out.trace, "m                    inapplicable (This step needs a Mage.)"), table.concat(out.trace, " | "))
+    local both = assert(ns.Codec.Encode({ ct = 1, kind = "plan", addon = "KeepThat", title = "t",
+        logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings", cap = 300 } },
+        requirements = { caster = { text = "This step needs a Mage.", class = { "MAGE" }, unmet = "inapplicable" } },
+        sections = { { id = "s", title = "S", steps = {
+            step("v", { requires = { "caster" }, auto = true, async = true, verify = { "assertions" }, assertions = { { kind = "log", source = "debug", contains = "version 2", label = "v" } } }),
+            step("n") } } } }))
+    local hb = Replay.run(ns, both, { hooks = { unmet = { caster = true } } })
+    T.ok(has(hb.trace, "v                    inapplicable"), "an async step the hook makes unmet is not passed at start: " .. table.concat(hb.trace, " | "))
+    local plain = Replay.run(ns, p)
+    T.ok(has(plain.trace, "m                    pass"), "without the hook the step applies: " .. table.concat(plain.trace, " | "))
+end)
+
+test("the 0.21 plan replays with no problem", function()
+    local f = io.open("build/checkthat-0.21.ct", "rb"); local s = f:read("*a"); f:close()
+    local out = Replay.run(ns, s)
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+    T.ok(has(out.trace, "ct2100.start         pass (at run start)"), table.concat(out.trace, " | "))
+    local hooked = Replay.run(ns, s, { hooks = { unmet = { mage = true } } })
+    T.eq(#hooked.problems, 0, table.concat(hooked.problems, "; "))
+    T.ok(has(hooked.trace, "ct2100.mage          inapplicable"), table.concat(hooked.trace, " | "))
+end)
+
 test("the plan's own addon counts as loaded", function()
     local out = Replay.run(ns, otherPlan({ auto("a", { { kind = "state", probe = "addon-loaded", name = "KeepThat", op = "eq", value = true, scope = "attempt", label = "loaded" } }) }))
     T.eq(#out.problems, 0, table.concat(out.problems, "; "))

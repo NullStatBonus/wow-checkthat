@@ -190,7 +190,7 @@ def validate(plan, requirements=None):
             errs.append("duplicate category id %s" % c["id"])
         cats[c["id"]] = c
     for box, key, _ in display_fields(plan):
-        if isinstance(box[key], str) and MARKDOWN.search(box[key]):
+        if any(isinstance(s, str) and MARKDOWN.search(s) for s in lines_of(box[key])):
             errs.append("markdown in %s: use native color codes (|cffffd100text|r), not backticks or **" % key)
             break
     seen, macros = set(), {m["id"] for m in plan.get("macros", [])}
@@ -198,6 +198,9 @@ def validate(plan, requirements=None):
         if not macro_allowed(m["text"], addon):
             errs.append("macro %s: text not allowed" % m["id"])
     reqs = plan.get("requirements", {})
+    for name, r in reqs.items():
+        if "unmet" in r and not any(k in r for k in ("probe", "class", "profession")):
+            errs.append("requirement %s: unmet needs a probe, class or profession" % name)
     logs = plan.get("logs", {})
     sec_ids = set()
     for sec in plan["sections"]:
@@ -232,6 +235,16 @@ def validate(plan, requirements=None):
             act = st["action"]
             if act["kind"] == "secure-macro" and act.get("macro") not in macros:
                 errs.append("%s: macro %s not in plan macros" % (sid, act.get("macro")))
+            if st.get("async"):
+                if not st.get("auto"):
+                    errs.append("%s: async needs auto" % sid)
+                if "setup" in st or "setup" in sec or "call" in st or st.get("reload") == "after_action":   # a section's setup is merged into the step
+                    errs.append("%s: async cannot have setup, a call or a reload: it is judged before the player does anything" % sid)
+                for a in st.get("assertions", []):
+                    c = a.get("count") or {}
+                    if not a.get("diagnostic") and (a.get("absent") or (a["kind"] == "fact" and a.get("op") == "missing") or "exactly" in c or "max" in c):
+                        errs.append("%s: async cannot check that something did not happen (absence, missing, exactly or max): that needs a time window" % sid)
+                        break
             if act["kind"] == "copy-slash" and not macro_allowed(act.get("text"), addon):
                 errs.append("%s: slash text not allowed" % sid)
             for c in act.get("commands", []):
@@ -263,7 +276,7 @@ def validate(plan, requirements=None):
                     errs.append("%s: log assertion needs exactly one of equals, contains, pattern" % sid)
                 own = "[ct] step %s " % sid   # the game judges a result before it writes this line
                 if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
-                    errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope session" % (sid, own))
+                    errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope run" % (sid, own))
     block = plan.get("offline") or {}
     if block.get("predicts"):
         have = offline_step_ids(block)
@@ -288,7 +301,7 @@ def warnings(plan):
         for st in sec["steps"]:
             if st["action"].get("kind") == "copy-slash":
                 continue  # its text is the command and already has a copy box
-            text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", st["action"].get("text", ""))
+            text = re.sub(r"\|c[0-9a-fA-F]{8}|\|r", "", joined(st["action"].get("text")))
             have = [h.lower() for h in st["action"].get("commands", [])]
             for m in re.finditer(r"(?<![\w/])(/[A-Za-z]+(?: [A-Za-z0-9]+)*)", text):
                 cmd = m.group(1).lower()
@@ -299,7 +312,7 @@ def warnings(plan):
 def version_warning(plan):
     """A message when the first step of the plan does not check the version under test, else None."""
     st = plan["sections"][0]["steps"][0]
-    text = " ".join([st.get("title", ""), st.get("expect", ""), st["action"].get("text", "")] + [a.get("key", "") for a in st.get("assertions", [])])
+    text = " ".join([st.get("title", ""), joined(st.get("expect")), joined(st["action"].get("text"))] + [a.get("key", "") for a in st.get("assertions", [])])
     if "version" not in text.lower():
         return "%s: the first step does not check the version under test (a run on another build wastes the tester's time)" % st["id"]
 
@@ -317,7 +330,7 @@ def reference_warnings(plan):
         for st in sec["steps"]:
             if "on purpose" in (st.get("notes") or "").lower():
                 continue  # the game itself shows the id there, as CheckThat's own chat lines do
-            for field, text in (("action text", (st.get("action") or {}).get("text")), ("setup", st.get("setup")), ("expect", st.get("expect"))):
+            for field, text in (("action text", joined((st.get("action") or {}).get("text"))), ("setup", st.get("setup")), ("expect", joined(st.get("expect")))):
                 m = STEP_NUMBER.search(text or "") or (own and own.search(text or ""))
                 if m:
                     out.append("%s: %s cites %r, but the card shows step titles, not numbers: say what the player did in that step" % (st["id"], field, m.group(0)))
@@ -409,11 +422,11 @@ def wording_warnings(plan):
         for st in sec["steps"]:
             act = st.get("action") or {}
             if act.get("kind") != "copy-slash":
-                for c in commands(act.get("text")):
+                for c in commands(joined(act.get("text"))):
                     out.append("%s: the action text shows %s: write what the player does, and keep the command behind Run" % (st["id"], c))
-            for c in commands(st.get("expect")):
+            for c in commands(joined(st.get("expect"))):
                 out.append("%s: expect shows %s: say what the player sees on screen" % (st["id"], c))
-            if LOG_WORDS.search(st.get("expect") or ""):
+            if LOG_WORDS.search(joined(st.get("expect"))):
                 out.append("%s: expect speaks of the log: say what the player sees on screen, and leave the log to assertions" % st["id"])
     n = sum(len(sec["steps"]) for sec in secs)
     if purpose == "foundation" and n > FOUNDATION_STEPS_MAX:
@@ -512,6 +525,7 @@ def export_form(run):
             a.pop("snapshots", None)
             a.pop("reloaded", None)   # set when the game reloads with the attempt open; it does not change the revision
     run.pop("current", None)   # the step the card shows: browsing moves it without a new revision
+    run.pop("snapshots", None)   # the run's start positions (scope run): saved variables only, like an attempt's
     return run
 
 def note_problem(dest, text):
@@ -602,6 +616,14 @@ def plain(s):
     return re.sub(r"\*\*|`", "", s)
 
 
+def lines_of(v):
+    """Action text and expect are one sentence or a list of them: the list, with a sentence as a list of one."""
+    return v if isinstance(v, list) else [] if v is None else [v]
+
+def joined(v):
+    """One string for action text or expect, a list joined with spaces."""
+    return " ".join(v) if isinstance(v, list) else (v or "")
+
 def native(s):
     s = s.replace("|", "||")
     s = re.sub(r"\*\*(.+?)\*\*", lambda m: "|cffffd100" + m.group(1) + "|r", s)
@@ -643,8 +665,11 @@ def nativize(plan):
     """Convert Markdown marks in every display field to native formatting, in place."""
     for box, key, kind in display_fields(plan):
         v = box[key]
-        if isinstance(v, str) and MARKDOWN.search(v):
-            box[key] = plain(v) if kind == "plain" else native(v)
+        conv = (lambda s: plain(s) if kind == "plain" else native(s))
+        if isinstance(v, list):
+            box[key] = [conv(s) if isinstance(s, str) and MARKDOWN.search(s) else s for s in v]
+        elif isinstance(v, str) and MARKDOWN.search(v):
+            box[key] = conv(v)
     return plan
 
 
@@ -1567,6 +1592,10 @@ def sv_json(path):
 
 
 RECORDING_FORMAT = 1
+RECORDING_REV = 2   # 2: a call may carry "window". format stays 1, because a released runner rejects any other value.
+RECORDING_WINDOWS = ("merchant", "trainer", "auction")
+# Returns that name another player: 1-based positions, blanked in a recording. GetAuctionItemInfo: highBidder, bidderFullName, owner, ownerFullName.
+REDACTED_RETURNS = {"GetAuctionItemInfo": (12, 13, 14, 15)}
 ITEM_LINK = re.compile(r"\|Hitem:([^|]*)\|h")
 
 def anonymize_link(value):
@@ -1588,7 +1617,7 @@ def probe_recordings(sv_path):
     with calls[label] = {api, args, returns, n, nils}: the arguments are parsed from the label (numbers and plain words), a nil return is a
     false placeholder listed in nils (the plan JSON has no null). skipped names each call left out and why: one that raised an error, a
     personal value (recorded by type only), a call on the player, an argument the label cannot give back exactly (a quoted string, nil),
-    and a return that is a table or a function."""
+    and a return that is a table or a function. A call with a window tag (recorded with a vendor, trainer or auction window open) keeps it, and an auction row loses the names of its bidder and seller."""
     db = sv_json(sv_path).get("CTProbeDB")
     if not isinstance(db, dict) or not isinstance(db.get("fixtures"), dict):
         raise ValueError("%s holds no CTProbeDB.fixtures: run /ctp record in game, then /reload" % sv_path)
@@ -1624,14 +1653,19 @@ def probe_recordings(sv_path):
             elif t in ("table", "function", "userdata", "thread"):
                 bad = t
             else:
-                returns.append(anonymize_link(v.get("value")))
+                value = anonymize_link(v.get("value"))
+                if isinstance(value, str) and i in REDACTED_RETURNS.get(m.group(1).rsplit(".", 1)[-1], ()):
+                    value = ""
+                returns.append(value)
         if bad:
             skipped.append((label, "returns a %s" % bad)); continue
         calls[label] = {"api": m.group(1), "args": args, "returns": returns, "n": int(rec.get("n", len(returns)))}
         if nils:
             calls[label]["nils"] = nils
+        if rec.get("window") in RECORDING_WINDOWS:
+            calls[label]["window"] = rec["window"]
     build = ".".join(str(x) for x in values[:2])
-    return client, {"format": RECORDING_FORMAT, "client": client, "build": build, "calls": calls}, skipped
+    return client, {"format": RECORDING_FORMAT, "rev": RECORDING_REV, "client": client, "build": build, "calls": calls}, skipped
 
 def cmd_recordings(a):
     try:
@@ -2099,7 +2133,7 @@ def outcome_ok(o):
         if not (isinstance(h, dict) and _pos(h.get("n")) and (h.get("item") is None or _pos(h.get("item")))
                 and all(h.get(k) is None or isinstance(h[k], str) for k in ("line", "value"))):
             return False
-    if o.get("scope") not in (None, "attempt", "session") or o.get("trimmed") not in (None, True):
+    if o.get("scope") not in (None, "attempt", "session") or o.get("since") not in (None, "run") or o.get("trimmed") not in (None, True):
         return False
     return all(o.get(k) is None or isinstance(o[k], str) for k in CHECK_STRINGS) \
         and all(o.get(k) is None or (isinstance(o[k], int) and not isinstance(o[k], bool) and o[k] >= 0) for k in ("matched", "window")) \
@@ -2255,7 +2289,7 @@ def step_table(r, only=None):
     return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
 
 
-CHECK_KEYS = ("kind", "scope", "source", "label", "matched", "window", "stoppedAt", "trimmed")
+CHECK_KEYS = ("kind", "scope", "since", "source", "label", "matched", "window", "stoppedAt", "trimmed")
 
 def outcome_view(index, o, lines=False):
     """One check outcome as plain data for other tools. Line text, values and observed state are left out unless lines is set,
@@ -2283,7 +2317,7 @@ def check_lines(at):
     for i, o in enumerate(at.get("outcomes") or [], 1):
         if o.get("result") == "pass" or not o.get("rule"):
             continue
-        bits = [o.get("source") and "%s%s" % (o["source"], ", whole log" if o.get("scope") == "session" else "")]
+        bits = [o.get("source") and "%s%s" % (o["source"], ", whole log" if o.get("scope") == "session" else ", since the run started" if o.get("since") == "run" else "")]
         if o.get("matched") is not None and o.get("window") is not None:
             bits.append("%d of %d line%s matched" % (o["matched"], o["window"], "" if o["window"] == 1 else "s"))
         if o.get("stoppedAt") is not None:
@@ -2298,16 +2332,26 @@ def check_lines(at):
             out.append("      %s%s: %s%s" % ("item %d at line " % h["item"] if h.get("item") else "line ", h["n"], h.get("line", ""), "   (value %s)" % h["value"] if h.get("value") is not None else ""))
     return out
 
+def unticked(at):
+    """The positions (from 1) of the listed actions the player did not tick, or None when the attempt has no ticks (formatRev 6)."""
+    ticks = at.get("ticks")
+    if not isinstance(ticks, list) or not ticks:
+        return None
+    return [i for i, t in enumerate(ticks, 1) if t is False or t is None]
+
 def attempt_lines(at, stack_keys, errs, stacks, ambiguous):
     note = at.get("note")
     outs = [o for o in (at.get("outcomes") or []) if o.get("result") != "pass"]
-    out = ["  attempt %s: %s%s%s" % (at.get("n"), at.get("verdict"),
+    out = ["  attempt %s: %s%s%s%s" % (at.get("n"), at.get("verdict"), " at run start" if at.get("at") == "start" else "",
            " note=" + note if note else "",
            " evidence=" + ",".join("%s(%s)" % (o.get("result"), o.get("why", "")) for o in outs) if outs else "")]
+    left = unticked(at)
+    if left and at.get("verdict") != "pass":
+        out.append("    actions not ticked: %s (of %d)" % (", ".join(map(str, left)), len(at["ticks"])))
     out.extend(check_lines(at))
     marked = {}   # source -> positions of the lines that decided a check, within the new lines the excerpt starts from
     for o in at.get("outcomes") or []:
-        if o.get("result") != "pass" and o.get("scope") != "session":
+        if o.get("result") != "pass" and o.get("scope") != "session" and o.get("since") != "run":   # their positions count from elsewhere
             marked.setdefault(o.get("source"), set()).update(h["n"] for h in o.get("hits") or [])
     for src, lines in sorted((at.get("excerpt") or {}).items()):
         out.append("    log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))
@@ -2443,6 +2487,8 @@ def classify(rec):
         return "unverified", why or "no evidence"
     if awaiting_retry(rec):
         return "skipped", "awaiting retry"
+    if v == "inapplicable" and isinstance(rec.get("unmet"), str):
+        return "skipped", "not for this character: " + rec["unmet"]   # a requirement it does not meet (formatRev 6)
     return "skipped", SKIP_WHY.get(v, "no result")
 
 def run_model(rid, r, stacks=None, lines=False):
@@ -2458,6 +2504,12 @@ def run_model(rid, r, stacks=None, lines=False):
         s = {"id": sid, "category": (r.get("cat") or {}).get(sid), "attempt": done[-1].get("n") if done else None, "result": result, "verdict": rec.get("verdict"), "reason": why,
              "attempts": len(rec.get("attempts") or []), "awaitingRetry": awaiting_retry(rec), "recordedByCheckThat": by_checkthat(rec),
              "macroStale": rec.get("macroStale") if isinstance(rec.get("macroStale"), int) else 0}
+        if done and unticked(done[-1]) is not None:
+            s["unticked"] = unticked(done[-1])   # actions of the last finished attempt the player did not tick
+        if done and done[-1].get("at") == "start":
+            s["atStart"] = True
+        if rec.get("verdict") == "inapplicable" and isinstance(rec.get("unmet"), str):
+            s["unmet"] = rec["unmet"]
         checks = []
         for at in rec.get("attempts") or []:
             outs = [outcome_view(i, o, lines) for i, o in enumerate(at.get("outcomes") or [], 1) if o.get("result") != "pass"]
@@ -2900,7 +2952,7 @@ def step_touches(plan):
     for sec in plan["sections"]:
         for st in sec["steps"]:
             act = st["action"]
-            texts = [act.get("text", ""), sec.get("setup", ""), st.get("setup", ""), st.get("cleanup", "")] + list(act.get("commands", []))
+            texts = [joined(act.get("text")), sec.get("setup", ""), st.get("setup", ""), st.get("cleanup", "")] + list(act.get("commands", []))
             if act.get("kind") == "secure-macro":
                 texts.append(macros.get(act.get("macro"), ""))
             cmds = []

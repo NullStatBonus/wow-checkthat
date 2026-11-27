@@ -18,10 +18,11 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 
 ## Features
 
-- **Card.** One step at a time: what to do (with copy boxes), what to expect and what comes next. Back, next, undo and a note for each result.
+- **Card.** One step at a time: what to do (a checklist when a step lists several actions, with copy boxes), what to expect and what CheckThat checks. Setup folds away, and a note opens when you need one. Back, next and undo. [Details](docs/features.md#step-card)
 - **Run button.** Runs the step's allowed commands in order. It is hidden during combat. [Details](docs/features.md#run-button)
 - **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. A failed or unverified step keeps the first new log lines for the report. [Details](docs/features.md#saved-log-positions)
-- **Automatic steps.** A step marked `auto` records its own result when the checks are met. Your click still wins. [Details](docs/features.md#automatic-steps)
+- **Automatic steps.** A step marked `auto` records its own result when the checks are met, and the card pauses 3 seconds on it. A step marked `async` is checked when the run starts. Your click still wins. [Details](docs/features.md#automatic-steps)
+- **Steps for one character.** A step can need a class or a profession. On another character it does not apply. [Details](docs/features.md#steps-for-one-character)
 - **Run start and end.** An addon can register `CheckThat.OnRun` to set up and restore its own test state when a run starts or stops. [Details](docs/features.md#run-start-and-end)
 - **Entry points.** An addon can register a function with `CheckThat.Entry`, and an auto step calls it and checks the result. [Details](docs/features.md#entry-points)
 - **Facts from other addons.** An addon can publish a named fact with `CheckThat.Report`, and a plan checks it like a log line. [Details](docs/features.md#facts-from-other-addons)
