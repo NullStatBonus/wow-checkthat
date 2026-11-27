@@ -65,9 +65,9 @@ function Slash.Run(args, deps)
         local topic = rest:lower()
         if topic:find("%s") then return { L["Topics: appearance, diagnostics, runs."] } end
         if topic == "appearance" then return {
-            L["Keys: card.scale (50-200), card.background-opacity (0-100), card.text-opacity (0-100), card.locked (on or off)."],
+            L["Keys: card.scale (50-200), card.background-opacity (0-100), card.text-opacity (0-100), card.locked (on or off), card.sound (on or off)."],
             L["Example: /ct set card.text-opacity 80. Open /ct settings appearance for the same options."] }
-        elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run), /ct census (record the names available in this game session)."] }
+        elseif topic == "diagnostics" then return { L["Diagnostics: /ct debug on, /ct debug off, /ct log, /ct log clear (confirmation required), /ct fact (report a test fact during a run), /ct census (record the names available in this game session), /ct sound <name> (play one result sound)."] }
         elseif topic == "runs" then return {
             L["Runs: /ct import, /ct start <addon>, /ct end, /ct pass, /ct partial [note], /ct fail [note], /ct skip, /ct undo, /ct back, /ct next, /ct export, /ct macro, /ct macrorun <step id>, /ct reload. Categories: /ct categories, /ct tracker, /ct run <category or step id>, /ct rerun <category>, /ct rerun failed (retries the failed and unverified steps of all categories)."] }
         elseif topic ~= "" then return { L["Topics: appearance, diagnostics, runs."] } end
@@ -185,6 +185,14 @@ function Slash.Run(args, deps)
             return { L["This client has no error handler, so no test error was raised."] }
         end
         return { L["Usage: /ct selftest facts or /ct selftest error."] }
+    elseif cmd == "sound" then
+        -- A developer command (#229): play one result sound, so a tester can learn them before a run.
+        local name = rest:lower()
+        if ns.Sound and ns.Sound.FILES[name] then
+            if ns.Sound.Preview(name) then return {} end
+            return { L["This client cannot play sound files."] }
+        end
+        return { L["Usage: /ct sound tick, chime-up, chime-down, attention or finish."] }
     elseif cmd == "macro" then deps.macro(); return {}
     elseif cmd == "macrorun" then
         if rest == "" or rest:find("%s") then return { L["Usage: /ct macrorun <step id>."] } end
@@ -219,6 +227,7 @@ function Slash.Register(addon)
         endRun = function() if ns.Card then ns.Card.ConfirmEnd() end end,
         verdict = function(cmd, note)
             local a, err, step = ns.App.Verdict(cmd, note)
+            if a and ns.Card then ns.Card.ResultSound(step, a.verdict, "player") end -- the sound only: /ct pass never paused the card
             if ns.Card then ns.Card.AfterVerdict(step); ns.Card.Refresh() end
             if not a then return { err } end
             return { Slash.VerdictLine(a) }

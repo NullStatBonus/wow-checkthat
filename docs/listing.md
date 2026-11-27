@@ -13,6 +13,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 - Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
 - Tick off each action of a step as you do it. See what CheckThat checks itself: checks turn green as the addon's debug log shows your action.
 - After each result, the card shows it in one large word, then fades to the next step.
+- A short sound of CheckThat's own tells you each result, also while the card is hidden: a soft blip for your own result, a rising chime when CheckThat passes a step, a falling one when it fails one, two blips when a step needs you, and three rising notes at the end. Turn them off in Appearance.
 - Steps for one class or profession do not apply to other characters, and startup checks pass when the run starts.
 - Steps marked automatic record their own result when the addon's debug log shows your action, and fail or stay open at a time limit. Your clicks still win.
 - An addon under test can learn when a run starts or ends, so it can restore its own test settings.

@@ -238,6 +238,12 @@ function Options.Appearance(order)
         set = function(_, v) ns.Settings.Set("card.locked", v) end })
     add(g, "reset", { type = "execute", name = L["Reset position"], func = function() ns.Settings.ResetPosition() end })
     note(g, "resetHelp", grey(L["Reset position changes only the position."]))
+    gap(g, "g2")
+    add(g, "h_sound", { type = "header", name = L["Sound"] })
+    add(g, "card.sound", { type = "toggle", width = "full", name = L["Play result sounds"],
+        desc = L["A short sound when a step gets its result, also while the card is hidden. The game's sound effects volume applies."],
+        get = function() return ns.Settings.Get("card.sound") end,
+        set = function(_, v) ns.Settings.Set("card.sound", v) end })
     return g
 end
 

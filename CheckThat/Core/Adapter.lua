@@ -105,6 +105,14 @@ function Adapter.After(sec, fn)
     if type(f) ~= "function" then return false end
     return (pcall(f, sec, fn))
 end
+-- Plays a sound file on a sound channel (#229). True when the game accepted it, nil when it cannot play files.
+function Adapter.PlaySoundFile(path, channel)
+    local f = _G.PlaySoundFile
+    if type(f) ~= "function" then return nil end
+    local ok, willPlay = pcall(f, path, channel)
+    if not ok then return nil end
+    return willPlay ~= false
+end
 -- Milliseconds from the profiling clock, or nil when the client has none.
 function Adapter.Clock()
     local ok, v = pcall(function() return _G.debugprofilestop() end)

@@ -735,19 +735,24 @@ function Card.Hold(stepId, verdict, by)
         A.After(Card.HOLD * i / Card.FADE_STEPS, function() if hold == h then card:SetAlpha(1 - 0.6 * i / Card.FADE_STEPS) end end)
     end
     App.Log(("card holds %s for %d s"):format(stepId, Card.HOLD))
-    pcall(Card.ResultCue, verdict, by)
     return true
 end
 
--- The moment a result shows on the card: verdict is pass, partial, fail or skip; by is "player" or "auto".
--- Nothing plays yet. A sound for each result goes here (issue #229).
-function Card.ResultCue(verdict, by) end
+-- A result was recorded for step. Its sound plays on every path, also with the card hidden or collapsed (#229). The card
+-- pauses on it only when the run moved on and the card is shown expanded: an unverified result keeps the step open.
+-- The sound of a result (#229), on every path that records one: the card's buttons and keys, /ct pass, auto steps.
+function Card.ResultSound(step, verdict, by)
+    if not (step and ns.Sound) then return end
+    local run, _, now = App.Current()
+    local name = ns.Sound.For(verdict, by, run ~= nil and now == nil)
+    if name then pcall(ns.Sound.Cue, name, step.id) end
+end
 
--- A result was recorded for step. The card pauses on it only when the run moved on and the card is shown expanded:
--- an unverified result keeps the step open for the player.
 function Card.Settled(step, verdict, by)
-    if not (card and step) or verdict == "unverified" then return end
+    if not step then return end
+    Card.ResultSound(step, verdict, by)
     local _, _, now = App.Current()
+    if not card or verdict == "unverified" then return end
     if now and now.id == step.id then return end
     if card:IsShown() and not cfg().collapsed then pcall(Card.Hold, step.id, verdict, by) end
 end
