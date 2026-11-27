@@ -16,7 +16,8 @@ end
 Evidence.walk = walk
 
 -- A log source is { global = "KeepThatDB", path = "global.log", format = "strings"|"entries" }.
--- Returns an array of message strings, or nil when the log cannot be read.
+-- Returns an array of message strings, or nil when the log cannot be read. For format entries it also returns the
+-- entries' times ({ t, msg }) when every entry has a number t, else nil.
 function Evidence.ReadLog(src, env)
     env = env or _G
     if type(src) ~= "table" then return nil end
@@ -24,12 +25,15 @@ function Evidence.ReadLog(src, env)
     if type(root) ~= "table" then return nil end
     local list = walk(root, src.path)
     if type(list) ~= "table" then return nil end
-    local out = {}
+    local out, times = {}, src.format == "entries" and {} or nil
     for i, e in ipairs(list) do
-        if src.format == "entries" then out[i] = type(e) == "table" and tostring(e.msg) or tostring(e)
+        if src.format == "entries" then
+            out[i] = type(e) == "table" and tostring(e.msg) or tostring(e)
+            local t = type(e) == "table" and e.t
+            if times and type(t) == "number" then times[i] = t else times = nil end
         else out[i] = tostring(e) end
     end
-    return out
+    return out, times
 end
 
 -- Lines added after the snapshot. Logs repeat the same startup block each session, so find the boundary by
@@ -38,7 +42,11 @@ end
 -- boundary inexact: a line may be missed, so an absence cannot be shown. Returns array, or nil when the
 -- boundary cannot be located (treat as unverified).
 -- cap is how many lines the log keeps, when the plan says (a bounded list that drops the oldest line at the cap).
-function Evidence.NewLines(snapshot, current, cap)
+-- times (from ReadLog) and snapshot.times are the lines' times. With both, a tail line matches only at the same
+-- time, and a tail whose times are not all equal finds one place: a log's clock does not run back, so the same
+-- lines at the same times cannot be written again later. That boundary is exact even in a full ring with repeated
+-- blocks (#158). A tail written within one tick of the clock falls back to the rules without times.
+function Evidence.NewLines(snapshot, current, cap, times)
     if not current then return nil end
     if snapshot and (snapshot.unavailable or snapshot.norun) then return nil end -- unreadable when the step (or run) opened, or no run position
     if not snapshot then return current, true end
@@ -48,9 +56,14 @@ function Evidence.NewLines(snapshot, current, cap)
     if not n or n == 0 then return current, true end
     local k = math.min(Evidence.TAIL, n) -- a long tail: startup blocks repeat every session, so a short one is ambiguous
     local tl = #tail
+    local st = snapshot.tail and snapshot.times
+    if not (st and times and #st == tl) then st = nil end
     local function tailAt(last)
         if last < k or last > #current or tl < k then return false end
-        for j = 1, k do if current[last - k + j] ~= tail[tl - k + j] then return false end end
+        for j = 1, k do
+            if current[last - k + j] ~= tail[tl - k + j] then return false end
+            if st and times[last - k + j] ~= st[tl - k + j] then return false end
+        end
         return true
     end
     local last, found = nil, 0
@@ -70,6 +83,12 @@ function Evidence.NewLines(snapshot, current, cap)
         if not seen[l] then seen[l] = true; distinct = distinct + 1 end
     end
     local exact = found <= 1 and distinct >= math.ceil(k / 2)
+    if st and st[tl - k + 1] ~= st[tl] then
+        -- Timed: the place found is the only one, unless the clock ran back (two places found).
+        local out = {}
+        for i = last + 1, #current do out[#out + 1] = current[i] end
+        return out, found <= 1
+    end
     -- A log that keeps cap lines and holds fewer has never dropped one, so a boundary at the snapshot position is
     -- certain, however alike the lines are.
     if not exact and cap and last == n and #current < cap then exact = true end
@@ -152,12 +171,12 @@ end
 local function window(a, snapshots, plan, env)
     local src = plan.logs and plan.logs[a.source]
     if not src then return nil, "unknown log source" end
-    local current = Evidence.ReadLog(src, env)
+    local current, times = Evidence.ReadLog(src, env)
     if not current then return nil, "log not readable (is debug on and the addon loaded?)" end
     if a.scope == "session" then return current, true, src end
     local problem = positionProblem(a, snapshots)
     if problem then return nil, problem end
-    local lines, exact = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap)
+    local lines, exact = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times)
     if not lines then return nil, "log rolled over; evidence lost" end
     return lines, exact, src
 end
@@ -391,13 +410,13 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
     if block then return bad(block) end
     local src = plan.logs and plan.logs[a.source]
     if not src then return bad("unknown log source") end
-    local current = Evidence.ReadLog(src, env)
+    local current, times = Evidence.ReadLog(src, env)
     if not current then return bad("log not readable (is debug on and the addon loaded?)") end
     if a.scope ~= "session" then
         local problem = positionProblem(a, snapshots)
         if problem then return bad(problem) end
     end
-    local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap)
+    local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times)
     if not lines then return bad("log rolled over; evidence lost") end
     local want, lastAt = 1, nil
     local skipped, unchecked = nil, 0
@@ -585,8 +604,8 @@ function Evidence.Excerpt(step, snapshots, plan, env)
         local src = name and plan.logs and plan.logs[name]
         -- An excerpt starts where the step opened, so a run-scoped check (its window starts at the run) adds none.
         if src and not out[name] and snapshots and snapshots[name] and (a.kind == "log" or a.kind == "log-sequence" or a.kind == "fact") and a.scope ~= "session" and a.scope ~= "run" then
-            local current = Evidence.ReadLog(src, env)
-            local lines = current and Evidence.NewLines(snapshots[name], current, src.cap)
+            local current, times = Evidence.ReadLog(src, env)
+            local lines = current and Evidence.NewLines(snapshots[name], current, src.cap, times)
             if lines and #lines > 0 then
                 local kept = {}
                 for i = 1, math.min(#lines, Evidence.EXCERPT) do kept[i] = lines[i]:sub(1, Evidence.EXCERPT_LEN) end
@@ -603,16 +622,21 @@ local function logKind(a) return a.kind == "log" or a.kind == "log-sequence" or 
 -- not an empty one: marking it keeps old lines from counting as new later.
 local function position(plan, env, name)
     local src = plan.logs and plan.logs[name]
-    local lines = src and Evidence.ReadLog(src, env)
+    local lines, times
+    if src then lines, times = Evidence.ReadLog(src, env) end
     if not lines then return { unavailable = true } end
-    local tail = {}
-    for i = math.max(1, #lines - Evidence.TAIL + 1), #lines do tail[#tail + 1] = lines[i] end
-    return { n = #lines, tail = tail }
+    local tail, tt = {}, times and {} or nil
+    for i = math.max(1, #lines - Evidence.TAIL + 1), #lines do
+        tail[#tail + 1] = lines[i]
+        if tt then tt[#tt + 1] = times[i] end
+    end
+    return { n = #lines, tail = tail, times = tt } -- times: the tail lines' times, for a log of { t, msg } entries (#158)
 end
 
 local function copyPos(p)
     local o = { n = p.n, unavailable = p.unavailable }
     if p.tail then o.tail = {}; for i, l in ipairs(p.tail) do o.tail[i] = l end end
+    if p.times then o.times = {}; for i, t in ipairs(p.times) do o.times[i] = t end end
     return o
 end
 
