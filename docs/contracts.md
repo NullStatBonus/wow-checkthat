@@ -117,6 +117,15 @@ Read from Blizzard's UI source for each client with the wow-api source search. T
 | Trainer | `GetNumTrainerServices()`, `GetTrainerServiceInfo(index)` returns name, subText, type, isExpanded. `GetTrainerServiceCost(index)` and `GetTrainerServiceSkillReq(index)`. | The Mainline tree reads `GetTrainerServiceInfo(index)` as name, type, texture, reqLevel, subText, category. This is a different order from Era. `GetNumTrainerServices()`, `GetTrainerServiceCost` and `GetTrainerServiceSkillReq` appear. |
 | Auction house | `GetNumAuctionItems("list")` and `GetAuctionItemInfo("list", index)` returns name, texture, count, quality, canUse, level, levelColHeader, minBid, minIncrement, buyoutPrice, bidAmount, highBidder, bidderFullName, owner, ownerFullName, saleStatus, itemId, hasAllInfo. | No `GetAuctionItemInfo` in the source. The interface uses `C_AuctionHouse` (`GetBrowseResults`, `GetNumItemSearchResults`, `GetItemSearchResultInfo`), which return tables. |
 
+Measured in game on 2026-11-26 with CTProbe v4 armed capture (Era 1.15.9.70576, Forever 1.60.1.71139):
+
+- Era vendor: `GetMerchantItemInfo(index)` returns 9 values: name, texture, price in copper, stack count, number available (-1 is unlimited), isPurchasable, isUsable, extendedCost, and a nil currencyID. On the first visit to a vendor the name and `GetMerchantItemLink` were nil, because the items were not cached yet. A second visit returned both.
+- Era trainer: `GetTrainerServiceInfo(index)` returns name, subText, type (`header`, `available` or `unavailable`) and a fourth value. `GetTrainerServiceCost` returns the cost in copper, and for a profession also `true`. `GetTrainerServiceSkillReq` returns the skill, the rank and whether the character has it. The first trainer event had no rows. The next update had them.
+- Era auction: `GetNumAuctionItems("list")` returned 50 and 155 (this page, all pages). `GetAuctionItemInfo("list", index)` returned 18 values. The bidder and seller names were nil on list rows.
+- Forever vendor: `GetMerchantNumItems()` and `GetMerchantItemLink(index)` work. `GetMerchantItemInfo` is a nil global. Use `C_MerchantFrame.GetItemInfo`, which returns a table (#234).
+- Forever trainer: `GetTrainerServiceInfo(index)` returns name, type, texture, required level, subText (nil in the sample) and category, which is not Era's order. `GetNumTrainerServices()`, `GetTrainerServiceCost` and `GetTrainerServiceSkillReq` work.
+- Forever item data: `GetItemInfo` is a nil global. `C_Item.GetItemInfo` works. Armor 12640 and weapon 12784 sell for 21894 and 73036 copper on both clients.
+
 Item data: `C_Item.RequestLoadItemDataByID` exists on both clients. A recording keeps no table return, so the Forever auction calls and `C_MerchantFrame.GetItemInfo` are not recorded as they stand.
 
 ## Pending in-game
