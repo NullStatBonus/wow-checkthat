@@ -14,6 +14,11 @@ local function mk()
     local ctx = { plan = plan, client = "classic-era", build = "1.15", character = "X", now = 100, env = env, planDigest = "d" }
     return R.New(ctx), ctx, env
 end
+test("a new run is stamped with Run.MAJOR, not a literal (#252)", function()
+    T.eq((mk()).ct, R.MAJOR)
+    H.stub(R, "MAJOR", 9)
+    T.eq((mk()).ct, 9)
+end)
 test("run marks other-client steps inapplicable", function()
     local run = mk()
     T.eq(run.steps.c.verdict, "inapplicable"); T.eq(#run.order, 2)

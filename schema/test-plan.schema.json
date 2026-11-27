@@ -779,10 +779,13 @@
     },
     "clients": {
       "type": "array",
+      "description": "era and forever are short names for classic-era and forever-camelot; compile writes the long names",
       "items": {
         "enum": [
           "classic-era",
-          "forever-camelot"
+          "forever-camelot",
+          "era",
+          "forever"
         ]
       },
       "uniqueItems": true
