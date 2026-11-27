@@ -29,6 +29,32 @@ local function isStr(v) return type(v) == "string" and v ~= "" end
 local function isNum(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 local function isCount(v) return isNum(v) and v % 1 == 0 and v >= 0 and v <= 1000 end
 
+-- Nil when v is absent or text; else the error.
+local function textField(errs, where, name, v)
+    if v ~= nil and type(v) ~= "string" then errs[#errs + 1] = where .. ": " .. name .. " must be text" end
+end
+local function listField(errs, where, name, v)
+    if v ~= nil and type(v) ~= "table" then errs[#errs + 1] = where .. ": " .. name .. " must be a list" end
+end
+-- One of equals, contains or pattern, as text, and a pattern the game can match in good time.
+local function checkMatcher(m, errs, where, what)
+    if type(m) ~= "table" then errs[#errs + 1] = where .. ": " .. what .. " not a table"; return end
+    local n = 0
+    for _, k in ipairs({ "equals", "contains", "pattern" }) do
+        if m[k] ~= nil then
+            n = n + 1
+            if type(m[k]) ~= "string" then errs[#errs + 1] = where .. ": " .. what .. " " .. k .. " must be text" end
+        end
+    end
+    if n ~= 1 then
+        errs[#errs + 1] = where .. ": " .. what .. " needs exactly one of equals, contains, pattern"
+    end
+    if type(m.pattern) == "string" then
+        local why = Plan.PatternProblem(m.pattern)
+        if why then errs[#errs + 1] = where .. ": " .. why end
+    end
+end
+
 -- Action text and expect are one sentence or a list of them. Lines gives the list (a string is one line), Join one string.
 function Plan.Lines(v)
     if type(v) == "table" then return v end
@@ -49,6 +75,88 @@ local function textOrList(v)
     return nil
 end
 
+-- A plan pattern is a Lua 5.1 pattern of up to PATTERN_MAX characters. string.find raises on a malformed one, so a pattern that
+-- Lua cannot read is refused (Plan.PatternProblem); Pattern.lua runs the rest with a step budget. tools/ct.py pattern_problem
+-- mirrors this, reason text included; tests/fixtures/parity-patterns.json holds the cases both read.
+Plan.PATTERN_MAX = 200
+
+-- p:sub(i, i) is "[": the index after the closing "]" of the set, or nil when it is missing. Like Lua, a "]" first is a member.
+local function setEnd(p, i)
+    local n = #p
+    i = i + 1
+    if p:sub(i, i) == "^" then i = i + 1 end
+    repeat
+        if i > n then return nil end
+        local c = p:sub(i, i)
+        i = i + 1
+        if c == "%" and i <= n then i = i + 1 end
+    until p:sub(i, i) == "]"
+    return i + 1
+end
+
+-- Why Lua would raise on this pattern, or nil. The same items Lua reads: captures, %b, %f, back references, sets, escapes.
+local function patternError(p)
+    if not p:find("[%^%$%*%+%?%.%(%[%%%-]") then return nil end -- no special character: string.find searches for the text, whatever it is
+    local n, i = #p, 1
+    local caps, closed, stack = 0, {}, {}
+    if p:sub(1, 1) == "^" then i = 2 end
+    while i <= n do
+        local c = p:sub(i, i)
+        local last
+        if c == "(" then
+            if caps >= 32 then return "pattern has too many captures" end
+            caps = caps + 1; closed[caps] = false; stack[#stack + 1] = caps
+            i = i + 1
+        elseif c == ")" then
+            if #stack == 0 then return "pattern closes a capture it did not open" end
+            closed[stack[#stack]] = true; stack[#stack] = nil
+            i = i + 1
+        elseif c == "$" and i == n then i = i + 1
+        elseif c == "%" then
+            local d = p:sub(i + 1, i + 1)
+            if d == "" then return "pattern ends with a lone %" end
+            if d == "b" then
+                if i + 3 > n then return "pattern has %b without its two characters" end
+                i = i + 4
+            elseif d == "f" then
+                if p:sub(i + 2, i + 2) ~= "[" then return "pattern has %f without a set after it" end
+                local e = setEnd(p, i + 2)
+                if not e then return "pattern has a set with no closing ]" end
+                i = e
+            elseif d:find("^%d$") then
+                local k = tonumber(d)
+                if k == 0 or k > caps or not closed[k] then return "pattern names a capture that is not closed" end
+                i = i + 2
+            else last = i + 1 end
+        elseif c == "[" then
+            local e = setEnd(p, i)
+            if not e then return "pattern has a set with no closing ]" end
+            last = e - 1
+        else last = i end
+        if last then
+            local q = p:sub(last + 1, last + 1)
+            if q == "*" or q == "+" or q == "-" or q == "?" then last = last + 1 end
+            i = last + 1
+        end
+    end
+    if #stack > 0 then return "pattern opens a capture it does not close" end
+    return nil
+end
+
+local patternCache = {}
+-- Nil when this is a pattern string.find can run, else why not (an English phrase starting with "pattern").
+function Plan.PatternProblem(p)
+    if type(p) ~= "string" then return "pattern must be text" end
+    local hit = patternCache[p]
+    if hit == nil then
+        if #p > Plan.PATTERN_MAX then hit = ("pattern is longer than %d characters"):format(Plan.PATTERN_MAX)
+        elseif p:find("\0", 1, true) then hit = "pattern has a NUL byte; write %z" -- Lua 5.1 ends a pattern at a NUL
+        else hit = patternError(p) or (not pcall(string.find, "a", p) and "pattern is not valid") or false end
+        patternCache[p] = hit
+    end
+    return hit or nil
+end
+
 -- An operator needs a value of the right shape. Older operators keep their loose rules so saved plans stay valid.
 local function checkOp(a, errs, where)
     local op, v = a.op, a.value
@@ -65,7 +173,11 @@ local function checkOp(a, errs, where)
     elseif op == "type" then
         if not Plan.TYPES[v] then errs[#errs + 1] = where .. ": type needs number, boolean or string" end
     elseif op == "matches" then
-        if not (isStr(v) and #v <= 200) then errs[#errs + 1] = where .. ": matches needs a pattern of up to 200 characters" end
+        if not (isStr(v) and #v <= 200) then errs[#errs + 1] = where .. ": matches needs a pattern of up to 200 characters"
+        else
+            local why = Plan.PatternProblem(v)
+            if why then errs[#errs + 1] = where .. ": matches " .. why end
+        end
     elseif op == "ge" or op == "le" then
         if not isNum(v) then errs[#errs + 1] = where .. ": " .. op .. " needs a number value" end
     end
@@ -107,13 +219,13 @@ end
 
 local function checkAssertion(a, i, errs, logs, where)
     if type(a) ~= "table" then errs[#errs + 1] = where .. ": assertion " .. i .. " not a table"; return end
+    textField(errs, where, "label", a.label)
     for _, flag in ipairs({ "diagnostic", "absent" }) do
         if a[flag] ~= nil and type(a[flag]) ~= "boolean" then errs[#errs + 1] = where .. ": " .. flag .. " must be boolean" end
     end
     if a.kind == "log" then
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
-        local n = (a.equals and 1 or 0) + (a.contains and 1 or 0) + (a.pattern and 1 or 0)
-        if n ~= 1 then errs[#errs + 1] = where .. ": log assertion needs exactly one of equals, contains, pattern" end
+        checkMatcher(a, errs, where, "log assertion")
         if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "run" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
         checkCount(a, errs, where)
     elseif a.kind == "fact" then
@@ -128,10 +240,7 @@ local function checkAssertion(a, i, errs, logs, where)
         if a.count ~= nil then errs[#errs + 1] = where .. ": count does not apply to log-sequence" end
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         if type(a.sequence) ~= "table" or #a.sequence == 0 then errs[#errs + 1] = where .. ": empty sequence" end
-        for _, m in ipairs(a.sequence or {}) do
-            local n = (m.equals and 1 or 0) + (m.contains and 1 or 0) + (m.pattern and 1 or 0)
-            if n ~= 1 then errs[#errs + 1] = where .. ": sequence item needs exactly one of equals, contains, pattern" end
-        end
+        for _, m in ipairs(type(a.sequence) == "table" and a.sequence or {}) do checkMatcher(m, errs, where, "sequence item") end
     elseif a.kind == "state" then
         if not Plan.PROBES[a.probe] then errs[#errs + 1] = where .. ": unknown probe " .. tostring(a.probe) end
         if a.count ~= nil then errs[#errs + 1] = where .. ": count does not apply to state" end
@@ -196,7 +305,7 @@ function Plan.CheckAuto(st, w, errs)
     -- A check that something did not happen (an absence, a missing fact, a count of exactly or at most n) cannot be
     -- shown the moment it holds, as more can arrive. It is judged when the timeout ends, so the step needs one.
     local required, timed = 0, 0
-    for _, a in ipairs(st.assertions or {}) do
+    for _, a in ipairs(type(st.assertions) == "table" and st.assertions or {}) do
         if type(a) == "table" and not a.diagnostic then
             required = required + 1
             if a.absent or (a.kind == "fact" and a.op == "missing")
@@ -225,11 +334,18 @@ function Plan.Validate(plan)
         if any then errs[#errs + 1] = "markdown in " .. where .. " " .. key .. ": use color codes, not backticks or **" end
     end
     checkText(plan, "title", "plan"); checkText(plan, "preamble", "plan"); checkText(plan, "handoff", "plan")
+    -- The card and the evidence code index these and call text methods on them, so a wrong type is refused here, not met on every refresh.
+    textField(errs, "plan", "preamble", plan.preamble); textField(errs, "plan", "handoff", plan.handoff)
+    listField(errs, "plan", "macros", plan.macros)
+    if plan.requirements ~= nil and type(plan.requirements) ~= "table" then errs[#errs + 1] = "requirements must be a table" end
+    if plan.logs ~= nil and type(plan.logs) ~= "table" then errs[#errs + 1] = "logs must be a table" end
     if type(plan.requirements) == "table" then
         for name, def in pairs(plan.requirements) do
-            if type(def) == "table" then
+            if type(def) ~= "table" then errs[#errs + 1] = "requirement " .. tostring(name) .. " must be a table"
+            else
                 local w = "requirement " .. tostring(name)
                 checkText(def, "text", w)
+                textField(errs, w, "text", def.text)
                 if def.class ~= nil then
                     if type(def.class) ~= "table" or #def.class == 0 then errs[#errs + 1] = w .. ": class must be a list of class tokens"
                     else for _, c in ipairs(def.class) do if not Plan.CLASSES[c] then errs[#errs + 1] = w .. ": unknown class " .. tostring(c) end end end
@@ -249,6 +365,7 @@ function Plan.Validate(plan)
     for _, sec in ipairs(type(plan.sections) == "table" and plan.sections or {}) do
         if type(sec) == "table" then
             checkText(sec, "title", "section"); checkText(sec, "intro", "section"); checkText(sec, "setup", "section")
+            for _, k in ipairs({ "title", "intro", "setup" }) do textField(errs, "section " .. tostring(sec.id), k, sec[k]) end
             for _, st in ipairs(type(sec.steps) == "table" and sec.steps or {}) do
                 if type(st) == "table" then
                     local w = "step " .. tostring(st.id)
@@ -262,6 +379,11 @@ function Plan.Validate(plan)
         end
     end
     for name, src in pairs(type(plan.logs) == "table" and plan.logs or {}) do
+        if type(src) ~= "table" then errs[#errs + 1] = "log source " .. tostring(name) .. " must be a table"
+        else
+            textField(errs, "log source " .. tostring(name), "global", src.global)
+            textField(errs, "log source " .. tostring(name), "path", src.path)
+        end
         if type(src) == "table" and src.quiet ~= nil and type(src.quiet) ~= "boolean" then errs[#errs + 1] = "log source " .. tostring(name) .. ": quiet must be boolean" end
         if type(src) == "table" and src.cap ~= nil and not (isNum(src.cap) and src.cap % 1 == 0 and src.cap >= 1 and src.cap <= 100000) then
             errs[#errs + 1] = "log source " .. tostring(name) .. ": cap must be a whole number from 1 to 100000"
@@ -289,7 +411,7 @@ function Plan.Validate(plan)
     end
     local allow = Plan.SLASH[plan.addon] or {}
     local macros = {}
-    for _, m in ipairs(plan.macros or {}) do
+    for _, m in ipairs(type(plan.macros) == "table" and plan.macros or {}) do
         if not (type(m) == "table" and isStr(m.id) and Plan.MacroAllowed(m.text, allow)) then
             errs[#errs + 1] = "macro not allowed: " .. tostring(type(m) == "table" and m.id)
         else macros[m.id] = true end
@@ -308,6 +430,9 @@ function Plan.Validate(plan)
         for _, st in ipairs(sec.steps) do
             if type(st) ~= "table" then errs[#errs + 1] = "step is not a table"; return errs end
             local w = "step " .. tostring(st.id)
+            textField(errs, w, "setup", st.setup)
+            for _, k in ipairs({ "requires", "clients", "assertions" }) do listField(errs, w, k, st[k]) end
+            if type(st.action) == "table" then listField(errs, w, "commands", st.action.commands) end
             if not isStr(st.id) then errs[#errs + 1] = "step without id"
             elseif not st.id:match(Plan.ID) then errs[#errs + 1] = "step id is not valid"
             elseif seen[st.id] then errs[#errs + 1] = "duplicate step id " .. st.id
@@ -322,10 +447,10 @@ function Plan.Validate(plan)
                 local why = textOrList(st.action.text)
                 if why then errs[#errs + 1] = w .. ": action text " .. why end
             end
-            for _, c in ipairs(st.clients or {}) do
+            for _, c in ipairs(type(st.clients) == "table" and st.clients or {}) do
                 if not Plan.CLIENTS[c] then errs[#errs + 1] = w .. ": unknown client " .. tostring(c) end
             end
-            for _, r in ipairs(st.requires or {}) do
+            for _, r in ipairs(type(st.requires) == "table" and st.requires or {}) do
                 if not reqs[r] then errs[#errs + 1] = w .. ": unresolved requirement " .. tostring(r) end
             end
             local act = st.action
@@ -336,7 +461,7 @@ function Plan.Validate(plan)
             elseif act.kind == "copy-slash" and not Plan.MacroAllowed(act.text, allow) then
                 errs[#errs + 1] = w .. ": slash text not allowed"
             end
-            for _, c in ipairs(type(act) == "table" and act.commands or {}) do
+            for _, c in ipairs(type(act) == "table" and type(act.commands) == "table" and act.commands or {}) do
                 if not Plan.MacroAllowed(c, allow) then errs[#errs + 1] = w .. ": command not allowed: " .. tostring(c) end
             end
             if type(st.verify) ~= "table" or #st.verify == 0 then errs[#errs + 1] = w .. ": verify missing"
@@ -352,7 +477,7 @@ function Plan.Validate(plan)
                 if hasA and not (st.assertions and #st.assertions > 0) then errs[#errs + 1] = w .. ": verify assertions but none given" end
                 if not hasA and st.assertions and #st.assertions > 0 then errs[#errs + 1] = w .. ": assertions given but verify lacks assertions" end
             end
-            for i, a in ipairs(st.assertions or {}) do checkAssertion(a, i, errs, plan.logs, w) end
+            for i, a in ipairs(type(st.assertions) == "table" and st.assertions or {}) do checkAssertion(a, i, errs, plan.logs, w) end
             Plan.CheckAuto(st, w, errs)
             if st.share ~= nil and st.share ~= "none" and st.share ~= "reload" and st.share ~= "export" then errs[#errs + 1] = w .. ": bad share" end
             if st.screenshot ~= nil and type(st.screenshot) ~= "boolean" then errs[#errs + 1] = w .. ": screenshot must be boolean" end

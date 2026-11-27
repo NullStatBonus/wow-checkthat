@@ -23,6 +23,7 @@ Core\Defaults.lua
 Model\Json.lua
 Model\Codec.lua
 Model\Plan.lua
+Model\Pattern.lua
 Model\Evidence.lua
 Model\Facts.lua
 Model\Entries.lua

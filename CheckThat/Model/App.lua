@@ -324,6 +324,7 @@ local function planReason(first)
     first = tostring(first)
     if first:find("^markdown") then return L["A text in the plan uses backticks or stars. Plans use game color codes."] end
     if first:find("not allowed") then return L["The plan has a command that CheckThat does not allow."] end
+    if first:find(": pattern ") or first:find(": matches pattern ") then return L["The plan has a text pattern that the game cannot read. Write the pattern again."] end
     if first:find("addon not supported") then return L["This plan is for an addon this CheckThat does not support."] end
     if first:find("format version") then return L["This string needs a newer CheckThat."] end
     return L["The plan has a missing or wrong field. Export it again from the plan file."]

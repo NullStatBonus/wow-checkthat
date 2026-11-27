@@ -196,7 +196,7 @@ test("a check with no literal line is reported, not guessed", function()
     local s = assert(ns.Codec.Encode({ ct = 1, kind = "plan", addon = "KeepThat", title = "t",
         logs = { debug = { global = "KeepThatDB", path = "global.log", format = "strings", cap = 300 } },
         sections = { { id = "s", title = "S", steps = { step("a", { auto = true, verify = { "assertions" }, timeout = 5,
-            assertions = { { kind = "log", source = "debug", pattern = "%1", scope = "attempt", label = "x" } } }) } } } }))
+            assertions = { { kind = "log", source = "debug", pattern = "%f[%w]", scope = "attempt", label = "x" } } }) } } } }))
     local out = Replay.run(ns, s)
     T.ok(has(out.warnings, "evidence not derived"), table.concat(out.warnings, "; "))
 end)

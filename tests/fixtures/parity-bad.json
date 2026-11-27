@@ -257,5 +257,404 @@
   "value": [
    ""
   ]
+ },
+ {
+  "name": "a log source that is not a table",
+  "path": [
+   "logs",
+   "debug"
+  ],
+  "value": "x"
+ },
+ {
+  "name": "a log source global that is not text",
+  "path": [
+   "logs",
+   "debug",
+   "global"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a log source path that is not text",
+  "path": [
+   "logs",
+   "debug",
+   "path"
+  ],
+  "value": 5
+ },
+ {
+  "name": "requirements that are not a table",
+  "path": [
+   "requirements"
+  ],
+  "value": "x"
+ },
+ {
+  "name": "a requirement that is not a table",
+  "path": [
+   "requirements",
+   "loaded"
+  ],
+  "value": "x"
+ },
+ {
+  "name": "a requirement text that is not text",
+  "path": [
+   "requirements",
+   "loaded",
+   "text"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a handoff that is not text",
+  "path": [
+   "handoff"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a preamble that is not text",
+  "path": [
+   "preamble"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a section intro that is not text",
+  "path": [
+   "sections",
+   0,
+   "intro"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a section setup that is not text",
+  "path": [
+   "sections",
+   0,
+   "setup"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a step setup that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "setup"
+  ],
+  "value": 5
+ },
+ {
+  "name": "an assertion label that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0,
+   "label"
+  ],
+  "value": 5
+ },
+ {
+  "name": "a log contains that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log",
+   "source": "debug",
+   "contains": 5
+  }
+ },
+ {
+  "name": "a log equals that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log",
+   "source": "debug",
+   "equals": [
+    "a"
+   ]
+  }
+ },
+ {
+  "name": "a log pattern that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log",
+   "source": "debug",
+   "pattern": 5
+  }
+ },
+ {
+  "name": "a sequence item contains that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log-sequence",
+   "source": "debug",
+   "sequence": [
+    {
+     "contains": 7
+    }
+   ]
+  }
+ },
+ {
+  "name": "a sequence item equals that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log-sequence",
+   "source": "debug",
+   "sequence": [
+    {
+     "equals": {}
+    }
+   ]
+  }
+ },
+ {
+  "name": "a sequence item pattern that is not text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log-sequence",
+   "source": "debug",
+   "sequence": [
+    {
+     "pattern": true
+    }
+   ]
+  }
+ },
+ {
+  "name": "a sequence item with two matchers",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log-sequence",
+   "source": "debug",
+   "sequence": [
+    {
+     "contains": "a",
+     "equals": "b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a log pattern that is not valid",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log",
+   "source": "debug",
+   "pattern": "("
+  }
+ },
+ {
+  "name": "a log pattern of 201 characters",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log",
+   "source": "debug",
+   "pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ },
+ {
+  "name": "a fact with an empty addon",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "fact",
+   "source": "debug",
+   "addon": "",
+   "key": "k",
+   "op": "exists"
+  }
+ },
+ {
+  "name": "a fact with an empty key",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "fact",
+   "source": "debug",
+   "addon": "KT",
+   "key": "",
+   "op": "exists"
+  }
+ },
+ {
+  "name": "an empty step title",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "title"
+  ],
+  "value": ""
+ },
+ {
+  "name": "an empty step expect",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "expect"
+  ],
+  "value": ""
+ },
+ {
+  "name": "an empty action text",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "action",
+   "text"
+  ],
+  "value": ""
+ },
+ {
+  "name": "a sequence pattern with an open set",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "log-sequence",
+   "source": "debug",
+   "sequence": [
+    {
+     "contains": "a"
+    },
+    {
+     "pattern": "x[a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "a fact matches value that ends with a lone percent",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "fact",
+   "source": "debug",
+   "addon": "KT",
+   "key": "k",
+   "op": "matches",
+   "value": "abc%"
+  }
+ },
+ {
+  "name": "a state matches value with a back reference to no capture",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   0,
+   "assertions",
+   0
+  ],
+  "value": {
+   "kind": "state",
+   "probe": "global-value",
+   "name": "G",
+   "op": "matches",
+   "value": "(a)%2"
+  }
  }
 ]

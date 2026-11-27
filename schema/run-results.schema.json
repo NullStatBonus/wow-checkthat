@@ -296,6 +296,11 @@
      "minimum": 0,
      "description": "Lines (or facts, or sequence items in a row) that matched. Absent when the window was lost."
     },
+    "unchecked": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Lines (or facts) the plan's pattern could not be run on because they took too long to match. They are neither matches nor misses. Absent when there were none."
+    },
     "window": {
      "type": "integer",
      "minimum": 0,

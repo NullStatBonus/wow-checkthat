@@ -743,7 +743,7 @@
             "in"
           ]
         },
-        "value": {},
+        "value": { "type": ["string", "number", "boolean", "array", "object"], "description": "Never null: the game cannot read it." },
         "tolerance": {
           "type": "number",
           "minimum": 0,
@@ -854,7 +854,7 @@
         },
         "text": {
           "oneOf": [
-            { "type": "string" },
+            { "type": "string", "minLength": 1 },
             { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } }
           ],
           "description": "What the player does: one sentence, or a list of two to six actions the card shows as checkboxes the player ticks. A copy-slash step's text is its one command."
@@ -883,7 +883,8 @@
         },
         "pattern": {
           "type": "string",
-          "maxLength": 200
+          "maxLength": 200,
+          "description": "A Lua pattern of up to 200 characters, matched against the whole line. The validators reject one that Lua cannot read (an open ( or [, a lone %, a back reference to no capture, a NUL byte). A line that takes too long to match leaves the check unverified."
         }
       }
     },
@@ -917,10 +918,10 @@
           "properties": {
             "kind": { "const": "fact" },
             "source": { "type": "string" },
-            "addon": { "type": "string" },
-            "key": { "type": "string" },
+            "addon": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
             "op": { "enum": ["eq","ne","gt","ge","lt","le","contains","exists","missing","between","approx","matches","type","in"] },
-            "value": {},
+            "value": { "type": ["string", "number", "boolean", "array", "object"], "description": "Never null: the game cannot read it." },
             "tolerance": { "type": "number", "minimum": 0 },
             "which": { "enum": ["last", "any", "all"] },
             "scope": { "enum": ["attempt", "run", "session"] },
@@ -951,7 +952,8 @@
             },
             "pattern": {
               "type": "string",
-              "maxLength": 200
+              "maxLength": 200,
+              "description": "A Lua pattern of up to 200 characters, matched against the whole line. The validators reject one that Lua cannot read (an open ( or [, a lone %, a back reference to no capture, a NUL byte). A line that takes too long to match leaves the check unverified."
             },
             "scope": {
               "enum": [
@@ -1056,7 +1058,7 @@
                 "in"
               ]
             },
-            "value": {},
+            "value": { "type": ["string", "number", "boolean", "array", "object"], "description": "Never null: the game cannot read it." },
             "tolerance": { "type": "number", "minimum": 0 },
             "diagnostic": {
               "type": "boolean"
@@ -1086,7 +1088,8 @@
           "pattern": "^[a-z0-9][a-z0-9._-]*$"
         },
         "title": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "clients": {
           "$ref": "#/$defs/clients"
@@ -1105,7 +1108,7 @@
         },
         "expect": {
           "oneOf": [
-            { "type": "string" },
+            { "type": "string", "minLength": 1 },
             { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } }
           ],
           "description": "What the player should see: one sentence, or a list of two to six short results."

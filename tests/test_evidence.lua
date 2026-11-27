@@ -230,7 +230,9 @@ test("fact comparisons pass and fail on the parsed value", function()
     T.eq((judge(fact({ op = "in", value = { "a", "b" } }), {}, { "[KT] level=b" })), "pass")
     T.eq((judge(fact({ op = "in", value = { "a", "b" } }), {}, { "[KT] level=c" })), "fail")
     T.eq((judge(fact({ op = "matches", value = "^ab" }), {}, { "[KT] level=abc" })), "pass")
-    T.eq((judge(fact({ op = "matches", value = "(" }), {}, { "[KT] level=abc" })), "fail", "a bad pattern never raises")
+    local bad, why = judge(fact({ op = "matches", value = "(" }), {}, { "[KT] level=abc" })
+    T.eq(bad, "unverified", "a bad pattern never raises and never decides")
+    T.ok(tostring(why):find("opens a capture it does not close", 1, true), tostring(why))
     T.eq((judge(fact({ op = "contains", value = "bc" }), {}, { "[KT] level=abc" })), "pass")
     T.eq((judge(fact({ op = "exists", value = nil }), {}, { "[KT] level=1" })), "pass")
 end)
@@ -421,6 +423,246 @@ test("a required fact missing check waits until the verdict on the card", functi
     local a = fact({ op = "missing", value = nil })
     local items = E.Preview({ assertions = { a } }, snapOf(a, fenv({})), fplan, fenv({}))
     T.eq(items[1].state, "later")
+end)
+
+-- A pattern Lua cannot read is never run (Plan.PatternProblem), whatever the plan says. A line that takes the matcher over its step
+-- budget (Pattern.BUDGET) is "could not be checked": neither a match nor a miss.
+local function judged(a, lines)
+    local all = { "old" }
+    for _, l in ipairs(lines) do all[#all + 1] = l end
+    return E.CheckLog(a, snapOf(a, fenv({ "old" })), fplan, fenv(all))
+end
+local function spyMatch()
+    local real, calls = ns.Pattern.Search, { n = 0 }
+    H.stub(ns.Pattern, "Search", function(...) calls.n = calls.n + 1; return real(...) end)
+    return calls
+end
+test("a pattern Lua cannot read is never run: the check is unverified, also for an absence or a count", function()
+    ns.Pattern.ClearCache()
+    local calls = spyMatch()
+    local bad = "(unclosed"
+    local en = fenv({ "old" }, { "old" })
+    local after = fenv({ "old", "(unclosed text", "more" }, { "old", "x" })
+    local function judgeLog(a) return E.CheckLog(a, snapOf(a, en), fplan, after) end
+    local r, why = judgeLog({ kind = "log", source = "f", pattern = bad })
+    T.eq(r, "unverified"); T.ok(tostring(why):find("opens a capture it does not close", 1, true), tostring(why)); T.ok(tostring(why):find("it was not run", 1, true), tostring(why))
+    T.eq((judgeLog({ kind = "log", source = "f", pattern = bad, absent = true })), "unverified", "an absence is not shown by a pattern nobody ran")
+    T.eq((judgeLog({ kind = "log", source = "f", pattern = bad, count = { max = 0 } })), "unverified")
+    T.eq((judgeLog({ kind = "log", source = "f", pattern = bad, count = { exactly = 1 } })), "unverified")
+    local seq = { kind = "log-sequence", source = "f", sequence = { { contains = "old" }, { pattern = bad } } }
+    T.eq((E.CheckSequence(seq, snapOf(seq, en), fplan, after)), "unverified")
+    local viaFact = fact({ op = "matches", value = bad })
+    T.eq((E.CheckFact(viaFact, snapOf(viaFact, en), fplan, fenv({ "old", "[KT] level=abc" }))), "unverified")
+    local viaState = { kind = "state", probe = "global-value", name = "DB", path = "s", op = "matches", value = bad }
+    T.eq((E.CheckState(viaState, { DB = { s = "abc" } })), "unverified")
+    T.eq(E.Ops.matches("(unclosed", bad), false)
+    local preview = E.Preview({ assertions = { { kind = "log", source = "f", pattern = bad, absent = true } } }, snapOf({ kind = "log", source = "f", pattern = bad }, en), fplan, after)
+    T.eq(preview[1].state, "later", "the card never shows it met")
+    T.eq(calls.n, 0, "the matcher never saw it")
+end)
+test("a pattern that is not text, or a contains or equals that is not, never raises and never decides", function()
+    local en = fenv({ "old" })
+    for _, p in ipairs({ "(", "%", "[a", 5, "a" .. string.char(0) .. "b" }) do
+        local a = { kind = "log", source = "f", pattern = p }
+        T.eq((E.CheckLog(a, snapOf(a, en), fplan, fenv({ "old", "a(" }))), "unverified", tostring(p))
+    end
+    for _, k in ipairs({ "contains", "equals" }) do
+        local a = { kind = "log", source = "f", [k] = {} }
+        T.eq((E.CheckLog(a, snapOf(a, en), fplan, fenv({ "old", "a" }))), "unverified", k .. " that is not text")
+    end
+    T.ok(E.ReadLog("x", {}) == nil, "a log source that is not a table reads nothing")
+    T.eq((E.CheckLog({ kind = "log", source = "f", contains = "a" }, nil, { logs = { f = "x" } }, fenv({ "a" }))), "unverified")
+end)
+test("a long line is matched whole: a forbidden line past character 1000 still fails, as before", function()
+    local long = string.rep("x", 1100) .. " ERROR boom"
+    T.eq((judged({ kind = "log", source = "f", pattern = "ERROR", absent = true }, { long })), "fail", "absent")
+    T.eq((judged({ kind = "log", source = "f", pattern = "ERROR", count = { max = 0 } }, { long })), "fail", "count max 0")
+    T.eq((judged({ kind = "log", source = "f", pattern = "boom$" }, { long })), "pass", "an end anchor")
+    T.eq((judged({ kind = "log", source = "f", pattern = "^x+ ERROR" }, { long })), "pass")
+    T.eq((judged({ kind = "log", source = "f", pattern = "ERROR boom" }, { long })), "pass")
+    T.eq((judged({ kind = "log", source = "f", pattern = "nothing here", absent = true }, { long })), "pass", "a real absence still passes")
+    local viaFact = fact({ op = "matches", value = "boom$" })
+    T.eq((E.CheckFact(viaFact, snapOf(viaFact, fenv({})), fplan, fenv({ "[KT] level=" .. long }))), "pass", "a fact value")
+    local viaState = { kind = "state", probe = "global-value", name = "DB", path = "s", op = "matches", value = "boom$" }
+    T.eq((E.CheckState(viaState, { DB = { s = long } })), "pass", "a state value")
+end)
+local SET = "[^" .. ("bcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_-.,;:!"):sub(1, 70) .. "]"
+local SLOW = { ".-.-.-.-Z", "a.-a.-a.-a.-Z", string.rep("%d?", 20) .. " ms", string.rep("a?", 26) .. "b", ".-" .. string.rep("a?", 12) .. "b",
+    SET .. "*" .. SET .. "*x", "(%S+)%s+(.+)", "%w+%s*=%s*%d+" }
+local function slowLine(p)
+    if p:find("%d", 1, true) and p:find(" ms", 1, true) then return string.rep("1", 51) end
+    if p:find("a?", 1, true) and not p:find(".-", 1, true) then return string.rep("a", 60) end
+    return string.rep("a", 400)
+end
+test("a line that takes too long is unverified, quickly: never pass and never fail", function()
+    local started = os.clock()
+    for _, pat in ipairs(SLOW) do
+        local line = slowLine(pat)
+        local r, why = judged({ kind = "log", source = "f", pattern = pat }, { line })
+        T.eq(r, "unverified", pat:sub(1, 20)); T.eq(why, E.TOO_LONG)
+        T.eq((judged({ kind = "log", source = "f", pattern = pat, absent = true }, { line })), "unverified", "an absence is not shown")
+        T.eq((judged({ kind = "log", source = "f", pattern = pat, count = { max = 0 } }, { line })), "unverified", "at most zero is not shown")
+        T.eq((judged({ kind = "log", source = "f", pattern = pat, count = { exactly = 1 } }, { line })), "unverified")
+        local seq = { kind = "log-sequence", source = "f", sequence = { { pattern = pat } } }
+        local sr, swhy = E.CheckSequence(seq, snapOf(seq, fenv({ "old" })), fplan, fenv({ "old", line }))
+        T.eq(sr, "unverified"); T.eq(swhy, E.TOO_LONG)
+        local viaFact = fact({ op = "matches", value = pat })
+        T.eq((E.CheckFact(viaFact, snapOf(viaFact, fenv({})), fplan, fenv({ "[KT] level=q" .. line }))), "unverified", "a fact value")
+        local viaState = { kind = "state", probe = "global-value", name = "DB", path = "s", op = "matches", value = pat }
+        T.eq((E.CheckState(viaState, { DB = { s = line } })), "unverified", "a state value")
+    end
+    T.ok(os.clock() - started < 3, "all of it took " .. (os.clock() - started) .. " s")
+end)
+test("a pattern that starts with .* or .- is judged exactly even on a flood: the leading repeat is dropped", function()
+    local started = os.clock()
+    local flood = string.rep("a", 1000)
+    for _, pat in ipairs({ ".-" .. string.rep("a", 190) .. "b", ".-%b()", ".*b", "(.*)b" }) do
+        local want = string.find(flood, pat) ~= nil
+        T.eq((judged({ kind = "log", source = "f", pattern = pat }, { flood })), want and "pass" or "unverified", pat:sub(1, 20))
+        T.eq((judged({ kind = "log", source = "f", pattern = pat, absent = true }, { flood })), want and "fail" or "pass", pat:sub(1, 20) .. " absent")
+    end
+    T.ok(os.clock() - started < 1)
+end)
+test("a match on another line still passes, and what was shown still fails", function()
+    local pat = "a.-a.-a.-a.-Z"
+    local flood = string.rep("a", 1000)
+    local good = "a1a2a3a4Z"
+    T.eq((judged({ kind = "log", source = "f", pattern = pat }, { flood, good })), "pass", "a positive match on another line")
+    T.eq((judged({ kind = "log", source = "f", pattern = pat, absent = true }, { flood, good })), "fail", "a forbidden line that was found")
+    T.eq((judged({ kind = "log", source = "f", pattern = pat, count = { min = 1 } }, { flood, good })), "pass", "no upper bound")
+    T.eq((judged({ kind = "log", source = "f", pattern = pat, count = { max = 1 } }, { flood, good })), "unverified", "it may have matched too")
+    T.eq((judged({ kind = "log", source = "f", pattern = pat, count = { max = 1 } }, { flood, good, good })), "fail", "two real matches are too many")
+end)
+test("old linear patterns judge the same as string.find does, on long ordinary lines too", function()
+    local noise = string.rep("the quick brown fox [kt] merchant started: bag 12 of 30 free slots, vendor=Bob level=5 ", 12)
+    local pats = { "%d+%.?%d*", "(%S+)%s+(.+)", ".*%d+", ": *.*", "%[(.-)%]%s*(.*)", "%a+%s*%a*", "^%s*(.-)%s*$", "(%d+) (%d+) (%d+) (%d+) (%d+)",
+        "%d+:%d+:%d+%.%d+ %a+", "^confirm: bought .+ anyway$", "^(%w+):%s+(%w+)%s.-anyway$", "started.-slots.-Bob" }
+    for _, n in ipairs({ 40, 80, 150, 300, 600, 900 }) do
+        for _, line in ipairs({ noise:sub(1, n), "confirm: bought " .. noise:sub(1, n) .. " anyway", "confirm: " .. noise:sub(1, n) .. " anyway", "12:34:56.789 PM " .. noise:sub(1, n) }) do
+            for _, p in ipairs(pats) do
+                local want = string.find(line, p) ~= nil and "pass" or "unverified"
+                local got, why = judged({ kind = "log", source = "f", pattern = p }, { line })
+                -- a line may be over the budget (for example .*%d+ on a long line without digits): then it is unverified, never a wrong pass
+                if got ~= want then T.eq(why, E.TOO_LONG, p .. " on " .. #line .. " characters"); T.eq(want, "pass", "a miss is never turned into a pass") end
+                T.ok(got ~= "pass" or want == "pass", p)
+            end
+        end
+    end
+end)
+test("the card asks again about the same lines: the matcher runs once for each line and pattern", function()
+    ns.Pattern.ClearCache()
+    local calls = spyMatch()
+    local a = { kind = "log", source = "f", pattern = "k.-o.-Z" }
+    local lines = {}
+    for i = 1, 20 do lines[i] = "kick one two " .. i end
+    for _ = 1, 3 do T.eq((judged(a, lines)), "unverified") end
+    T.ok(calls.n <= 20, "matcher calls: " .. calls.n)
+    local flood = string.rep("a", 1000)
+    local slow = { kind = "log", source = "f", pattern = ".-.-.-.-Z" }
+    local before = calls.n
+    for _ = 1, 3 do T.eq((judged(slow, { flood })), "unverified") end
+    T.eq(calls.n - before, 1, "a line that took too long is not tried again")
+end)
+
+test("the pass allowance: the first refresh is cut short and unverified 'still checking', a later one settles with the right verdict", function()
+    ns.Pattern.ClearCache()
+    local keep = ns.Pattern.PASS_ALLOWANCE
+    ns.Pattern.PASS_ALLOWANCE = 30000
+    local words = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega alpha beta gamma delta"
+    local lines = {}
+    for i = 1, 200 do lines[i] = words .. " " .. i end
+    lines[200] = "last line: x = 5"
+    local pat = "%a+%s*=%s*%d+" -- three repeats: the port
+    local calls = spyMatch()
+    local absent = { kind = "log", source = "f", pattern = pat, absent = true }
+    local en = fenv({ "old" })
+    local snaps = snapOf(absent, en)
+    local after = { "old" }
+    for _, l in ipairs(lines) do after[#after + 1] = l end
+    local function check() return ns.Pattern.Pass(function() return E.CheckLog(absent, snaps, fplan, fenv(after)) end) end -- the card's pass
+    local r1, why1 = check()
+    T.eq(r1, "unverified"); T.eq(why1, E.PENDING, "the first refresh could not look at every line")
+    T.ok(calls.n < 200, "lines run in the first refresh: " .. calls.n)
+    local present = { kind = "log", source = "f", pattern = pat }
+    local passes, r, why = 1, r1, why1
+    while why == E.PENDING and passes < 30 do passes = passes + 1; r, why = check() end
+    T.eq(r, "fail", "the forbidden line is found once every line was seen: " .. tostring(why)); T.ok(passes >= 3, "passes: " .. passes)
+    T.eq(calls.n, 200, "each line was run once")
+    local before = calls.n
+    check(); T.eq(calls.n, before, "a refresh after that costs nothing")
+    -- what records a result has no allowance: one call judges every line and never says "still checking"
+    ns.Pattern.ClearCache()
+    local rr, rwhy = E.Check(absent, snaps, fplan, fenv(after))
+    T.eq(rr, "fail", "judging reads the whole log: " .. tostring(rwhy)); T.ok(rwhy ~= E.PENDING)
+    ns.Pattern.ClearCache()
+    local pv = E.Preview({ assertions = { present = nil, absent } }, snaps, fplan, fenv(after))
+    T.eq(pv[1].state, "later", "the live card may be cut short")
+    -- a match found settles a presence check at once, even while other lines are pending
+    ns.Pattern.ClearCache()
+    local early = { "word = 1" }
+    for i = 1, 200 do early[#early + 1] = words .. " " .. i end
+    T.eq((E.Check(present, snapOf(present, en), fplan, fenv((function() local t = { "old" }; for _, l in ipairs(early) do t[#t + 1] = l end; return t end)()))), "pass")
+    ns.Pattern.PASS_ALLOWANCE = keep
+end)
+test("Preview is one pass, and the card shows an unfinished check as waiting, then settles", function()
+    ns.Pattern.ClearCache()
+    local keep = ns.Pattern.PASS_ALLOWANCE
+    ns.Pattern.PASS_ALLOWANCE = 4000
+    local lines = { "old" }
+    for i = 1, 150 do lines[#lines + 1] = "gamma delta epsilon " .. i .. " eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau" end
+    local a = { kind = "log", source = "f", pattern = "%a+%s*=%s*%d+", absent = true }
+    local snaps = snapOf(a, fenv({ "old" }))
+    local first = E.Preview({ assertions = { a } }, snaps, fplan, fenv(lines))[1].state
+    T.eq(first, "later", "an absence is judged at the verdict")
+    local verdict, why = E.Check(a, snaps, fplan, fenv(lines))
+    local n = 0
+    while why == E.PENDING and n < 40 do n = n + 1; verdict, why = E.Check(a, snaps, fplan, fenv(lines)) end
+    T.eq(verdict, "pass", "no line has an equals sign: it settles as a pass")
+    ns.Pattern.PASS_ALLOWANCE = keep
+end)
+test("a fact value that took too long: a value that matched wins for which any, a value that broke it wins for which all", function()
+    local flood = string.rep("a", 400)
+    local pat = "(%S+)%s+(.+)"
+    local function judgeF(which, values)
+        local lines = {}
+        for i, v in ipairs(values) do lines[i] = "[KT] level=" .. v end
+        local a = fact({ op = "matches", value = pat, which = which })
+        return E.CheckFact(a, snapOf(a, fenv({})), fplan, fenv(lines))
+    end
+    T.eq((judgeF("any", { flood, "x y" })), "pass", "a match wins over a value that took too long")
+    T.eq((judgeF("any", { "x y", flood })), "pass")
+    local r, why = judgeF("any", { flood, "abc" }); T.eq(r, "unverified"); T.eq(why, E.TOO_LONG)
+    T.eq((judgeF("all", { flood, "abc" })), "fail", "a value that broke it decides")
+    local r2, why2 = judgeF("all", { flood, "x y" }); T.eq(r2, "unverified"); T.eq(why2, E.TOO_LONG)
+    local r3 = judgeF("last", { "x y", flood }); T.eq(r3, "unverified")
+    T.eq((judgeF("last", { flood, "x y" })), "pass")
+    local ca = fact({ op = "matches", value = pat, count = { min = 1 } })
+    T.eq((E.CheckFact(ca, snapOf(ca, fenv({})), fplan, fenv({ "[KT] level=" .. flood, "[KT] level=x y" }))), "pass", "a count with no upper bound")
+    local cm = fact({ op = "matches", value = pat, count = { max = 1 } })
+    T.eq((E.CheckFact(cm, snapOf(cm, fenv({})), fplan, fenv({ "[KT] level=" .. flood, "[KT] level=x y" }))), "unverified", "it may have matched too")
+end)
+
+test("a count that is short gives the skip reason when lines were left unchecked, and the saved detail counts them", function()
+    ns.Pattern.ClearCache()
+    local flood = string.rep("a", 400)
+    local pat = "(%S+)%s+(.+)"
+    local lines = { "x y", flood, flood, "z w" }
+    local a = { kind = "log", source = "f", pattern = pat, count = { min = 3 } }
+    local r, why, detail = E.CheckLog(a, snapOf(a, fenv({ "old" })), fplan, (function() local t = { "old" }; for _, l in ipairs(lines) do t[#t + 1] = l end; return fenv(t) end)(), true)
+    T.eq(r, "unverified"); T.eq(why, E.TOO_LONG, "2 matched, 3 needed, but 2 lines could not be checked")
+    T.eq(detail.matched, 2); T.eq(detail.unchecked, 2, "the saved detail says how many lines were not checked")
+    local a2 = { kind = "log", source = "f", pattern = pat, count = { min = 5 } }
+    local r2, why2 = E.CheckLog(a2, snapOf(a2, fenv({ "old" })), fplan, fenv({ "old", "x y" }))
+    T.eq(r2, "unverified"); T.ok(tostring(why2):find("1 matched, 5 needed", 1, true), "with nothing skipped it says so as before: " .. tostring(why2))
+    local seq = { kind = "log-sequence", source = "f", sequence = { { pattern = pat } } }
+    local _, _, sd = E.CheckSequence(seq, snapOf(seq, fenv({ "old" })), fplan, fenv({ "old", flood, flood }), true)
+    T.eq(sd.unchecked, 2, "a sequence")
+    local fa = fact({ op = "matches", value = pat, which = "all" })
+    local fr, _, fd = E.CheckFact(fa, snapOf(fa, fenv({})), fplan, fenv({ "[KT] level=ab cd", "[KT] level=" .. flood }), true)
+    T.eq(fr, "unverified"); T.eq(fd.unchecked, 1, "a fact")
+    local clean = { kind = "log", source = "f", contains = "zzz" }
+    local _, _, cd = E.CheckLog(clean, snapOf(clean, fenv({ "old" })), fplan, fenv({ "old", "a" }), true)
+    T.eq(cd.unchecked, nil, "nothing unchecked, nothing saved")
 end)
 
 finish()

@@ -202,6 +202,10 @@ Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categor
     Check: after the reload the card records the step as passed by itself.
     Log: `[ct] step self.runerror pass auto evidence matched`.
 
+18. **A plan with a pattern Lua cannot read.** Type `/ct import` and paste the string in `tests/fixtures/bad-pattern.ct`.
+    Check: the import window says the plan is not valid and has a text pattern that the game cannot read. No plan appears on the card.
+    Log: `import rejected: step w.1: pattern opens a capture it does not close` in the `/ct log` report.
+
 ## 6. Plan skills (no game needed)
 
 These checks run in a coding agent, not in the game. Run `make install-skill` first. `make test` covers what code decides (bundle, `collect`, example plans, fixture data). These checks cover the conversation.

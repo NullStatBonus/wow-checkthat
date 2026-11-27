@@ -7,8 +7,10 @@
 -- needs that window to pass (absent, exactly, max, a fact that is missing) never passes here: it is "skipped". It can
 -- still fail, when the whole log already contradicts it. A state probe needs the game and is "skipped".
 local here = arg[0]:match("^(.*)/tools/[^/]*$") or "."
-local ns = { Plan = { PROBES = {} } }
+local ns = {}
 assert(loadfile(here .. "/CheckThat/Model/Json.lua"))("CheckThat", ns)
+assert(loadfile(here .. "/CheckThat/Model/Plan.lua"))("CheckThat", ns) -- the pattern rules Evidence applies before it runs a pattern
+assert(loadfile(here .. "/CheckThat/Model/Pattern.lua"))("CheckThat", ns) -- runs a plan's patterns with a step budget
 assert(loadfile(here .. "/CheckThat/Model/Evidence.lua"))("CheckThat", ns)
 local Evidence = ns.Evidence
 

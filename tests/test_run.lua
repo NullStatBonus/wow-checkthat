@@ -689,4 +689,56 @@ test("an async step reads the whole log on every attempt, so it passes again aft
     T.eq(R.AutoSettle(run, ctx, "v").verdict, "pass")
 end)
 
+-- A recorded result is written once and never retried, so it is judged with no allowance: it never says "still checking the log".
+local function longLog(ctx, env, match)
+    ctx.plan.sections[1].steps[1].assertions[1] = { kind = "log", source = "debug", pattern = "item=(%d+).*TARGET.*count=(%d+)", scope = "session" }
+    env.DB.log = {}
+    for i = 1, 2001 do env.DB.log[i] = "item=" .. i .. " some ordinary log text about bags and vendors and slots, nothing to see here" end
+    if match then env.DB.log[2001] = "item=7 the one TARGET line with count=3" end
+end
+test("a verdict on a long log is judged whole, whatever the card's allowance, and the saved attempt never says still checking", function()
+    local keep = ns.Pattern.PASS_ALLOWANCE
+    ns.Pattern.PASS_ALLOWANCE = 500
+    for _, match in ipairs({ true, false }) do
+        ns.Pattern.ClearCache()
+        local run, ctx, env = mk()
+        longLog(ctx, env, match)
+        R.Begin(run, ctx, "a")
+        local live = ns.Evidence.Preview(ctx.plan.sections[1].steps[1], run.steps.a.attempts[1].snapshots, ctx.plan, env)
+        T.eq(live[1].state, "waiting", "the live card is cut short, which is fine")
+        local a = R.Verdict(run, ctx, "a", "pass")
+        if match then T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched") else T.eq(a.verdict, "unverified") end
+        for _, o in ipairs(a.outcomes) do T.ok(tostring(o.why) ~= ns.Evidence.PENDING, "an outcome says still checking: " .. tostring(o.why)) end
+        local saved = ns.Json.Encode(R.Export(run))
+        T.ok(not saved:find("still checking", 1, true), "nothing saved says still checking")
+    end
+    ns.Pattern.PASS_ALLOWANCE = keep
+end)
+test("a verdict recorded from inside a card pass is judged whole too", function()
+    local keep = ns.Pattern.PASS_ALLOWANCE
+    ns.Pattern.PASS_ALLOWANCE = 500
+    ns.Pattern.ClearCache()
+    local run, ctx, env = mk()
+    longLog(ctx, env, true)
+    R.Begin(run, ctx, "a")
+    local a = ns.Pattern.Pass(function() return R.Verdict(run, ctx, "a", "pass") end)
+    T.eq(a.verdict, "pass"); T.eq(a.evidence, "matched")
+    ns.Pattern.PASS_ALLOWANCE = keep
+end)
+test("a step that settles by itself at its timeout is judged whole too", function()
+    local keep = ns.Pattern.PASS_ALLOWANCE
+    ns.Pattern.PASS_ALLOWANCE = 500
+    ns.Pattern.ClearCache()
+    local run, ctx, env = mk()
+    local st = ctx.plan.sections[1].steps[1]
+    longLog(ctx, env, false)
+    st.assertions[1].absent = true; st.auto = true; st.timeout = 5; st.verify = { "assertions" }
+    R.Begin(run, ctx, "a")
+    ctx.now = ctx.now + 6
+    local a = R.AutoSettle(run, ctx, "a")
+    T.ok(a and a.verdict == "pass", "no line matches, so the absence holds: " .. tostring(a and a.verdict))
+    for _, o in ipairs(a.outcomes) do T.ok(tostring(o.why) ~= ns.Evidence.PENDING) end
+    ns.Pattern.PASS_ALLOWANCE = keep
+end)
+
 finish()
