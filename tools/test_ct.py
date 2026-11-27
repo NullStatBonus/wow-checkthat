@@ -2597,7 +2597,10 @@ class PackageRoot(unittest.TestCase):
         start = lines.index("ignore:")
         ignored = {l.strip()[2:].strip() for l in lines[start + 1:] if l.strip().startswith("- ")}
         ships = {"CheckThat", "LICENSE", "CHANGELOG.md"}
-        loose = [n for n in sorted(os.listdir(ct.ROOT)) if not n.startswith(".") and n not in ships and n not in ignored]
+        # The packager builds from what git tracks, so local and ignored files (debug.txt, evidence/) do not count.
+        tracked = subprocess.run(["git", "-C", ct.ROOT, "ls-files"], capture_output=True, text=True, check=True).stdout.splitlines()
+        top = sorted({p.split("/", 1)[0] for p in tracked})
+        loose = [n for n in top if not n.startswith(".") and n not in ships and n not in ignored]
         self.assertEqual(loose, [], "add these to the ignore list of .pkgmeta")
 
 

@@ -94,9 +94,9 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 22. **The step title stands out.** Look at any step title on each client.
    Check: the title is larger than the other text and has a dark outline. Take a screenshot for the listing page.
    Log: none; on screen only.
-23. **A reload while the card shows a past run.** Setup: end one run, then start another and press Pass on its first step. Open Esc, Options, AddOns, CheckThat, Home, pick the ended run under Past runs and press Open run. Type `/reload`.
-   Check: chat says "Reloaded. Your run continues on the same step." and then names the run you started last, not the ended one. Under Past runs on Home, pick the run you started last and press Open run. Its step says "Reloaded" under Do and does not ask for a second reload.
-   Log: `[ct] resumed run <id>` names the run you started last.
+23. **A reload while the card shows a past run.** Import any plan and type `/ct start <addon>`. Type `/ct end`. Type `/ct start <addon>` again. Open Esc, Options, AddOns, CheckThat, Home. Under Past runs, pick the run marked "ended" and press Open run. Type `/reload`.
+   Check: chat says "Reloaded. Your run continues on the same step." and names the second run. Open the second run from Past runs. Its step says "Reloaded" under Do and does not ask for another reload.
+   Log: `[ct] resumed run <id>` names the second run.
 
 ## 4. Evidence
 
