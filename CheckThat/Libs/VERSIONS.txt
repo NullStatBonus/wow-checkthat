@@ -22,8 +22,9 @@ Modules (MAJOR, MINOR as read from the shipped files):
     AceConfigRegistry-3.0 22
     AceConfigCmd-3.0      14
     AceConfigDialog-3.0   93
+  AceDBOptions-3.0        17   (added 2026-11-27 for the Profiles page, same commit, unchanged)
 
-Not shipped: AceHook-3.0 (removed in 0.4.1), AceBucket, AceComm, AceDBOptions, AceLocale,
+Not shipped: AceHook-3.0 (removed in 0.4.1), AceBucket, AceComm, AceLocale,
 AceSerializer, AceTab, AceTimer.
 
 Updating:

@@ -7,6 +7,7 @@ New: **Built-in self-test.** The import window lists "CheckThat self-test (built
 New: **Plans for any addon.** A plan can test any addon and list its commands. The card offers a command only when that addon registered it.
 New: **Blocked actions.** CheckThat records the actions that the game blocked during a run. A plan can check that the game blocked nothing. The result is the same with or without BugGrabber.
 New: **Cleanup after a step.** After a result, the card shows what to undo before the next step.
+New: **Profiles.** A Profiles page lets characters share settings or use their own. Choose, create, copy, reset or delete a profile there. Chat names the profile at login and when you change it.
 New: **Plans name the CheckThat they need.** A later CheckThat can make plans that this version cannot read. This version then says that the plan needs a newer CheckThat.
 New: **Client census.** Type `/ct census` to record the names this game client gives addons. Wait for the completion message, then type /reload to save it. The census changes no setting and does no game action.
 New: **Offline checks match the game client.** A plan can ask for the client version from the addon's TOC file. Older plans keep their results. An offline run reports each name the addon read that the test client did not have.
@@ -32,6 +33,7 @@ Fixed: **A bar in a category title.** `/ct categories` printed a broken line. Ch
 Fixed: **`/ct start` in lower case.** `/ct start keepthat` printed the usage line. It now starts the run.
 Fixed: **Categories window after a profile change.** The window kept the old profile's place until a reload. It now moves at once.
 Fixed: **The CT macro stopped following the step.** After a run ended, the macro could keep `/ct status` in every later run. A new run now takes it back. Chat says when the game refuses a macro change.
+Removed: **The checkbox for separate settings.** Use the Profiles page instead. Your character profile stays in its list.
 
 ## 0.20.1
 

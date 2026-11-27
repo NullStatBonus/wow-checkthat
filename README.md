@@ -42,7 +42,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | Command | What it does |
 | --- | --- |
 | `/ct` | Open or close the checklist card. |
-| `/ct settings [page]` | Open settings: home, plans, appearance, advanced, about. |
+| `/ct settings [page]` | Open settings: home, plans, appearance, advanced, about, profiles. |
 | `/ct help [topic]` | Help for appearance, diagnostics and runs. |
 | `/ct status [topic]` | Show the run status, the settings, or both. Topics: `run`, `settings`. |
 | `/ct get <key>`, `/ct set <key> <value>` | Read or change a card setting (`card.scale`, `card.background-opacity`, `card.text-opacity`, `card.locked`, `card.sound`). |
@@ -82,8 +82,11 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 | Home | Current run (the categories with their state, open the checklist, export results), Start a run (import a plan, pick a plan, pick the categories, Start run) and Past runs. |
 | Plans | Remove a plan. |
 | Appearance | Size and opacity, position, Lock position and Reset position, and **Play result sounds** (on by default). |
-| Advanced | Profile (separate settings for this character), **Runs to keep**, **Keep the CT macro on the current step** (off by default; see [Macro that follows the step](docs/features.md#macro-that-follows-the-step)), **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
+| Advanced | **Runs to keep**, **Keep the CT macro on the current step** (off by default; see [Macro that follows the step](docs/features.md#macro-that-follows-the-step)), **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
 | About | The command list and help. |
+| Profiles | The profile in use, and **Manage profiles**: choose, create, copy, reset or delete a profile. Characters can share a profile or each use their own. Plans, runs and the debug log are the same whatever the profile. |
+
+Chat names the profile at each login ("Profile in use: <name>.") and at each switch ("Profile changed. Profile in use: <name>."). The debug switch keeps its value through a switch, copy or reset. `/ct status` names the profile in use, and the debug report prints `profile = <name>`.
 
 **Runs to keep** is 5 to 100, default 20, for all profiles. The oldest runs go first. The current run of any character always stays. CheckThat deletes the extra runs when you start a run, exported or not, and says so in chat: "Deleted the oldest run (<plan>) to keep 20." The debug report prints every setting and `Stored: <n> runs (limit <n>), <n> plan copies`.
 

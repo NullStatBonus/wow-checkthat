@@ -247,32 +247,9 @@ function Options.Appearance(order)
     return g
 end
 
-local function db() return ns.addon and ns.addon.db end
-
-function Options.CharacterProfileOn()
-    local d = db()
-    return d ~= nil and d:GetCurrentProfile() ~= "Default"
-end
-
-function Options.SetCharacterProfile(on)
-    local d = db()
-    if not d then return end
-    d:SetProfile(on and d.keys.char or "Default")
-    ns.Settings.onChange()
-end
-
 function Options.Advanced(order)
     local g = page(L["Advanced"], order)
-    introduction(g, L["Settings scope and troubleshooting"], L["Set the settings scope or collect a problem report. Run a plan in Home."])
-    add(g, "h_profile", { type = "header", name = L["Profile"] })
-    note(g, "profileContext", grey(L["Select separate settings to use this character’s profile. Clear the checkbox to use shared settings. Both profiles keep their saved values. Plans and runs are shared."]))
-    add(g, "charProfile", {
-        type = "toggle", width = "full", name = L["Use separate settings for this character"],
-        confirm = function() return L["Switch settings scope? Existing settings in both scopes are retained; no settings are copied."] end,
-        get = Options.CharacterProfileOn,
-        set = function(_, value) Options.SetCharacterProfile(value) end,
-    })
-    gap(g, "g1")
+    introduction(g, L["Runs, macro and troubleshooting"], L["Set how many runs to keep, the CT macro and the self-check, or collect a problem report. Choose a profile in Profiles."])
     add(g, "h_store", { type = "header", name = L["Stored runs"] })
     note(g, "storeHelp", grey(L["Set how many runs to keep. When you start a run, CheckThat deletes the oldest runs above this number. The current run of each character always stays."]))
     add(g, "runLimit", { type = "range", width = 1.5, name = L["Runs to keep"],
@@ -344,13 +321,32 @@ function Options.About(order)
     return g
 end
 
-Options.PAGES = { { "home", "Home" }, { "plans", "Plans" }, { "appearance", "Appearance" }, { "advanced", "Advanced" }, { "about", "About" } }
+-- The standard AceDBOptions-3.0 control, inline: choose, create, copy, reset and delete profiles. Without the
+-- library the page keeps its purpose and the profile line.
+function Options.Profiles(order)
+    local g = page(L["Profiles"], order)
+    introduction(g, L["Profiles"], L["A profile holds your settings. Characters can share one profile or each use their own. Plans, runs and the debug log are shared by every character, whatever the profile."])
+    text(g, "current", function() return ns.Settings.ProfileLine() or " " end)
+    local lib = LibStub and select(2, pcall(LibStub, "AceDBOptions-3.0", true))
+    local d = ns.addon and ns.addon.db
+    if type(lib) == "table" and d and type(lib.GetOptionsTable) == "function" then
+        local ok, manage = pcall(lib.GetOptionsTable, lib, d)
+        if ok and type(manage) == "table" then
+            manage.inline, manage.order, manage.name = true, 100, L["Manage profiles"]
+            manage.childGroups, manage.desc = nil, nil
+            g.args.manage = manage
+        end
+    end
+    return g
+end
+
+Options.PAGES = { { "home", "Home" }, { "plans", "Plans" }, { "appearance", "Appearance" }, { "advanced", "Advanced" }, { "about", "About" }, { "profiles", "Profiles" } }
 
 function Options.Build()
     return {
         type = "group", name = L["CheckThat"], childGroups = "tree",
         args = { home = Options.Home(1), plans = Options.Plans(2), appearance = Options.Appearance(3),
-            advanced = Options.Advanced(4), about = Options.About(5) },
+            advanced = Options.Advanced(4), about = Options.About(5), profiles = Options.Profiles(6) },
     }
 end
 
@@ -367,13 +363,22 @@ function Options.Tree()
     return built
 end
 
+-- The pages listed under CheckThat in the game's Settings window. Home is the root entry.
+function Options.RegisterPanels(dialog)
+    dialog:AddToBlizOptions(APP, L["CheckThat"], nil, "home")
+    local names = { plans = L["Plans"], appearance = L["Appearance"], advanced = L["Advanced"], about = L["About"], profiles = L["Profiles"] }
+    for _, key in ipairs({ "plans", "appearance", "advanced", "about", "profiles" }) do
+        dialog:AddToBlizOptions(APP, names[key], L["CheckThat"], key)
+    end
+end
+
 ns.Start(function(addon)
+    -- Another profile's values: the pages redraw (a switch also prints its chat line, Core/Settings.lua).
+    for _, event in ipairs({ "OnProfileCopied", "OnProfileReset", "OnProfileDeleted" }) do
+        addon.db.RegisterCallback(Options, event, function() Options.Notify() end)
+    end
     LibStub("AceConfigRegistry-3.0"):RegisterOptionsTable(APP, Options.Tree)
     local dialog = LibStub("AceConfigDialog-3.0")
     dialog:SetDefaultSize(APP, 600, 460)
-    dialog:AddToBlizOptions(APP, L["CheckThat"], nil, "home")
-    local names = { plans = L["Plans"], appearance = L["Appearance"], advanced = L["Advanced"], about = L["About"] }
-    for _, key in ipairs({ "plans", "appearance", "advanced", "about" }) do
-        dialog:AddToBlizOptions(APP, names[key], L["CheckThat"], key)
-    end
+    Options.RegisterPanels(dialog)
 end)

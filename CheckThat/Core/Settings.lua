@@ -70,6 +70,31 @@ function Settings.ResetPosition()
     Settings.onChange()
 end
 
+-- The name of the profile in use, or nil before the saved settings load.
+function Settings.ProfileName()
+    local db = ns.addon and ns.addon.db
+    if not db then return nil end
+    local ok, name = pcall(db.GetCurrentProfile, db)
+    return ok and type(name) == "string" and name or nil
+end
+
+-- "Profile in use: <name>." for chat and the settings page, with a bar in the name doubled.
+function Settings.ProfileLine()
+    local name = Settings.ProfileName()
+    return name and L["Profile in use: %s."]:format((name:gsub("|", "||"))) or nil
+end
+
+-- After a switch to another profile (the Profiles page): the debug switch keeps the value it had, the pages
+-- show the new profile, and chat names it.
+function Settings.ProfileChanged(debug)
+    local p = profile()
+    if debug ~= nil then p.debug = debug end
+    local name = Settings.ProfileName() or "?"
+    if ns.App then ns.App.Log("profile changed to " .. name) end
+    if ns.Slash then ns.Slash.Print(L["Profile changed. Profile in use: %s."]:format((name:gsub("|", "||")))) end
+    if ns.Options then pcall(ns.Options.Notify) end -- a redraw that fails leaves the switch as it is
+end
+
 -- Every saved setting as "key = value" lines for the status command.
 function Settings.Status()
     local out = {}

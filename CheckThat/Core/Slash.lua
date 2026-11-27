@@ -7,7 +7,7 @@ local L = ns.L
 local Slash = {}
 ns.Slash = Slash
 
-Slash.pages = { home = true, plans = true, appearance = true, advanced = true, about = true }
+Slash.pages = { home = true, plans = true, appearance = true, advanced = true, about = true, profiles = true }
 
 -- The addon a plan can name, in the spelling of its imported plan (or of Plan.SLASH), whatever case the player typed.
 local function addonName(text)
@@ -30,7 +30,7 @@ function Slash.VerdictLine(a)
     return L["Step %s."]:format(word)
 end
 
-local function pageList() return L["Pages: home, plans, appearance, advanced, about."] end
+local function pageList() return L["Pages: home, plans, appearance, advanced, about, profiles."] end
 
 -- Chat reads | as an escape: text from a plan or a character name is shown with its bars doubled.
 function Slash.Esc(text) return (tostring(text):gsub("|", "||")) end
@@ -78,8 +78,7 @@ function Slash.Run(args, deps)
         App.Log("status requested")
         if topic == "run" then return { App.Status() } end
         if topic == "settings" then return ns.Settings.Status() end
-        local db = ns.addon and ns.addon.db
-        local out = { App.Status(), db and ((db:GetCurrentProfile() == "Default") and L["Settings scope: shared."] or L["Settings scope: this character."]) or nil }
+        local out = { App.Status(), ns.Settings.ProfileLine() }
         for _, line in ipairs(ns.Settings.Status()) do out[#out + 1] = line end
         return out
     elseif cmd == "debug" then
