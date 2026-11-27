@@ -95,6 +95,27 @@ test("the report falls back to the plain window when AceGUI is missing", functio
     gui.Create = create
     T.ok(_G.CheckThatTextBox and _G.CheckThatTextBox.shown, "the plain window opens")
 end)
+test("a note goes before the copy hint in the text window (#250)", function()
+    local gui = LibStub("AceGUI-3.0")
+    local create, release = gui.Create, gui.Release
+    local made = {}
+    gui.Create = function(_, kind)
+        local w = { kind = kind, args = {} }
+        setmetatable(w, { __index = function(t, k) return function(self, ...) self.args[k] = { ... } end end })
+        made[#made + 1] = w
+        return w
+    end
+    gui.Release = function() end
+    T.finally(function() gui.Create, gui.Release = create, release end)
+    ns.Export.Show("Results string", "!CT1!x", "The results include your character and realm name.")
+    T.eq(made[1].args.SetStatusText[1], "The results include your character and realm name. Press Ctrl+A to select everything, then Ctrl+C to copy.")
+    ns.Export.Show("Report", "text")
+    T.eq(made[#made - 1].args.SetStatusText[1], "Press Ctrl+A to select everything, then Ctrl+C to copy.", "no note: the hint alone")
+    gui.Create = nil
+    ns.Export.Show("Results string", "!CT1!x", "The results include your character and realm name.")
+    T.eq(_G.CheckThatTextBox.hint:GetText(), "The results include your character and realm name. Press Ctrl+C to copy.", "the plain window says it too")
+    _G.CheckThatTextBox:Hide()
+end)
 test("the plain import window holds each choice to one line inside its button", function()
     local gui = LibStub("AceGUI-3.0")
     local create = gui.Create

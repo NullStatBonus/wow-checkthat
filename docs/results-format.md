@@ -60,6 +60,10 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 The record also holds `current` (the step the card showed, which browsing moves without a new revision, so a tool must not use it to compare revisions), `history` (step ids in the order their results were recorded) and, on an attempt, `build`. They were always written and are in the schema now. `tools/test_ct.py` fails when the addon writes a key the schema does not name.
 
+## Privacy
+
+`character` is `Name-Realm`, so every results string names the tester's character and realm. The export window says "The results include your character and realm name." A plan's `logs` and `global-value` checks can add what those variables hold; the start screen lists them.
+
 ## Other versions
 
 - **Plans** have their own `ct` (`CheckThat/Model/Plan.lua`). A plan with another value is rejected.
