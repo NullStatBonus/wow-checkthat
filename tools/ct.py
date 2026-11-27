@@ -357,6 +357,8 @@ def validate(plan, requirements=None):
             errs.append("duplicate category id %s" % c["id"])
         cats[c["id"]] = c
     for box, key, _ in display_fields(plan):
+        if key == "cleanup":
+            continue  # shown since #247; a plan that validated before keeps validating, cleanup_warnings says it
         if any(isinstance(s, str) and MARKDOWN.search(s) for s in lines_of(box[key])):
             errs.append("markdown in %s: use native color codes (|cffffd100text|r), not backticks or **" % key)
             break
@@ -628,6 +630,12 @@ def card_move_warnings(plan):
                     out.append((st["id"], l.strip()))
     return out
 
+def cleanup_warnings(plan):
+    """A step cleanup with Markdown: the card shows cleanup since #247, and the game does not render Markdown."""
+    return ["%s: markdown in cleanup: use native color codes (|cffffd100text|r), not backticks or **" % st.get("id")
+            for sec in plan.get("sections", []) for st in sec.get("steps", [])
+            if isinstance(st.get("cleanup"), str) and MARKDOWN.search(st["cleanup"])]
+
 def print_warnings(plan, toc=None):
     w = version_lag_warning(plan, toc)
     if w:
@@ -639,7 +647,7 @@ def print_warnings(plan, toc=None):
     w = version_warning(plan)
     if w:
         print("warning: " + w)
-    for w in size_warnings(plan) + wording_warnings(plan) + reference_warnings(plan):
+    for w in size_warnings(plan) + wording_warnings(plan) + reference_warnings(plan) + cleanup_warnings(plan):
         print("warning: " + w)
 
 def merge_sections(plan):
@@ -783,7 +791,7 @@ ITEM = re.compile(r"^(?:- \[[ xX]\]\s+|\d+\.\s+)(.*)$")
 
 # Display text is shown by the game, which does not render Markdown. Use native color codes instead:
 # **bold** becomes gold, `code` becomes light blue; titles, section names and reviewer text lose the marks.
-DISPLAY_RICH = ("setup", "expect", "intro", "preamble", "handoff", "notes")
+DISPLAY_RICH = ("setup", "cleanup", "expect", "intro", "preamble", "handoff", "notes")
 MARKDOWN = re.compile(r"`|\*\*")
 
 
@@ -824,7 +832,7 @@ def display_fields(plan):
             yield sec, "setup", "rich"
         for st in sec.get("steps", []):
             yield st, "title", "plain"
-            for k in ("setup", "expect", "notes"):
+            for k in ("setup", "cleanup", "expect", "notes"):
                 if k in st:
                     yield st, k, "rich"
             if "reviewer" in st:

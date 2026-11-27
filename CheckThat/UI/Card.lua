@@ -312,6 +312,7 @@ local function build()
     card.addNote:SetScript("OnClick", function() card.noteOpen = true; Card.Refresh(); pcall(function() card.note:SetFocus() end) end)
     card.acts, card.setupOpen = {}, {}
     card.recorded = fs("GameFontHighlight", BODY, INNER)
+    card.cleanup = fs("GameFontHighlight", BODY, INNER) -- the last step's cleanup (#247)
     card.result = fs(titleFont, BODY, INNER) -- the result word while the card holds it
     card.redo = makeButton(card, L["Redo this step"], 120); card.redo:SetHeight(24)
     card.redo:SetPoint("BOTTOMLEFT", 12, 12)
@@ -521,7 +522,7 @@ local WHY = {
 
 local function hideAll()
     for _, e in ipairs(card.copies) do e:Hide() end
-    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "reads", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "result", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit" }) do card[k]:Hide() end
+    for _, k in ipairs({ "pass", "partial", "fail", "skip", "undo", "note", "start", "importAgain", "exportBtn", "noteLabel", "evidence", "hint", "tally", "context", "pickNote", "reads", "chooseBtn", "title", "resume", "blocked", "checksHead", "fold", "addNote", "checks", "recorded", "result", "redo", "prevBtn", "nextBtn", "mainBtn", "headBtn", "titleHit", "cleanup" }) do card[k]:Hide() end
     for _, r in ipairs(card.rows) do r.label:Hide(); r.body:Hide() end
     card.barBack:Hide(); card.barFill:Hide(); card.caption:Hide(); card.catBtn:Hide()
     for _, s in ipairs(card.segs) do s.back:Hide(); for _, t in ipairs(s.parts) do t:Hide() end; s.hit:Hide() end
@@ -919,9 +920,19 @@ function refreshCard()
         place(card.recorded, 12, y)
         setText(card.recorded, who .. ((lastA and lastA.note) and ("  -  " .. lastA.note) or ""), GREY)
         y = y + card.recorded:GetStringHeight() + 12
+        local cleanup = App.Cleanup()
+        if cleanup then
+            place(card.cleanup, 12, y); setText(card.cleanup, L["Then: %s"]:format(cleanup:sub(1, 300)), AMBER)
+            y = y + card.cleanup:GetStringHeight() + 12
+        end
         card:SetHeight(y + 40); return
     end
     local autoLive = step.auto and not (open and open.noauto) -- after an automatic unverified result the retry waits for the player
+    local cleanup, from = App.Cleanup()
+    if cleanup and from.id ~= step.id and not viewing then
+        place(card.cleanup, 12, y); setText(card.cleanup, L["First, after the last step: %s"]:format(cleanup:sub(1, 300)), AMBER)
+        y = y + card.cleanup:GetStringHeight() + 8
+    end
     -- Setup folds to one line. It holds the step's setup, the plan's preamble at the start and the section intro, and
     -- opens by itself the first time the step shows in this run.
     local extra = {}
