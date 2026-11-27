@@ -1751,6 +1751,126 @@
    ],
    "window": "trainer"
   },
+  "gear:C_MerchantFrame.GetItemInfo(1)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    1
+   ],
+   "returns": [
+    {
+     "name": "Shortsword",
+     "texture": 135274,
+     "price": 54,
+     "stackCount": 1,
+     "numAvailable": -1,
+     "isPurchasable": true,
+     "isUsable": true,
+     "hasExtendedCost": false,
+     "isQuestStartItem": false
+    }
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "database",
+    "ref": "wago.tools DB2 build 1.60.1.71139: ItemSparse (Display_lang, BuyPrice, VendorStackCount) and Item (IconFileDataID) for the items of the recorded gear:GetMerchantItemLink rows. The same tables give the measured thread vendor prices (10, 100, 500) and these items' recorded sell prices exactly. isUsable depends on the character; here a mage (one-handed swords only). No reputation discount."
+   }
+  },
+  "gear:C_MerchantFrame.GetItemInfo(2)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    2
+   ],
+   "returns": [
+    {
+     "name": "Bastard Sword",
+     "texture": 135276,
+     "price": 104,
+     "stackCount": 1,
+     "numAvailable": -1,
+     "isPurchasable": true,
+     "isUsable": false,
+     "hasExtendedCost": false,
+     "isQuestStartItem": false
+    }
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "database",
+    "ref": "wago.tools DB2 build 1.60.1.71139: ItemSparse (Display_lang, BuyPrice, VendorStackCount) and Item (IconFileDataID) for the items of the recorded gear:GetMerchantItemLink rows. The same tables give the measured thread vendor prices (10, 100, 500) and these items' recorded sell prices exactly. isUsable depends on the character; here a mage (one-handed swords only). No reputation discount."
+   }
+  },
+  "gear:C_MerchantFrame.GetItemInfo(3)": {
+   "api": "C_MerchantFrame.GetItemInfo",
+   "args": [
+    3
+   ],
+   "returns": [
+    {
+     "name": "Hand Axe",
+     "texture": 132410,
+     "price": 82,
+     "stackCount": 1,
+     "numAvailable": -1,
+     "isPurchasable": true,
+     "isUsable": false,
+     "hasExtendedCost": false,
+     "isQuestStartItem": false
+    }
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "database",
+    "ref": "wago.tools DB2 build 1.60.1.71139: ItemSparse (Display_lang, BuyPrice, VendorStackCount) and Item (IconFileDataID) for the items of the recorded gear:GetMerchantItemLink rows. The same tables give the measured thread vendor prices (10, 100, 500) and these items' recorded sell prices exactly. isUsable depends on the character; here a mage (one-handed swords only). No reputation discount."
+   }
+  },
+  "gear:GetMerchantItemID(1)": {
+   "api": "GetMerchantItemID",
+   "args": [
+    1
+   ],
+   "returns": [
+    2131
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "source",
+    "ref": "the item id in the recorded gear:GetMerchantItemLink(1)"
+   }
+  },
+  "gear:GetMerchantItemID(2)": {
+   "api": "GetMerchantItemID",
+   "args": [
+    2
+   ],
+   "returns": [
+    1194
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "source",
+    "ref": "the item id in the recorded gear:GetMerchantItemLink(2)"
+   }
+  },
+  "gear:GetMerchantItemID(3)": {
+   "api": "GetMerchantItemID",
+   "args": [
+    3
+   ],
+   "returns": [
+    2134
+   ],
+   "n": 1,
+   "window": "merchant",
+   "source": {
+    "kind": "source",
+    "ref": "the item id in the recorded gear:GetMerchantItemLink(3)"
+   }
+  },
   "gear:GetMerchantItemLink(1)": {
    "api": "GetMerchantItemLink",
    "args": [
