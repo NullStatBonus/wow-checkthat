@@ -1,6 +1,6 @@
 # CurseForge and Wago listing
 
-**Summary:** Walk through in-game test plans for KeepThat, DontDoThat and ClosestVendor, tick off each step, and collect evidence for review.
+**Summary:** Walk through an addon's in-game test plan, tick off each step, and collect evidence for review.
 
 ## CheckThat
 
@@ -29,7 +29,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 
 ### Good to know
 
-- Plans are made for KeepThat, DontDoThat and ClosestVendor. Other plans need the plan format in the project repository.
+- A plan is written for the addon it tests, in the plan format in the project repository.
 - Results are saved when the game reloads or logs out.
 - Each run saves the version of the addon you test, so reports can compare runs across addon versions.
 - CheckThat keeps the newest 20 runs by default and deletes the oldest ones first. The run on your card always stays. Change the number in Advanced.
