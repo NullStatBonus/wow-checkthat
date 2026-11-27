@@ -26,6 +26,9 @@ test("smoke: enable, import, run, export and settings through the real addon", f
     T.ok(lines[1]:find("Started"), lines[1])
     T.eq(_G.CheckThat.Report("KeepThat", "smoke", 1), true, "a fact is recorded while the run is open")
     T.eq(addon.db.global.facts[#addon.db.global.facts], "[KeepThat] smoke=1")
+    LibStub("AceEvent-3.0").events:Fire("ADDON_ACTION_BLOCKED", "KeepThat", "CastSpellByName()") -- the game's event reaches CheckThat's listener (#65)
+    T.ok(tostring(addon.db.global.blocked[1]):find("[KeepThat] ADDON_ACTION_BLOCKED CastSpellByName()", 1, true), tostring(addon.db.global.blocked[1]))
+    T.ok(ns.Log.Report():find("Blocked actions: 1 recorded", 1, true), "the report counts it")
     for _ = 1, 3 do ns.Card.Refresh(); ns.App.Verdict("skip") end
     ns.Card.Refresh()
     st.combat = true; ns.Card.Refresh(); ns.Card.ApplyAppearance(); st.combat = false

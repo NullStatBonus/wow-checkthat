@@ -110,6 +110,10 @@ function App.Init(db, env, opts)
     if ns.Errors then
         ns.Errors.Bind(db.errors, function() return now(App) end, runOpen, App.env, db.errorStacks)
     end
+    db.blocked = db.blocked or {}
+    if ns.Blocked then
+        ns.Blocked.Bind(db.blocked, function() return now(App) end, runOpen)
+    end
     if ns.Log then
         ns.Log.Bind(db.log, (opts and opts.debug) or function() return db.log.enabled end, function() return now(App) end)
     end

@@ -96,6 +96,7 @@ function Log.Report()
         end
         if ns.Errors then
             out[#out + 1] = ("Errors: %d recorded, handler: %s"):format(ns.Errors.Count(), ns.Errors.HookState())
+            if ns.Blocked then out[#out + 1] = ("Blocked actions: %d recorded"):format(ns.Blocked.Count()) end
             local stack = ns.Errors.LastStack()
             if stack then out[#out + 1] = "Last error stack: " .. stack end
         end

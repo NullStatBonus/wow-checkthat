@@ -60,6 +60,10 @@ function addon:OnEnable()
     end
     ns.Listen(self, "PLAYER_REGEN_ENABLED", function() ns.Census.Resume(); if ns.Card then ns.Card.Refresh() end end)
     ns.Listen(self, "PLAYER_LOGOUT", function() ns.App.Log("logout"); if ns.Tracker then ns.Tracker.Leaving() end end)
+    -- Blocked and forbidden actions (#65): ns.Listen skips an event this client lacks.
+    for event in pairs(ns.Blocked.EVENTS) do
+        ns.Listen(self, event, function(_, ...) ns.Blocked.Record(event, ...) end)
+    end
 end
 
 -- Feature files call ns.Start(fn) at load; fn(addon) runs once saved settings are ready.

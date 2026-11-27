@@ -168,7 +168,10 @@ function Errors.Sample()
     if not baseline then baseline = now; return 0 end
     local n = 0
     for _, msg in ipairs(order) do -- list order, so the lines come out the same every time
-        for _ = 1, now[msg] - (baseline[msg] or 0) do
+        -- A blocked or forbidden action is not a Lua error. CheckThat records it itself (Model/Blocked.lua), so the error list is the
+        -- same with or without BugGrabber.
+        local event = ns.Blocked and ns.Blocked.IsEventMessage(msg)
+        for _ = 1, event and 0 or (now[msg] - (baseline[msg] or 0)) do
             if not Errors.Record(msg, kept[msg]) then break end -- the rate limit applies to the actual rises
             n = n + 1
         end
