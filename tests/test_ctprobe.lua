@@ -597,4 +597,15 @@ test("the focused in-game run: Forever vendor, class trainer and auction searche
     T.ok(has("recorded class; still waiting for nothing"), tostring(has("record status")))
 end)
 
+test("the gear scene records the same row calls as the plain vendor scene, C_MerchantFrame.GetItemInfo and GetMerchantItemID included (#242)", function()
+    local _, fire = probe({})
+    vendorFakes(2)
+    _G.GetMerchantItemID = function(i) return 700 + i end
+    _G.C_Item = _G.C_Item or {}; _G.C_Item.GetItemInfoInstant = function(id) return id, "Weapon", "Swords", "INVTYPE_WEAPON", 1, 2, 7 end
+    _G.C_MerchantFrame = { GetItemInfo = function(i) return { name = "Sword" .. i, price = 100 * i, stackCount = 1 } end }
+    SlashCmdList.CTPROBE("record arm gear"); fire("MERCHANT_SHOW")
+    T.eq(CTProbeDB.fixtures["gear:C_MerchantFrame.GetItemInfo(2)"].values[1].value.price.value, 200)
+    T.eq(CTProbeDB.fixtures["gear:GetMerchantItemID(1)"].values[1].value, 701)
+end)
+
 finish()

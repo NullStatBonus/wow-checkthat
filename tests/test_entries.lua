@@ -482,6 +482,12 @@ test("the committed Forever vendor and auction entries (measured 2026-11-27) rep
     for i, s in ipairs(r.steps) do T.ok(s.ok, "step " .. i .. ": " .. tostring(s.detail)) end
 end)
 
+test("a Forever gear-vendor row with a price replays from the recording (#242)", function()
+    local r = run({ toc = REC_FOREVER, level = 5, mocks = { ["C_MerchantFrame.GetItemInfo"] = { recording = "gear:C_MerchantFrame.GetItemInfo(2)" } },
+        steps = { { call = { addon = "MockAddon", entry = "vendor_info", args = { 2 } }, returns = { "Bastard Sword", 104, 1 } } } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+end)
+
 test("every read-only window call can be mocked, and no call that buys, learns or bids can", function()
     local R = dofile("tools/entry_runner.lua")
     for _, n in ipairs({ "GetMerchantNumItems", "GetMerchantItemInfo", "GetMerchantItemLink", "GetMerchantItemID", "GetNumTrainerServices", "GetTrainerServiceInfo",
