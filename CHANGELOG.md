@@ -1,7 +1,13 @@
 # Changelog
 
-## 0.21.0
+## 1.0.0
 
+New: **Result sounds.** Each result plays a short sound. A pass that CheckThat records plays two rising notes. A fail that CheckThat records plays two falling notes. An unverified step plays an alert. The last result of a run plays a finish sound. Turn the sounds off in Appearance.
+New: **Built-in self-test.** The import window lists "CheckThat self-test (built-in)". Select it to try CheckThat without other tools.
+New: **Plans for any addon.** A plan can test any addon and list its commands. The card offers a command only when that addon registered it.
+New: **Blocked actions.** CheckThat records the actions that the game blocked during a run. A plan can check that the game blocked nothing. The result is the same with or without BugGrabber.
+New: **Cleanup after a step.** After a result, the card shows what to undo before the next step.
+New: **Plans name the CheckThat they need.** A later CheckThat can make plans that this version cannot read. This version then says that the plan needs a newer CheckThat.
 New: **Client census.** Type `/ct census` to record the names this game client gives addons. Wait for the completion message, then type /reload to save it. The census changes no setting and does no game action.
 New: **Offline checks match the game client.** A plan can ask for the client version from the addon's TOC file. Older plans keep their results. An offline run reports each name the addon read that the test client did not have.
 New: **Lua 5.1 check.** Offline runs and the package check now find code that the game's Lua cannot load or reads differently.
@@ -10,9 +16,12 @@ New: **Checklist of actions.** A step can list its actions. Tick each action on 
 New: **Checks when a run starts.** A step can pass when the run starts. The card then goes past it.
 New: **Steps for one class or profession.** Such a step does not apply on another character. It does not fail at its time limit.
 New: **Checks for the whole run.** A plan check can read every line since the run started, also after a reload. A last "no Lua error" step then sees the errors of this run only.
+Changed: **Export names your character.** The results window says that the results include your character and realm name.
+Changed: **Deleted runs.** When a new run deletes old runs, chat names each deleted run.
 Changed: **A calmer card.** Setup folds to one line. The note opens from "Add note". A small heading names the checks that CheckThat makes. The step title is larger.
 Changed: **Pause after each result.** The card shows the result in one large word for 3 seconds. Then it fades to the next step.
 Changed: **The start screen lists what a plan reads.** A plan can read the variables of any addon. Your results string can include them. The start screen now names them before you start.
+Fixed: **A full addon log with repeated lines.** A check that a line must not appear stayed unverified. It now passes when the line did not appear.
 Fixed: **A plan for the other game client.** The start screen asked you to select a category. It now says that the plan is not for this game client.
 Fixed: **A plan pattern could freeze the game.** A pattern with stacked wildcards took seconds to check on a line, and the freeze came back after each reload. CheckThat now stops a match that takes too long. The step stays unverified and says why.
 Fixed: **A plan with a text pattern that Lua cannot read.** The plan imported, then its check raised an error. Import now refuses it.

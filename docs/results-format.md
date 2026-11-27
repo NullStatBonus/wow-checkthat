@@ -47,9 +47,9 @@ A run saved before 0.15.0 has no stamp. The first column says what a reader can 
 
 | formatRev | Since | Adds |
 | --- | --- | --- |
-| 7 | 0.21.0 | `times` in a saved log position (an attempt's or the run's `snapshots`): the times of the tail lines of a log of `{ t, msg }` entries. Saved variables only, like `snapshots`. |
-| 6 | 0.21.0 | `ticks` on an attempt: one entry for each listed action, the time the player ticked it or false. `at: "start"` on an attempt CheckThat judged when the run started (an async step). `unmet` on an inapplicable step record: the text of the requirement the character does not meet. `unchecked` on a check that did not pass: how many lines or facts a pattern could not be run on because they took too long (neither matches nor misses). |
-| 5 | 0.21.0 | `since` on a check that did not pass: `run` when it read the lines after the run started (a plan's `scope: run`); `scope` is then absent. A run also saves `snapshots`, the log positions at its start, in the saved variables only: the results string and a finished run leave them out. |
+| 7 | 1.0.0 | `times` in a saved log position (an attempt's or the run's `snapshots`): the times of the tail lines of a log of `{ t, msg }` entries. Saved variables only, like `snapshots`. |
+| 6 | 1.0.0 | `ticks` on an attempt: one entry for each listed action, the time the player ticked it or false. `at: "start"` on an attempt CheckThat judged when the run started (an async step). `unmet` on an inapplicable step record: the text of the requirement the character does not meet. `unchecked` on a check that did not pass: how many lines or facts a pattern could not be run on because they took too long (neither matches nor misses). |
+| 5 | 1.0.0 | `since` on a check that did not pass: `run` when it read the lines after the run started (a plan's `scope: run`); `scope` is then absent. A run also saves `snapshots`, the log positions at its start, in the saved variables only: the results string and a finished run leave them out. |
 | 4 | 0.20.1 | `macroStale` on a step record: how many times the CT macro ran while the card showed another step. Absent means none. |
 | 3 | 0.19.0 | `targetVersion` on a run: the TOC version of the addon under test (the plan's addon) when the run started. Absent when the client could not say. |
 | 2 | 0.17.0 | `reopened` on a step record: true after Undo or a rerun reopened a step that had a result. |
