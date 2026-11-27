@@ -17,13 +17,14 @@ Settings.keys = {
     ["card.background-opacity"] = { field = "backgroundOpacity", kind = "int", min = 0, max = 100 },
     ["card.text-opacity"] = { field = "textOpacity", kind = "int", min = 0, max = 100 },
     ["card.locked"] = { field = "locked", kind = "bool" },
+    ["card.sound"] = { field = "sound", kind = "bool" },
 }
-Settings.order = { "card.scale", "card.background-opacity", "card.text-opacity", "card.locked" }
+Settings.order = { "card.scale", "card.background-opacity", "card.text-opacity", "card.locked", "card.sound" }
 
 function Settings.Syntax(key)
     local k = Settings.keys[key]
     if not k then
-        return L["Unknown key. Keys: card.scale (50-200), card.background-opacity (0-100), card.text-opacity (0-100), card.locked (on or off)."]
+        return L["Unknown key. Keys: card.scale (50-200), card.background-opacity (0-100), card.text-opacity (0-100), card.locked (on or off), card.sound (on or off)."]
     end
     if k.kind == "bool" then return L["%s accepts on or off."]:format(key) end
     return L["%s accepts a whole number from %d to %d."]:format(key, k.min, k.max)
@@ -60,6 +61,7 @@ function Settings.Set(key, value)
     end
     profile().card[k.field] = v
     Settings.onChange()
+    if ns.App and ns.App.Log then ns.App.Log(("setting %s = %s"):format(key, tostring(v))) end -- a plan can check a change from chat
     return true, L["%s = %s"]:format(key, Settings.Value(key))
 end
 

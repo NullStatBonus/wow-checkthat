@@ -31,6 +31,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Categories.** A plan groups its steps into categories. Pick them when you start a run, add one later, jump to one, or run one again. [Details](docs/features.md#categories-and-the-tracker)
 - **Progress tracker.** One bar segment for each category in blue, yellow, red or green (grey when skipped), and a caption that says the result in words. The Categories window (`/ct tracker`) lists every category, also with a dozen or more. A row can also take a category out of the run while it has no result. The plus button on a row lists its steps with their results. A click on a step shows it on the card. [Details](docs/features.md#categories-and-the-tracker)
 - **Unit-test checks.** A step can check a fact's value (range, tolerance, type, list, pattern), count how many times something happened, and check that no Lua error appeared. [Details](docs/features.md#unit-test-checks)
+- **Result sounds.** A short sound of CheckThat's own for each result, also while the card is hidden: a tick for your own result, a rising chime when CheckThat passes a step, a falling one when it fails one, two blips when a step needs you, and a closing chord at the end. **Play result sounds** in Appearance turns them off. [Details](docs/features.md#result-sounds)
 - **Reload safe.** The run and its place survive `/reload`.
 - **Screenshots.** A step can ask for Print Screen. CheckThat never captures. `ct.py collect` counts screenshots that fit no step. [Details](docs/harvesting.md#screenshots)
 
@@ -44,7 +45,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 | `/ct settings [page]` | Open settings: home, plans, appearance, advanced, about. |
 | `/ct help [topic]` | Help for appearance, diagnostics and runs. |
 | `/ct status [topic]` | Show the run status, the settings, or both. Topics: `run`, `settings`. |
-| `/ct get <key>`, `/ct set <key> <value>` | Read or change a card setting (`card.scale`, `card.background-opacity`, `card.text-opacity`, `card.locked`). |
+| `/ct get <key>`, `/ct set <key> <value>` | Read or change a card setting (`card.scale`, `card.background-opacity`, `card.text-opacity`, `card.locked`, `card.sound`). |
 | `/ct debug on`, `/ct debug off` | Record or stop the debug log. |
 | `/ct log`, `/ct log clear` | Copy the debug report in a window like the one KeepThat, DontDoThat and ClosestVendor use. Clear it after confirmation. |
 | `/ct import` | Paste a plan string, or choose the built-in self-test or a recent plan, in the same window style as the debug report. |
@@ -69,6 +70,7 @@ Developer commands. The self-test and the tools use them. They work, but they ar
 | `/ct macrorun <step id>` | The first line of the CT macro (see `/ct macro`). It compares the id with the step on the card and logs `macro run` or `macro stale`. It records no result. |
 | `/ct selftest facts`, `/ct selftest error` | Report typed test facts, or raise a test error, so the self-test can check them. |
 | `/ct fact` | Report a test fact during a run. The self-test uses it. |
+| `/ct sound <name>` | Play one result sound: `tick`, `chime-up`, `chime-down`, `attention` or `finish`. It plays even with Play result sounds off. |
 | `/ct census` | Record the names this game client provides (globals, API tables, widget methods) in the saved variables, for `ct.py census`. It refuses in combat and waits while you fight. |
 
 ## Settings
@@ -79,7 +81,7 @@ Open them with `/ct settings`, or Esc, Options, AddOns, CheckThat.
 | --- | --- |
 | Home | Current run (the categories with their state, open the checklist, export results), Start a run (import a plan, pick a plan, pick the categories, Start run) and Past runs. |
 | Plans | Remove a plan. |
-| Appearance | Size and opacity, position, Lock position and Reset position. |
+| Appearance | Size and opacity, position, Lock position and Reset position, and **Play result sounds** (on by default). |
 | Advanced | Profile (separate settings for this character), **Runs to keep**, **Keep the CT macro on the current step** (off by default; see [Macro that follows the step](docs/features.md#macro-that-follows-the-step)), **Check entry points after login** (off by default; see [Entry points](docs/features.md#entry-points)) and Debug (record debug information, show the debug report). |
 | About | The command list and help. |
 

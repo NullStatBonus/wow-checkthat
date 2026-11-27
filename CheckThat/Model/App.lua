@@ -738,13 +738,19 @@ function App.JudgeAtStart(run, ctx, ids)
     local before = {}
     for _, id in ipairs(run.order) do before[id] = run.steps[id].verdict end
     local n = ns.Run.JudgeAtStart(run, ctx, ids)
+    local first
     if n > 0 then
         for _, id in ipairs(run.order) do
             local rec = run.steps[id]
             local a = rec.attempts[#rec.attempts]
-            if before[id] == "pending" and rec.verdict == "pass" and a and a.at == "start" then logResult(ns.Run.stepOf(ctx, id), a) end
+            if before[id] == "pending" and rec.verdict == "pass" and a and a.at == "start" then
+                logResult(ns.Run.stepOf(ctx, id), a)
+                first = first or id
+            end
         end
     end
+    -- One sound for the batch (#229); UI/Sound.lua sets the hook.
+    if first and App.OnStartPasses then pcall(App.OnStartPasses, n, first) end
     return n
 end
 

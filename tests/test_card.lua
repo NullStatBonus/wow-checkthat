@@ -864,7 +864,7 @@ end)
 test("a result the player records pauses the card too: one result word, who recorded it, the note, and nothing else", function()
     pausing()
     local cues = {}
-    H.stub(ns.Card, "ResultCue", function(v, by) cues[#cues + 1] = v .. "/" .. by end)
+    H.stub(ns.Sound, "Cue", function(name) cues[#cues + 1] = name end)
     H.stub(ns.addon.db.profile, "debug", true)
     local run, card = runPlan({ manual("a", { action = { kind = "manual", text = { "Walk in.", "Walk out." } } }), manual("b") })
     card.addNote.scripts.OnClick(card.addNote); card.note:SetText("slow door")
@@ -876,7 +876,7 @@ test("a result the player records pauses the card too: one result word, who reco
     T.ok(not card.rows[2].label.shown and not card.rows[3].label.shown, "no Do and no Expect while it holds")
     T.ok(not card.acts[1].box.shown, "no checkboxes while it holds")
     T.ok(not card.pass.shown and not card.redo.shown and not card.addNote.shown)
-    T.same(cues, { "fail/player" }, "the result cue runs once, for the sound to come")
+    T.same(cues, { "tick" }, "one sound for the result")
     local lines = {}
     for _, e in ipairs(ns.Log.Entries()) do lines[#lines + 1] = e.msg end
     T.ok(table.concat(lines, "\n"):find("card holds a for 3 s", 1, true))
@@ -886,10 +886,10 @@ test("a result the player records pauses the card too: one result word, who reco
     T.ok(not card.result.shown, "the result word goes with the pause")
 end)
 
-test("each result word has its own color, and an automatic result names CheckThat to the cue", function()
+test("each result word has its own color, and an automatic result plays its own sound", function()
     pausing()
     local cues = {}
-    H.stub(ns.Card, "ResultCue", function(v, by) cues[#cues + 1] = v .. "/" .. by end)
+    H.stub(ns.Sound, "Cue", function(name) cues[#cues + 1] = name end)
     local _, card = runPlan({ manual("a"), manual("b"), manual("c"), manual("d"), manual("e") })
     local seen = {}
     for _, v in ipairs({ "pass", "partial", "fail", "skip" }) do
@@ -905,7 +905,7 @@ test("each result word has its own color, and an automatic result names CheckTha
     runPlan({ auto, manual("y") })
     cues = {}
     kt("went"); T.ok(ns.Card.AutoSettle())
-    T.same(cues, { "pass/auto" })
+    T.same(cues, { "chime-up" })
 end)
 
 test("the last step pauses on its result, then shows Run complete; an unverified press does not pause", function()

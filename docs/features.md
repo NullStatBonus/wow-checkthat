@@ -78,6 +78,23 @@ Pick a run, then choose:
 
 Debug log: `run open asked <id>`, `run opened <id>`, `run delete asked <id>`, `run deleted <id>`, `run pruned <id>` and `run exported <id>`. A cancelled question leaves no `run opened` line.
 
+## Result sounds
+
+When a step gets its result, CheckThat plays one short sound of its own (`CheckThat/Media/Sounds`), so a tester who watches the game hears what happened. The sounds play on the game's sound effects channel, so its volume and mute apply, and they play while the card is hidden or collapsed too.
+
+| Sound | When |
+| --- | --- |
+| `tick`, a soft blip | You record Pass, Partial, Fail or Skip (a button, a key or `/ct pass`). |
+| `chime-up`, two rising notes | CheckThat records a pass by itself. Steps that pass when the run starts play it once together. |
+| `chime-down`, two falling notes | CheckThat records a fail by itself, such as a count that went over. |
+| `attention`, two blips | A result is unverified: an automatic step reached its time limit, or you pressed Pass and the evidence is missing. |
+| `finish`, three rising notes | The run's last open step gets its result. It plays in place of that result's sound. |
+
+- **Play result sounds** in Appearance (`/ct set card.sound off`) turns them off. The debug report shows `card.sound`. A change of any card setting logs `setting <key> = <value>`, such as `setting card.sound = false`.
+- Each sound played logs `sound <name> for <step id>`. With the setting off nothing plays and nothing is logged.
+- `/ct sound <name>` plays one sound, also with the setting off, and logs `sound <name> for preview`.
+- `tools/make_sounds.py` makes the sounds from a few notes each. They last 0.09 to 0.44 seconds.
+
 ## Runs to keep
 
 Advanced sets how many runs CheckThat keeps (5 to 100, default 20), for all profiles.

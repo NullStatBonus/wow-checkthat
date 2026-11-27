@@ -41,6 +41,13 @@ test("the 0.20.1 plan replays with no problem", function()
     T.eq(#out.trace, 9)
 end)
 
+test("the sounds plan replays with no problem (#229)", function()
+    local f = io.open("build/sounds.ct", "rb"); local s = f:read("*a"); f:close()
+    local out = Replay.run(ns, s, { hooks = dofile("tests/replay/sounds.lua") })
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+    T.eq(#out.trace, 20)
+end)
+
 test("a step that asserts its own result line is a problem", function()
     local out = Replay.run(ns, plan({ step("a", { verify = { "assertions" }, assertions = { log("[ct] step a pass") } }) }))
     T.ok(has(out.problems, "asserts the line its own result writes"), "named")

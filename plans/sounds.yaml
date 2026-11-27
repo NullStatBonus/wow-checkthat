@@ -1,0 +1,457 @@
+ct: 1
+kind: plan
+addon: CheckThat
+title: CheckThat result sounds
+purpose: feature
+preamble: |-
+  Turn the game's sound effects on and up a little. Type |cff99ccff/ct debug on|r before you select Start run, so the sound at run start is logged. Play out of combat. The first step checks the version: stop there if it fails. Each result plays one short sound, and a later step asks whether you heard it. To hear a sound before the run, type |cff99ccff/ct sound <name>|r with tick, chime-up, chime-down, attention or finish.
+handoff: "Type |cff99ccff/reload|r so the game saves the run, then run the collect tool. The last step plays three rising notes: the log must show |cff99ccffsound finish for snd.last|r."
+categories:
+- id: setup
+  title: Set up
+- id: results
+  title: Results that play a sound
+- id: heard
+  title: What you heard
+logs:
+  facts:
+    global: CheckThatDB
+    path: global.facts
+    format: strings
+    cap: 300
+  debug:
+    global: CheckThatDB
+    path: global.log.entries
+    format: entries
+    cap: 300
+requirements:
+  loaded:
+    text: CheckThat is loaded
+    probe: addon-loaded
+    name: CheckThat
+macros:
+- id: typed
+  text: /ct selftest facts
+sections:
+- id: s1
+  title: Set up
+  requires:
+  - loaded
+  steps:
+  - id: snd.version
+    category: setup
+    title: Check the CheckThat version
+    action:
+      kind: copy-slash
+      text: /ct version
+    expect: Chat shows the CheckThat version, 0.21.0 or newer. The card records the result by itself and plays two rising notes. If the step fails, stop and copy CheckThat into the game again.
+    verify:
+    - assertions
+    auto: true
+    timeout: 180
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: version
+      op: ge
+      value: 2100
+      label: CheckThat is 0.21.0 or newer
+    notes: The fact is major*10000 + minor*100 + patch, so 0.21.0 is 2100.
+- id: s2
+  title: Passes CheckThat records
+  requires:
+  - loaded
+  steps:
+  - id: snd.start
+    category: results
+    title: Checked when the run starts
+    action:
+      kind: manual
+      text: Nothing to do. CheckThat checked this step when the run started.
+    expect: The card never stops here.
+    verify:
+    - assertions
+    auto: true
+    async: true
+    assertions:
+    - kind: state
+      probe: addon-loaded
+      name: CheckThat
+      op: eq
+      value: true
+      label: CheckThat is loaded
+  - id: snd.start2
+    category: results
+    title: Also checked when the run starts
+    action:
+      kind: manual
+      text: Nothing to do. CheckThat checked this step when the run started.
+    expect: The card never stops here.
+    verify:
+    - assertions
+    auto: true
+    async: true
+    assertions:
+    - kind: state
+      probe: addon-loaded
+      name: CheckThat
+      op: eq
+      value: true
+      label: CheckThat is loaded
+  - id: snd.heard-start
+    category: heard
+    title: You heard the run start
+    action:
+      kind: manual
+      text: Think back to when you selected Start run.
+    expect: You heard two rising notes once when the run started, although two steps passed then. Press Pass if you did, Fail if not.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound chime-up for snd.start'
+      scope: run
+      label: The rising chime played at run start
+    - kind: log
+      source: debug
+      equals: '[ct] sound chime-up for snd.start2'
+      absent: true
+      scope: run
+      label: One chime for both steps
+  - id: snd.auto
+    category: results
+    title: CheckThat passes a step
+    action:
+      kind: copy-slash
+      text: /ct fact
+    expect: Chat says the test fact was reported. The card records Passed by itself and plays two rising notes.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: selftest
+      op: eq
+      value: 1
+      label: The test fact was reported
+  - id: snd.heard-auto
+    category: heard
+    title: You heard the automatic pass
+    action:
+      kind: manual
+      text: Think back to the last step.
+    expect: You heard two rising notes when the last step passed. Press Pass if you did, Fail if not.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound chime-up for snd.auto'
+      scope: run
+      label: The rising chime played for the automatic pass
+  - id: snd.hidden
+    category: results
+    title: A pass while the card is hidden
+    action:
+      kind: manual
+      text:
+      - Copy the command in the box. Do not click Run.
+      - Close the card with the X at its top right.
+      - Paste the command into chat, press Enter and listen.
+      - Type |cff99ccff/ct|r to open the card again.
+      commands:
+      - /ct fact
+    expect: While the card is closed you hear two rising notes. When you open the card, it shows the next step.
+    verify:
+    - assertions
+    auto: true
+    timeout: 180
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: selftest
+      op: eq
+      value: 1
+      label: The test fact was reported
+    notes: The command /ct is in the text on purpose. It opens the card, and the Run button is gone while the card is closed.
+  - id: snd.heard-hidden
+    category: heard
+    title: You heard it with the card closed
+    action:
+      kind: manual
+      text: Think back to the last step.
+    expect: You heard two rising notes while the card was closed. Press Pass if you did, Fail if not.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound chime-up for snd.hidden'
+      scope: run
+      label: The rising chime played
+    - kind: log
+      source: debug
+      contains: '[ct] card holds snd.hidden'
+      absent: true
+      scope: run
+      label: The card was closed when the step passed
+- id: s3
+  title: Results you record
+  requires:
+  - loaded
+  steps:
+  - id: snd.partial
+    category: results
+    title: You record Partial
+    action:
+      kind: manual
+      text: Press Partial.
+    expect: The card records Partial and plays one soft blip.
+    verify:
+    - player
+  - id: snd.failpress
+    category: results
+    title: You record Fail
+    action:
+      kind: manual
+      text: Press Fail.
+    expect: The card records Failed and plays one soft blip.
+    verify:
+    - player
+    notes: The fail is on purpose. Your own result plays the soft blip, whatever it is.
+  - id: snd.slashpass
+    category: results
+    title: You record Pass from chat
+    action:
+      kind: copy-slash
+      text: /ct pass
+    expect: The card records Passed and plays one soft blip.
+    verify:
+    - player
+    notes: The command /ct pass records the result on purpose, so Run and the copy box both work here.
+  - id: snd.heard-ticks
+    category: heard
+    title: You heard your own results
+    action:
+      kind: manual
+      text: Think back to the last three steps.
+    expect: Each of the three results played one soft blip. Press Pass if they did, Fail if not.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound tick for snd.partial'
+      scope: run
+      label: Partial played the tick
+    - kind: log
+      source: debug
+      equals: '[ct] sound tick for snd.failpress'
+      scope: run
+      label: Fail played the tick
+    - kind: log
+      source: debug
+      equals: '[ct] sound tick for snd.slashpass'
+      scope: run
+      label: Pass from chat played the tick
+- id: s4
+  title: Results that need you
+  requires:
+  - loaded
+  steps:
+  - id: snd.fail
+    category: results
+    title: CheckThat fails a step
+    action:
+      kind: secure-macro
+      macro: typed
+      text: Click Run once.
+    expect: Chat says the test facts were reported. The step reports its value twice, so the card records Failed at once and plays two falling notes.
+    verify:
+    - assertions
+    auto: true
+    timeout: 120
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: hit
+      op: exists
+      count:
+        max: 1
+      label: Hit was reported at most once
+    notes: The fail is on purpose. /ct selftest facts reports hit twice in one call, so the count goes over at once.
+  - id: snd.heard-fail
+    category: heard
+    title: You heard the automatic fail
+    action:
+      kind: manual
+      text: Think back to the last step.
+    expect: You heard two falling notes when the last step failed. Press Pass if you did, Fail if not.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound chime-down for snd.fail'
+      scope: run
+      label: The falling chime played for the automatic fail
+  - id: snd.timeout
+    category: results
+    title: A step that runs out of time
+    action:
+      kind: manual
+      text:
+      - Do nothing for 20 seconds.
+      - Press Skip.
+    expect: When the time is up the card says the step is unverified and plays two short blips at one pitch. Skip plays one soft blip.
+    verify:
+    - assertions
+    auto: true
+    timeout: 15
+    assertions:
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: never
+      op: exists
+      label: A fact that never comes
+    notes: Unverified on purpose. Skip moves on.
+  - id: snd.nopass
+    category: results
+    title: Pass without the evidence
+    action:
+      kind: manual
+      text:
+      - Press Pass without doing anything else.
+      - Press Skip.
+    expect: After Pass the card says the step is unverified and plays two short blips at one pitch. Skip plays one soft blip.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] a line that is never logged'
+      label: A line that never comes
+    notes: Unverified on purpose. Skip moves on.
+  - id: snd.heard-attention
+    category: heard
+    title: You heard the steps that need you
+    action:
+      kind: manual
+      text: Think back to the last two steps.
+    expect: Both times the card said unverified, you heard two short blips at one pitch, and each Skip played one soft blip. Press Pass if you did, Fail if not.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound attention for snd.timeout'
+      scope: run
+      label: The attention blips played at the time limit
+    - kind: log
+      source: debug
+      equals: '[ct] sound attention for snd.nopass'
+      scope: run
+      label: The attention blips played for Pass without the evidence
+    - kind: log
+      source: debug
+      equals: '[ct] sound tick for snd.timeout'
+      scope: run
+      label: Skip played the tick after the time limit
+    - kind: log
+      source: debug
+      equals: '[ct] sound tick for snd.nopass'
+      scope: run
+      label: Skip played the tick after Pass without the evidence
+- id: s5
+  title: Sounds off
+  requires:
+  - loaded
+  steps:
+  - id: snd.off
+    category: results
+    title: Sounds turned off
+    action:
+      kind: manual
+      text: Click Run and listen. It turns result sounds off, then reports the test fact.
+      commands:
+      - /ct set card.sound off
+      - /ct fact
+    expect: The card records Passed by itself and plays nothing.
+    verify:
+    - assertions
+    auto: true
+    timeout: 180
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] setting card.sound = false'
+      label: Result sounds turned off
+    - kind: fact
+      source: facts
+      addon: CheckThat
+      key: selftest
+      op: eq
+      value: 1
+      label: The test fact was reported
+  - id: snd.silent
+    category: heard
+    title: You heard nothing, then sounds are back
+    action:
+      kind: manual
+      text:
+      - Think back to the last step.
+      - Click Run to turn result sounds on again.
+      commands:
+      - /ct set card.sound on
+    expect: The last step passed without a sound. Press Pass if it did, Fail if you heard something. Pass plays one soft blip, because sounds are on again.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] setting card.sound = true'
+      label: Result sounds turned on again
+    - kind: log
+      source: debug
+      pattern: '^%[ct%] sound [%w-]+ for snd%.off$'
+      absent: true
+      scope: run
+      label: No sound played with sounds off
+- id: s6
+  title: The end
+  requires:
+  - loaded
+  steps:
+  - id: snd.last
+    category: results
+    title: The last result
+    action:
+      kind: manual
+      text: Press Pass.
+    expect: The card says Run complete and plays three rising notes instead of the soft blip.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      equals: '[ct] sound tick for snd.silent'
+      scope: run
+      label: Sounds were on again before the last step
+    notes: Its own sound comes after its result, so the log line sound finish for snd.last is read after the run.

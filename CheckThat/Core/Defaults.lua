@@ -13,6 +13,7 @@ ns.defaults = {
             backgroundOpacity = 90, -- percent, 0-100; the fill is pure black
             textOpacity = 100,      -- percent, 0-100
             locked = false,         -- the card cannot be dragged
+            sound = true,           -- play a short sound for each result (UI/Sound.lua)
             collapsed = false,
             pos = nil,              -- { point, relativePoint, x, y }, set when the player moves the card
         },

@@ -41,6 +41,7 @@ Debug\Export.lua
 Core\Addon.lua
 Core\Slash.lua
 
+UI\Sound.lua
 UI\Card.lua
 UI\Tracker.lua
 UI\Picker.lua

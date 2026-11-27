@@ -106,6 +106,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: under the result the card says "Then: Close the game's error window if it opened." The next step starts with "First, after the last step: Close the game's error window if it opened." in amber, and the line is gone after that step has a result.
    Log: `[ct] cleanup of self.error shown next`.
 
+26. **Result sounds.** Turn the game's sound effects on. Type `/ct debug on`, import `build/sounds.ct` with `/ct import` and select Start run. Play every step as the card says.
+   Check: you hear two rising notes when the run starts and after each automatic pass, also while the card is closed; two falling notes when CheckThat fails a step; two short blips at one pitch when a step is unverified; one soft blip for each Pass or Skip you press; nothing while result sounds are off; and three rising notes on the last step. Each "You heard" step passes.
+   Log: `[ct] sound <name> for <step id>` for each sound, for example `[ct] sound chime-down for snd.fail`, no sound line for `snd.off`, and `[ct] sound finish for snd.last` at the end.
+
 ## 4. Evidence
 
 1. **Auto-check ticks.** On a step with the green "CheckThat checks" heading, do the action.

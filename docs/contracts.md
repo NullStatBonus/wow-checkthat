@@ -149,6 +149,8 @@ Added for CTProbe v5 to v7 (source-reviewed 2026-11-27, #240):
 
 ## Pending in-game
 
+- **Result sounds play from .ogg files (#229).** `PlaySoundFile("Interface\\AddOns\\CheckThat\\Media\\Sounds\\<name>.ogg", "SFX")` is expected to play on Era and Forever. Not yet heard in game: `plans/sounds.yaml` (check 3.26) records it on each client.
+
 - **Slash command ownership on Forever (#244).** In the first 3.24 run (Forever 1.60.1.71139, 2026-11-27) `/ctp` was not offered: the log said `plan commands offered: none; not offered: /ctp /help`. The reason is not recorded; the start now logs one `plan command <cmd>: ...` line each. Era not yet run.
 
 
