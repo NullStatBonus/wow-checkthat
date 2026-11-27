@@ -2,7 +2,7 @@
 -- The game runs this file first and loads the saved variables afterwards, then fires ADDON_LOADED. A CTProbeDB made here
 -- would be replaced by the table from disk, and every line written to the old one would be lost. So the saved table is
 -- only touched in ADDON_LOADED (see the event handler below).
-local VERSION = 5 -- v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
+local VERSION = 6 -- v6: one window opening fills one scene; a nil IsTradeskillTrainer is a class trainer. v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
 local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
 local realGetTime = GetTime -- say() reads the clock through this, so a hook on GetTime from /ctp taint hookerror cannot reach the log
@@ -71,6 +71,7 @@ local function probe()
     say("probe end")
 end
 
+local opened = {} -- window kind -> true once this opening has filled a scene; its _SHOW event clears it, so one window fills one scene
 local WINDOW_EVENT, ITEM_FIXTURES, capture, store -- set further down, where the calls they use are defined
 local ev = CreateFrame("Frame")
 local watched = {}
@@ -103,7 +104,8 @@ ev:SetScript("OnEvent", function(_, e, ...)
         C_Timer.After(2, function() say("2 s after combat; button shown=" .. tostring(b and b:IsShown())) end)
     elseif WINDOW_EVENT[e] then
         local win = WINDOW_EVENT[e]
-        if CTProbeDB and CTProbeDB.armed and CTProbeDB.armed[win] then capture(win) end
+        if e == "MERCHANT_SHOW" or e == "TRAINER_SHOW" then opened[win] = nil end
+        if CTProbeDB and CTProbeDB.armed then capture(win) end -- capture checks the window's scenes: a filled plain scene leaves the other armed
     elseif e == "GET_ITEM_INFO_RECEIVED" then
         local id = ...
         if CTProbeDB and CTProbeDB.fixtures and ITEM_FIXTURES[id] then
@@ -376,7 +378,7 @@ local function sceneFor(win, n)
         return armed.merchant and "merchant" or nil, ids
     elseif win == "trainer" then
         local ok, tradeskill = pcall(IsTradeskillTrainer)
-        if armed.class and ok and tradeskill == false then return "class" end
+        if armed.class and ok and not tradeskill then return "class" end -- Era answers 1 or nil, so nil is a class trainer
         return armed.trainer and "trainer" or nil
     end
     return armed.auction and "auction" or nil
@@ -385,7 +387,7 @@ capture = function(win)
     local w = WINDOWS[win]
     local free = false
     for _, s in ipairs(w.scenes) do if CTProbeDB.armed[s] then free = true end end
-    if not free then return end
+    if not free or opened[win] then return end -- an update of a window that has filled a scene is the same vendor or trainer
     local countLabel = w.count .. "(" .. (w.arg or "") .. ")"
     local ok, n = pcall(call, w.count, w.arg) -- read first: the scene decides the label it is stored under
     if not ok then
@@ -412,12 +414,14 @@ capture = function(win)
     if w.money then recordCall(win, scene .. ":", "GetMoney") end
     for _, id in ipairs(ids or {}) do recordItem(id) end
     CTProbeDB.armed[scene] = nil
+    if win ~= "auction" then opened[win] = true end
     say(("window %s: recorded the count and %d rows as %s"):format(win, n, scene))
 end
 local function arm()
     if not CTProbeDB then say("record arm: saved variables are not loaded yet") return end
     CTProbeDB.fixtures = CTProbeDB.fixtures or {}
     CTProbeDB.armed = { merchant = true, gear = true, trainer = true, class = true, auction = true }
+    for k in pairs(opened) do opened[k] = nil end -- a window left open from before arming counts as a new opening
     say("armed: open a vendor and an armor or weapon vendor, a profession trainer and a class trainer, and search the auction house, then /reload. Run /ctp record first; arm keeps what it recorded")
 end
 

@@ -152,6 +152,7 @@ end)
 
 test("armed: trainer and auction windows record their own calls, and a missing function is an error entry", function()
     local _, fire = probe({})
+    _G.IsTradeskillTrainer = function() return 1 end -- a profession trainer (Era answers 1 or nil)
     _G.GetNumTrainerServices = function() return 4 end
     _G.GetTrainerServiceInfo = function(i) return "Spell" .. i, "Rank 1", "available", true end
     _G.GetTrainerServiceCost = function(i) return 100 * i, false end
@@ -305,6 +306,49 @@ test("armed: a class trainer fills the class scene with more rows and the level 
     fire("TRAINER_SHOW")
     T.eq(fx["GetTrainerServiceInfo(3)"].values[1].value, "Spell3"); T.eq(fx["GetTrainerServiceInfo(4)"], nil, "a profession trainer keeps three rows")
     T.eq(fx["trainer:GetMoney()"].values[1].value, 500)
+end)
+
+test("armed: one vendor opening fills one scene, even when the window updates", function()
+    local _, fire = probe({})
+    vendorFakes(3)
+    _G.C_Item = _G.C_Item or {}
+    _G.C_Item.GetItemInfoInstant = function(id) return id, "Weapon", "Maces", "INVTYPE_WEAPON", 1, 2, 4 end
+    SlashCmdList.CTPROBE("record arm")
+    fire("MERCHANT_SHOW"); fire("MERCHANT_UPDATE")
+    T.ok(CTProbeDB.fixtures["gear:GetMerchantNumItems()"], "the weapon vendor fills gear")
+    T.eq(CTProbeDB.fixtures["GetMerchantNumItems()"], nil, "and its update does not fill the plain scene")
+    fire("MERCHANT_SHOW")
+    T.ok(CTProbeDB.fixtures["GetMerchantNumItems()"], "a new opening fills the plain scene")
+end)
+
+test("armed: a trainer whose IsTradeskillTrainer answers nil is a class trainer", function()
+    local _, fire = probe({})
+    _G.IsTradeskillTrainer = function() return nil end
+    _G.GetNumTrainerServices = function() return 2 end
+    _G.GetTrainerServiceInfo = function(i) return "Spell" .. i end
+    SlashCmdList.CTPROBE("record arm")
+    fire("TRAINER_SHOW")
+    T.ok(CTProbeDB.fixtures["class:GetNumTrainerServices()"], "Era answers 1 or nil")
+    _G.IsTradeskillTrainer = function() return 1 end
+    fire("TRAINER_UPDATE")
+    T.eq(CTProbeDB.fixtures["GetNumTrainerServices()"], nil, "an update of the same trainer fills nothing more")
+    fire("TRAINER_SHOW")
+    T.eq(CTProbeDB.fixtures["GetNumTrainerServices()"].values[1].value, 2, "a profession trainer fills the plain scene")
+end)
+
+test("armed: a class trainer opened after the profession trainer still fills its scene", function()
+    local _, fire = probe({})
+    local tradeskill = 1
+    _G.IsTradeskillTrainer = function() return tradeskill end
+    _G.GetNumTrainerServices = function() return 2 end
+    _G.GetTrainerServiceInfo = function(i) return (tradeskill and "Herb" or "Spell") .. i end
+    SlashCmdList.CTPROBE("record arm")
+    fire("TRAINER_SHOW")
+    T.eq(CTProbeDB.fixtures["GetTrainerServiceInfo(1)"].values[1].value, "Herb1")
+    tradeskill = nil
+    fire("TRAINER_SHOW")
+    T.eq(CTProbeDB.fixtures["class:GetTrainerServiceInfo(1)"].values[1].value, "Spell1", "the plain scene being full does not disarm the class scene")
+    T.eq(CTProbeDB.armed.class, nil)
 end)
 
 test("armed: an auction row records its link", function()

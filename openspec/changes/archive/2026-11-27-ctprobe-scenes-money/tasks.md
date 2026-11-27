@@ -5,6 +5,8 @@
 - [x] 1.1 Tests in `tests/test_ctprobe.lua` cover these: gear and plain vendor scenes, money with its value, row item info and its late delivery, a link not loaded yet, class and profession trainers with ten and three rows, and the auction link.
 - [x] 1.2 Implement scenes, `GetMoney`, item info, `GetTrainerServiceLevelReq` and `GetAuctionItemLink` in `CTProbe.lua`. Bump `VERSION` to 5. Break each behavior once; each test failed for its reason.
 
+- [x] 1.3 Fix two bugs from the first in-game run. One opening filled two vendor scenes, and the class trainer scene was never offered after the plain trainer filled. Also treat a nil `IsTradeskillTrainer` as a class trainer. Probe `VERSION` 6. Each fix has a test that fails without it.
+
 ## 2. Tools
 
 - [x] 2.1 `ct.py`: a scene name before the call in `CALL_LABEL`, and `RECORDING_REV` 3. Tests in `tools/test_ct.py`: a scene label keeps its api and money, an upper-case scene is refused, and the offline runner reads a rev 3 scene label.
