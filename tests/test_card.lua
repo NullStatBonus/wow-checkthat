@@ -94,7 +94,7 @@ test("Import in the Run menu opens the import box and leaves the run alone", fun
     card.headBtn.scripts.OnClick(card.headBtn)
     made.items[1][2]()
     ns.Export.Prompt = prompt; _G.MenuUtil = nil
-    T.ok(opened and opened:find("Paste a plan string"), "the import box opened")
+    T.eq(opened, "Import a plan", "the import box opened")
     T.eq(run.endedAt, nil, "the run is unchanged")
 end)
 
@@ -164,7 +164,7 @@ test("the start screen shows the plan title, the step count under it, and the fu
     ns.App.db.currentByChar = {}; ns.App.db.plans = {}; ns.App.db.ui.pendingStart = nil; ns.App.db.ui.lastImport = nil
     ns.Card.Refresh()
     T.eq(card.title.text, "No plan yet", "no plan: heading")
-    T.eq(card.context.text, "Select Import a plan and paste a plan string.", "no plan: body")
+    T.eq(card.context.text, "Select Import a plan to try the built-in self-test or paste a plan string.", "no plan: body")
     T.ok(not card.titleHit.shown, "no hover area without a plan")
 end)
 

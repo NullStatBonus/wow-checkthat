@@ -197,6 +197,24 @@ function App.UseRecent(digest)
     return plan
 end
 
+-- The plans CheckThat ships (#246). The import list pins the self-test first; a recent entry for the same plan is left out.
+App.BUILTIN = "builtin:selftest"
+function App.ImportChoices()
+    local s = ns.BuiltIn and ns.BuiltIn.selftest
+    if not s then return App.Recent() end
+    local digest = s:match("^!CT1!(%x+)!")
+    local out = { { id = App.BUILTIN, text = L["CheckThat self-test (built-in)"] } }
+    for _, e in ipairs(App.Recent()) do
+        if e.id ~= digest then out[#out + 1] = e end
+    end
+    return out
+end
+
+-- The string to import for a choice from ImportChoices, or nil for a recent plan.
+function App.BuiltInString(id)
+    return id == App.BUILTIN and ns.BuiltIn and ns.BuiltIn.selftest or nil
+end
+
 -- A stored plan copy stays only while a run, a loaded plan or a recent-list entry names it.
 function App.PrunePlans()
     local keep = {}

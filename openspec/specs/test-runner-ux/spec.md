@@ -125,7 +125,7 @@ After a reload that resumes a step, the card SHALL say "Reloaded" in the hint li
 - **THEN** the hint line says Reloaded and chat confirms the resume
 
 ### Requirement: Import screen offers recent plans
-The import screen SHALL offer a text box for a pasted plan string and a "Recent plans" dropdown of up to 8 plans used before, newest first without duplicates. Choosing one SHALL make it the current plan, open the checklist window with Start run, and move it to the front of the list. A plan whose stored copy is gone SHALL be left out of the list.
+The import screen SHALL be titled "Import a plan" and SHALL offer a text box for a pasted plan string and a "Choose a plan" dropdown. The dropdown SHALL list "CheckThat self-test (built-in)" first, then up to 8 plans used before, newest first without duplicates. A recent entry for the built-in plan SHALL be left out. Choosing a recent plan SHALL make it the current plan, open the checklist window with Start run, and move it to the front of the list. A plan whose stored copy is gone SHALL be left out of the list.
 
 #### Scenario: Pick a recent plan
 - **WHEN** the player opens Import a plan and chooses a plan from the dropdown
@@ -133,7 +133,7 @@ The import screen SHALL offer a text box for a pasted plan string and a "Recent 
 
 #### Scenario: No history
 - **WHEN** no plan was imported before
-- **THEN** the dropdown button is disabled and says there are no recent plans
+- **THEN** the dropdown lists only the built-in self-test
 
 ### Requirement: A new plan takes focus
 Importing a plan, or choosing one from Recent plans, SHALL make it the pending plan. While a plan is pending the card SHALL show it with Start run, whether no run exists, the last run is complete, or a run is unfinished. With an unfinished run the card SHALL also offer Resume run; Resume SHALL return to that run unchanged. Starting a run SHALL clear the pending plan.
@@ -332,7 +332,7 @@ The ended-run screen SHALL keep "Export results" as its first button. When no pl
 - **THEN** Export results comes first, and Import a plan opens the import box
 
 ### Requirement: Start screen layout
-The start screen SHALL stay at full card width even when the card is collapsed. Its text SHALL wrap inside the card. A plan title longer than two lines SHALL be cut with the full title in the title tooltip. The first visible button SHALL sit at the left inset, so "Import a plan" takes the place of "Start run" when no plan is loaded. With no plan loaded the heading SHALL read "No plan yet" and the line under it SHALL tell the player to select Import a plan and paste a plan string.
+The start screen SHALL stay at full card width even when the card is collapsed. Its text SHALL wrap inside the card. A plan title longer than two lines SHALL be cut with the full title in the title tooltip. The first visible button SHALL sit at the left inset, so "Import a plan" takes the place of "Start run" when no plan is loaded. With no plan loaded the heading SHALL read "No plan yet" and the line under it SHALL tell the player to select Import a plan to try the built-in self-test or paste a plan string.
 
 #### Scenario: Long plan title
 - **WHEN** a plan with a very long title is imported
@@ -590,3 +590,14 @@ When the profile changes, is copied or is reset, the card and the Categories win
 #### Scenario: Switch profile
 - **WHEN** the player switches to a profile that has no saved place for the Categories window
 - **THEN** the window moves to its default place with no reload
+
+### Requirement: Built-in self-test
+CheckThat SHALL ship the compiled `plans/selftest.yaml` and a test SHALL fail when the shipped string differs from it. Choosing "CheckThat self-test (built-in)" SHALL import that string through the same checks as a pasted string, without showing it in the box, and open the checklist window with Start run. Importing it again SHALL reuse its stored copy. Nothing outside the import window SHALL offer it: no popup, no login message, no first-run prompt.
+
+#### Scenario: Fresh install
+- **WHEN** a player with no plan opens Import a plan and chooses the self-test
+- **THEN** the window opens with "CheckThat self-test" and Start run, and no string was pasted
+
+#### Scenario: Run in progress
+- **WHEN** a run is unfinished and the player chooses the self-test
+- **THEN** the card offers Start run and Resume run, and Resume returns to the unfinished run

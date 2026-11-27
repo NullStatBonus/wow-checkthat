@@ -8,7 +8,7 @@ CheckThat turns a long manual test plan into a short checklist. A card shows one
 
 ### Features
 
-- Import a plan from a pasted string, or pick a recent plan. Export your results as a string. A plan with a text pattern Lua cannot read is refused, and a log line that takes too long to match leaves its check unverified.
+- Import a plan from a pasted string, pick a recent plan, or try the built-in self-test. Export your results as a string. A plan with a text pattern Lua cannot read is refused, and a log line that takes too long to match leaves its check unverified.
 - Copy each command from its own box, or click Run to run the step's commands. CheckThat never sends input for you.
 - Mark each step Pass, Partial, Fail or Skip. Move back and forth between steps. Redo a step.
 - Tick off each action of a step as you do it. See what CheckThat checks itself: checks turn green as the addon's debug log shows your action.

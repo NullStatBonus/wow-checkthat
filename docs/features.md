@@ -29,7 +29,7 @@ Debug log: `macroFollow on` and `off`, `macro set <step id>` each time the macro
 
 While a run is active, the card header shows a Run control with a small arrow, next to the "CheckThat" title. It highlights when you point at it. Click it for three items:
 
-- **Import...** opens the same box as the Import a plan button, with your recent plans. It leaves the run alone until you import or pick a plan.
+- **Import...** opens the same box as the Import a plan button, with the built-in self-test and your recent plans. It leaves the run alone until you import or pick a plan.
 - **End run...** see [End run](#end-run).
 - **Clear plan...** see [Clear plan](#clear-plan).
 
@@ -44,7 +44,9 @@ Choose Clear plan... in the Run menu. CheckThat names the plan and asks first. I
 - The recorded results stay. The card shows "Run ended" with Export results, and the results string still works. The stored copy of the plan stays for the ended run.
 - The ended card offers Import a plan in place of Main window.
 
-The start screen shows the plan title as its heading, with the count of steps this game client runs and "Ready to test. Select Start run." under it. A plan with no step for this client says "This plan is not for this game client. None of its steps run here." in amber, lists no categories and turns Start run off. With no plan the heading reads "No plan yet". The start screen is always full width, also when a run is minimized, and its first button sits at the left edge. Under the step count a grey line lists the variables the plan reads: each log source's `global` and each `global-value` check's name, sorted, up to six and then "and N more". It reads "This plan reads these variables: KeepThatDB, OtherAddonDB. A results string can include what they hold." A `frame-shown` check is not listed: it saves only whether the frame is shown. A plan that reads none shows no line.
+The start screen shows the plan title as its heading, with the count of steps this game client runs and "Ready to test. Select Start run." under it. A plan with no step for this client says "This plan is not for this game client. None of its steps run here." in amber, lists no categories and turns Start run off. With no plan the heading reads "No plan yet" and the line under it says "Select Import a plan to try the built-in self-test or paste a plan string." The start screen is always full width, also when a run is minimized, and its first button sits at the left edge. Under the step count a grey line lists the variables the plan reads: each log source's `global` and each `global-value` check's name, sorted, up to six and then "and N more". It reads "This plan reads these variables: KeepThatDB, OtherAddonDB. A results string can include what they hold." A `frame-shown` check is not listed: it saves only whether the frame is shown. A plan that reads none shows no line.
+
+The import window is titled "Import a plan". Its "Choose a plan" list starts with "CheckThat self-test (built-in)", then the recent plans, newest first. The self-test is the compiled `plans/selftest.yaml`, shipped in `Model/BuiltIn.lua`. Choosing it imports it at once, with the same checks as a pasted string, and the string never shows in the box. An imported self-test is not listed a second time under the recent plans, and importing it again reuses the stored copy. Nothing offers the self-test outside the import window: no popup, no login message and no first-run prompt. The debug log has `imported plan CheckThat digest <digest>`, as for a pasted plan.
 
 Debug log: `plan cleared <addon>`.
 

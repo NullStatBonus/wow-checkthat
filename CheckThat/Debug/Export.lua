@@ -67,7 +67,7 @@ function Export.OpenMenu()
     menu:Show()
 end
 
--- Read-only text, selected for Ctrl+A / Ctrl+C. The same AceGUI window KeepThat, DontDoThat and ClosestVendor use.
+-- Read-only text, selected for Ctrl+A / Ctrl+C, in the standard AceGUI window.
 -- It falls back to the plain text window when AceGUI is missing.
 local window
 local function aceShow(title, text)
@@ -98,7 +98,7 @@ function Export.Show(title, text)
     Export.Prompt(title, text, nil, L["Close"], L["Press Ctrl+C to copy."], true)
 end
 
--- The editable import window in the same AceGUI frame: a "Recent plans" dropdown above a text box with the button.
+-- The editable import window in the same AceGUI frame: a "Choose a plan" dropdown above a text box with the button.
 local function aceImport(title, content, onAccept, label, hint, opts)
     local gui = LibStub and LibStub("AceGUI-3.0", true)
     if not (gui and gui.Create) then return false end
@@ -115,7 +115,7 @@ local function aceImport(title, content, onAccept, label, hint, opts)
         local dd = gui:Create("Dropdown")
         local values, order = {}, {}
         for i, ch in ipairs(choices) do values[ch.id] = ch.text; order[i] = ch.id end
-        dd:SetLabel(#choices > 0 and L["Recent plans"] or L["No recent plans"])
+        dd:SetLabel(#choices > 0 and L["Choose a plan"] or L["No recent plans"])
         dd:SetList(values, order)
         dd:SetDisabled(#choices == 0)
         dd:SetFullWidth(true)
@@ -135,7 +135,7 @@ local function aceImport(title, content, onAccept, label, hint, opts)
 end
 
 -- Editable text. onAccept(text) runs when the player presses the button.
--- opts.choices = { { id, text }, ... } adds a "Recent plans" dropdown; opts.onChoose(id) runs on a pick.
+-- opts.choices = { { id, text }, ... } adds a "Choose a plan" dropdown; opts.onChoose(id) runs on a pick.
 function Export.Prompt(title, content, onAccept, label, hint, readOnly, opts)
     if onAccept and not readOnly then
         local ok, shown = pcall(aceImport, title, content, onAccept, label, hint, opts)
@@ -146,7 +146,7 @@ function Export.Prompt(title, content, onAccept, label, hint, readOnly, opts)
     box.choices, box.onChoose = opts and opts.choices or false, opts and opts.onChoose or false
     box.menu:Hide()
     if box.choices then
-        box.recent:SetText(#box.choices > 0 and L["Recent plans"] or L["No recent plans"]); box.recent:Show()
+        box.recent:SetText(#box.choices > 0 and L["Choose a plan"] or L["No recent plans"]); box.recent:Show()
         if #box.choices == 0 then box.recent:Disable() else box.recent:Enable() end
         box.hint:ClearAllPoints(); box.hint:SetPoint("BOTTOMLEFT", 190, 16)
     else

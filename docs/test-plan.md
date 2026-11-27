@@ -30,12 +30,12 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
 1. **Debug on.** Type `/ct debug on`.
    Check: chat says "Debug recording is on."
    Log: `[ct] debug on`.
-2. **Import opens the window.** Type `/ct import`, paste the contents of `build/selftest.ct`, press Import, then type `/ct start CheckThat`.
+2. **Import opens the window.** Type `/ct import` and choose "CheckThat self-test (built-in)" at the top of the "Choose a plan" list. Then type `/ct start CheckThat`.
    Check: the window opens at once with the plan title as its heading, "N steps. Ready to test. Select Start run." under it, and a Start run button. After you select Start run (or type `/ct start CheckThat`) the card shows "Turn debug recording on" (the card records its result by itself once you type the command) with a copy box, a progress bar and Pass, Partial, Fail, Skip and Undo at the bottom.
    Log: `[ct] run started`.
-3. **Recent plans.** Type `/ct import` again.
-   Check: the import window looks like the report window (title bar, scroll box, same frame). A "Recent plans" list above the box holds the plan you imported. Choosing it opens the window with Start run and no paste.
-   Log: `[ct] reused plan`.
+3. **Choose a plan.** Type `/ct import` again, open the "Choose a plan" list, then press Escape.
+   Check: the import window is titled "Import a plan" and looks like the report window (title bar, scroll box, same frame). The list shows "CheckThat self-test (built-in)" first and only once. Escape closes the window and the run stays where it was.
+   Log: none; on screen only. The unit tests cover the order and the single entry.
 4. **Run button.** Open the second step and click Run. The button sits inside the card beside the first command.
    Check: chat shows a status line, and the card moves on by itself without Pass.
    Log: `[ct] status requested`, then `[ct] step self.secure pass auto evidence matched`.

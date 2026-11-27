@@ -249,6 +249,19 @@ class Compile(unittest.TestCase):
             self.assertEqual(ct.validate(plan), [])
 
 
+class BuiltIn(unittest.TestCase):
+    def test_the_shipped_self_test_is_the_compiled_plan(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        out = os.path.join(d, "selftest.ct")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(ct.main(["compile", os.path.join(ROOT, "plans", "selftest.yaml"), "-o", out]), 0)
+        lua = open(os.path.join(ROOT, "CheckThat", "Model", "BuiltIn.lua"), encoding="utf-8").read()
+        shipped = re.search(r'selftest = "([^"]*)"', lua)
+        self.assertIsNotNone(shipped, "CheckThat/Model/BuiltIn.lua holds no selftest string")
+        self.assertTrue(shipped.group(1) == open(out).read().strip(),
+                        "CheckThat/Model/BuiltIn.lua differs from plans/selftest.yaml: run make builtin")
+
+
 class Plans(unittest.TestCase):
     def test_shipped_plans_validate(self):
         for n in ("dontdothat", "selftest"):
