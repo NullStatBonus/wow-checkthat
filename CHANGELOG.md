@@ -6,7 +6,13 @@ New: **Client census.** Type `/ct census` to record the names this game client g
 New: **Offline checks match the game client.** A plan can ask for the client version from the addon's TOC file. Older plans keep their results. An offline run reports each name the addon read that the test client did not have.
 New: **Lua 5.1 check.** Offline runs and the package check now find code that the game's Lua cannot load or reads differently.
 New: **Run start and end for addons.** An addon can ask CheckThat to tell it when a run starts or ends. It can then set up and restore its own test settings.
+New: **Checklist of actions.** A step can list its actions. Tick each action on the card when you do it.
+New: **Checks when a run starts.** A step can pass when the run starts. The card then goes past it.
+New: **Steps for one class or profession.** Such a step does not apply on another character. It does not fail at its time limit.
 New: **Checks for the whole run.** A plan check can read every line since the run started, also after a reload. A last "no Lua error" step then sees the errors of this run only.
+Changed: **A calmer card.** Setup folds to one line. The note opens from "Add note". A small heading names the checks that CheckThat makes. The step title is larger.
+Changed: **Pause after each result.** The card shows the result in one large word for 3 seconds. Then it fades to the next step.
+Fixed: **A plan for the other game client.** The start screen asked you to select a category. It now says that the plan is not for this game client.
 
 ## 0.20.1
 

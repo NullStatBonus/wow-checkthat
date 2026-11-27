@@ -17,11 +17,23 @@ A plan SHALL be one YAML file per addon validated by the published JSON Schema (
 - **THEN** validation fails
 
 ### Requirement: Steps have a fixed deterministic shape
-Each step SHALL have a stable `id` independent of numbering, `title`, `action`, `expect` in player-visible words, and `verify` modes; and MAY have `clients`, `requires`, `setup`, `assertions`, `reviewer`, `cleanup`, `reload`, `notes`. Sections group steps and MAY add shared `requires`, `setup` and `clients`, which compilation SHALL merge into every member step. A plan MAY carry a once-per-run `preamble` and a `handoff`.
+Each step SHALL have a stable `id` independent of numbering, `title`, `action`, `expect` in player-visible words, and `verify` modes; and MAY have `clients`, `requires`, `setup`, `assertions`, `reviewer`, `cleanup`, `reload`, `notes`, `async`. `action.text` SHALL be a string or a list of two to six strings, one player action each. `expect` SHALL be a string or a list of two to six strings, one result each. Sections group steps and MAY add shared `requires`, `setup` and `clients`, which compilation SHALL merge into every member step. A plan MAY carry a once-per-run `preamble` and a `handoff`.
 
 #### Scenario: Section prerequisites inherited
 - **WHEN** a section declares a requirement
 - **THEN** every step in it lists that requirement after compilation
+
+#### Scenario: Actions as a list
+- **WHEN** a step's `action.text` lists three actions
+- **THEN** validation accepts it and the compiled step keeps the list
+
+#### Scenario: One-item list
+- **WHEN** `action.text` or `expect` is a list of one string
+- **THEN** validation fails and says to write a string
+
+#### Scenario: Markdown in a list item
+- **WHEN** a list item uses backticks
+- **THEN** validation fails as for a string
 
 ### Requirement: Actions are a closed set of kinds
 `action.kind` SHALL be one of `manual`, `copy-slash`, `secure-macro`, `reload`, `wait-event`. An action MAY list `commands` offered as copy text. Every slash command, copy text and macro body SHALL be limited to the runner-shipped allow list for the plan's addon plus `/reload` and `/console scriptErrors 0|1`. A plan SHALL NOT extend that list. No kind SHALL cause game input without a user keypress or click. A `wait-event` action SHALL be valid only on an auto step.
@@ -56,6 +68,7 @@ Assertions SHALL be `log` (named log source, one of equals, contains, pattern, w
 #### Scenario: Unknown scope
 - **WHEN** an assertion sets `scope: forever`
 - **THEN** validation fails with "bad scope"
+
 ### Requirement: Existing plans map without loss
 Each legacy checklist item SHALL map to one step whose `expect` is its `Check:` text. `Log: none` SHALL map to `verify: [player]`. Any other `Log:` text SHALL be kept verbatim as `reviewer`, and literal log lines SHALL become diagnostic assertions until a human promotes them. The plan's preamble prose SHALL map to `preamble`.
 
@@ -472,3 +485,25 @@ When the addon's TOC is known, `ct.py validate` and `compile` SHALL read its `##
 #### Scenario: Reviewer line
 - **WHEN** a `reviewer` line names a partner step id
 - **THEN** validation prints no reference warning for it
+
+### Requirement: A requirement may make a step inapplicable
+A plan requirement MAY set `class` (class tokens such as `MAGE`), `profession` (profession names in the plan's locale) and `unmet` (`blocked`, the default, or `inapplicable`). Each given condition SHALL hold: the class token is listed, the character knows a listed profession, the probe passes. `ct validate` SHALL reject an unknown class token, and `unmet` without a condition.
+
+#### Scenario: Class list
+- **WHEN** a requirement sets `class: [MAGE, PRIEST]` and `unmet: inapplicable`
+- **THEN** validation accepts it
+
+#### Scenario: Unknown class
+- **WHEN** a requirement sets `class: [WIZARD]`
+- **THEN** validation fails and names the token
+
+### Requirement: An auto step may be judged when the run starts
+An `auto` step MAY set `async: true`. `ct validate` SHALL reject `async` on a step that is not `auto`, that has `setup`, `reload` or an entry `call`, or whose required assertions include an absence or an upper count.
+
+#### Scenario: Async startup check
+- **WHEN** an auto step with a `version` fact assertion sets `async: true`
+- **THEN** validation accepts it
+
+#### Scenario: Async absence
+- **WHEN** an async step requires that a line is absent
+- **THEN** validation fails, because an absence needs a time window

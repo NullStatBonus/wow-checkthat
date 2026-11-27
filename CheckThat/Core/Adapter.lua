@@ -62,6 +62,43 @@ function Adapter.AddonVersion(name)
     if ok and type(v) == "string" and v ~= "" and v ~= "unknown" then return v end
     return nil
 end
+-- The player's class token (MAGE, HUNTER...), or nil when the game cannot say. env is the game, or a fake in tests.
+function Adapter.ClassToken(env)
+    env = env or _G
+    local f = env.UnitClass
+    if type(f) ~= "function" then return nil end
+    local ok, _, token = pcall(f, "player")
+    return ok and type(token) == "string" and token ~= "" and token or nil
+end
+-- The names of the professions the player knows, as a set, or nil when the game cannot say. A client with
+-- GetProfessions lists only professions; an older one lists every skill line that is not a header.
+function Adapter.Professions(env)
+    env = env or _G
+    local names = {}
+    if type(env.GetProfessions) == "function" and type(env.GetProfessionInfo) == "function" then
+        local got = { pcall(env.GetProfessions) }
+        if not got[1] then return nil end
+        for i = 2, 7 do
+            local ix = got[i]
+            if ix ~= nil then
+                local ok, name = pcall(env.GetProfessionInfo, ix)
+                if ok and type(name) == "string" then names[name] = true else return nil end
+            end
+        end
+        return names
+    end
+    if type(env.GetNumSkillLines) == "function" and type(env.GetSkillLineInfo) == "function" then
+        local ok, n = pcall(env.GetNumSkillLines)
+        if not ok or type(n) ~= "number" or n == 0 then return nil end -- no lines yet (before the skill data loads)
+        for i = 1, n do
+            local ok2, name, header, expanded = pcall(env.GetSkillLineInfo, i)
+            if ok2 and header and not expanded then return nil end -- a collapsed header hides its lines: unknown, not missing
+            if ok2 and type(name) == "string" and not header then names[name] = true end
+        end
+        return names
+    end
+    return nil
+end
 -- Runs fn after sec seconds. Returns true when it is scheduled, false when the client has no timers or refuses.
 function Adapter.After(sec, fn)
     local f = _G.C_Timer and _G.C_Timer.After

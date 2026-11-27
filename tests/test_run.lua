@@ -568,4 +568,125 @@ test("the run's start positions stay out of the export and go when the run ends"
     local plain = mk(); T.eq(plain.snapshots, nil, "a plan with no run-scoped check saves none")
 end)
 
+-- Listed actions: the player's ticks are saved on the open attempt and never change the result.
+local function mkSteps(steps, reqs, env)
+    local plan = { kind = "plan", ct = 1, addon = "KeepThat", title = "t", requirements = reqs,
+        logs = { debug = { global = "DB", path = "log", format = "strings" } },
+        sections = { { id = "s", title = "S", steps = steps } } }
+    env = env or { DB = { log = { "old" } } }
+    local ctx = { plan = plan, client = "classic-era", build = "1.15", character = "X", now = 100, env = env, planDigest = "d" }
+    return R.New(ctx), ctx, env
+end
+local function walk(id) return { id = id, title = id, action = { kind = "manual", text = { "Walk in.", "Wait.", "Walk out." } }, expect = "e", verify = { "player" } } end
+test("ticks are saved on the open attempt, survive a reload and stay off the verdict", function()
+    local run, ctx = mkSteps({ walk("w"), walk("x") })
+    R.Begin(run, ctx, "w")
+    T.ok(R.Tick(run, ctx, "w", 1, true)); T.ok(R.Tick(run, ctx, "w", 3, true)); T.ok(R.Tick(run, ctx, "w", 3, false))
+    T.eq(R.Tick(run, ctx, "w", 4, true), false, "no fourth action"); T.eq(R.Tick(run, ctx, "w", 1, true), false, "already ticked")
+    T.same(run.steps.w.attempts[1].ticks, { 100, false, false })
+    local copy = ns.Json.Decode(ns.Json.Encode(run)) -- what /reload brings back
+    T.same(copy.steps.w.attempts[1].ticks, { 100, false, false })
+    local a = R.Verdict(run, ctx, "w", "fail", "missed one")
+    T.eq(a.verdict, "fail"); T.same(a.ticks, { 100, false, false }, "kept with the result")
+    T.eq(R.Tick(run, ctx, "w", 2, true), false, "a finished attempt does not change")
+    R.Begin(run, ctx, "x"); T.eq(run.steps.x.attempts[1].ticks, nil, "a new attempt starts with none")
+end)
+test("a step with one action has nothing to tick", function()
+    local run, ctx = mk()
+    R.Begin(run, ctx, "b"); T.eq(R.Tick(run, ctx, "b", 1, true), false)
+end)
+-- Requirements: class and profession, and unmet = inapplicable.
+local caster = { text = "This step needs a Mage or a Priest.", class = { "MAGE", "PRIEST" }, unmet = "inapplicable" }
+local function hunter() return { DB = { log = {} }, UnitClass = function() return "Hunter", "HUNTER", 3 end } end
+test("a Hunter gets a Mage step as inapplicable with the requirement's text", function()
+    local s = walk("m"); s.requires = { "caster" }
+    local run, ctx = mkSteps({ s, walk("n") }, { caster = caster }, hunter())
+    T.eq(R.Unmet(ctx, s), caster.text); T.eq(#R.Blocked(ctx, s), 0, "not shown as blocked")
+    R.MarkInapplicable(run, ctx, "m", caster.text)
+    T.eq(run.steps.m.verdict, "inapplicable"); T.eq(run.steps.m.unmet, caster.text); T.eq(#run.steps.m.attempts, 0)
+    T.eq(R.CurrentId(run), "n", "the card moves on")
+    T.eq(R.Counts(run).inapplicable, 1); T.eq(R.Counts(run).open, 1, "progress leaves it out")
+end)
+test("a requirement holds when the game cannot say the class or the professions, and a blocking one stays blocked", function()
+    local s = walk("m"); s.requires = { "caster", "tailor" }
+    local reqs = { caster = caster, tailor = { text = "Tailoring", profession = { "Tailoring" } } }
+    local _, ctx = mkSteps({ s }, reqs, { DB = { log = {} } })
+    T.eq(R.Unmet(ctx, s), nil, "no UnitClass: unknown is not unmet"); T.eq(#R.Blocked(ctx, s), 0)
+    ctx.env.GetNumSkillLines = function() return 2 end
+    ctx.env.GetSkillLineInfo = function(i) if i == 1 then return "Professions", true, true end return "Mining", false end
+    T.same(R.Blocked(ctx, s), { "Tailoring" }, "a profession it lacks blocks (unmet defaults to blocked)")
+    ctx.env.GetSkillLineInfo = function(i) if i == 1 then return "Professions", true, true end return "Tailoring", false end
+    T.eq(#R.Blocked(ctx, s), 0)
+    ctx.env.GetProfessions = function() return 3, nil end; ctx.env.GetProfessionInfo = function() return "Alchemy" end
+    T.same(R.Blocked(ctx, s), { "Tailoring" }, "a client with GetProfessions reads that")
+    ctx.env.GetProfessions, ctx.env.GetProfessionInfo = nil, nil
+    ctx.env.GetSkillLineInfo = function(i) if i == 1 then return "Professions", true, false end return "Mining", false end
+    T.eq(#R.Blocked(ctx, s), 0, "a collapsed header hides its lines: unknown, so it holds")
+    ctx.env.GetNumSkillLines = function() return 0 end
+    T.eq(#R.Blocked(ctx, s), 0, "no skill lines yet: unknown")
+end)
+test("an ended run does not mark a step inapplicable", function()
+    local s = walk("m"); s.requires = { "caster" }
+    local run, ctx = mkSteps({ s }, { caster = caster }, hunter())
+    R.End(run, 200)
+    T.eq(R.MarkInapplicable(run, ctx, "m", caster.text), nil); T.eq(run.steps.m.verdict, "pending")
+end)
+test("a rerun clears the inapplicable reason so the step is checked again", function()
+    local s = walk("m"); s.requires = { "caster" }
+    local run, ctx = mkSteps({ s }, { caster = caster }, hunter())
+    R.MarkInapplicable(run, ctx, "m", caster.text)
+    R.ResetRecord(run.steps.m, "pending"); T.eq(run.steps.m.unmet, nil)
+end)
+-- Async steps: judged once when the run starts.
+local function asyncStep(id, line) return { id = id, title = id, action = { kind = "manual", text = "Wait." }, expect = "e", verify = { "assertions" },
+    auto = true, async = true, assertions = { { kind = "log", source = "debug", contains = line } } } end
+test("an async step whose line is already in the log passes when the run starts, and the card skips it", function()
+    local run, ctx = mkSteps({ asyncStep("v", "version 1.2"), walk("w") }, nil, { DB = { log = { "version 1.2 loaded" } } })
+    T.eq(R.JudgeAtStart(run, ctx), 1)
+    local a = run.steps.v.attempts[1]
+    T.eq(a.verdict, "pass"); T.eq(a.by, "auto"); T.eq(a.at, "start"); T.eq(a.evidence, "matched")
+    T.eq(R.CurrentId(run), "w")
+    T.eq(run.steps.w.attempts[1], nil, "no attempt opened for the player")
+end)
+test("an async step without its line stays pending, opens nothing and settles on its turn", function()
+    local run, ctx, env = mkSteps({ asyncStep("v", "version 1.2"), walk("w") })
+    T.eq(R.JudgeAtStart(run, ctx), 0)
+    T.eq(run.steps.v.verdict, "pending"); T.eq(#run.steps.v.attempts, 0); T.eq(R.CurrentId(run), "v")
+    R.Begin(run, ctx, "v"); env.DB.log[#env.DB.log + 1] = "version 1.2 loaded"
+    local a = R.AutoSettle(run, ctx, "v"); T.eq(a.verdict, "pass"); T.eq(a.at, nil, "settled on its turn")
+end)
+test("judging at start keeps the current step when it is still open", function()
+    local run, ctx = mkSteps({ walk("w"), asyncStep("v", "ready") }, nil, { DB = { log = { "ready" } } })
+    T.eq(R.JudgeAtStart(run, ctx), 1); T.eq(R.CurrentId(run), "w")
+end)
+
+test("a step that does not apply keeps its place after a category pick, and a rerun checks it again", function()
+    local s = walk("m"); s.requires = { "caster" }; s.category = "one"
+    local n = walk("n"); n.category = "one"
+    local o = walk("o"); o.category = "two"
+    local plan = { kind = "plan", ct = 1, addon = "KeepThat", title = "t", requirements = { caster = caster },
+        categories = { { id = "one", title = "One" }, { id = "two", title = "Two" } },
+        logs = { debug = { global = "DB", path = "log", format = "strings" } }, sections = { { id = "s", title = "S", steps = { s, n, o } } } }
+    local ctx = { plan = plan, client = "classic-era", build = "1.15", character = "X", now = 100, env = hunter(), planDigest = "d", selected = { "one" } }
+    local run = R.New(ctx)
+    R.MarkInapplicable(run, ctx, "m", caster.text)
+    R.Select(run, ctx, "two")
+    T.same(run.order, { "m", "n", "o" }, "still in the order")
+    T.eq(R.Trigger(run, ctx, "m"), "step", "it can be shown"); T.ok(R.Show(run, ctx, "m"))
+    ctx.env.UnitClass = function() return "Mage", "MAGE" end
+    T.eq(R.Rerun(run, ctx, "one"), 1, "the rerun reopens it")
+    T.eq(run.steps.m.verdict, "pending"); T.eq(run.steps.m.unmet, nil); T.eq(R.Unmet(ctx, s), nil, "a Mage meets it now")
+    R.Begin(run, ctx, "m"); R.Verdict(run, ctx, "m", "pass")
+    T.eq(run.steps.m.unmet, nil)
+    R.MarkInapplicable(run, ctx, "n", "reason"); R.Verdict(run, ctx, "n", "pass")
+    T.eq(run.steps.n.unmet, nil, "a step with a result keeps no reason")
+end)
+test("an async step reads the whole log on every attempt, so it passes again after Undo", function()
+    local run, ctx = mkSteps({ asyncStep("v", "version 1.2"), walk("w") }, nil, { DB = { log = { "version 1.2 loaded" } } })
+    T.eq(R.JudgeAtStart(run, ctx), 1)
+    T.ok(R.Undo(run, ctx, "v"))
+    local a = R.Begin(run, ctx, "v"); T.eq(a.snapshots, nil, "no position: the whole log")
+    T.eq(R.AutoSettle(run, ctx, "v").verdict, "pass")
+end)
+
 finish()

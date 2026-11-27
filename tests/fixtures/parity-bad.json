@@ -141,5 +141,121 @@
    "cap"
   ],
   "value": 100001
+ },
+ {
+  "name": "expect as a list of one",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "expect"
+  ],
+  "value": [
+   "only one"
+  ]
+ },
+ {
+  "name": "action text as a list of seven",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "action",
+   "text"
+  ],
+  "value": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "5",
+   "6",
+   "7"
+  ]
+ },
+ {
+  "name": "markdown in an action list item",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "action",
+   "text"
+  ],
+  "value": [
+   "Open the bag.",
+   "Press `Run`."
+  ]
+ },
+ {
+  "name": "copy-slash text as a list",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "action"
+  ],
+  "value": {
+   "kind": "copy-slash",
+   "text": [
+    "/kt debug on",
+    "/reload"
+   ]
+  }
+ },
+ {
+  "name": "async on a player step",
+  "path": [
+   "sections",
+   0,
+   "steps",
+   1,
+   "async"
+  ],
+  "value": true
+ },
+ {
+  "name": "unknown class token",
+  "path": [
+   "requirements",
+   "loaded",
+   "class"
+  ],
+  "value": [
+   "WIZARD"
+  ]
+ },
+ {
+  "name": "unmet without a condition",
+  "path": [
+   "requirements",
+   "loaded",
+   "unmet"
+  ],
+  "value": "inapplicable"
+ },
+ {
+  "name": "unmet with a bad value",
+  "path": [
+   "requirements",
+   "loaded",
+   "unmet"
+  ],
+  "value": "skip"
+ },
+ {
+  "name": "profession that is not a list of names",
+  "path": [
+   "requirements",
+   "loaded",
+   "profession"
+  ],
+  "value": [
+   ""
+  ]
  }
 ]

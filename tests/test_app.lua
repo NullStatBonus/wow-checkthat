@@ -732,4 +732,53 @@ test("errors and facts are recorded for the open run while the card shows an end
     T.eq(ns.Facts.Report("KeepThat", "k", 2), false, "no open run, no facts")
 end)
 
+test("App.Start passes an async step whose line is in the log and logs it, and App.Begin makes a step for another class inapplicable", function()
+    local db, env = boot()
+    env.UnitClass = function() return "Hunter", "HUNTER" end
+    env.KeepThatDB.global.log[#env.KeepThatDB.global.log + 1] = "[kt] version 2.5.1"
+    local p = plan()
+    p.requirements = { caster = { text = "This step needs a Mage.", class = { "MAGE" }, unmet = "inapplicable" } }
+    p.sections[1].steps = {
+        { id = "kt.v", title = "Version", action = { kind = "manual", text = "Wait." }, expect = "ok", verify = { "assertions" }, auto = true, async = true,
+          assertions = { { kind = "log", source = "debug", contains = "version 2.5.1" } } },
+        { id = "kt.m", title = "Mage", requires = { "caster" }, action = { kind = "manual", text = "do" }, expect = "ok", verify = { "player" } },
+        { id = "kt.n", title = "Next", action = { kind = "manual", text = "do" }, expect = "ok", verify = { "player" } } }
+    T.ok(App.ImportPlan(assert(ns.Codec.Encode(p))))
+    db.log.enabled = true
+    local run = assert(App.Start("KeepThat"))
+    T.eq(run.steps["kt.v"].verdict, "pass"); T.eq(run.steps["kt.v"].attempts[1].at, "start")
+    local _, _, step = App.Current(); T.eq(step.id, "kt.m", "the card skips the passed step")
+    local a, st, why = App.Begin()
+    T.eq(a, nil); T.eq(st.id, "kt.m"); T.eq(why, "This step needs a Mage.")
+    T.eq(run.steps["kt.m"].verdict, "inapplicable")
+    local _, _, nxt = App.Current(); T.eq(nxt.id, "kt.n")
+    local log = table.concat(db.log.entries and (function() local t = {} for _, e in ipairs(db.log.entries) do t[#t + 1] = e.msg or tostring(e) end return t end)() or {}, "\n")
+    T.ok(log:find("step kt.v pass auto at start evidence matched", 1, true), log)
+    T.ok(log:find("step kt.m inapplicable: This step needs a Mage.", 1, true), log)
+end)
+
+test("a step passed at run start keeps the preamble and the section intro, and an added category's async step is judged", function()
+    local db, env = boot()
+    env.KeepThatDB.global.log[#env.KeepThatDB.global.log + 1] = "[kt] ready"
+    local p = plan()
+    p.preamble = "Use any character."
+    p.categories = { { id = "one", title = "One" }, { id = "two", title = "Two" } }
+    p.sections[1].intro = "This section checks the start."
+    p.sections[1].steps = {
+        { id = "kt.v", title = "Ready", category = "one", action = { kind = "manual", text = "Wait." }, expect = "ok", verify = { "assertions" }, auto = true, async = true,
+          assertions = { { kind = "log", source = "debug", contains = "ready" } } },
+        { id = "kt.n", title = "Next", category = "one", action = { kind = "manual", text = "do" }, expect = "ok", verify = { "player" } },
+        { id = "kt.w", title = "Late", category = "two", action = { kind = "manual", text = "Wait." }, expect = "ok", verify = { "assertions" }, auto = true, async = true,
+          assertions = { { kind = "log", source = "debug", contains = "ready" } } } }
+    T.ok(App.ImportPlan(assert(ns.Codec.Encode(p))))
+    local run = assert(App.Start("KeepThat", { "one" }))
+    T.eq(run.steps["kt.v"].verdict, "pass")
+    T.ok(App.AtStart(run), "the tester has not started yet")
+    local _, ctx = App.Current()
+    T.eq(App.SectionIntro(run, ctx, "kt.n"), "This section checks the start.")
+    T.eq(run.steps["kt.w"].verdict, "deselected")
+    App.Select("two")
+    T.eq(run.steps["kt.w"].verdict, "pass", "judged when its category joined the run"); T.eq(run.steps["kt.w"].attempts[1].at, "start")
+end)
+
 finish()

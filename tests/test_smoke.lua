@@ -1,4 +1,5 @@
 local ns, test, T, finish, H = dofile("tests/harness.lua")()
+-- These flows check what is recorded, step after step: the card's pause after an automatic result (tests/test_card.lua) is off.
 -- Loads every file the TOC lists (real Ace3 libraries included) against a stub client, then drives the
 -- addon the way a player would. Catches load errors, typos and bad TOC order.
 local st = H.stubClient()
@@ -12,6 +13,7 @@ test("smoke: enable, import, run, export and settings through the real addon", f
     CheckThatDB = nil
     addon:OnInitialize()
     addon:OnEnable()
+    ns.Card.HOLD = 0 -- these flows check what is recorded step after step; tests/test_card.lua covers the pause after an automatic result
     T.ok(addon.db.profile.card.scale == 100)
     T.eq(type(_G.CheckThat), "table"); T.eq(_G.CheckThat.API_VERSION, 3)
     T.eq(type(addon.db.global.facts), "table", "a save from before facts gets an empty list")
@@ -44,10 +46,10 @@ test("smoke: the card says who checks the step and shows live checks and navigat
     ns.App.ImportPlan(s); ns.App.Start("KeepThat")
     ns.Card.Show()
     local card = _G.CheckThatCard
-    T.ok(card.banner.text:find("YOU CONFIRM"), "manual step banner: " .. tostring(card.banner.text))
+    T.ok(not card.checksHead.shown, "a manual step shows no checks heading and no banner")
     ns.App.Verdict("pass"); ns.App.Verdict("pass")        -- s1.1, s2.1 are manual
     ns.Card.Refresh()
-    T.ok(card.banner.text:find("CHECKTHAT CHECKS"), "assertion step banner: " .. tostring(card.banner.text))
+    T.ok(card.checksHead.shown and card.checksHead.text == "CheckThat checks", "checks heading: " .. tostring(card.checksHead.text))
     T.ok(card.checks.text:find("Bag and bank hooks started"), "check label shown: " .. tostring(card.checks.text))
     T.ok(card.checks.text:find("ReadyCheck%-Waiting"), "waiting icon")
     KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "[blizzard] hooked ContainerFrame"
@@ -197,15 +199,16 @@ test("smoke: an auto step passes by itself, shows its countdown and waits while 
     assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p)))); ns.App.Start("KeepThat")
     ns.Card.Show()
     local card = _G.CheckThatCard
-    T.ok(card.banner.text:find("records the result when the checks are met"), "auto banner: " .. tostring(card.banner.text))
+    T.eq(card.checksHead.text, "CheckThat checks and records the result", "auto heading")
     T.ok(card.checks.text:find("records the result in 30 s"), "countdown: " .. tostring(card.checks.text))
+    T.ok(card.checks.text:find("|r\n\nCheckThat records the result in 30 s", 1, true), "a blank line above the countdown: " .. tostring(card.checks.text))
     T.eq(ns.Card.AutoSettle(), nil, "nothing recorded before the line")
     KeepThatDB.global.log[#KeepThatDB.global.log + 1] = "bags opened"
     T.ok(ns.Card.AutoSettle(), "recorded when the line appears")
     local run, _, step = ns.App.Current()
     T.eq(run.steps["au.1"].verdict, "pass"); T.eq(step.id, "au.2", "card moved on")
     T.ok(card.title.text:find("Second"), "card shows the next step")
-    T.ok(card.rows[1].body.text:find("CheckThat records the result when the checks below are met"), "wait-event wording: " .. tostring(card.rows[1].body.text))
+    T.ok(card.rows[2].body.text:find("CheckThat records the result when the checks below are met"), "wait-event wording: " .. tostring(card.rows[2].body.text))
     card.prevBtn.scripts.OnClick()
     T.ok(card.recorded.text:find("recorded by CheckThat"), "settled step is marked: " .. tostring(card.recorded.text))
     card.nextBtn.scripts.OnClick()
@@ -278,7 +281,7 @@ test("smoke: after an automatic unverified result the card stops promising autom
     assert(ns.App.ImportPlan(assert(ns.Codec.Encode(p)))); ns.App.Start("KeepThat")
     ns.Card.Show()
     local card = _G.CheckThatCard
-    T.ok(card.banner.text:find("records the result when the checks are met"), "promise before the timeout")
+    T.eq(card.checksHead.text, "CheckThat checks and records the result", "promise before the timeout")
     local realTime = ns.App.env.time
     ns.App.env.time = function() return (realTime and realTime() or 0) + 100 end
     ns.Card.AutoSettle()
@@ -286,8 +289,8 @@ test("smoke: after an automatic unverified result the card stops promising autom
     local run = select(1, ns.App.Current())
     T.eq(run.steps["t.1"].verdict, "unverified")
     ns.Card.Refresh()
-    T.ok(not card.banner.text:find("records the result when the checks are met"), "no promise on the retry: " .. tostring(card.banner.text))
-    T.ok(card.rows[1].body.text:find("press Pass"), "tells the player to press Pass: " .. tostring(card.rows[1].body.text))
+    T.eq(card.checksHead.text, "CheckThat checks", "no promise on the retry")
+    T.ok(card.rows[2].body.text:find("press Pass"), "tells the player to press Pass: " .. tostring(card.rows[2].body.text))
     T.ok(not card.checks.text:find("records the result in"), "no countdown on the retry")
 end)
 test("smoke: a note from another step is not saved by an automatic result", function()
