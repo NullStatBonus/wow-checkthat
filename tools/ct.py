@@ -1718,7 +1718,7 @@ def sv_json(path):
 
 
 RECORDING_FORMAT = 1
-RECORDING_REV = 2   # 2: a call may carry "window". format stays 1, because a released runner rejects any other value.
+RECORDING_REV = 3   # 2: a call may carry "window". 3: a label may start with a scene name ("gear:GetMerchantItemInfo(1)"). format stays 1, because a released runner rejects any other value.
 RECORDING_WINDOWS = ("merchant", "trainer", "auction")
 # Returns that name another player: 1-based positions, blanked in a recording. GetAuctionItemInfo: highBidder, bidderFullName, owner, ownerFullName.
 REDACTED_RETURNS = {"GetAuctionItemInfo": (12, 13, 14, 15)}
@@ -1736,7 +1736,8 @@ def anonymize_link(value):
                 parts[i] = ""
         return "|Hitem:" + ":".join(parts) + "|h"
     return ITEM_LINK.sub(blank, value)
-CALL_LABEL = re.compile(r"^([A-Za-z_][\w.]*)\((.*)\)$")
+# A label is a call, optionally after a scene name: CTProbe records a second vendor or trainer (gear, class) and money per window (merchant:GetMoney()).
+CALL_LABEL = re.compile(r"^(?:[a-z]+:)?([A-Za-z_][\w.]*)\((.*)\)$")
 
 def probe_recordings(sv_path):
     """(client, recording, skipped) from the CTProbeDB.fixtures that CTProbe's /ctp record saved. recording is {format, client, build, calls}

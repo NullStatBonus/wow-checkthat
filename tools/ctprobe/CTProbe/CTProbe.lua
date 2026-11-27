@@ -2,7 +2,7 @@
 -- The game runs this file first and loads the saved variables afterwards, then fires ADDON_LOADED. A CTProbeDB made here
 -- would be replaced by the table from disk, and every line written to the old one would be lost. So the saved table is
 -- only touched in ADDON_LOADED (see the event handler below).
-local VERSION = 4 -- v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
+local VERSION = 5 -- v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
 local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
 local realGetTime = GetTime -- say() reads the clock through this, so a hook on GetTime from /ctp taint hookerror cannot reach the log
@@ -107,7 +107,7 @@ ev:SetScript("OnEvent", function(_, e, ...)
     elseif e == "GET_ITEM_INFO_RECEIVED" then
         local id = ...
         if CTProbeDB and CTProbeDB.fixtures and ITEM_FIXTURES[id] then
-            for _, f in ipairs(ITEM_FIXTURES[id]) do store(f[1], f[2], f[3]) end
+            for _, f in ipairs(ITEM_FIXTURES[id]) do store(f[1], f[2], f[3], f[4]) end
             say(("item %d delivered; its GetItemInfo records are replaced"):format(id))
         end
     else
@@ -316,44 +316,109 @@ end
 -- Armed window capture. Vendor, trainer and auction calls return nothing unless their window is open, so /ctp record arm waits for the
 -- window's event and records the count and the first rows then. Only these read-only calls are made: the probe never calls anything that
 -- changes state. A call the client lacks is stored as an error entry, which ct.py recordings reports as skipped.
+-- Each window has slots (scenes), filled once each: a vendor and a vendor that sells armor or weapons (gear), a trainer and a class
+-- trainer (class), and an auction list. The first scene of a window keeps the plain labels of v4; another scene's labels start with its
+-- name ("gear:GetMerchantItemInfo(1)"), so two vendors do not overwrite each other. GetMoney is recorded beside each vendor and trainer
+-- scene, with its value, as "<scene>:GetMoney()". Each vendor row's item also gets GetItemInfo and C_Item.GetItemInfo.
 local ROWS = 3
 local WINDOWS = {
-    merchant = { count = "GetMerchantNumItems", rows = { "GetMerchantItemInfo", "GetMerchantItemLink" } },
-    trainer = { count = "GetNumTrainerServices", rows = { "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq" } },
-    auction = { count = "GetNumAuctionItems", arg = "list", rows = { "GetAuctionItemInfo" } }, -- the plain word list, so the label reads back
+    merchant = { count = "GetMerchantNumItems", rows = { "GetMerchantItemInfo", "GetMerchantItemLink" }, money = true, scenes = { "gear", "merchant" } },
+    trainer = { count = "GetNumTrainerServices", rows = { "GetTrainerServiceInfo", "GetTrainerServiceCost", "GetTrainerServiceSkillReq", "GetTrainerServiceLevelReq" },
+        money = true, scenes = { "class", "trainer" } },
+    auction = { count = "GetNumAuctionItems", arg = "list", rows = { "GetAuctionItemInfo", "GetAuctionItemLink" }, scenes = { "auction" } }, -- the plain word list, so the label reads back
 }
+local SCENE_ROWS = { class = 10 } -- a class trainer lists several ranks of one spell, so more rows are kept
 WINDOW_EVENT = { MERCHANT_SHOW = "merchant", MERCHANT_UPDATE = "merchant", TRAINER_SHOW = "trainer", TRAINER_UPDATE = "trainer",
     AUCTION_ITEM_LIST_UPDATE = "auction" } -- an auction list exists only after the player searches
-local function recordCall(win, name, ...)
+local function call(name, ...) -- a dotted name such as C_Item.GetItemInfo is looked up table by table
+    local f = _G
+    for part in name:gmatch("[^.]+") do f = type(f) == "table" and f[part] or nil end
+    return f(...)
+end
+local function recordCall(win, prefix, name, ...)
     local args, parts = { ... }, {}
     for i, v in ipairs(args) do parts[i] = tostring(v) end
-    return store(name .. "(" .. table.concat(parts, ",") .. ")", function() return _G[name](unpack(args)) end, nil, win)
+    return store(prefix .. name .. "(" .. table.concat(parts, ",") .. ")", function() return call(name, unpack(args)) end, nil, win)
+end
+local function itemId(link) return type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil end
+-- The item ids of the first n vendor rows, and whether one is a weapon (class 2) or armor (class 4). nil when a link is not loaded yet.
+local function vendorItems(n)
+    local ids, gear = {}, false
+    for i = 1, n do
+        local ok, link = pcall(GetMerchantItemLink, i)
+        local id = ok and itemId(link)
+        if not id then return nil end
+        ids[i] = id
+        local okc, classID = pcall(function() return select(6, call(C_Item and C_Item.GetItemInfoInstant and "C_Item.GetItemInfoInstant" or "GetItemInfoInstant", id)) end)
+        if okc and (classID == 2 or classID == 4) then gear = true end
+    end
+    return ids, gear
+end
+local function recordItem(id)
+    local request = C_Item and C_Item.RequestLoadItemDataByID
+    if request then pcall(request, id) end
+    local list = ITEM_FIXTURES[id] or {}
+    for _, name in ipairs({ "GetItemInfo", "C_Item.GetItemInfo" }) do
+        local label = ("%s(%d)"):format(name, id)
+        local f = { label, function() return call(name, id) end, nil, "merchant" }
+        list[#list + 1] = f
+        store(f[1], f[2], f[3], f[4]) -- an uncached item records nothing now and is replaced when GET_ITEM_INFO_RECEIVED arrives
+    end
+    ITEM_FIXTURES[id] = list
+end
+-- Picks the armed scene this window fills: the first armed one in the window's list whose condition holds.
+local function sceneFor(win, n)
+    local armed, ids, gear = CTProbeDB.armed, nil, nil
+    if win == "merchant" then
+        ids, gear = vendorItems(math.min(n, ROWS))
+        if not ids then return nil, nil, "an item link is not loaded yet" end
+        if armed.gear and gear then return "gear", ids end
+        return armed.merchant and "merchant" or nil, ids
+    elseif win == "trainer" then
+        local ok, tradeskill = pcall(IsTradeskillTrainer)
+        if armed.class and ok and tradeskill == false then return "class" end
+        return armed.trainer and "trainer" or nil
+    end
+    return armed.auction and "auction" or nil
 end
 capture = function(win)
     local w = WINDOWS[win]
-    local counted = recordCall(win, w.count, w.arg)
-    local n = counted.values and counted.values[1] and counted.values[1].value
-    if counted.error then
-        CTProbeDB.armed[win] = nil
+    local free = false
+    for _, s in ipairs(w.scenes) do if CTProbeDB.armed[s] then free = true end end
+    if not free then return end
+    local countLabel = w.count .. "(" .. (w.arg or "") .. ")"
+    local ok, n = pcall(call, w.count, w.arg) -- read first: the scene decides the label it is stored under
+    if not ok then
+        store(countLabel, function() return call(w.count, w.arg) end, nil, win) -- the error entry tells ct.py why the window is missing
+        for _, s in ipairs(w.scenes) do CTProbeDB.armed[s] = nil end
         say(("window %s: %s raised an error, so nothing more is recorded"):format(win, w.count))
-    elseif not n or n < 1 then
+        return
+    elseif type(n) ~= "number" or n < 1 then
         say(("window %s: no rows yet; waiting for the next update"):format(win))
-    else
-        n = math.min(n, ROWS)
-        for i = 1, n do
-            for _, name in ipairs(w.rows) do
-                if w.arg then recordCall(win, name, w.arg, i) else recordCall(win, name, i) end -- a nil first argument would end the list
-            end
-        end
-        CTProbeDB.armed[win] = nil
-        say(("window %s: recorded the count and %d rows"):format(win, n))
+        if CTProbeDB.armed[w.scenes[#w.scenes]] then store(countLabel, function() return call(w.count, w.arg) end, nil, win) end
+        return
     end
+    local scene, ids, why = sceneFor(win, n)
+    if why then say(("window %s: %s; open it again"):format(win, why)) return end
+    if not scene then say(("window %s: its scene is recorded already"):format(win)) return end
+    local prefix = scene == w.scenes[#w.scenes] and "" or scene .. ":"
+    store(prefix .. countLabel, function() return call(w.count, w.arg) end, nil, win)
+    n = math.min(n, SCENE_ROWS[scene] or ROWS)
+    for i = 1, n do
+        for _, name in ipairs(w.rows) do
+            if w.arg then recordCall(win, prefix, name, w.arg, i) else recordCall(win, prefix, name, i) end -- a nil first argument would end the list
+        end
+    end
+    if w.money then recordCall(win, scene .. ":", "GetMoney") end
+    for _, id in ipairs(ids or {}) do recordItem(id) end
+    CTProbeDB.armed[scene] = nil
+    say(("window %s: recorded the count and %d rows as %s"):format(win, n, scene))
 end
 local function arm()
     if not CTProbeDB then say("record arm: saved variables are not loaded yet") return end
     CTProbeDB.fixtures = CTProbeDB.fixtures or {}
-    CTProbeDB.armed = { merchant = true, trainer = true, auction = true }
-    say("armed: open a vendor, a trainer, and search the auction house, then /reload. Run /ctp record first; arm keeps what it recorded")
+    CTProbeDB.armed = { merchant = true, gear = true, trainer = true, class = true, auction = true }
+    say("armed: open a vendor and an armor or weapon vendor, a profession trainer and a class trainer, and search the auction house, then /reload. Run /ctp record first; arm keeps what it recorded")
 end
 
 SLASH_CTPROBE1 = "/ctp"

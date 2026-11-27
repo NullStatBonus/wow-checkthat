@@ -331,6 +331,9 @@ class WindowRecordings(unittest.TestCase):
 ["GetNumTrainerServices()"] = { ["window"] = "trainer", ["error"] = "attempt to call a nil value" },
 ["GetTrainerServiceInfo(1)"] = { ["window"] = "bogus", ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Spell" } } },
 ["GetLocale()"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "enUS" } } },
+["gear:GetMerchantItemInfo(1)"] = { ["window"] = "merchant", ["n"] = 3, ["values"] = { { ["type"] = "string", ["value"] = "Lionheart Helm" }, { ["type"] = "number", ["value"] = 1 }, { ["type"] = "number", ["value"] = 250000 } } },
+["gear:GetMoney()"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 98765 } } },
+["Gear:GetMoney()"] = { ["window"] = "merchant", ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 1 } } },
 },
 }
 '''
@@ -341,9 +344,16 @@ class WindowRecordings(unittest.TestCase):
         with open(path, "w") as f: f.write(self.SV)
         return path
 
-    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_2(self):
+    def test_a_scene_label_keeps_its_name_and_the_mocked_function_and_money_beside_a_window_keeps_its_value(self):
+        _, rec, skipped = ct.probe_recordings(self.make())
+        c = rec["calls"]["gear:GetMerchantItemInfo(1)"]
+        self.assertEqual((c["api"], c["args"], c["returns"][2], c["window"]), ("GetMerchantItemInfo", [1], 250000, "merchant"))
+        self.assertEqual(rec["calls"]["gear:GetMoney()"]["returns"], [98765], "a balance recorded at a window is kept")
+        self.assertIn("not a call", dict(skipped)["Gear:GetMoney()"], "a scene name is lower case")
+
+    def test_a_window_call_keeps_its_tag_and_the_file_says_rev_3(self):
         client, rec, skipped = ct.probe_recordings(self.make())
-        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 2))
+        self.assertEqual((client, rec["format"], rec["rev"]), ("era", 1, 3))
         self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["window"], "auction")
         self.assertEqual(rec["calls"]["GetNumAuctionItems(list)"]["args"], ["list"], "a plain word argument reads back")
         self.assertEqual(rec["calls"]["GetAuctionItemInfo(list,1)"]["args"], ["list", 1])
@@ -382,6 +392,13 @@ class WindowRecordings(unittest.TestCase):
         with open(os.path.join(root, "spec.json"), "w") as f: json.dump(spec, f)
         p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        rec["rev"] = 3; rec["calls"]["gear:GetItemInfo(6948)"] = dict(rec["calls"]["GetItemInfo(6948)"])
+        rec["calls"]["gear:GetItemInfo(6948)"]["returns"] = ["Gear stone"] + rec["calls"]["GetItemInfo(6948)"]["returns"][1:]
+        with open(os.path.join(root, "tools", "recordings", "era.json"), "w") as f: json.dump(rec, f)
+        spec["mocks"] = {"GetItemInfo": {"recording": "gear:GetItemInfo(6948)"}}; spec["steps"][0]["returns"] = ["Gear stone"]
+        with open(os.path.join(root, "spec.json"), "w") as f: json.dump(spec, f)
+        p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
+        self.assertEqual(p.returncode, 0, "a rev 3 file and a scene label: " + p.stdout + p.stderr)
 
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):

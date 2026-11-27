@@ -128,6 +128,8 @@ Measured in game on 2026-11-26 with CTProbe v4 armed capture (Era 1.15.9.70576, 
 
 Item data: `C_Item.RequestLoadItemDataByID` exists on both clients. A recording keeps no table return, so the Forever auction calls and `C_MerchantFrame.GetItemInfo` are not recorded as they stand.
 
+Added for CTProbe v5 (source-reviewed 2026-11-27, #240): `GetAuctionItemLink("list", index)` and `GetTrainerServiceLevelReq(index)` appear in the Era source and not in the Forever source; Forever's `GetTrainerServiceInfo` carries the required level itself. `IsTradeskillTrainer()` appears in both, and CTProbe uses it to tell a class trainer from a profession trainer. `C_Item.GetItemInfoInstant` appears in both; its sixth return (class 2 weapon, 4 armor) tells a gear vendor. Not measured in game yet.
+
 ## Pending in-game
 
 - **Protected actions with a tainted global (#98).** Not tried: the probe only reads `issecurevariable`. No `ADDON_ACTION_BLOCKED` was observed because none was provoked. Measuring whether a tainted `GetMoney` blocks a vendor purchase needs a Blizzard path that reads it and then calls a protected function. It does not change the decision, which already drops in-game mocks.

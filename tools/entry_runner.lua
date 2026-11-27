@@ -273,7 +273,8 @@ function Runner.run(spec, opts)
         local label = entry.recording
         if entry.args ~= nil or entry.returns ~= nil then recErr = recErr or ("mock %s: a recording cannot be combined with args or returns"):format(api); return end
         if not surface then recErr = recErr or ("mock %s: a recording needs offline level 5"):format(api); return end
-        if label:sub(1, #api + 1) ~= api .. "(" then recErr = recErr or ("mock %s: the recording %s is for another function"):format(api, label); return end
+        local bare = label:gsub("^%l+:", "", 1) -- a scene name ("gear:", recording rev 3) comes before the call
+        if bare:sub(1, #api + 1) ~= api .. "(" then recErr = recErr or ("mock %s: the recording %s is for another function"):format(api, label); return end
         local call = surface.recordings and surface.recordings.calls and surface.recordings.calls[label]
         if recFileErr then recErr = recErr or recFileErr; return end
         if not call then

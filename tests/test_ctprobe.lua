@@ -224,4 +224,98 @@ test("/ctp record asks for the candidate armor and weapon and records them when 
     T.eq(CTProbeDB.fixtures["GetItemInfo(12784)"].n, 0, "an item that has not arrived stays empty")
 end)
 
+test("armed: a gear vendor and a plain vendor each fill their own scene, with money and the rows' item info", function()
+    local _, fire = probe({})
+    vendorFakes(4)
+    _G.GetMoney = function() return 98765 end
+    local gearIds = {}
+    _G.C_Item = _G.C_Item or {}
+    _G.C_Item.GetItemInfoInstant = function(id) return id, "Armor", "Plate", "INVTYPE_HEAD", 1, gearIds[id] and 4 or 0, 0 end
+    _G.GetItemInfo = function(id) return "Info" .. id end
+    _G.C_Item.GetItemInfo = function(id) return "CInfo" .. id end
+    SlashCmdList.CTPROBE("record arm")
+    gearIds[2] = true
+    fire("MERCHANT_SHOW")
+    local fx = CTProbeDB.fixtures
+    T.eq(fx["gear:GetMerchantNumItems()"].values[1].value, 4, "a vendor with armor fills the gear scene")
+    T.eq(fx["gear:GetMerchantItemInfo(2)"].values[1].value, "Item2"); T.eq(fx["gear:GetMerchantItemInfo(2)"].window, "merchant")
+    T.eq(fx["GetMerchantItemInfo(1)"], nil, "the plain labels are left for a plain vendor")
+    T.eq(fx["gear:GetMoney()"].values[1].value, 98765, "money is recorded with its value beside the vendor")
+    T.eq(fx["gear:GetMoney()"].typeOnly, nil)
+    T.eq(fx["GetItemInfo(2)"].values[1].value, "Info2"); T.eq(fx["GetItemInfo(2)"].window, "merchant", "the row's item info is tagged with the window")
+    T.eq(fx["C_Item.GetItemInfo(3)"].values[1].value, "CInfo3")
+    T.ok(has("recorded the count and 3 rows as gear"), "the log names the scene")
+    gearIds = {}
+    vendorFakes(2)
+    fire("MERCHANT_SHOW")
+    T.eq(fx["GetMerchantNumItems()"].values[1].value, 2, "a plain vendor fills the plain labels")
+    T.eq(fx["gear:GetMerchantNumItems()"].values[1].value, 4, "and leaves the gear scene")
+    T.eq(fx["merchant:GetMoney()"].values[1].value, 98765)
+    gearIds[1] = true; vendorFakes(1)
+    fire("MERCHANT_SHOW")
+    T.eq(fx["GetMerchantNumItems()"].values[1].value, 2, "a third vendor records nothing")
+end)
+
+test("armed: a vendor whose item links are not loaded yet records nothing until it is opened again", function()
+    local _, fire = probe({})
+    vendorFakes(2)
+    _G.GetMerchantItemLink = function() return nil end
+    SlashCmdList.CTPROBE("record arm")
+    fire("MERCHANT_SHOW")
+    T.eq(CTProbeDB.fixtures["GetMerchantItemInfo(1)"], nil); T.eq(CTProbeDB.fixtures["gear:GetMerchantItemInfo(1)"], nil)
+    T.ok(has("an item link is not loaded yet; open it again"), "the log says so")
+    vendorFakes(2)
+    fire("MERCHANT_UPDATE")
+    T.eq(CTProbeDB.fixtures["GetMerchantItemInfo(2)"].values[1].value, "Item2")
+end)
+
+test("armed: a vendor row's item that is not cached is recorded when the client delivers it", function()
+    local _, fire = probe({})
+    vendorFakes(1)
+    local cached = false
+    _G.GetItemInfo = function(id) if cached then return "Late" .. id end end
+    SlashCmdList.CTPROBE("record arm")
+    fire("MERCHANT_SHOW")
+    T.eq(CTProbeDB.fixtures["GetItemInfo(1)"].n, 0, "nothing yet")
+    cached = true
+    fire("GET_ITEM_INFO_RECEIVED", 1, true)
+    T.eq(CTProbeDB.fixtures["GetItemInfo(1)"].values[1].value, "Late1"); T.eq(CTProbeDB.fixtures["GetItemInfo(1)"].window, "merchant", "the delivery keeps the tag")
+end)
+
+test("armed: a class trainer fills the class scene with more rows and the level requirement; a profession trainer the plain one", function()
+    local _, fire = probe({})
+    local tradeskill = false
+    _G.IsTradeskillTrainer = function() return tradeskill end
+    _G.GetNumTrainerServices = function() return 12 end
+    _G.GetTrainerServiceInfo = function(i) return "Spell" .. i, "Rank " .. i, "available" end
+    _G.GetTrainerServiceCost = function(i) return 10 * i end
+    _G.GetTrainerServiceSkillReq = function() return nil end
+    _G.GetTrainerServiceLevelReq = function(i) return 2 * i end
+    _G.GetMoney = function() return 500 end
+    SlashCmdList.CTPROBE("record arm")
+    fire("TRAINER_SHOW")
+    local fx = CTProbeDB.fixtures
+    T.eq(fx["class:GetNumTrainerServices()"].values[1].value, 12)
+    T.eq(fx["class:GetTrainerServiceInfo(10)"].values[2].value, "Rank 10", "a class trainer keeps ten rows")
+    T.eq(fx["class:GetTrainerServiceInfo(11)"], nil)
+    T.eq(fx["class:GetTrainerServiceLevelReq(4)"].values[1].value, 8)
+    T.eq(fx["class:GetMoney()"].values[1].value, 500); T.eq(fx["class:GetMoney()"].window, "trainer")
+    T.eq(fx["GetTrainerServiceInfo(1)"], nil, "the plain labels wait for a profession trainer")
+    tradeskill = true
+    fire("TRAINER_SHOW")
+    T.eq(fx["GetTrainerServiceInfo(3)"].values[1].value, "Spell3"); T.eq(fx["GetTrainerServiceInfo(4)"], nil, "a profession trainer keeps three rows")
+    T.eq(fx["trainer:GetMoney()"].values[1].value, 500)
+end)
+
+test("armed: an auction row records its link", function()
+    local _, fire = probe({})
+    _G.GetNumAuctionItems = function() return 1, 1 end
+    _G.GetAuctionItemInfo = function() return "Ore" end
+    _G.GetAuctionItemLink = function(kind, i) return kind == "list" and "|Hitem:2770" .. i .. "|h" or nil end
+    SlashCmdList.CTPROBE("record arm")
+    fire("AUCTION_ITEM_LIST_UPDATE")
+    T.eq(CTProbeDB.fixtures["GetAuctionItemLink(list,1)"].values[1].value, "|Hitem:27701|h"); T.eq(CTProbeDB.fixtures["GetAuctionItemLink(list,1)"].window, "auction")
+    T.eq(CTProbeDB.fixtures["GetMoney()"], nil, "no money beside the auction house")
+end)
+
 finish()

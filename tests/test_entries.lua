@@ -458,14 +458,16 @@ test("the committed recordings name no character, realm or personal value", func
         local f = assert(io.open("tools/recordings/" .. client .. ".json")); local text = f:read("*a"); f:close()
         local rec = assert(jns.Json.Decode(text))
         T.eq(rec.format, 1); T.eq(rec.client, client); T.ok(next(rec.calls))
-        T.ok(rec.rev == nil or rec.rev == 2, "rev is absent in a file from before the window tags, or 2")
+        T.ok(rec.rev == nil or rec.rev == 2 or rec.rev == 3, "rev is absent in a file from before the window tags, or 2 or 3")
         for label, call in pairs(rec.calls) do
             T.ok(call.window == nil or call.window == "merchant" or call.window == "trainer" or call.window == "auction", label .. " has an unknown window tag")
             if call.api == "GetAuctionItemInfo" then
                 for i = 12, 15 do T.ok(type(call.returns[i]) ~= "string" or call.returns[i] == "", label .. " names a bidder or a seller at return " .. i) end -- a nil is stored as false
             end
             T.ok(not label:find("player", 1, true), label .. " is a call on the player")
-            for _, personal in ipairs({ "GetMoney", "GetItemCount", "UnitName", "GetRealmName", "GetTime", "GetServerTime" }) do T.ok(call.api ~= personal, call.api .. " is personal") end
+            for _, personal in ipairs({ "GetMoney", "GetItemCount", "UnitName", "GetRealmName", "GetTime", "GetServerTime" }) do
+                T.ok(call.api ~= personal or (personal == "GetMoney" and call.window and label:find("^%l+:")), call.api .. " is personal") -- a balance is kept only beside a window scene
+            end
         end
         T.ok(not text:find("|Hitem:6948::::::::10:", 1, true) and not text:find("|Hitem:%d+:[^|]*:%d+:%d+:", 1), "an item link carries no level or specialization")
     end
