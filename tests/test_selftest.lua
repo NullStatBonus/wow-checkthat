@@ -14,7 +14,7 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     App.Init(db, env)
     assert(App.ImportPlan(s))
     local run = assert(App.Start("CheckThat"))
-    T.eq(#run.order, 16)
+    T.eq(#run.order, 17)
     T.eq(#run.categories, 5); T.eq(run.cat["self.typed"], "facts"); T.eq(run.cat["self.error"], "errors")
     ns.Errors.Hook()
     -- step 1 is automatic: it waits until the player types /ct debug on, then records its own result
@@ -80,6 +80,10 @@ test("self-test plan runs end to end with its own debug log as evidence", functi
     T.eq(#db.errorStacks, 1, "the error kept one call stack")
     T.eq(er.verdict, "pass"); T.eq(er.by, "auto"); T.ok(db.errors[#db.errors]:find("CheckThat self-test error", 1, true), db.errors[#db.errors])
     _G.debugstack = realStack
+    -- scope run: the next step sees the error the previous step raised, also after a reload
+    local _, _, re = App.Current(); T.eq(re.id, "self.runerror")
+    App.Begin(); App.MarkReloaded()
+    local rr = App.AutoSettle(); T.eq(rr.verdict, "pass", "the run's errors hold the test error"); T.eq(rr.by, "auto")
     App.Begin(); T.eq(App.AutoSettle(), nil, "waits for /ct export")
     T.ok(App.Export(), "the results string is built"); App.Log("run exported " .. run.runId)
     local x = App.AutoSettle(); T.eq(x.verdict, "pass"); T.eq(x.by, "auto")

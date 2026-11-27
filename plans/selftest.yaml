@@ -505,6 +505,23 @@ sections:
       source: stacks
       pattern: .
       label: CheckThat kept a call stack for the error
+  - id: self.runerror
+    category: errors
+    title: The run kept the error
+    action:
+      kind: manual
+      text: Wait. CheckThat records the result by itself.
+    expect: The card records the result by itself.
+    verify:
+    - assertions
+    auto: true
+    timeout: 30
+    assertions:
+    - kind: log
+      source: errors
+      contains: CheckThat self-test error
+      scope: run
+      label: The test error is among the errors of this run
   - id: self.export
     category: card
     title: Export results

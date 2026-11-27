@@ -49,7 +49,7 @@ A plan without `purpose` keeps its old warnings.
 
 Split a larger feature scope into a set of plans by area, for example `<name>.core.yaml`, `<name>.ui.yaml` and `<name>.addons.yaml`. One character runs them one after another. A set by area is not the release gate: the foundation plan is.
 
-- Each plan has its own version step, setup step and final no-Lua-error step (the quiet errors source, see [Unit-test checks](#unit-test-checks)). With `scope: session` that step also sees errors from an earlier plan of the set in the same session (#161).
+- Each plan has its own version step, setup step and final no-Lua-error step (the quiet errors source, see [Unit-test checks](#unit-test-checks)). Give it `scope: run`, so it sees every error since the run started and none from an earlier run or plan.
 - Give each plan its own section range, so no section id or step id appears in two plans.
 - Each preamble names every partner plan file.
 - CheckThat keeps one plan for each addon, and a run starts from the last plan imported. Import, start and finish one plan before you import the next.

@@ -255,7 +255,13 @@
       "attempt",
       "session"
      ],
-     "description": "attempt: the lines after the step opened. session: the whole retained log."
+     "description": "attempt: the lines after the step opened. session: the whole retained log. Absent on a check with since."
+    },
+    "since": {
+     "enum": [
+      "run"
+     ],
+     "description": "Since formatRev 5. run: the check read the lines after the run started (a plan's scope: run). Absent otherwise."
     },
     "source": {
      "type": "string",

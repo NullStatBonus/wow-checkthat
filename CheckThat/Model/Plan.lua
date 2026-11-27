@@ -90,14 +90,14 @@ local function checkAssertion(a, i, errs, logs, where)
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         local n = (a.equals and 1 or 0) + (a.contains and 1 or 0) + (a.pattern and 1 or 0)
         if n ~= 1 then errs[#errs + 1] = where .. ": log assertion needs exactly one of equals, contains, pattern" end
-        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
+        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "run" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
         checkCount(a, errs, where)
     elseif a.kind == "fact" then
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         if not isStr(a.addon) then errs[#errs + 1] = where .. ": fact needs an addon" end
         if not isStr(a.key) then errs[#errs + 1] = where .. ": fact needs a key" end
         if a.which ~= nil and not Plan.WHICH[a.which] then errs[#errs + 1] = where .. ": which must be last, any or all" end
-        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
+        if a.scope ~= nil and a.scope ~= "attempt" and a.scope ~= "run" and a.scope ~= "session" then errs[#errs + 1] = where .. ": bad scope" end
         checkOp(a, errs, where)
         checkCount(a, errs, where)
     elseif a.kind == "log-sequence" then

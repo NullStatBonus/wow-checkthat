@@ -101,6 +101,16 @@ function Replay.run(ns, planString, opts)
     local imported, err = App.ImportPlan(planString)
     if not imported then problem("the plan did not import: " .. tostring(err)); return out end
     loadedAddon = imported.addon
+    -- A plan's own log source (not CheckThat's debug log): make its list before the run starts, so the log is readable
+    -- when the run saves its start positions and when a step opens.
+    local function sourceList(src)
+        local node = env[src.global]; if node == nil then node = {}; env[src.global] = node end
+        for p in src.path:gmatch("[^.]+") do node[p] = node[p] or {}; node = node[p] end
+        return node
+    end
+    for _, src in pairs(imported.logs or {}) do
+        if src.global and src.global ~= "CheckThatDB" and src.path then sourceList(src) end
+    end
     local run = App.Start(opts.addon or imported.addon or "CheckThat")
     if not run then problem("the run did not start"); return out end
     db.log.enabled = true
@@ -109,15 +119,6 @@ function Replay.run(ns, planString, opts)
     local _, ctx0 = App.Current()
     local assumed = {}
     -- Write what the step's checks need: the debug lines and facts a tester's actions would produce.
-    -- A plan's own log source (not CheckThat's debug log): make its list, so the log is readable when a step opens.
-    local function sourceList(src)
-        local node = env[src.global]; if node == nil then node = {}; env[src.global] = node end
-        for p in src.path:gmatch("[^.]+") do node[p] = node[p] or {}; node = node[p] end
-        return node
-    end
-    for _, src in pairs(ctx0.plan.logs or {}) do
-        if src.global and src.global ~= "CheckThatDB" and src.path then sourceList(src) end
-    end
     -- Writes one line for a check; true when it went into a plan's own log source (evidence the replay made up).
     local function writeLine(step, a, source, text)
         local src = ctx0.plan.logs and ctx0.plan.logs[source]

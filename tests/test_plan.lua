@@ -19,6 +19,11 @@ local function bad(mut, needle)
     T.ok(#errs > 0, "expected errors for " .. needle)
     T.ok(table.concat(errs, ";"):find(needle, 1, true), needle .. " not in: " .. table.concat(errs, ";"))
 end
+test("an assertion may read the lines since the run started, and an unknown scope is rejected", function()
+    local p = good(); p.sections[1].steps[1].assertions[1].scope = "run"
+    T.eq(#ns.Plan.Validate(p), 0, table.concat(ns.Plan.Validate(p), ";"))
+    bad(function(q) q.sections[1].steps[1].assertions[1].scope = "forever" end, "bad scope")
+end)
 test("plan rejects step and section ids the macro marker cannot carry", function()
     bad(function(p) p.sections[1].steps[2].id = "a b" end, "step id is not valid")
     bad(function(p) p.sections[1].steps[2].id = "a.2\n/run x" end, "step id is not valid")

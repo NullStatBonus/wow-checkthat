@@ -182,6 +182,9 @@ Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categor
 16. **A run tells an addon when it ends.** Type `/run CheckThat.OnRun("CheckThat", function(e, i) print("run " .. e .. " " .. tostring(i.reason)) end)`. Start the self-test, then click End run on the card and accept.
     Check: chat shows "run start nil" when the run starts and "run end ended" when you end it.
     Log: `[runevents] called CheckThat start` and `[runevents] called CheckThat end ended`.
+17. **A last check sees an error from an earlier step.** Play the self-test to "Record a Lua error" and click Run. When the card shows "The run kept the error", type `/reload`.
+    Check: after the reload the card records the step as passed by itself.
+    Log: `[ct] step self.runerror pass auto evidence matched`.
 
 ## 6. Plan skills (no game needed)
 

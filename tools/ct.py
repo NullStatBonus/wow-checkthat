@@ -263,7 +263,7 @@ def validate(plan, requirements=None):
                     errs.append("%s: log assertion needs exactly one of equals, contains, pattern" % sid)
                 own = "[ct] step %s " % sid   # the game judges a result before it writes this line
                 if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
-                    errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope session" % (sid, own))
+                    errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope run" % (sid, own))
     block = plan.get("offline") or {}
     if block.get("predicts"):
         have = offline_step_ids(block)
@@ -512,6 +512,7 @@ def export_form(run):
             a.pop("snapshots", None)
             a.pop("reloaded", None)   # set when the game reloads with the attempt open; it does not change the revision
     run.pop("current", None)   # the step the card shows: browsing moves it without a new revision
+    run.pop("snapshots", None)   # the run's start positions (scope run): saved variables only, like an attempt's
     return run
 
 def note_problem(dest, text):
@@ -2108,7 +2109,7 @@ def outcome_ok(o):
         if not (isinstance(h, dict) and _pos(h.get("n")) and (h.get("item") is None or _pos(h.get("item")))
                 and all(h.get(k) is None or isinstance(h[k], str) for k in ("line", "value"))):
             return False
-    if o.get("scope") not in (None, "attempt", "session") or o.get("trimmed") not in (None, True):
+    if o.get("scope") not in (None, "attempt", "session") or o.get("since") not in (None, "run") or o.get("trimmed") not in (None, True):
         return False
     return all(o.get(k) is None or isinstance(o[k], str) for k in CHECK_STRINGS) \
         and all(o.get(k) is None or (isinstance(o[k], int) and not isinstance(o[k], bool) and o[k] >= 0) for k in ("matched", "window")) \
@@ -2264,7 +2265,7 @@ def step_table(r, only=None):
     return ["  ".join(c.ljust(widths[i]) for i, c in enumerate(row[:4])) + ("  " + row[4] if row[4] else "") for row in rows]
 
 
-CHECK_KEYS = ("kind", "scope", "source", "label", "matched", "window", "stoppedAt", "trimmed")
+CHECK_KEYS = ("kind", "scope", "since", "source", "label", "matched", "window", "stoppedAt", "trimmed")
 
 def outcome_view(index, o, lines=False):
     """One check outcome as plain data for other tools. Line text, values and observed state are left out unless lines is set,
@@ -2292,7 +2293,7 @@ def check_lines(at):
     for i, o in enumerate(at.get("outcomes") or [], 1):
         if o.get("result") == "pass" or not o.get("rule"):
             continue
-        bits = [o.get("source") and "%s%s" % (o["source"], ", whole log" if o.get("scope") == "session" else "")]
+        bits = [o.get("source") and "%s%s" % (o["source"], ", whole log" if o.get("scope") == "session" else ", since the run started" if o.get("since") == "run" else "")]
         if o.get("matched") is not None and o.get("window") is not None:
             bits.append("%d of %d line%s matched" % (o["matched"], o["window"], "" if o["window"] == 1 else "s"))
         if o.get("stoppedAt") is not None:
@@ -2316,7 +2317,7 @@ def attempt_lines(at, stack_keys, errs, stacks, ambiguous):
     out.extend(check_lines(at))
     marked = {}   # source -> positions of the lines that decided a check, within the new lines the excerpt starts from
     for o in at.get("outcomes") or []:
-        if o.get("result") != "pass" and o.get("scope") != "session":
+        if o.get("result") != "pass" and o.get("scope") != "session" and o.get("since") != "run":   # their positions count from elsewhere
             marked.setdefault(o.get("source"), set()).update(h["n"] for h in o.get("hits") or [])
     for src, lines in sorted((at.get("excerpt") or {}).items()):
         out.append("    log %s, %d new line%s:" % (src, len(lines), "" if len(lines) == 1 else "s"))

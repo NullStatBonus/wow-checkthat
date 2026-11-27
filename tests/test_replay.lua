@@ -117,6 +117,12 @@ test("a step that ends in Fail although the replay did what its checks need is a
     T.ok(has(out.problems, "a: the step failed"), table.concat(out.problems, "; "))
 end)
 
+test("a run-scoped absence check replays like an attempt-scoped one", function()
+    local out = Replay.run(ns, otherPlan({ step("a"), auto("z", { { kind = "log", source = "debug", contains = "ok", scope = "run", label = "ok" },
+        { kind = "log", source = "debug", contains = "boom", absent = true, scope = "run", label = "no boom" } }) }))
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+end)
+
 test("the plan's own addon counts as loaded", function()
     local out = Replay.run(ns, otherPlan({ auto("a", { { kind = "state", probe = "addon-loaded", name = "KeepThat", op = "eq", value = true, scope = "attempt", label = "loaded" } }) }))
     T.eq(#out.problems, 0, table.concat(out.problems, "; "))

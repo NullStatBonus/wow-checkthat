@@ -18,7 +18,7 @@ end
 -- The format of the saved run record (docs/results-format.md). MAJOR is the `ct` key: it rises only for a change that breaks a
 -- reader (a key removed, renamed or given another meaning), and a CheckThat that knows an older major leaves such a run alone.
 -- FORMAT_REV rises with every additive change (a new optional key). It only ever goes up on a run.
-Run.MAJOR, Run.FORMAT_REV = 1, 4
+Run.MAJOR, Run.FORMAT_REV = 1, 5
 
 -- An absent ct is a run from before it was kept. Any present ct that is not a whole number from 1 up to MAJOR is a run this version
 -- cannot read: a higher major, but also a text, a fraction or a table, which a writer that knows more may use.
@@ -55,6 +55,9 @@ function Run.New(ctx)
         started = ctx.now, order = {}, steps = {}, current = 1,
         categories = {}, cat = {}, selected = {},
     }
+    -- Where the logs that run-scoped checks read stand now: those checks count only the lines after it.
+    local rs = ns.Evidence.RunSnapshot(ctx.plan, ctx.env)
+    if next(rs) then run.snapshots = rs end
     -- The tested addon's version, when the game could say (omitted otherwise, never "unknown").
     local tv = ctx.targetVersion
     if type(tv) == "string" and tv ~= "" and tv ~= "unknown" then run.targetVersion = tv end
@@ -345,7 +348,7 @@ function Run.Begin(run, ctx, id)
     local rec = run.steps[id]
     local last = rec.attempts[#rec.attempts]
     if last and not last.verdict then return last end -- already open (e.g. after a reload)
-    local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = ns.Evidence.Snapshot(ctx.plan, ctx.env, stepOf(ctx, id)), build = ctx.build }
+    local a = { n = #rec.attempts + 1, started = ctx.now, snapshots = ns.Evidence.Snapshot(ctx.plan, ctx.env, stepOf(ctx, id), run.snapshots), build = ctx.build }
     -- After the runner settled the last attempt as unverified, the retry waits for the player: no loop of automatic results.
     -- (Undo resets the step to pending: that is the player acting, so the retry may settle itself.)
     if last and last.by == "auto" and last.verdict == "unverified" and rec.verdict == "unverified" then a.noauto = true end
@@ -541,6 +544,7 @@ function Run.Export(run)
         return o
     end
     local out = copy(run)
+    out.snapshots = nil -- the run's start positions, as bulky as an attempt's
     -- Only the attempt records carry snapshots; a step may legitimately be named "snapshots".
     for _, rec in pairs(out.steps or {}) do
         for _, a in ipairs(rec.attempts or {}) do a.snapshots = nil end
@@ -591,6 +595,7 @@ function Run.End(run, now)
         local a = rec.attempts[#rec.attempts]
         if a and not a.verdict then a.snapshots = nil end
     end
+    run.snapshots = nil
     Run.Touch(run, now)
     run.endedAt = now
     return true

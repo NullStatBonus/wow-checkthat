@@ -1026,6 +1026,19 @@ class PlanSkill(unittest.TestCase):
         p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "[ct] step a.10 pass"}]
         self.assertEqual(ct.validate(p), [])
 
+    def test_scope_run_is_valid_and_an_unknown_scope_is_not(self):
+        p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "contains": "x", "scope": "run"}]
+        self.assertEqual(ct.validate(p), [])
+        p["sections"][0]["steps"][0]["assertions"][0]["scope"] = "forever"
+        self.assertTrue(ct.validate(p))
+
+    def test_a_run_scoped_check_reads_as_since_the_run_started(self):
+        o = {"result": "fail", "rule": "absent: a line", "source": "errors", "since": "run", "window": 2, "matched": 1}
+        self.assertTrue(ct.outcome_ok(o))
+        self.assertIn("errors, since the run started", "\n".join(ct.check_lines({"outcomes": [o]})))
+        self.assertIn("errors, whole log", "\n".join(ct.check_lines({"outcomes": [dict(o, since=None, scope="session")]})))
+        self.assertFalse(ct.outcome_ok(dict(o, since="forever")))
+
     def test_first_step_without_a_version_check_warns(self):
         p = good()
         self.assertIn("a.1: the first step does not check the version", ct.version_warning(p))
@@ -3246,6 +3259,13 @@ class Results(unittest.TestCase):
         self.assertEqual(ct.write_revision(d, exported), "same")   # /ct export strips snapshots
         exported["steps"]["a"]["attempts"][0]["n"] = 2
         self.assertEqual(ct.write_revision(d, exported), "conflict")
+
+    def test_the_runs_start_positions_are_not_a_conflict(self):
+        d = tempfile.mkdtemp(); self.addCleanup(__import__("shutil").rmtree, d)
+        run = {"runId": "R-1", "revision": 1, "snapshots": {"errors": {"n": 2}}, "steps": {}}
+        exported = {"runId": "R-1", "revision": 1, "steps": {}}
+        self.assertEqual(ct.write_revision(d, run), "new")
+        self.assertEqual(ct.write_revision(d, exported), "same")   # /ct export and a finished run leave them out
 
     def test_junit_stays_valid_xml_with_control_characters_in_a_note(self):
         from xml.etree import ElementTree as ET
