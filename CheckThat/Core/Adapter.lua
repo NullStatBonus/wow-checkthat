@@ -45,6 +45,17 @@ function Adapter.Env()
     -- Reads for the state probes (#67). Model asks for these names, so the client's spelling of each function stays here.
     env.ContainerFreeSlots = function(bag) return callName("C_Container", "GetContainerNumFreeSlots", bag) end
     env.ItemCount = function(id) return callName("C_Item", "GetItemCount", id) end
+    -- What a named frame says: nil for a missing frame, one with no GetText, a raising read, a hidden (secret) value or one that is not text.
+    env.FrameText = function(name)
+        local ok, t = pcall(function()
+            local f = type(name) == "string" and _G[name] or nil
+            if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
+            local v = f:GetText()
+            if secret(v) or type(v) ~= "string" then return nil end
+            return v
+        end)
+        return ok and t or nil
+    end
     -- Missing or failing reads as in combat: nothing may run when the game cannot say.
     env.InCombatLockdown = function()
         local f = _G.InCombatLockdown

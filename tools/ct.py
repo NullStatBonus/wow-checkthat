@@ -324,8 +324,18 @@ def _uses_within(plan):
     return False
 
 
+def _uses_new_probes(plan):
+    """True when a state check of the plan reads money, bag-free-slots, item-count or frame-text, the probes of revision 3 (#67)."""
+    for sec in plan.get("sections") or []:
+        for st in sec.get("steps") or []:
+            for a in st.get("assertions") or []:
+                if isinstance(a, dict) and a.get("kind") == "state" and a.get("probe") in ("money", "bag-free-slots", "item-count", "frame-text"):
+                    return True
+    return False
+
+
 PLAN_REV = 3
-PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p), (3, "within", _uses_within)]
+PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p), (3, "within", _uses_within), (3, "the money, bag-free-slots, item-count or frame-text probe", _uses_new_probes)]
 
 def plan_needs(plan):
     """(revision, what): the highest revision the plan's keys need, and the addition that needs it (None for revision 1)."""

@@ -40,6 +40,21 @@ test("state probe reads are guarded, and a secret value reads nil (#67)", functi
     T.eq(A.Env().ContainerFreeSlots(3), 6, "the older global")
 end)
 
+test("FrameText reads a named frame's text and is nil for a hidden, raising, missing or non-text read", function()
+    H.stub(_G, "MyFrame", { GetText = function() return "Bank" end })
+    T.eq(A.Env().FrameText("MyFrame"), "Bank")
+    H.stub(_G, "issecretvalue", function(v) return v == "Bank" end)
+    T.eq(A.Env().FrameText("MyFrame"), nil, "a secret value is nil, never the hidden text")
+    H.stub(_G, "issecretvalue", nil)
+    H.stub(_G, "MyFrame", { GetText = function() error("boom") end })
+    T.eq(A.Env().FrameText("MyFrame"), nil, "a raising read")
+    H.stub(_G, "MyFrame", { GetText = function() return 5 end })
+    T.eq(A.Env().FrameText("MyFrame"), nil, "text only")
+    H.stub(_G, "MyFrame", nil)
+    T.eq(A.Env().FrameText("MyFrame"), nil, "no such frame")
+    T.eq(A.Env().FrameText(nil), nil, "no name")
+end)
+
 test("Confirm closes an open dialog of the same key, so the new text shows", function()
     local hidden, shown = {}, {}
     local d, h, s = _G.StaticPopupDialogs, _G.StaticPopup_Hide, _G.StaticPopup_Show

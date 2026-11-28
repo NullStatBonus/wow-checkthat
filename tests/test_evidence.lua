@@ -232,6 +232,10 @@ test("frame-text probe reads a frame's text, cut to 80 characters, and never gue
     T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Gone", op = "eq", value = "Bank" }, env)), "unverified", "no such frame")
     T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Bad", op = "eq", value = "x" }, { Bad = { GetText = function() error("boom") end } })), "unverified", "a raising read")
     T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Num", op = "eq", value = "5" }, { Num = { GetText = function() return 5 end } })), "unverified", "text only")
+    local viaAdapter = { FrameText = function(name) return name == "Tip" and string.rep("b", 200) or nil end }
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "eq", value = string.rep("b", 80) }, viaAdapter)), "pass", "the adapter read, cut")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Gone", op = "eq", value = "x" }, viaAdapter)), "unverified", "the adapter says nil")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "eq", value = "x" }, { FrameText = function() error("boom") end })), "unverified", "a raising adapter read")
 end)
 
 -- Typed facts, counts and quiet sources

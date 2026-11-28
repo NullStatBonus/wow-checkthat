@@ -90,7 +90,7 @@ An item of a `log-sequence` after the first MAY give `within`: the whole number 
 - **THEN** validation fails
 
 ### Requirement: The game state probes are read-only and never guess
-`money` SHALL read `GetMoney()`, the balance in copper. `bag-free-slots` SHALL read `C_Container.GetContainerNumFreeSlots`, or the older global `GetContainerNumFreeSlots`, summed over bags 0 to 4, or for the one `bag` the assertion names. `item-count` SHALL read `C_Item.GetItemCount`, or the older global `GetItemCount`, for the item `id` names. `frame-text` SHALL read a named frame's `GetText` and cut it to 80 characters. A probe SHALL answer nil for a missing function, a raising call and a value the game hides (`issecretvalue`); `frame-text` SHALL also answer nil for a value that is not text, and a `bag-free-slots` sum SHALL be nil when one bag cannot be read. No probe SHALL be protected, change any state, or write anything. `ct validate`, plan import and the schema SHALL refuse `item-count` without a numeric `id`, an `id` that is not a number, and a `bag` that is not a whole number.
+`money` SHALL read `GetMoney()`, the balance in copper. `bag-free-slots` SHALL read `C_Container.GetContainerNumFreeSlots`, or the older global `GetContainerNumFreeSlots`, summed over bags 0 to 4, or for the one `bag` the assertion names. `item-count` SHALL read `C_Item.GetItemCount`, or the older global `GetItemCount`, for the item `id` names. `frame-text` SHALL read a named frame's `GetText` and cut it to 80 characters. A probe SHALL answer nil for a missing function, a raising call and a value the game hides (`issecretvalue`); `frame-text` SHALL also answer nil for a value that is not text, and a `bag-free-slots` sum SHALL be nil when one bag cannot be read. No probe SHALL be protected, change any state, or write anything. `ct validate`, plan import and the schema SHALL refuse `item-count` without a numeric `id`, an `id` that is not a number, and a `bag` that is not a whole number. The `money`, `bag-free-slots`, `item-count` and `frame-text` probes are plan revision 3: `ct compile` SHALL write `needs: 3` for a plan with a state check that names one.
 
 #### Scenario: Money
 - **WHEN** a state assertion names `money` with `op: ge` and `value: 100`
@@ -107,6 +107,10 @@ An item of a `log-sequence` after the first MAY give `within`: the whole number 
 #### Scenario: Frame text
 - **WHEN** a state assertion names `frame-text` for a frame that says `Bank`, with `op: eq` and `value: Bank`
 - **THEN** the check passes, and a missing or empty frame leaves it unverified
+
+#### Scenario: A new probe needs revision 3
+- **WHEN** a plan whose only addition is a `money` state check is compiled, and another plan checks only `addon-loaded`
+- **THEN** the first compiles with `needs: 3`, so CheckThat 1.0.0 says it needs a newer CheckThat, and the second compiles with no `needs`
 
 ### Requirement: Existing plans map without loss
 Each legacy checklist item SHALL map to one step whose `expect` is its `Check:` text. `Log: none` SHALL map to `verify: [player]`. Any other `Log:` text SHALL be kept verbatim as `reviewer`, and literal log lines SHALL become diagnostic assertions until a human promotes them. The plan's preamble prose SHALL map to `preamble`.

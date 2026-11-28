@@ -161,6 +161,20 @@ class Compile(unittest.TestCase):
             code = ct.main(["compile", src, "-o", out])
         return code, (open(out).read().strip() if code == 0 else err.getvalue())
 
+    def test_the_new_state_probes_compile_to_needs_3_and_the_old_ones_do_not(self):
+        probes = {"money": {}, "bag-free-slots": {}, "item-count": {"id": 6948}, "frame-text": {"name": "MyAddonFrame"}}
+        for probe, extra in probes.items():
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [dict({"kind": "state", "probe": probe, "op": "exists"}, **extra)]
+            code, s = self.compile_out(p)
+            self.assertEqual(code, 0, s)
+            self.assertEqual(ct.decode(s).get("needs"), 3, "%s is plan revision 3, so CheckThat 1.0.0 says it needs a newer CheckThat" % probe)
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "addon-loaded", "name": "CheckThat", "op": "eq", "value": True}]
+        code, s = self.compile_out(p)
+        self.assertEqual(code, 0, s)
+        self.assertNotIn("needs", ct.decode(s), "a probe of revision 1 compiles as before")
+
     def test_a_revision_1_plan_compiles_without_needs_so_its_string_does_not_change(self):
         code, s = self.compile_out(good())
         self.assertEqual(code, 0, s)

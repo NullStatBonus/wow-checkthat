@@ -9,7 +9,7 @@ Plan.CLIENT_ALIAS = { era = "classic-era", forever = "forever-camelot" }
 -- The highest plan revision this version reads. A plan says the revision it needs in "needs" (ct.py compile writes it when a plan
 -- uses a key added after revision 1); a plan without "needs" is revision 1, the format as of 0.21.0. Raise this with each addition
 -- to the plan format, and add the key to PLAN_NEEDS in tools/ct.py, so an older CheckThat refuses the plan instead of skipping a check.
-Plan.REV = 3 -- 2: commands (#244); 3: the within of a log-sequence item (#59)
+Plan.REV = 3 -- 2: commands (#244); 3: the within of a log-sequence item (#59), and the money, bag-free-slots, item-count and frame-text probes (#67)
 Plan.ACTIONS = { manual = true, ["copy-slash"] = true, ["secure-macro"] = true, reload = true, ["wait-event"] = true }
 Plan.VERIFY = { player = true, assertions = true, reviewer = true }
 -- Runner-shipped slash allow list for the addons CheckThat knows. Any other addon's commands come from the addon itself

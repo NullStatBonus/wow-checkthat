@@ -427,6 +427,8 @@ Good to know:
 - A value the game does not answer, or hides (a secret value), leaves the check unverified. It is never 0 or false. A free-slot sum with one bag the game cannot read is unverified, because the sum is unknown.
 - A bank bag (`bag: -1` and lower) answers only while the bank is open. Open the bank in the step that checks it.
 - `frame-text` reads text only. A missing frame, a frame that says nothing, and a frame that is not text leave the check unverified.
+- On Era, `bag-free-slots` also counts the free slots of quivers, ammo pouches and soul bags, which hold only their own kind of item. Do not read it as room for any item.
+- A plan that uses `money`, `bag-free-slots`, `item-count` or `frame-text` needs plan revision 3: `compile` writes `needs: 3`, and an older CheckThat says the plan needs a newer one.
 - The start screen lists the frame a `frame-text` check reads, as it lists a `global-value` name: what the frame says can reach the results string.
 
 ## Categories

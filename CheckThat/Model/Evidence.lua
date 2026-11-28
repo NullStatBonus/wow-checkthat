@@ -427,13 +427,21 @@ function Evidence.Probe(a, env)
         if type(a.id) ~= "number" then return nil end
         return readNumber(env.ItemCount, a.id)
     elseif a.probe == "frame-text" then
+        -- env.FrameText (the adapter) also reads a hidden value as nil. The cut is inside the guard too, so nothing can raise outside it.
         local ok, text = pcall(function()
-            local f = env[a.name]
-            if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
-            return f:GetText()
+            local t
+            if type(env.FrameText) == "function" then
+                t = env.FrameText(a.name)
+            else
+                local f = env[a.name]
+                if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
+                t = f:GetText()
+            end
+            if type(t) ~= "string" then return nil end
+            return cut(t, Evidence.VALUE_LEN)
         end)
-        if not ok or type(text) ~= "string" then return nil end
-        return cut(text, Evidence.VALUE_LEN)
+        if not ok then return nil end
+        return text
     end
 end
 
@@ -486,12 +494,17 @@ end
 -- little time is swapped for a later one, which leaves less. A log that keeps no time for every line of the window
 -- cannot judge the check: it is unverified, never a pass.
 function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
+    local open, unchecked = nil, 0 -- lines a pattern could not be run on, as in the untimed path: not counted as misses
     local function detail(matched, stopped)
         if not wantDetail then return nil end
         local d = baseDetail(a)
         d.window, d.matched = #lines, matched
         if stopped then d.stoppedAt = stopped end
+        if unchecked > 0 then d.unchecked = unchecked end
         return d
+    end
+    local function stop(item, matched) -- a line left unchecked may have matched, so its reason wins, as in CheckSequence
+        return "unverified", open and skipReason(open) or ("sequence stopped at item %d"):format(item), detail(matched, item)
     end
     local function bad(why) return "unverified", why, detail(0) end
     local at
@@ -508,14 +521,15 @@ function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
     for k, m in ipairs(a.sequence) do
         local mine = {}
         for i, line in ipairs(lines) do
-            if lineMatches(m, line) then mine[#mine + 1] = i end
+            local hit, left = lineMatches(m, line)
+            if hit then mine[#mine + 1] = i elseif left then open = worse(open, left); unchecked = unchecked + 1 end
         end
         hits[k] = mine
     end
     local last = #a.sequence
     local ok = {}
     for _, i in ipairs(hits[last]) do ok[i] = true end
-    if next(ok) == nil then return "unverified", ("sequence stopped at item %d"):format(last), detail(last - 1, last) end
+    if next(ok) == nil then return stop(last, last - 1) end
     local stopped
     for k = last - 1, 1, -1 do
         local gap = a.sequence[k + 1].within
@@ -534,7 +548,7 @@ function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
     end
     if not stopped then return "pass", nil, detail(last) end
     -- stopped is the item whose lines could not reach the item after it, so that item is the one it did not place.
-    return "unverified", ("sequence stopped at item %d"):format(stopped + 1), detail(stopped, stopped + 1)
+    return stop(stopped + 1, stopped)
 end
 
 -- A fact assertion. No fact is unverified, facts that break the operator fail. With count, the facts that pass
