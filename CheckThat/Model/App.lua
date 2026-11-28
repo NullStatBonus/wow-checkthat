@@ -435,8 +435,9 @@ function App.Ctx(run)
         character = run.character, now = now(App), env = App.env }
 end
 
--- The globals a plan reads, sorted: each log source's global and each global-value probe's name. What they hold can reach the
--- results string (log lines, excerpts, "observed"). A frame-shown probe is left out: it saves only whether the frame is shown.
+-- The globals a plan reads, sorted: each log source's global, and the name each global-value probe reads or the frame a
+-- frame-text probe reads. What they hold can reach the results string (log lines, excerpts, "observed"). A frame-shown probe is
+-- left out: it saves only whether the frame is shown.
 function App.PlanReads(plan)
     local seen, out = {}, {}
     local function add(name)
@@ -446,7 +447,7 @@ function App.PlanReads(plan)
     for _, sec in ipairs(plan.sections or {}) do
         for _, st in ipairs(sec.steps or {}) do
             for _, a in ipairs(type(st.assertions) == "table" and st.assertions or {}) do
-                if a.probe == "global-value" then add(a.name) end
+                if a.probe == "global-value" or a.probe == "frame-text" then add(a.name) end
             end
         end
     end

@@ -25,3 +25,7 @@ NO
 
 # Both clients have it (tests/manifests); the fake client does not model fonts. Card.lua builds the card title font with it and keeps GameFontHighlightLarge without it.
 CreateFont
+
+# Secret values: both clients have it (tools/clients), and the fake client has no protected value. Core/Adapter.lua reads every
+# wrapped answer through it, so a value the game hides reads nil (#67).
+issecretvalue

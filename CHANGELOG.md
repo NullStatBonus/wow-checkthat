@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0
+
+New: **Read the game state in a check.** A plan can check your money, your free bag slots, an item count and a frame's text. A value that the game hides reads as unknown.
+
 ## 1.0.0
 
 New: **Result sounds.** Each result plays a short sound. A pass that CheckThat records plays two rising notes. A fail that CheckThat records plays two falling notes. An unverified step plays an alert. The last result of a run plays a finish sound. Turn the sounds off in Appearance.

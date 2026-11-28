@@ -79,11 +79,15 @@ The `/ct log` report SHALL show the newest kept error stack on a `Last error sta
 - **THEN** the report holds a `Last error stack:` line with it
 
 ### Requirement: The report lists what the plan reads
-While a run is on the card, the debug report SHALL hold a line `Plan reads: <names>` with every global the plan's log sources and `global-value` checks read, or `Plan reads: none`. With no run the line is absent.
+While a run is on the card, the debug report SHALL hold a line `Plan reads: <names>` with every global the plan's log sources, `global-value` checks and `frame-text` checks read, or `Plan reads: none`. With no run the line is absent.
 
 #### Scenario: Plan with a log source
 - **WHEN** the plan of the run on the card has a log source on `KeepThatDB`
 - **THEN** the report holds `Plan reads: KeepThatDB`
+
+#### Scenario: Plan with a frame's text
+- **WHEN** the plan of the run on the card has a `frame-text` check on `MerchantFrame`
+- **THEN** the report names `MerchantFrame`
 
 ### Requirement: The report names the saved-data revision
 The debug report SHALL print `Saved data: rev <n>` with the shape revision of the saved global table, and SHALL add that it is newer than this version and left as it is when the revision is above the one this version writes.
