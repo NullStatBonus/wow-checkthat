@@ -4,7 +4,7 @@
 
 ## Write a test
 
-Put test files in your addon's folder as `tests/test_<name>.lua` or `tests/<name>_test.lua`. A file that never names `ct.test` is left out, so the files of your own test runner can sit in the same folder: `ct test` lists them as skipped. A file gets `ct` as its `...`, and `ct.test(name, fn)` registers a test. The test function gets `ctx`, the same object a plan's [Lua hook](authoring-plans.md#lua-hooks-level-5-and-later) gets. `ctx.ns` is your addon's private namespace (the second value of `...` in its files).
+Put test files in your addon's folder as `tests/test_<name>.lua` or `tests/<name>_test.lua`. A file that never names `ct.test` is left out, so the files of your own test runner can sit in the same folder: `ct test` lists them as skipped. Only the word `ct.test` counts, so `subject.test` does not. A file that registers its tests through a helper must still name `ct.test`, for example in a comment, or it is skipped. A file gets `ct` as its `...`, and `ct.test(name, fn)` registers a test. The test function gets `ctx`, the same object a plan's [Lua hook](authoring-plans.md#lua-hooks-level-5-and-later) gets. `ctx.ns` is your addon's private namespace (the second value of `...` in its files).
 
 ```lua
 -- MyAddon/tests/test_bags.lua
@@ -32,7 +32,7 @@ end)
 
 The optional second value of `ct.test` holds `mocks` and `savedVariables`, in the same shapes as an offline block's ([Offline checks](authoring-plans.md)), `clients` and `checkThat` ([Test your CheckThat integration](#test-your-checkthat-integration)). A mock is set before your addon loads. A `{ recording = "..." }` mock reads the bundled recordings, and also your own when you pass `--recordings`. A test passes when its function returns, and fails with the error text when it raises or your addon does not load.
 
-A file runs once for each client, and `ct.client` (`"era"` or `"forever"`) and `ct.interface` say which. Read them at file scope to pick mocks that differ by client: a mock of a function the client does not have fails the load, and a recording can differ by client. `clients = { "forever" }` runs a test on those clients only. On the others the test is left out, with no line.
+A file runs once for each client, and `ct.client` (`"era"` or `"forever"`) and `ct.interface` say which. Read them at file scope to pick mocks that differ by client: a mock of a function the client does not have fails the load, and a recording can differ by client. `clients = { "forever" }` runs a test on those clients only. On the others the test is left out, with no line. When no test is left to run on any client, `ct test` exits 2 and says so.
 
 ```lua
 local ct = ...
@@ -104,14 +104,14 @@ FAIL  forever  tests/test_bags.lua  money comes from the mock: threw .../MyAddon
 test: 7 passed, 1 failed
 ```
 
-It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: no TOC with an `## Interface:` line, no `test_*.lua` or `*_test.lua` that names `ct.test` in `tests/` (or in the `--tests` folder), no TOC for the client you named, or no test matching `--name`.
+It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: no TOC with an `## Interface:` line, no `test_*.lua` or `*_test.lua` that names `ct.test` in `tests/` (or in the `--tests` folder), no TOC for the client you named, no test matching `--name`, or no test left to run because `clients` leaves out every client that runs.
 
 ## Good to know
 
 - **Which TOC.** The `## Interface:` number decides the client: 10000 to 15999 is Era, 16000 to 19999 is Forever. A TOC for any other client, such as retail, is left out. A comma list counts for each number, and each client runs with its own number. When two TOCs are for the same client, the suffix that client reads wins (`_Vanilla` or `_Classic` for Era, `_Camelot` for Forever), then any other suffix, then the plain `MyAddon.toc`.
 - **The addon's name.** Your addon gets its name as the first value of `...` and in `ADDON_LOADED`. It is the folder's name when a TOC is named after the folder. Otherwise it is the name your TOC files share, so a checkout folder such as `my-repo` still loads as `MyAddon`. TOC files that share no name are an error.
 - **Isolation.** Each test file runs in its own process for each client, from your addon's folder. Each test gets a fresh load, so the tests in a file do not share the fake client. Locals at the top of your file are shared, as in any Lua file.
-- **Helpers.** `require("helper")` loads `tests/helper.lua`, and `dofile("tests/helper.lua")` works too. What any file in `tests/` reads as nil stays out of your addon's nil-read report.
+- **Helpers.** `require("helper")` loads `tests/helper.lua`, or `helper.lua` in the `--tests` folder. `dofile` reads a path from your addon's folder, so with `--tests` outside it use `require`. What any file in `tests/` reads as nil stays out of your addon's nil-read report.
 - **Output.** `print` inside a test goes to the fake client's chat, as in game. To see a value, use `io.write`. `ct test` shows what a file wrote under its lines, marked with `|`.
 - **Time limit.** A test file that runs longer than 300 seconds on a client is stopped and fails.
 - **ctx.reload** runs from the test itself, not from a handler or timer the test fires.

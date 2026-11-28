@@ -5,7 +5,7 @@
 --   JOB: { "toc": path, "file": path, "out": path, "client": "era"|"forever"?, "interface": n?, "addon": name?, "testDir": path?, "name": text?,
 --          "recordings": folder? }
 --
--- Writes { "format": 1, "file", "interface", "tests": [ { "name", "ok", "detail" } ], "nilReads": [names], "error"? } to JOB.out, so
+-- Writes { "format": 1, "file", "interface", "tests": [ { "name", "ok", "detail" } ], "nilReads": [names], "leftOut": n, "error"? } to JOB.out, so
 -- what the test file writes to stdout stays its own, and exits 1 when a test fails or the file cannot run. The test file runs with the
 -- user's permissions, as a hooks file does.
 local here = arg[0]:match("^(.*)[/\\]tools[/\\][^/\\]*$") or "."
@@ -40,14 +40,16 @@ function ct.test(name, options, fn)
     local clients = (options or {}).clients
     if clients ~= nil then
         local bad = type(clients) ~= "table" or #clients == 0
-        for i, c in ipairs(type(clients) == "table" and clients or {}) do if not CLIENTS[c] then bad = true end end
-        if not bad then for k in pairs(clients) do if type(k) ~= "number" or k > #clients then bad = true end end end
+        if not bad then -- a list with no gaps: every key 1 to #clients, each a client
+            for i = 1, #clients do if not CLIENTS[clients[i]] then bad = true end end
+            for k in pairs(clients) do if type(k) ~= "number" or k < 1 or k > #clients or k % 1 ~= 0 then bad = true end end
+        end
         if bad then error(("ct.test %q: clients is a list of \"era\" and \"forever\""):format(name), 2) end
     end
     tests[#tests + 1] = { name = name, options = options or {}, fn = fn }
 end
 
-local out = { format = 1, file = job.file, tests = {}, nilReads = {} }
+local out = { format = 1, file = job.file, tests = {}, nilReads = {}, leftOut = 0 } -- leftOut: tests whose clients leave this client out
 local function finish(code)
     local of = assert(io.open(job.out, "w"))
     of:write(Json.Encode(out), "\n")
@@ -68,9 +70,11 @@ for _, t in ipairs(tests) do
     local forClient = true -- a test with clients runs only on those clients
     if t.options.clients and job.client then
         forClient = false
-        for _, c in ipairs(t.options.clients) do if c == job.client then forClient = true end end
+        for i = 1, #t.options.clients do if t.options.clients[i] == job.client then forClient = true end end
     end
-    if forClient and (not job.name or t.name:find(job.name, 1, true)) then
+    local named = not job.name or t.name:find(job.name, 1, true)
+    if named and not forClient then out.leftOut = out.leftOut + 1 end
+    if forClient and named then
         local spec = { toc = job.toc, level = Runner.LEVEL, mocks = t.options.mocks, savedVariables = t.options.savedVariables,
             recordings = job.recordings, steps = { { hook = "test" } } }
         local rok, r = pcall(Runner.run, spec, { root = here, hooks = { test = t.fn }, hooksFile = job.file, testDir = job.testDir,

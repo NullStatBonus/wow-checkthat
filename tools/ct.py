@@ -1596,6 +1596,9 @@ def addon_tocs(folder):
                 out[cl] = (rank, {"toc": os.path.join(folder, toc), "interface": n, "addon": name})
     return {cl: v for cl, (_, v) in out.items()}
 
+# A file that names ct.test (as a word: not subject.test) is a ct test file; any other test file is for another runner.
+CT_TEST_NAMED = re.compile(r"(?<![\w.])ct\.test\b")
+
 def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
     """Run ct test for an addon folder: every test_*.lua and *_test.lua in tests/ (or in tests, a folder anywhere) that calls ct.test, once for each client the folder has a TOC for, each file and client in
     its own luajit process (tools/addon_test.lua), from the addon's folder. Returns {"results": [{client, file, name, ok, detail}],
@@ -1620,11 +1623,15 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
     else:
         tests_dir = os.path.join(folder, "tests")
     # test_x.lua or x_test.lua. A file that never names ct.test belongs to another runner (such as the addon's own harness): it is skipped.
-    named = sorted(set(glob.glob(os.path.join(tests_dir, "test_*.lua")) + glob.glob(os.path.join(tests_dir, "*_test.lua"))))
+    pat = glob.escape(tests_dir)
+    named = sorted(p for p in set(glob.glob(os.path.join(pat, "test_*.lua")) + glob.glob(os.path.join(pat, "*_test.lua"))) if os.path.isfile(p))
     files, skipped = [], []
     for path in named:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            (files if "ct.test" in f.read() else skipped).append(path)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                (files if CT_TEST_NAMED.search(f.read()) else skipped).append(path)
+        except OSError as e:
+            raise ValueError("cannot read %s: %s" % (path, e))
     if not files:
         where = tests_dir if tests else os.path.join(folder, "tests")
         if skipped:
@@ -1632,7 +1639,12 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
         raise ValueError("%s has no test_*.lua or *_test.lua: write one (docs/addon-tests.md)" % where)
     if recordings:
         recordings = os.path.realpath(recordings)
-    results, outputs, nil_reads = [], {}, {}
+    def shown(p):   # inside the addon folder: from it; elsewhere: from the current folder, or whole when that is another drive
+        try:
+            return os.path.relpath(p, folder if p.startswith(folder + os.sep) else os.getcwd())
+        except ValueError:
+            return p
+    results, outputs, nil_reads, left = [], {}, {}, 0
     with tempfile.TemporaryDirectory() as d:
         job, out = os.path.join(d, "job.json"), os.path.join(d, "result.json")
         for cl in ("era", "forever"):
@@ -1646,7 +1658,7 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
                                                  "testDir": tests_dir, "name": name, "recordings": recordings}.items() if v}, f)
                 if os.path.exists(out):
                     os.remove(out)
-                rel = os.path.relpath(path, folder if path.startswith(folder + os.sep) else os.getcwd())
+                rel = shown(path)
                 try:
                     r = run_luajit([os.path.join(ROOT, "tools", "addon_test.lua"), job], folder, TEST_TIMEOUT)
                     printed = (r.stdout or "") + (r.stderr or "")
@@ -1664,11 +1676,12 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
                     results.append({"client": cl, "file": rel, "name": None, "ok": False, "detail": res["error"]})
                 for t in res.get("tests") or []:
                     results.append({"client": cl, "file": rel, "name": t["name"], "ok": bool(t.get("ok")), "detail": t.get("detail") or ""})
+                left += res.get("leftOut") or 0
                 names.update(res.get("nilReads") or [])
                 interface = interface or res.get("interface")
             if interface:   # no test reached a load: no report to give
                 nil_reads[cl] = (interface, names)
-    return {"results": results, "outputs": outputs, "nilReads": nil_reads, "skipped": [os.path.relpath(p, folder if p.startswith(folder + os.sep) else os.getcwd()) for p in skipped]}
+    return {"results": results, "outputs": outputs, "nilReads": nil_reads, "skipped": [shown(p) for p in skipped], "leftOut": left, "clients": [c for c in ("era", "forever") if c in tocs]}
 
 
 FLAVOR = {"classic-era": "era", "forever-camelot": "forever"}
@@ -3976,8 +3989,12 @@ def main(argv=None):
         except ValueError as e:
             print("error:", e, file=sys.stderr); return 2
         res = got["results"]
-        if a.name and not any(r["name"] for r in res) and all(r["ok"] for r in res):
-            print("error: no test matches %r" % a.name, file=sys.stderr); return 2
+        if not any(r["name"] for r in res) and all(r["ok"] for r in res):
+            ran = " or ".join(got["clients"])
+            if got["leftOut"]:
+                print("error: no test runs on %s: every test%s has clients without it" % (ran, " that matches %r" % a.name if a.name else ""), file=sys.stderr); return 2
+            if a.name:
+                print("error: no test matches %r" % a.name, file=sys.stderr); return 2
         for i, r in enumerate(res):
             what = "%s  %s" % (r["file"], r["name"]) if r["name"] else r["file"]
             print("%-5s %-8s %s%s" % ("ok" if r["ok"] else "FAIL", r["client"], what, "" if r["ok"] else ": " + r["detail"]))

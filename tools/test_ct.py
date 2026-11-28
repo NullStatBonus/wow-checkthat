@@ -842,6 +842,63 @@ class AddonTests(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn('clients is a list of "era" and "forever"', out)
 
+    def outside(self, files, name=None):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        if name:
+            d = os.path.join(d, name); os.makedirs(d)
+        for n, text in files.items():
+            p = os.path.join(d, n)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            if text is None:
+                os.makedirs(p)
+            else:
+                with open(p, "w") as f: f.write(text)
+        return d
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_relative_tests_folder_runs_requires_its_helpers_and_shows_paths_from_here(self):
+        a = self.folder()
+        d = self.outside({"test_helper.lua": "-- registers through the helper: ct.test\nrequire(\"reg\")(...)\n",
+                          "reg.lua": 'return function(ct) ct.test("from the helper", function(ctx) ctx.ok(ctx.ns, "ns") end) end\n'})
+        rel = os.path.relpath(d)
+        code, out, err = self.run_test(a, "--tests", rel, "--client", "era")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("ok    era      %s  from the helper\n" % os.path.relpath(os.path.join(os.path.realpath(d), "test_helper.lua")), out,
+                      "a relative --tests is read from here, require finds its helpers, and the path is shown from here")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_only_the_word_ct_test_makes_a_ct_file_and_skipped_files_come_last(self):
+        a = self.folder()
+        files = {"test_ct.lua": 'local ct = ...\nct.test("runs", function() end)\n', "merchant_test.lua": "subject.test()\nprint('other runner')\n",
+                 "dir_test.lua": None}
+        files.update({"test_other%d.lua" % i: "-- for another runner\n" for i in range(6)})
+        d = self.outside(files, "t[1]")
+        code, out, err = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 0, out + err)
+        self.assertNotIn("other runner", out, "subject.test is not ct.test, so that file is not run")
+        self.assertIn("skipped 7 file(s) that do not call ct.test: ", out)
+        self.assertIn(", ...\n", out, "more than 5 skipped files are cut short")
+        self.assertLess(out.index("era: Globals"), out.index("skipped 7"), "the skipped list comes after the nil-read report")
+        self.assertNotIn("dir_test.lua", out, "a folder is not a test file")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_clients_with_a_gap_fail_and_no_test_for_the_client_exits_2(self):
+        a = self.folder()
+        d = self.outside({"test_gap.lua": 'local ct = ...\nct.test("gap", { clients = { nil, "era" } }, function() end)\n'})
+        code, out, _ = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn('clients is a list of "era" and "forever"', out)
+        d = self.outside({"test_f.lua": 'local ct = ...\nct.test("forever one", { clients = { "forever" } }, function() end)\nct.test("forever two", { clients = { "forever" } }, function() end)\n'})
+        code, out, err = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 2, out + err)
+        self.assertIn("no test runs on era: every test has clients without it", err)
+        code, out, err = self.run_test(a, "--tests", d, "--client", "era", "--name", "two")
+        self.assertEqual(code, 2, out + err)
+        self.assertIn("every test that matches 'two' has clients without it", err)
+        code, out, err = self.run_test(a, "--tests", d, "--name", "two")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual([l.split()[1] for l in out.splitlines() if l.startswith("ok")], ["forever"], "--name and clients narrow together")
+
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_failing_test_names_the_difference_and_exits_1(self):
         code, out, _ = self.run_test(self.folder({"tests/test_fail.lua": 'local ct = ...\nct.test("counts twice", function(ctx) ctx.fire("BAG_UPDATE", 0); ctx.eq(ctx.ns.count, 2, "count") end)\n'}), "--client", "era")
