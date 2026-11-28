@@ -193,6 +193,47 @@ test("frame probe survives a throwing frame", function()
     T.eq((E.CheckState(a, en)), "unverified")
 end)
 
+test("money probe reads the balance, and an unreadable balance is unverified, never a guess", function()
+    local rich = { GetMoney = function() return 12345 end }
+    T.eq((E.CheckState({ kind = "state", probe = "money", op = "ge", value = 10000 }, rich)), "pass")
+    local r, _, d = E.CheckState({ kind = "state", probe = "money", op = "eq", value = 0 }, rich, true)
+    T.eq(r, "fail")
+    T.eq(d.observed, "12345", "the check says what it read")
+    local a = { kind = "state", probe = "money", op = "eq", value = 0 }
+    T.eq((E.CheckState(a, {})), "unverified", "no GetMoney")
+    T.eq((E.CheckState(a, { GetMoney = function() error("boom") end })), "unverified", "a raising read")
+    T.eq((E.CheckState(a, { GetMoney = function() return nil end })), "unverified", "a missing answer (a secret value reads nil in the adapter)")
+end)
+
+test("bag-free-slots probe sums bags 0 to 4, or reads the one bag it names", function()
+    local env = { ContainerFreeSlots = function(bag) return bag end } -- bag n holds n free slots
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", op = "eq", value = 10 }, env)), "pass", "0+1+2+3+4")
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", bag = 3, op = "eq", value = 3 }, env)), "pass")
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", bag = -1, op = "eq", value = 6 }, { ContainerFreeSlots = function() return 6 end })), "pass", "a bank bag is one bag")
+    local half = { ContainerFreeSlots = function(bag) if bag == 2 then return nil end return 1 end }
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", op = "ge", value = 0 }, half)), "unverified", "one bag unknown makes the sum unknown")
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", op = "ge", value = 0 }, {})), "unverified", "no such read")
+end)
+
+test("item-count probe reads one item by id, and needs an id", function()
+    local env = { ItemCount = function(id) return id == 6948 and 5 or 0 end }
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", id = 6948, op = "eq", value = 5 }, env)), "pass")
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", id = 6948, op = "eq", value = 5 }, {})), "unverified", "no such read")
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", op = "eq", value = 0 }, env)), "unverified", "an id is required")
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", id = "6948", op = "eq", value = 0 }, env)), "unverified", "an id is a number")
+end)
+
+test("frame-text probe reads a frame's text, cut to 80 characters, and never guesses", function()
+    local env = { Tip = { GetText = function() return "Bank" end } }
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "eq", value = "Bank" }, env)), "pass")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "contains", value = "ank" }, env)), "pass")
+    local long = { Long = { GetText = function() return string.rep("a", 200) end } }
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Long", op = "eq", value = string.rep("a", 80) }, long)), "pass", "cut to VALUE_LEN")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Gone", op = "eq", value = "Bank" }, env)), "unverified", "no such frame")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Bad", op = "eq", value = "x" }, { Bad = { GetText = function() error("boom") end } })), "unverified", "a raising read")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Num", op = "eq", value = "5" }, { Num = { GetText = function() return 5 end } })), "unverified", "text only")
+end)
+
 -- Typed facts, counts and quiet sources
 local fplan = { logs = {
     f = { global = "DB", path = "facts", format = "strings" },

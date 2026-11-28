@@ -380,6 +380,55 @@ steps:
 - An earlier line that leaves too little time does not fail the check when a later line of the same item fits.
 - A plan that uses `within` needs plan revision 3: `ct validate` and `ct compile` accept it, `compile` writes `needs: 3`, and an older CheckThat says the plan needs a newer one.
 
+## Read the game state
+
+A `state` check reads one value from the game and compares it with the operators of a fact check. It changes nothing, and every probe answers in combat.
+
+| Probe | Reads |
+| --- | --- |
+| `addon-loaded` | Whether an addon is loaded, by its folder name (`name`). |
+| `global-value` | A global (`name`), or one field of a table global (`path`, dotted). |
+| `frame-shown` | Whether a named frame is shown (`name`). |
+| `money` | The player's money, in copper. |
+| `bag-free-slots` | The free slots of bags 0 to 4, summed. `bag` reads one bag instead. |
+| `item-count` | How many of one item the player has, by `id`. |
+| `frame-text` | What a named frame says (`name`), cut to 80 characters. |
+
+```yaml
+# in a step:
+    assertions:
+    - kind: state
+      probe: money
+      op: ge
+      value: 100
+    - kind: state
+      probe: bag-free-slots
+      op: ge
+      value: 1
+    - kind: state
+      probe: bag-free-slots
+      bag: -1            # a bank bag, one bag
+      op: ge
+      value: 5
+    - kind: state
+      probe: item-count
+      id: 6948
+      op: ge
+      value: 1
+    - kind: state
+      probe: frame-text
+      name: MyAddonFrame
+      op: contains
+      value: Ready
+```
+
+Good to know:
+
+- A value the game does not answer, or hides (a secret value), leaves the check unverified. It is never 0 or false. A free-slot sum with one bag the game cannot read is unverified, because the sum is unknown.
+- A bank bag (`bag: -1` and lower) answers only while the bank is open. Open the bank in the step that checks it.
+- `frame-text` reads text only. A missing frame, a frame that says nothing, and a frame that is not text leave the check unverified.
+- The start screen lists the frame a `frame-text` check reads, as it lists a `global-value` name: what the frame says can reach the results string.
+
 ## Categories
 
 ```yaml

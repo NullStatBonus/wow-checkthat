@@ -379,7 +379,15 @@ local ops = {
 }
 Evidence.Ops = ops
 
--- Closed registry of read-only probes. env supplies the game (or a fake).
+-- One number a probe reads: a missing function, a raising call or any other answer reads nil, never a guess.
+local function readNumber(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn, ...)
+    if not ok or type(v) ~= "number" then return nil end
+    return v
+end
+
+-- Closed registry of read-only probes. env supplies the game (or a fake). A value the game hides reads nil, never a guess.
 function Evidence.Probe(a, env)
     env = env or _G
     if a.probe == "addon-loaded" then
@@ -401,6 +409,31 @@ function Evidence.Probe(a, env)
         end)
         if not ok then return nil end
         return shown
+    end
+    if a.probe == "money" then
+        return readNumber(env.GetMoney)
+    elseif a.probe == "bag-free-slots" then
+        local read = env.ContainerFreeSlots
+        if type(read) ~= "function" then return nil end
+        if a.bag ~= nil then return readNumber(read, a.bag) end
+        local total = 0
+        for bag = 0, 4 do
+            local free = readNumber(read, bag)
+            if free == nil then return nil end -- one bag unreadable: the sum is unknown, never a smaller number
+            total = total + free
+        end
+        return total
+    elseif a.probe == "item-count" then
+        if type(a.id) ~= "number" then return nil end
+        return readNumber(env.ItemCount, a.id)
+    elseif a.probe == "frame-text" then
+        local ok, text = pcall(function()
+            local f = env[a.name]
+            if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
+            return f:GetText()
+        end)
+        if not ok or type(text) ~= "string" then return nil end
+        return cut(text, Evidence.VALUE_LEN)
     end
 end
 

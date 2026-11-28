@@ -455,6 +455,8 @@ def validate(plan, requirements=None):
                     errs.append("%s: unknown log source %s" % (sid, a["source"]))
                 if a["kind"] in ("fact", "state"):
                     check_op(a, sid, errs)
+                if a["kind"] == "state" and a.get("probe") == "item-count" and not is_num(a.get("id")):
+                    errs.append("%s: item-count needs an id, a number" % sid)  # the schema holds id and bag to their types
                 if a["kind"] in ("fact", "log"):
                     check_count(a, sid, errs)
                     c = a.get("count") or {}

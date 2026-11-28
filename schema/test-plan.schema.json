@@ -1099,7 +1099,11 @@
               "enum": [
                 "addon-loaded",
                 "global-value",
-                "frame-shown"
+                "frame-shown",
+                "money",
+                "bag-free-slots",
+                "item-count",
+                "frame-text"
               ]
             },
             "name": {
@@ -1108,6 +1112,8 @@
             "path": {
               "type": "string"
             },
+            "id": { "type": "integer", "minimum": 0, "description": "The item of an item-count check." },
+            "bag": { "type": "integer", "description": "The one bag of a bag-free-slots check: 0 to 4, or a negative bank bag. Leave it out to sum bags 0 to 4." },
             "op": {
               "enum": [
                 "eq",

@@ -4036,6 +4036,21 @@ class PlanHardening(unittest.TestCase):
                                                                   {"kind": "fact", "source": "debug", "addon": "A", "key": "k", "op": "matches", "value": "%d+%.?%d*"}]
         self.assertEqual(ct.validate(p), [])
 
+    def test_a_state_probe_needs_its_own_field(self):
+        def errors(a):
+            p = good(); p["sections"][0]["steps"][0]["assertions"] = [a]
+            return ct.validate(p)
+        self.assertTrue(any("item-count needs an id, a number" in e for e in errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1})),
+                        errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1}))
+        for a in ({"kind": "state", "probe": "item-count", "id": "6948", "op": "exists"},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": 1.5, "op": "exists"}):
+            self.assertNotEqual(errors(a), [], a)
+        for a in ({"kind": "state", "probe": "money", "op": "ge", "value": 1},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": -1, "op": "ge", "value": 0},
+                  {"kind": "state", "probe": "item-count", "id": 6948, "op": "ge", "value": 1},
+                  {"kind": "state", "probe": "frame-text", "name": "F", "op": "exists"}):
+            self.assertEqual(errors(a), [], a)
+
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_pattern_problem_agrees_with_the_lua_validator_on_a_generated_set(self):
         import random
