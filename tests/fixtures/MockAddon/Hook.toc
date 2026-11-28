@@ -1,0 +1,4 @@
+## Interface: 11509
+## Title: MockAddon hook
+## Notes: Fixture: an addon that offline hook steps reach through its namespace. Not shipped.
+Hook.lua

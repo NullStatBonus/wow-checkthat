@@ -1517,6 +1517,11 @@ def offline_plan(plan, addons, requirements=None, info=None, client=None):
         if os.path.commonpath([root, rec]) != root:
             raise ValueError("recordings %s leaves the addons folder %s" % (block["recordings"], addons))
         spec["recordings"] = rec
+    if block.get("hooks"):   # the addon's own Lua hooks file (#273), held inside the addons folder like the toc
+        hooks = os.path.realpath(os.path.join(root, block["hooks"]))
+        if os.path.commonpath([root, hooks]) != root:
+            raise ValueError("hooks %s leaves the addons folder %s" % (block["hooks"], addons))
+        spec["hooks"] = hooks
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "spec.json")
         with open(path, "w", encoding="utf-8") as f:
