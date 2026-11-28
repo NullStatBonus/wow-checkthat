@@ -1202,6 +1202,17 @@ def setup_env(venv=None, python=None, run=subprocess.run, platform=None, rename=
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+def cmd_setup(prefix=None, venv=None, run=subprocess.run, env=None):
+    """ct setup. Started from the per-user environment it replaces (the launcher prefers it), it runs again under the base
+    Python, because Windows cannot rename a folder whose python.exe is running."""
+    prefix, venv, env = prefix or sys.prefix, venv or user_venv(), os.environ if env is None else env
+    if not env.get("CT_SETUP_BASE") and os.path.exists(venv) and os.path.realpath(prefix) == os.path.realpath(venv):
+        return run([base_python(), os.path.abspath(__file__), "setup"], env=dict(env, CT_SETUP_BASE="1")).returncode
+    code, msg = setup_env(venv)
+    print(msg, file=sys.stderr if code else sys.stdout)
+    return code
+
+
 def tools_lines(which=shutil.which, find_spec=importlib.util.find_spec, platform=None):
     """The tools section of ct doctor: the tools version, the Python in use and its packages, and LuaJIT, each miss with its fix."""
     lines = ["tools: CheckThat %s at %s" % (tools_version() or "(unknown version)", ROOT), "  python: %s" % sys.executable]
@@ -3639,9 +3650,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.cmd == "setup":
-        code, msg = setup_env()
-        print(msg, file=sys.stderr if code else sys.stdout)
-        return code
+        return cmd_setup()
     if a.cmd == "validate":
         plan = load_yaml(a.plan)
         errs = validate(plan, plan_requirements(plan, a.plan, a.specs))

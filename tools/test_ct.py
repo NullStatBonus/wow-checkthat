@@ -2361,6 +2361,22 @@ class ToolSetup(unittest.TestCase):
         if sys.prefix != sys.base_prefix:   # the suite runs in .venv: the base must lie outside it
             self.assertFalse(os.path.abspath(py).startswith(os.path.abspath(sys.prefix) + os.sep), py)   # no realpath: the venv's python links out
 
+    def test_setup_started_from_the_venv_it_replaces_runs_again_under_the_base_python(self):
+        with tempfile.TemporaryDirectory() as d:
+            venv = os.path.join(d, "venv"); os.makedirs(venv)
+            calls = []
+            def run(cmd, env=None, **kw):
+                calls.append((cmd, env.get("CT_SETUP_BASE")))
+                return subprocess.CompletedProcess(cmd, 0)
+            self.assertEqual(ct.cmd_setup(prefix=venv, venv=venv, run=run, env={}), 0)
+            self.assertEqual(calls, [([ct.base_python(), os.path.abspath(ct.__file__), "setup"], "1")])
+            from unittest import mock
+            with mock.patch.object(ct, "setup_env", return_value=(0, "ok")) as setup, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(ct.cmd_setup(prefix=venv, venv=venv, run=run, env={"CT_SETUP_BASE": "1"}), 0)
+                self.assertEqual(ct.cmd_setup(prefix=os.path.join(d, "other"), venv=venv, run=run, env={}), 0)
+            self.assertEqual(len(calls), 1, "no second run under the base Python, and none from another prefix")
+            self.assertEqual(setup.call_count, 2)
+
     def test_setup_replaces_an_earlier_environment(self):
         with tempfile.TemporaryDirectory() as d:
             venv = os.path.join(d, "venv")
@@ -3019,6 +3035,13 @@ class BuildToolkit(unittest.TestCase):
                                capture_output=True, text=True, cwd=d)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_refuses_to_build_into_the_checkout_or_above(self):
+        for bad in (".", "..", ROOT, "/"):
+            r = subprocess.run(["make", "build-toolkit", "TOOLKIT_DIR=" + bad], cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, bad)
+            self.assertIn("must not be this checkout or a folder above it", r.stderr, bad)
+        self.assertTrue(os.path.exists(os.path.join(ROOT, "Makefile")))
+
     def test_a_trailing_slash_keeps_the_zip_beside_the_folder(self):
         with tempfile.TemporaryDirectory() as d:
             r = subprocess.run(["make", "build-toolkit", "TOOLKIT_DIR=" + os.path.join(d, "toolkit") + "/"], cwd=ROOT, capture_output=True, text=True)
@@ -3051,73 +3074,119 @@ class BuildToolkit(unittest.TestCase):
                 self.assertEqual([k for k in sorted(got) if got[k] != installed[k]], [], name)
 
 class ReleaseWorkflow(unittest.TestCase):
-    """release.yml: the developer toolkit is validated before anything is published, and every publish step needs a tag."""
+    """release.yml and tools/publish_plugin.sh: the addon publishes only for a tag push, the toolkit only after validation."""
     def workflow(self):
         import yaml
         with open(os.path.join(ROOT, ".github", "workflows", "release.yml"), encoding="utf-8") as f:
             return yaml.safe_load(f)
 
-    def steps(self):
-        return {s.get("name") or s.get("uses"): s for s in self.workflow()["jobs"]["release"]["steps"]}
-
-    def test_publish_steps_need_a_tag_and_come_after_validation(self):
+    def test_publish_steps_and_their_conditions(self):
         wf = self.workflow()
-        self.assertIn("workflow_dispatch", wf[True])   # PyYAML reads the key on as True
-        names = [s.get("name") or s.get("uses") for s in wf["jobs"]["release"]["steps"]]
-        steps = self.steps()
+        self.assertIs(wf[True]["workflow_dispatch"]["inputs"]["publish"]["default"], False)   # PyYAML reads the key on as True
+        steps = wf["jobs"]["release"]["steps"]
+        names = [s.get("name") or s.get("uses") for s in steps]
+        by = dict(zip(names, steps))
         manual = "inputs.publish && github.ref == 'refs/heads/main'"
-        self.assertIs(wf[True]["workflow_dispatch"]["inputs"]["publish"]["default"], False)
-        for name, cond in (("BigWigsMods/packager@v2", "github.ref_type == 'tag'"), ("GitHub release", "github.ref_type == 'tag'"),
-                           ("Publish the plugin branch", "github.ref_type == 'tag' || (%s)" % manual),
-                           ("Replace the toolkit zip on the current release", "github.ref_type != 'tag' && " + manual)):
-            self.assertEqual(steps[name].get("if"), cond, name)
+        want = {"BigWigsMods/packager@v2": "github.event_name == 'push'",
+                "GitHub release": "github.event_name == 'push'",
+                "Attach the toolkit zip to the release": "github.event_name == 'push' && steps.validate.outcome == 'success'",
+                "Replace the toolkit zip on the current release": "github.event_name == 'workflow_dispatch' && " + manual,
+                "Publish the plugin branch": "steps.validate.outcome == 'success' && (github.event_name == 'push' || (%s))" % manual}
+        for name, cond in want.items():
+            self.assertEqual(by[name].get("if"), cond, name)
             self.assertLess(names.index("Validate the plugin and the marketplace"), names.index(name), name)
-        self.assertIn("--clobber", steps["Replace the toolkit zip on the current release"]["run"])
-        self.assertNotIn("create", steps["Replace the toolkit zip on the current release"]["run"])
-        self.assertIn("claude plugin validate build/plugin", steps["Validate the plugin and the marketplace"]["run"])
-        self.assertIn("claude plugin validate .", steps["Validate the plugin and the marketplace"]["run"])
-        self.assertIn("build/CheckThat-toolkit-*.zip", steps["GitHub release"]["run"])
-        self.assertEqual(steps["Upload the dry-run outputs"].get("if"), "github.event_name == 'workflow_dispatch'")
-        self.assertIs(steps["Upload the dry-run outputs"]["with"]["include-hidden-files"], True, "the plugin manifest is in a dot folder")
+        self.assertNotIn("ref_type", json.dumps(steps), "a manual run from a tag ref is not a tag release")
+        val = by["Validate the plugin and the marketplace"]
+        self.assertEqual((val["id"], val["continue-on-error"]), ("validate", "${{ github.event_name == 'push' }}"))
+        self.assertRegex(val["run"], r"@anthropic-ai/claude-code@\d+\.\d+\.\d+")
+        for cmd in ("claude plugin validate build/plugin", "claude plugin validate ."):
+            self.assertIn(cmd, val["run"])
+        self.assertIn("--clobber", by["Replace the toolkit zip on the current release"]["run"])
+        self.assertIs(by["Upload the dry-run outputs"]["with"]["include-hidden-files"], True, "the plugin manifest is in a dot folder")
         self.assertEqual(names[-1], "Publish the plugin branch", "the plugin goes live after its release and zip exist")
-        self.assertEqual(wf["concurrency"], {"group": "release", "cancel-in-progress": False})
-        self.assertRegex(steps["Validate the plugin and the marketplace"]["run"], r"@anthropic-ai/claude-code@\d+\.\d+\.\d+")
+        self.assertIn("sh tools/publish_plugin.sh build/plugin", by["Publish the plugin branch"]["run"])
+        self.assertNotIn("concurrency", wf, "a concurrency group cancels a queued tag run; the script retries a lost push instead")
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.d)
+        home = os.path.join(self.d, "home"); os.makedirs(home)
+        with open(os.path.join(home, ".gitconfig"), "w") as f:
+            f.write("[user]\n\tname = t\n\temail = t@t\n")
+        self.env = dict(os.environ, HOME=home, GIT_CONFIG_GLOBAL=os.path.join(home, ".gitconfig"), GIT_CONFIG_NOSYSTEM="1")
+        self.origin = os.path.join(self.d, "origin.git")
+        self.git(self.d, "init", "-q", "--bare", self.origin)
+        self.git(self.origin, "symbolic-ref", "HEAD", "refs/heads/main")
+        seed = os.path.join(self.d, "seed")
+        self.git(self.d, "clone", "-q", self.origin, seed)
+        self.commits = []
+        for i in range(3):
+            self.git(seed, "commit", "-q", "--allow-empty", "-m", "main %d" % i)
+            self.commits.append(self.git(seed, "rev-parse", "HEAD").strip())
+        self.git(seed, "checkout", "-q", "-b", "side", self.commits[0])
+        self.git(seed, "commit", "-q", "--allow-empty", "-m", "side")
+        self.side = self.git(seed, "rev-parse", "HEAD").strip()
+        self.git(seed, "push", "-q", "origin", "main", "side")
 
     def git(self, cwd, *args):
-        r = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True)
+        r = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True, env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout
 
-    def test_plugin_branch_is_created_then_updated_without_a_force_push(self):
-        script = self.steps()["Publish the plugin branch"]["run"]
-        with tempfile.TemporaryDirectory() as d:
-            origin, work, home = os.path.join(d, "origin.git"), os.path.join(d, "work"), os.path.join(d, "home")
-            os.makedirs(home)
-            env = dict(os.environ, HOME=home, GIT_CONFIG_GLOBAL=os.path.join(home, ".gitconfig"), GIT_CONFIG_NOSYSTEM="1")
-            subprocess.run(["git", "init", "-q", "--bare", origin], check=True, env=env)
-            subprocess.run(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=origin, check=True, env=env)
-            subprocess.run(["git", "clone", "-q", origin, work], check=True, env=env, capture_output=True)
-            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "main"], cwd=work, check=True, env=env)
-            subprocess.run(["git", "push", "-q", "origin", "HEAD:main"], cwd=work, check=True, env=env, capture_output=True)
-            heads = []
-            for version, body in (("1.0.0+aaa", '{"version": "1.0.0+aaa"}'), ("1.0.0+bbb", '{"version": "1.0.0+bbb"}')):
-                work = os.path.join(d, "work-" + version)   # each release runs in a fresh checkout, as in CI
-                subprocess.run(["git", "clone", "-q", origin, work], check=True, env=env, capture_output=True)
-                plugin = os.path.join(work, "build", "plugin", ".claude-plugin")
-                os.makedirs(plugin, exist_ok=True)
-                with open(os.path.join(plugin, "plugin.json"), "w") as f:
-                    f.write(body)
-                tmp = os.path.join(d, "runner-" + version)
-                os.makedirs(tmp)
-                r = subprocess.run(["bash", "-e", "-c", script], cwd=work, capture_output=True, text=True,
-                                   env=dict(env, RUNNER_TEMP=tmp))
-                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-                heads.append(self.git(origin, "rev-parse", "plugin").strip())
-                self.assertEqual(self.git(origin, "show", "plugin:.claude-plugin/plugin.json"), body)
-                self.assertEqual(self.git(origin, "ls-tree", "-r", "--name-only", "plugin").split(), [".claude-plugin/plugin.json"])
-            log = self.git(origin, "log", "--format=%s", "plugin").split("\n")
-            self.assertEqual(log[:2], ["checkthat 1.0.0+bbb", "checkthat 1.0.0+aaa"])
-            self.assertEqual(self.git(origin, "merge-base", "--is-ancestor", heads[0], heads[1]), "")
+    def publish(self, commit, files=None, version=None):
+        """Runs the script in a fresh checkout of commit, as CI does, with a built plugin. Returns its output."""
+        work = tempfile.mkdtemp(dir=self.d)
+        self.git(self.d, "clone", "-q", self.origin, work)
+        self.git(work, "checkout", "-q", commit)
+        plugin = os.path.join(work, "build", "plugin")
+        os.makedirs(os.path.join(plugin, ".claude-plugin"))
+        with open(os.path.join(plugin, ".claude-plugin", "plugin.json"), "w") as f:
+            f.write('{\n  "name": "checkthat",\n  "version": "%s",\n  "license": "MIT"\n}\n' % (version or "1.0.0+" + commit[:12]))
+        for rel, body in (files or {"skills/plan/SKILL.md": "x"}).items():
+            os.makedirs(os.path.dirname(os.path.join(plugin, rel)), exist_ok=True)
+            with open(os.path.join(plugin, rel), "w") as f:
+                f.write(body)
+        r = subprocess.run(["sh", os.path.join(ROOT, "tools", "publish_plugin.sh"), "build/plugin"], cwd=work, capture_output=True, text=True,
+                           env=dict(self.env, RUNNER_TEMP=tempfile.mkdtemp(dir=self.d)))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def branch_log(self):
+        return self.git(self.origin, "log", "--format=%s", "plugin").split("\n")[:-1]
+
+    def test_creates_the_branch_then_adds_a_commit_without_a_force_push(self):
+        self.assertIn("published plugin", self.publish(self.commits[1]))
+        first = self.git(self.origin, "rev-parse", "plugin").strip()
+        self.assertIn("published plugin", self.publish(self.commits[2], {"skills/plan/SKILL.md": "y"}))
+        self.assertEqual(self.branch_log(), ["checkthat 1.0.0+" + self.commits[2][:12], "checkthat 1.0.0+" + self.commits[1][:12]])
+        self.git(self.origin, "merge-base", "--is-ancestor", first, "plugin")
+        self.assertEqual(sorted(self.git(self.origin, "ls-tree", "-r", "--name-only", "plugin").split()), [".claude-plugin/plugin.json", "skills/plan/SKILL.md"])
+        self.assertEqual(self.git(self.origin, "show", "plugin:skills/plan/SKILL.md"), "y")
+
+    def test_an_older_commit_does_not_roll_the_plugin_back(self):
+        self.publish(self.commits[2])
+        out = self.publish(self.commits[1], {"skills/plan/SKILL.md": "old"})
+        self.assertIn("plugin not published", out)
+        self.assertEqual(len(self.branch_log()), 1)
+
+    def test_a_commit_off_main_is_not_published(self):
+        self.assertIn("is not on main", self.publish(self.side))
+        self.assertEqual(self.git(self.origin, "branch", "--list", "plugin"), "")
+
+    def test_a_new_version_with_the_same_files_is_not_published(self):
+        self.publish(self.commits[1])
+        self.assertIn("only its version changed", self.publish(self.commits[2]))
+        self.assertEqual(len(self.branch_log()), 1)
+
+    def test_a_push_that_loses_a_race_is_retried(self):
+        hook = os.path.join(self.origin, "hooks", "pre-receive")
+        marker = os.path.join(self.d, "rejected-once")
+        with open(hook, "w") as f:
+            f.write("#!/bin/sh\nif [ ! -e %s ]; then touch %s; exit 1; fi\n" % (marker, marker))
+        os.chmod(hook, 0o755)
+        out = self.publish(self.commits[1])
+        self.assertIn("retrying (1)", out)
+        self.assertIn("published plugin", out)
+        self.assertEqual(len(self.branch_log()), 1)
 
 class ReadmeSkills(unittest.TestCase):
     def test_readme_tells_how_to_install_both_skills_for_each_agent(self):

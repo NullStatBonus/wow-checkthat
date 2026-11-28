@@ -389,7 +389,7 @@ When a step needs more than one player action or names more than one result, the
 - **THEN** the draft lists the three actions under `action.text`
 
 ### Requirement: Release publishes the plugin through a marketplace
-The repository SHALL hold `.claude-plugin/marketplace.json`. It SHALL name the `checkthat` plugin with this repository's `plugin` branch as the source. A release workflow run for a tag, or a manual run on `main` with `publish` set, SHALL build the plugin, check it with `claude plugin validate`, and commit it to the `plugin` branch. A failed validation SHALL stop the run before anything is published.
+The repository SHALL hold `.claude-plugin/marketplace.json`. It SHALL name the `checkthat` plugin with this repository's `plugin` branch as the source. A release workflow run for a tag, or a manual run on `main` with `publish` set, SHALL build the plugin, check it with `claude plugin validate`, and commit it to the `plugin` branch, only from a commit on `main` that contains the tools already published. A failed validation SHALL hold back the plugin and the toolkit zip. On a tag push the addon release SHALL go on.
 
 #### Scenario: Install from the marketplace
 - **WHEN** a developer runs `claude plugin marketplace add NullStatBonus/wow-checkthat` and installs `checkthat` after a release
