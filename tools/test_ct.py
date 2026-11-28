@@ -2404,9 +2404,10 @@ class ToolSetup(unittest.TestCase):
         with tempfile.TemporaryDirectory() as empty, mock.patch.dict(os.environ, {"PATH": empty}):
             with self.assertRaises(ValueError) as e:
                 ct.run_luajit(["-v"])
+            hint = ct.luajit_hint()   # under the same PATH: on Linux it looks for apt-get
         msg = str(e.exception)
         self.assertTrue(msg.startswith("this command needs luajit, which is not installed"), msg)
-        self.assertIn(ct.luajit_hint(), msg)
+        self.assertIn(hint, msg)
         self.assertIn("ct doctor", msg)
 
     def test_doctor_tools_section_reports_each_miss_with_its_fix(self):
@@ -2426,7 +2427,7 @@ class ToolSetup(unittest.TestCase):
             with open(os.path.join(sv, "CheckThat.lua"), "w") as f:
                 f.write("CheckThatDB = {}\n")
             bin_ = os.path.join(d, "bin"); os.makedirs(bin_)
-            fake = os.path.join(bin_, "luajit")
+            fake = os.path.join(bin_, "luajit.exe" if os.name == "nt" else "luajit")   # which() on Windows needs an extension
             with open(fake, "w") as f:
                 f.write("#!/bin/sh\n")
             os.chmod(fake, 0o755)
@@ -2437,7 +2438,7 @@ class ToolSetup(unittest.TestCase):
                     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "doctor", "--src", src], capture_output=True, text=True,
                                        env=dict(os.environ, PATH=path, CT_WTF="", CT_WOW=""))
                     codes.append(r.returncode)
-                    self.assertIn("luajit: " + (fake if path == bin_ else "not found"), r.stdout)
+                    self.assertIn("luajit: " + (bin_ if path == bin_ else "not found"), r.stdout)
                 self.assertEqual(codes[0], codes[1], src)
                 self.assertEqual(codes[0], 0 if src.endswith("WTF") else 1)
 
@@ -3019,7 +3020,8 @@ class BuildToolkit(unittest.TestCase):
             with zipfile.ZipFile(path) as z:
                 names = z.namelist()
                 launcher = z.getinfo("ct-test-plan/ct/tools/ct")
-                self.assertTrue((launcher.external_attr >> 16) & 0o100, "the launcher keeps its exec bit")
+                if os.name != "nt":   # Windows has no exec bit to keep
+                    self.assertTrue((launcher.external_attr >> 16) & 0o100, "the launcher keeps its exec bit")
                 z.extractall(skills)
             self.assertFalse(any(n.split("/")[1:2] == [".venv"] for n in names), "no private Python")
             self.assertEqual(sorted({n.split("/")[0] for n in names}), ["ct-test-plan", "ct-verify"])
@@ -3107,6 +3109,10 @@ class ReleaseWorkflow(unittest.TestCase):
         self.assertIn("sh tools/publish_plugin.sh build/plugin", by["Publish the plugin branch"]["run"])
         self.assertNotIn("concurrency", wf, "a concurrency group cancels a queued tag run; the script retries a lost push instead")
 
+
+@unittest.skipIf(os.name == "nt", "the release job runs publish_plugin.sh on Linux; Windows cannot delete the read-only git objects")
+class PublishPlugin(unittest.TestCase):
+    """tools/publish_plugin.sh against a local bare origin, each run in a fresh checkout as in CI."""
     def setUp(self):
         self.d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.d)
         home = os.path.join(self.d, "home"); os.makedirs(home)
