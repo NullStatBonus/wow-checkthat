@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: CTProbe
+## Notes: v3 probe for CheckThat (issues 98, 151, 153, 154, 163, 190). /ctp. Development probe, not shipped.
+## SavedVariables: CTProbeDB
+
+CTProbe.lua

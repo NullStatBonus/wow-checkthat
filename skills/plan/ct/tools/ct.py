@@ -1512,6 +1512,11 @@ def offline_plan(plan, addons, requirements=None, info=None, client=None):
     if os.path.commonpath([root, toc]) != root:
         raise ValueError("toc %s leaves the addons folder %s" % (toc_name, addons))
     spec = dict(block, toc=toc)
+    if block.get("recordings"):   # the addon's own recordings folder (#214), held inside the addons folder like the toc
+        rec = os.path.realpath(os.path.join(root, block["recordings"]))
+        if os.path.commonpath([root, rec]) != root:
+            raise ValueError("recordings %s leaves the addons folder %s" % (block["recordings"], addons))
+        spec["recordings"] = rec
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "spec.json")
         with open(path, "w", encoding="utf-8") as f:
@@ -2041,6 +2046,8 @@ def probe_recordings(sv_path):
                 args.append(v)
             if bad:
                 skipped.append((label, "an argument that cannot be stored: %s" % bad)); continue
+            if "player" in args:
+                skipped.append((label, "a call on the player")); continue
         else:
             parts = [p.strip() for p in m.group(2).split(",") if p.strip()]
             if "player" in parts:
@@ -2079,6 +2086,10 @@ def probe_recordings(sv_path):
     return client, {"format": RECORDING_FORMAT, "rev": RECORDING_REV, "client": client, "build": build, "calls": calls}, skipped
 
 def cmd_recordings(a):
+    if not a.out and not os.path.exists(os.path.join(ROOT, ".git")):   # an installed copy: an update replaces it, recordings and all
+        print("error: these tools are an installed copy, which an update replaces: pass -o with a folder in your addon's repository "
+              "(for example -o MyAddon/recordings) and name it in the plan's offline.recordings", file=sys.stderr)
+        return 2
     try:
         client, rec, skipped = probe_recordings(a.src)
     except (OSError, ValueError) as e:
@@ -3008,8 +3019,8 @@ JSON_FORMAT = 1
 # maintainer tools: their help says the output may change.
 # from-md, sv2json and drift are stable because the shipped skills run them.
 STABLE_COMMANDS = ("validate", "compile", "coverage", "replay", "offline", "replay-flow", "lines", "decode", "from-md", "sv2json",
-                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend", "setup")
-MAINTAINER_COMMANDS = ("recordings", "census")
+                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend", "setup", "recordings")
+MAINTAINER_COMMANDS = ("census",)
 MAINTAINER_NOTE = "maintainer tool, output may change: "
 
 def report_json(runs, dest=None, with_stacks=False, with_lines=False):
@@ -3627,7 +3638,7 @@ def main(argv=None):
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("setup", help="create the per-user Python environment with the tools' requirements (PyYAML, jsonschema) that the ct launcher and the skills use; needs Python 3 with venv and network access once")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
-    p = sub.add_parser("recordings", help=MAINTAINER_NOTE + "turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
+    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into <folder>/<client>.json, the recorded calls a plan mock can name (docs/authoring-plans.md, Record your own calls)"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording, such as a folder in your addon's repository that the plan's offline.recordings names (default in a checkout: tools/recordings; an installed copy of the tools needs -o, because an update replaces it)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
     p = sub.add_parser("census", help=MAINTAINER_NOTE + "write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")

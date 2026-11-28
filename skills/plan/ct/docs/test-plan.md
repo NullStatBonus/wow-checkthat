@@ -272,3 +272,20 @@ Turn debug on with `/ct debug on` before step 1.
 3. **Save it.** Type `/reload`.
    Check: the game reloads with no Lua error window.
    Log: `CheckThatDB.global.census` holds this build and has no CheckThat global (for example `CheckThatDB`) in `globals`. `ct.py census` writes a manifest for it.
+
+## 8. Recording a call (CTProbe)
+
+Install CTProbe from `tools/ctprobe/CTProbe` and log in. Target an NPC.
+
+1. **Record a read-only call.** Type `/ctp record UnitLevel(target)`.
+   Check: chat says CTProbe recorded the target's level.
+   Log: chat line `record: UnitLevel(target) recorded, 1 values`.
+2. **Refuse a call that acts.** Type `/ctp record BuyMerchantItem(1)`.
+   Check: chat says the call is not a read-only call, and nothing is bought.
+   Log: chat line `record: BuyMerchantItem is not a read-only call`.
+3. **Keep your name out.** Type `/ctp record UnitName(player)`.
+   Check: chat says it was recorded by type only.
+   Log: chat line ends `by type only (it holds a personal value)`.
+4. **Save.** Type `/reload`.
+   Check: the game reloads.
+   Log: in `CTProbe.lua`, `CTProbeDB.fixtures["UnitLevel(target)"]` holds the NPC's level, there is no `BuyMerchantItem(1)` entry, and `CTProbeDB.fixtures["UnitName(player)"].typeOnly` is true with no value. `<ct>/tools/ct recordings --src "<that CTProbe.lua>" -o <scratch folder>` writes `UnitLevel(target)` and lists `UnitName(player)` as left out.
