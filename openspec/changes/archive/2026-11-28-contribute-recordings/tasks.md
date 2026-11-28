@@ -1,0 +1,5 @@
+- [x] `ct.py recordings --contribute`: print the new and changed calls between markers, name the rest, write nothing, need no `-o`
+- [x] Leave `GetBuildInfo()` out of a slice: the header carries the client and build
+- [x] `tools/test_ct.py`: a slice with a new call and a changed one; the matching and off-signature calls named and withheld; no slice when the run adds nothing; an installed copy with no bundled file
+- [x] `docs/harvesting.md`: the mode and the checklist; `docs/authoring-plans.md`: a pointer
+- [x] `make test`, `make check`

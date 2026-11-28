@@ -2085,8 +2085,62 @@ def probe_recordings(sv_path):
     build = ".".join(str(x) for x in values[:2])
     return client, {"format": RECORDING_FORMAT, "rev": RECORDING_REV, "client": client, "build": build, "calls": calls}, skipped
 
+def recording_shape(call):
+    """What a recording entry says about a call: its arguments, how many values it returned, which of them were nil and the type of
+    each other one. Two entries with the same shape describe the same call; their values may still differ."""
+    return (call.get("args"), call.get("n"), sorted(call.get("nils") or []), [_rtype(v) for v in call.get("returns") or []])
+
+def bundled_recording(client):
+    """The calls of tools/recordings/<client>.json, or {} when these tools carry no recording for that client."""
+    path = os.path.join(ROOT, "tools", "recordings", client + ".json")
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f).get("calls") or {}
+
+def contribution(client, rec):
+    """(slice, lines) for a maintainer's review of a run: the recorded calls the bundled recording lacks or holds in another shape, and
+    that fit signatures.json. A call that is already there is named, and so is one that does not fit its signature: that one needs a
+    look at the signature before it can go in, so it stays out. The slice holds the calls alone, with the client and build of the run, and never `GetBuildInfo`, which the build line
+    carries already."""
+    sigs, structures = load_signatures(True)
+    bundled = bundled_recording(client)
+    take, lines = {}, []
+    for label, call in sorted(rec["calls"].items()):
+        if call.get("api") == "GetBuildInfo":   # the client detector, not a call a plan mocks: the slice names the build instead
+            continue
+        problems = signature_problems(client, label, call, sigs, structures)
+        if problems:
+            lines.append(("differs from signature", label, problems[0]))
+            continue
+        was = bundled.get(label)
+        if was is None:
+            take[label] = call; lines.append(("new", label, ""))
+        elif recording_shape(was) != recording_shape(call):
+            take[label] = call; lines.append(("changes", label, "the bundled entry has another shape"))
+        else:
+            lines.append(("already recorded", label, ""))
+    return {"client": client, "build": rec["build"], "calls": take}, lines
+
+def cmd_contribute(client, rec, skipped):
+    """Print what a run offers the bundled recordings between markers, as a pull request body (docs/harvesting.md). Writes no file."""
+    part, lines = contribution(client, rec)
+    print("contribute: %d calls for %s (build %s), %d to send" % (len(rec["calls"]), client, rec["build"], len(part["calls"])))
+    for kind, label, why in lines:
+        print("  %-22s %s%s" % (kind, label, ": " + why if why else ""))
+    for label, why in skipped:
+        print("  left out               %s: %s" % (label, why))
+    if not part["calls"]:
+        print("contribute: nothing new: every call this run recorded is in tools/recordings/%s.json already" % client)
+        return 0
+    print("contribute: paste what is between the markers into a pull request against tools/recordings/%s.json, after the checklist in docs/harvesting.md" % client)
+    print("---8<--- contribute:%s" % client)
+    print(json.dumps(part, indent=1, sort_keys=True))
+    print("---8<---")
+    return 0
+
 def cmd_recordings(a):
-    if not a.out and not os.path.exists(os.path.join(ROOT, ".git")):   # an installed copy: an update replaces it, recordings and all
+    if not a.out and not a.contribute and not os.path.exists(os.path.join(ROOT, ".git")):   # an installed copy: an update replaces it, recordings and all
         print("error: these tools are an installed copy, which an update replaces: pass -o with a folder in your addon's repository "
               "(for example -o MyAddon/recordings) and name it in the plan's offline.recordings", file=sys.stderr)
         return 2
@@ -2094,6 +2148,8 @@ def cmd_recordings(a):
         client, rec, skipped = probe_recordings(a.src)
     except (OSError, ValueError) as e:
         print("error: %s" % e, file=sys.stderr); return 2
+    if a.contribute:   # a review of what this run offers the bundled recordings: nothing is written
+        return cmd_contribute(client, rec, skipped)
     out = a.out or os.path.join(ROOT, "tools", "recordings")
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, client + ".json")
@@ -3638,7 +3694,7 @@ def main(argv=None):
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
     p = sub.add_parser("setup", help="create the per-user Python environment with the tools' requirements (PyYAML, jsonschema) that the ct launcher and the skills use; needs Python 3 with venv and network access once")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
-    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into <folder>/<client>.json, the recorded calls a plan mock can name (docs/authoring-plans.md, Record your own calls)"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording, such as a folder in your addon's repository that the plan's offline.recordings names (default in a checkout: tools/recordings; an installed copy of the tools needs -o, because an update replaces it)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
+    p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into <folder>/<client>.json, the recorded calls a plan mock can name (docs/authoring-plans.md, Record your own calls)"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording, such as a folder in your addon's repository that the plan's offline.recordings names (default in a checkout: tools/recordings; an installed copy of the tools needs -o, because an update replaces it)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)"); p.add_argument("--contribute", action="store_true", help="print, between markers, the calls this run recorded that tools/recordings/<client>.json lacks or holds in another shape and that fit signatures.json, ready for a pull request (docs/harvesting.md); writes no file, so an installed copy needs no -o")
     p = sub.add_parser("census", help=MAINTAINER_NOTE + "write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
