@@ -946,4 +946,185 @@ test("an absolute path is kept on any system, and a relative one is under the ro
     T.eq(Runner.pathJoin("r", "a/b.toc"), "r/a/b.toc")
 end)
 
+-- #285: ct test gets CheckThat's own API (opts.checkThat); offline blocks keep the older fake.
+local function withCT(fn, order, extra)
+    local spec = { toc = TESTED, level = Runner.LEVEL, steps = { { hook = "t" } } }
+    for k, v in pairs(extra or {}) do spec[k] = v end
+    return (Runner.run(spec, { hooks = { t = fn }, hooksFile = "tests/fixtures/TestedAddon/tests/test_core.lua", checkThat = order or "early" }))
+end
+local function passes(r) T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail)) end
+local function fails(r, text) T.eq(r.ok, false); T.ok(tostring(r.steps[1].detail):find(text, 1, true), tostring(r.steps[1].detail)) end
+
+test("an offline block keeps the older fake CheckThat, and ctx.run says it needs ct test", function()
+    local seen = {}
+    local r = tested(function(ctx)
+        seen.api, seen.onRun = ctx.ns.ct.api, CheckThat.OnRun
+        CheckThat.Report("TestedAddon", "k", 1)
+        seen.reports = ctx.reports()
+        seen.ok, seen.err = pcall(ctx.run, "start")
+    end)
+    passes(r)
+    T.eq(seen.api, "too old"); T.eq(seen.onRun, nil)
+    same(seen.reports, { "[TestedAddon] k=1" })
+    T.eq(seen.ok, false); T.ok(tostring(seen.err):find("ctx.run needs CheckThat's own API", 1, true), tostring(seen.err))
+end)
+
+test("ct test's CheckThat is the game's table: API 4, Commands' checks, Report only in a run", function()
+    local seen = {}
+    passes(withCT(function(ctx)
+        seen.api, seen.proto = CheckThat.API_VERSION, CheckThat.PROTOTYPE
+        seen.cmd, seen.denied = CheckThat.Commands("TestedAddon", { "/tested" }), CheckThat.Commands("TestedAddon", { "/run" })
+        seen.outside = CheckThat.Report("TestedAddon", "k", 1)
+        ctx.run("start")
+        seen.inside, seen.bad = CheckThat.Report("TestedAddon", "k", 2), CheckThat.Report("TestedAddon", "k", {})
+        seen.reports = ctx.reports()
+    end))
+    same(seen, { api = 4, cmd = true, denied = false, outside = false, inside = true, bad = false, reports = { "[TestedAddon] mode=test", "[TestedAddon] k=2" } })
+end)
+
+test("ctx.run replaces an open run, checks its values and raises the callback's error", function()
+    local seen = {}
+    passes(withCT(function(ctx)
+        ctx.run("start", { plan = "A" })
+        ctx.run("start", { plan = "B", runId = "r2" })
+        seen.active = CheckThat.ActiveRun("TestedAddon")
+        ctx.run("end", { reason = "deleted" })
+        seen.events = { unpack(ctx.ns.ct.events) }
+        seen.noRun = select(2, pcall(ctx.run, "end"))
+        ctx.run("start", { plan = "C" })
+        seen.reason = select(2, pcall(ctx.run, "end", { reason = "lost" }))
+        ctx.run("end")
+        seen.event = select(2, pcall(ctx.run, "stop"))
+        seen.broken = select(2, pcall(ctx.run, "start", { plan = "Broken" }))
+        pcall(ctx.run, "end") -- the Broken plan's callback raises at its end too
+        ctx.run("start", { plan = "Other", addon = "OtherAddon" })
+        seen.other, seen.count = CheckThat.ActiveRun("TestedAddon"), #ctx.ns.ct.events
+    end))
+    same(seen.events, { "start:A", "end:replaced", "start:B", "end:deleted" })
+    T.eq(seen.count, 8, "C's start and end, Broken's start and end, none for another addon's run")
+    T.eq(seen.active, "B")
+    T.ok(tostring(seen.noRun):find("no run is open", 1, true), tostring(seen.noRun))
+    T.ok(tostring(seen.reason):find("ended, replaced or deleted, got lost", 1, true), tostring(seen.reason))
+    T.ok(tostring(seen.event):find('"start" or "end", got stop', 1, true), tostring(seen.event))
+    T.ok(tostring(seen.broken):find("the addon's OnRun function raised", 1, true) and tostring(seen.broken):find("callback broke", 1, true), tostring(seen.broken))
+    T.eq(seen.other, nil, "a plan for another addon")
+end)
+
+test("ctx.entry runs as addon code and is refused in combat", function()
+    local seen = {}
+    passes(withCT(function(ctx)
+        CheckThat.Entry("TestedAddon", "io", function() return io == nil end)
+        seen.addonCode = ctx.entry("io")
+        ctx.combat(true)
+        seen.err = select(2, pcall(ctx.entry, "count"))
+    end))
+    T.eq(seen.addonCode, true)
+    T.ok(tostring(seen.err):find("entry count is refused in combat", 1, true), tostring(seen.err))
+end)
+
+test("late: CheckThat's global comes after the addon's ADDON_LOADED, with its own ADDON_LOADED next", function()
+    local order = {}
+    local function probe(H, st)
+        local create = CreateFrame
+        local ev = create("Frame")
+        ev:RegisterEvent("ADDON_LOADED"); ev:RegisterEvent("VARIABLES_LOADED")
+        ev:SetScript("OnEvent", function(_, e, a, b) order[#order + 1] = ("%s:%s:%s:%s"):format(e, tostring(a), tostring(b), tostring(CheckThat ~= nil)) end)
+    end
+    local r = Runner.run({ toc = TESTED, level = Runner.LEVEL, steps = { { hook = "t" } } },
+        { hooks = { t = function(ctx) order.api = ctx.ns.ct.api end }, hooksFile = "x/t.lua", checkThat = "late", prepare = probe })
+    passes(r)
+    -- CheckThat sets its global in its own ADDON_LOADED handler; a frame from before it gets that event first and sees no global yet.
+    -- The second value: CheckThat has Bindings.xml.
+    same(order, { "ADDON_LOADED:TestedAddon:false:false", "ADDON_LOADED:CheckThat:true:false", "VARIABLES_LOADED:nil:nil:true", api = 4 })
+    local m = Runner.run({ toc = TESTED, level = Runner.LEVEL, steps = { { hook = "t" } } },
+        { hooks = { t = function(ctx) order.missing = { ctx.ns.ct.api, CheckThat } end }, hooksFile = "x/t.lua", checkThat = "missing" })
+    passes(m)
+    same(order.missing, { "none" })
+end)
+
+test("ctx.entry in an offline block reaches the older fake's entries, and is nil for an unknown name", function()
+    local seen = {}
+    passes(tested(function(ctx)
+        CheckThat.Entry("TestedAddon", "two", function() return 2 end)
+        CheckThat.Entry("TestedAddon", "bad", function() error("bad entry") end)
+        seen.two, seen.none = ctx.entry("two"), ctx.entry("nope")
+        seen.err = select(2, pcall(ctx.entry, "bad"))
+    end))
+    T.eq(seen.two, 2); T.eq(seen.none, nil)
+    T.ok(tostring(seen.err):find("entry bad threw", 1, true) and tostring(seen.err):find("bad entry", 1, true), tostring(seen.err))
+end)
+
+test("ctx.entry and an OnRun function run under the script-time budget", function()
+    local seen = {}
+    passes(withCT(function(ctx)
+        CheckThat.Entry("TestedAddon", "loop", function() while true do end end)
+        seen.entry = select(2, pcall(ctx.entry, "loop"))
+        CheckThat.OnRun("TestedAddon", function() while true do end end)
+        seen.run = select(2, pcall(ctx.run, "start"))
+    end))
+    T.ok(tostring(seen.entry):find("script ran too long", 1, true), tostring(seen.entry))
+    T.ok(tostring(seen.run):find("script ran too long", 1, true), tostring(seen.run))
+end)
+
+test("ctx.run gives the info defaults, checks info, and only opens a run with CheckThat missing", function()
+    local got = {}
+    passes(withCT(function(ctx)
+        CheckThat.OnRun("TestedAddon", function(event, info) got[#got + 1] = { event, info.plan, info.digest, info.runId, info.reason } end)
+        ctx.run("start"); ctx.run("end")
+        got.notTable = select(2, pcall(ctx.run, "start", "Bags"))
+    end))
+    same(got[1], { "start", "Test plan", "00000000", "ct-test-1" })
+    same(got[2], { "end", "Test plan", "00000000", "ct-test-1", "ended" })
+    T.ok(tostring(got.notTable):find("ctx.run: info is a table", 1, true), tostring(got.notTable))
+    local m = {}
+    passes(withCT(function(ctx) ctx.run("start"); m.ok = select(1, pcall(ctx.run, "end")); m.ct = CheckThat end, "missing"))
+    same(m, { ok = true })
+end)
+
+test("a tight loop in a handler a hook fires is stopped by the budget, though the runner hides jit from addon code", function()
+    local seen
+    passes(tested(function(ctx)
+        local f = CreateFrame("Frame")
+        f:RegisterEvent("PLAYER_TARGET_CHANGED")
+        f:SetScript("OnEvent", function() local i = 0; while true do i = i + 1 end end)
+        seen = select(2, pcall(ctx.fire, "PLAYER_TARGET_CHANGED"))
+    end))
+    T.ok(tostring(seen):find("script ran too long", 1, true), tostring(seen))
+end)
+
+test("ctx.reports is a copy for this load, and an OnRun error when the addon registers fails ctx.reload", function()
+    local seen = {}
+    passes(withCT(function(ctx)
+        ctx.run("start")
+        local r = ctx.reports(); r[1] = "changed"
+        seen.before = ctx.reports()
+        ctx.reload()
+        seen.after = ctx.reports()
+        ctx.run("end")
+        pcall(ctx.run, "start", { plan = "Broken" })
+        seen.err = select(2, pcall(ctx.reload))
+    end))
+    same(seen.before, { "[TestedAddon] mode=test" })
+    same(seen.after, { "[TestedAddon] mode=test" }, "the new load's own fact, from start again")
+    T.ok(tostring(seen.err):find("raised at the reload", 1, true) and tostring(seen.err):find("callback broke", 1, true), tostring(seen.err))
+end)
+
+test("late: a run open across a reload starts again once the addon finds CheckThat", function()
+    local seen = {}
+    passes(withCT(function(ctx)
+        ctx.run("start", { plan = "Bags" })
+        ctx.reload()
+        seen.events, seen.active, seen.mode = { unpack(ctx.ns.ct.events) }, ctx.ns.ct.active, ctx.ns.testMode
+    end, "late"))
+    same(seen, { events = { "start:Bags" }, active = "Bags", mode = true })
+end)
+
+test("CheckThat is not in the nil-read report when ct test chose to load it late or not at all", function()
+    for _, order in ipairs({ "late", "missing" }) do
+        local r = withCT(function() end, order)
+        passes(r)
+        for _, n in ipairs(r.nilReads) do T.ok(n ~= "CheckThat", order) end
+    end
+end)
+
 finish()

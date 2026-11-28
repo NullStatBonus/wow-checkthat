@@ -30,7 +30,39 @@ ct.test("selling stops in combat", function(ctx)
 end)
 ```
 
-The optional second value of `ct.test` holds `mocks` and `savedVariables`, in the same shapes as an offline block's ([Offline checks](authoring-plans.md)). A mock is set before your addon loads. A `{ recording = "..." }` mock reads the bundled recordings, and also your own when you pass `--recordings`. A test passes when its function returns, and fails with the error text when it raises or your addon does not load.
+The optional second value of `ct.test` holds `mocks` and `savedVariables`, in the same shapes as an offline block's ([Offline checks](authoring-plans.md)), and `checkThat` ([Test your CheckThat integration](#test-your-checkthat-integration)). A mock is set before your addon loads. A `{ recording = "..." }` mock reads the bundled recordings, and also your own when you pass `--recordings`. A test passes when its function returns, and fails with the error text when it raises or your addon does not load.
+
+## Test your CheckThat integration
+
+Your addon gets CheckThat's own public API as the global `CheckThat`, with the game's rules ([Public API of CheckThat](contracts.md#public-api-of-checkthat)): `API_VERSION` 4, `Entry`, `OnRun`, `ActiveRun`, `Commands` and `Report`. `Report` records only while a run is open, as in game. A test opens and ends runs with `ctx.run`, calls your entries with `ctx.entry` and reads your facts with `ctx.reports`:
+
+```lua
+ct.test("a run turns test mode on and off", function(ctx)
+    ctx.run("start", { plan = "Bags" })
+    ctx.eq(ctx.ns.testMode, true, "test mode")
+    ctx.eq(CheckThat.ActiveRun("MyAddon"), "Bags", "ActiveRun")
+    ctx.same(ctx.reports(), { "[MyAddon] mode=test" }, "facts")
+    ctx.run("end")
+    ctx.eq(ctx.ns.testMode, nil, "test mode off")
+end)
+
+ct.test("the count entry", function(ctx)
+    ctx.fire("BAG_UPDATE", 0)
+    ctx.eq(ctx.entry("count"), 1, "entry.count")
+end)
+
+ct.test("CheckThat loads after the addon", { checkThat = "late" }, function(ctx)
+    ctx.eq(ctx.entry("count"), 0, "registered by PLAYER_LOGIN")
+end)
+```
+
+`checkThat` says when CheckThat loads:
+
+- `"early"` (the default): before your addon, so `CheckThat` is there when your first file runs. The game does this when your TOC names CheckThat in `## Dependencies` or `## OptionalDeps`, or your addon's name sorts after CheckThat's.
+- `"late"`: after your addon. `CheckThat` is nil while your files run and at your `ADDON_LOADED`. Then `ADDON_LOADED` fires with `"CheckThat"`, before `VARIABLES_LOADED`. CheckThat sets its global while it handles that event, and which addon gets the event first is not measured, so `ct test` gives the global only after your handlers have run. Look for `CheckThat` again at `PLAYER_LOGIN`. The game loads CheckThat after your addon when your addon's name sorts before CheckThat's and your TOC does not name it as a dependency.
+- `"missing"`: no CheckThat at all, as for a player who does not have it installed.
+
+`CheckThat` is left out of the nil-read report, because the test chose whether it is there.
 
 ## Run it
 
@@ -68,6 +100,11 @@ It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: n
 - **Output.** `print` inside a test goes to the fake client's chat, as in game. To see a value, use `io.write`. `ct test` shows what a file wrote under its lines, marked with `|`.
 - **Time limit.** A test file that runs longer than 300 seconds on a client is stopped and fails.
 - **ctx.reload** runs from the test itself, not from a handler or timer the test fires.
+- **Facts at a run's end.** CheckThat closes the run before it calls your `OnRun` function with `"end"`, so a fact you report from that call is not recorded. The same happens in game.
+- **A run open at a reload.** After `ctx.reload()`, your `OnRun` function gets `"start"` when it registers. With `"early"` that can be at file scope, before your saved variables are there. An error in that call fails `ctx.reload`.
+- **Facts per second.** `Report` keeps at most 30 facts a second for each addon, as in game. The clock moves only with `ctx.advance`, so a test that reports more than 30 facts without it loses the rest.
+- **ctx.entry** reaches only the entries your addon registered under its own name. It returns nil both for an entry that is not there and for one that returns nothing; check `CheckThat.Entry`'s return value to know it was stored.
+- **Budget.** An entry or an `OnRun` function that `ctx.entry` or `ctx.run` calls has the same script-time limit as a handler, so a runaway loop fails the test instead of running to the file's time limit.
 - **What runs where.** Your test function runs with Lua's full library (`io`, `os`, `require` and the rest). Your addon's code that `ctx.fire`, `ctx.advance` and `ctx.reload` run sees only what it sees in game. A function you call straight from a test, such as `ctx.ns.SellJunk()`, runs with the test's library. A global your test file reads as nil is not in your addon's nil-read report.
 - **Trust.** `ct test` runs your addon's Lua and your tests with your permissions. Use it on code you trust.
 - **What a pass proves.** A test can change anything in the fake client, so a pass proves what the test checks. The fake client models the game's answers. The game itself can differ, so keep an in-game plan for what only the game shows.
@@ -75,4 +112,4 @@ It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: n
 
 ## The ctx reference
 
-The table is in [Lua hooks](authoring-plans.md#lua-hooks-level-5-and-later). A test uses `ctx.reload`, `ctx.ok` and `ctx.raises` most. A hook step can use them too.
+The table is in [Lua hooks](authoring-plans.md#lua-hooks-level-5-and-later). A test uses `ctx.reload`, `ctx.ok`, `ctx.raises`, `ctx.entry`, `ctx.reports` and `ctx.run` most. A hook step can use all of them except `ctx.run`.

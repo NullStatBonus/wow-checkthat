@@ -106,6 +106,19 @@ test("commands an addon declared are offered without the game check, and let a p
     T.eq(App.DeclareCommands("MyAddon", { "/script" }), false)
 end)
 
+test("ct test's CheckThat.Commands gives the same answers as App.DeclareCommands (tools/entry_runner.lua)", function()
+    boot()
+    local Runner = dofile("tools/entry_runner.lua")
+    T.finally(function() App.commands.MyAddon = nil end)
+    local cases = { { "MyAddon", { "/my" } }, { "MyAddon", { "/my", "/mine" } }, { "MyAddon", { "/script" } }, { "MyAddon", { "/run" } },
+        { "MyAddon", { "/ct" } }, { "MyAddon", { "/kt" } }, { "MyAddon", { "my" } }, { "MyAddon", { "/a b" } }, { "MyAddon", { 5 } },
+        { "MyAddon", {} }, { "MyAddon", { "/a", "/b", "/c", "/d", "/e", "/f", "/g", "/h", "/i" } }, { "My Addon", { "/my" } },
+        { ("x"):rep(65), { "/my" } }, { 5, { "/my" } }, { "MyAddon", "/my" } }
+    for i, c in ipairs(cases) do
+        T.eq(Runner.declareCommands(ns.Plan, c[1], c[2]), App.DeclareCommands(c[1], c[2]), "case " .. i)
+    end
+end)
+
 test("a plan that needs a newer CheckThat is refused with that sentence, and nothing is stored", function()
     local db = boot()
     local p = plan(); p.needs = ns.Plan.REV + 1; p.brandNewKey = { 1 }

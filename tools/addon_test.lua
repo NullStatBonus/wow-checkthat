@@ -17,7 +17,8 @@ local f = assert(io.open(arg[1], "r"))
 local job = assert(Json.Decode(f:read("*a")))
 f:close()
 
-local OPTIONS = { mocks = true, savedVariables = true }
+local OPTIONS = { mocks = true, savedVariables = true, checkThat = true }
+local LOAD_ORDER = { early = true, late = true, missing = true } -- when CheckThat's global is there (docs/addon-tests.md)
 local tests = {}
 -- The test file's `...`: fields are only added, never removed or changed in meaning.
 local ct = { API = 1 }
@@ -27,7 +28,11 @@ function ct.test(name, options, fn)
     if type(fn) ~= "function" then error(("ct.test %q: the last value is the test function"):format(name), 2) end
     if options ~= nil and type(options) ~= "table" then error(("ct.test %q: the options are a table"):format(name), 2) end
     for k in pairs(options or {}) do
-        if not OPTIONS[k] then error(("ct.test %q: unknown option %s (mocks or savedVariables)"):format(name, tostring(k)), 2) end
+        if not OPTIONS[k] then error(("ct.test %q: unknown option %s (mocks, savedVariables or checkThat)"):format(name, tostring(k)), 2) end
+    end
+    local order = (options or {}).checkThat
+    if order ~= nil and not LOAD_ORDER[order] then
+        error(("ct.test %q: checkThat is \"early\", \"late\" or \"missing\", got %s"):format(name, tostring(order)), 2)
     end
     tests[#tests + 1] = { name = name, options = options or {}, fn = fn }
 end
@@ -54,7 +59,7 @@ for _, t in ipairs(tests) do
         local spec = { toc = job.toc, level = Runner.LEVEL, mocks = t.options.mocks, savedVariables = t.options.savedVariables,
             recordings = job.recordings, steps = { { hook = "test" } } }
         local rok, r = pcall(Runner.run, spec, { root = here, hooks = { test = t.fn }, hooksFile = job.file, testDir = job.testDir,
-            interface = job.interface, addonName = job.addon })
+            interface = job.interface, addonName = job.addon, checkThat = t.options.checkThat or "early" })
         local res = { name = t.name, ok = false }
         if not rok then
             res.detail = "the runner failed: " .. tostring(r)

@@ -274,6 +274,9 @@ A hook step takes `args` and `returns` or `throws`, as a `call` step does: `hook
 | `ctx.ok(value, what)` | Raises `what: expected a true value, got value` when value is `false` or `nil`. |
 | `ctx.raises(fn, text, what)` | Calls fn and raises unless fn raises an error that contains the plain text (any error when text is `nil`). Returns the error. |
 | `ctx.reload()` | The game's reload, as a `reload` step does it: the logout events, the saved variables kept, then a fresh load. `ctx.ns` then names the new load's namespace. Raises when a handler raises. |
+| `ctx.entry(name, ...)` | Calls the entry your addon registered under its own name with `CheckThat.Entry`, as addon code, and returns its values. Returns `nil` when there is no such entry. Raises when the entry raises, and in combat, where a plan's `call` is refused. |
+| `ctx.reports()` | The `[addon] key=value` lines `CheckThat.Report` recorded in this load. |
+| `ctx.run(event, info)` | `ct test` only. `"start"` opens a run of a plan for your addon, `"end"` ends it, as CheckThat does in game: your `OnRun` function gets the event, `ActiveRun` answers and `Report` records while the run is open. `info` may set `plan` ("Test plan"), `digest`, `runId`, `addon` (yours), and `reason` for `end` (`ended`, `replaced` or `deleted`). A `start` while a run is open ends that run first with `replaced`. The run stays open across `ctx.reload()`, and your addon gets `start` again when it registers. Raises when your `OnRun` function raises (also when it gets `start` again at a `ctx.reload()`), or at `end` when no run is open. In an offline block it raises: the block's fake CheckThat has no `OnRun`. |
 
 A hook can change anything in the fake client, so its pass proves what the hook checks and nothing more.
 

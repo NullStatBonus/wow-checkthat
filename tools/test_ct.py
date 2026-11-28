@@ -779,9 +779,10 @@ class AddonTests(unittest.TestCase):
         code, out, err = self.run_test(self.folder())
         self.assertEqual(code, 0, out + err)
         lines = [l for l in out.splitlines() if l.startswith(("ok", "FAIL"))]
-        self.assertEqual(len(lines), 10, out)
-        self.assertEqual(sum(" era " in l for l in lines), 5); self.assertEqual(sum(" forever " in l for l in lines), 5)
-        self.assertIn("test: 10 passed, 0 failed", out)
+        self.assertEqual(len(lines), 20, out)
+        self.assertEqual(sum(" era " in l for l in lines), 10); self.assertEqual(sum(" forever " in l for l in lines), 10)
+        self.assertIn("test: 20 passed, 0 failed", out)
+        self.assertIn("tests/test_checkthat.lua  CheckThat that loads after the addon is found by PLAYER_LOGIN", out)
         self.assertIn("era: Globals read as nil in this run (interface 11509)", out)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
@@ -810,19 +811,21 @@ class AddonTests(unittest.TestCase):
         self.assertIn("FAIL  era      tests/test_fail.lua  counts twice: ", out)
         self.assertIn("count: expected 2, got 1", out)
         self.assertNotIn(" forever ", out, "--client era runs one client")
-        self.assertIn("test: 5 passed, 1 failed", out)
+        self.assertIn("test: 10 passed, 1 failed", out)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_file_that_cannot_run_fails_alone(self):
         code, out, _ = self.run_test(self.folder({
             "tests/test_a_raises.lua": 'error("setup broke")\n',
             "tests/test_b_empty.lua": "local ct = ...\n",
-            "tests/test_c_option.lua": 'local ct = ...\nct.test("x", { mock = {} }, function() end)\n'}), "--client", "forever")
+            "tests/test_c_option.lua": 'local ct = ...\nct.test("x", { mock = {} }, function() end)\n',
+            "tests/test_d_order.lua": 'local ct = ...\nct.test("y", { checkThat = "sometimes" }, function() end)\n'}), "--client", "forever")
         self.assertEqual(code, 1, out)
         self.assertIn("FAIL  forever  tests/test_a_raises.lua: the test file raised", out); self.assertIn("setup broke", out)
         self.assertIn("tests/test_b_empty.lua: the test file registers no test (ct.test)", out)
-        self.assertIn("unknown option mock (mocks or savedVariables)", out)
-        self.assertIn("test: 5 passed, 3 failed", out, "the other file still ran")
+        self.assertIn("unknown option mock (mocks, savedVariables or checkThat)", out)
+        self.assertIn('checkThat is "early", "late" or "missing", got sometimes', out)
+        self.assertIn("test: 10 passed, 4 failed", out, "the other files still ran")
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_load_failure_and_a_test_files_own_nil_reads(self):
@@ -852,7 +855,7 @@ class AddonTests(unittest.TestCase):
         repo = os.path.join(d, "my-repo")
         shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "TestedAddon"), repo)
         code, out, _ = self.run_test(repo)
-        self.assertEqual(code, 0, out); self.assertIn("test: 10 passed, 0 failed", out)
+        self.assertEqual(code, 0, out); self.assertIn("test: 20 passed, 0 failed", out)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_helpers_load_from_the_tests_folder_and_their_nil_reads_are_not_the_addons(self):
@@ -874,7 +877,7 @@ class AddonTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_name_narrows_and_a_name_that_matches_nothing_is_an_error(self):
-        code, out, _ = self.run_test(self.folder(), "--name", "reload")
+        code, out, _ = self.run_test(self.folder(), "--name", "saved count")
         self.assertEqual(code, 0, out); self.assertIn("test: 2 passed, 0 failed", out)
         code, out, err = self.run_test(self.folder(), "--name", "no such test")
         self.assertEqual(code, 2); self.assertIn("no test matches 'no such test'", err)
@@ -2342,7 +2345,7 @@ class InstallSkill(unittest.TestCase):
             self.assertIn("offline: 5 passed, 0 failed", r.stderr)
             r = subprocess.run([sys.executable, ctpy, "test"], capture_output=True, text=True, cwd=os.path.join(fx, "TestedAddon"))   # #273: ct test in the addon's folder
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-            self.assertIn("test: 10 passed, 0 failed", r.stdout)
+            self.assertIn("test: 20 passed, 0 failed", r.stdout)
             self.assertEqual(os.listdir(work), [], "nothing is written to the working folder")
 
     @unittest.skipIf(os.name == "nt", "the launcher is a shell script and the link needs a POSIX shell")

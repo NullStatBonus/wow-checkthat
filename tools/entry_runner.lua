@@ -17,6 +17,15 @@
 -- Mocks are set before the addon loads (a file-scope "local f = f" then sees them) unless mockAfterLoad is set,
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
+-- CheckThat.Commands' checks (App.DeclareCommands in CheckThat/Model/App.lua, which needs the whole addon), on CheckThat's own Plan
+-- rules. tests/test_app.lua checks that both give the same answers.
+function Runner.declareCommands(Plan, addon, list)
+    if type(addon) ~= "string" or #addon > Plan.ADDON_MAX or not addon:match(Plan.ADDON_NAME) then return false end
+    if type(list) ~= "table" or #list == 0 or #list > Plan.COMMANDS_MAX then return false end
+    for _, c in ipairs(list) do if Plan.CommandProblem(c, addon) then return false end end
+    return true
+end
+local loadfile = loadfile -- read now: the fake client hides it from addon code, and CheckThat's modules load during a load
 
 -- The newest offline level. A plan without a level runs at level 1, so its results do not change.
 Runner.LEVEL = 6
@@ -334,12 +343,43 @@ function Runner.run(spec, opts)
     local name = opts.addonName or spec.toc:match("([^/\\]+)[/\\][^/\\]+%.toc$") or spec.toc:match("([^/\\]+)%.toc$") or "Addon"
     local folder = tocPath:match("^(.*)[/\\][^/\\]+$") or "."
     -- ADDON_LOADED's second value: whether the addon folder holds Bindings.xml. ADDONS_UNLOADING gets closingClient false.
-    local hasBindings = false
+    local hasBindings, ctBindings = false, false
     do local f = io.open(folder .. "/Bindings.xml"); if f then f:close(); hasBindings = true end end
+    do local f = io.open(root .. "/CheckThat/Bindings.xml"); if f then f:close(); ctBindings = true end end -- for ct test's late CheckThat
     local reports, results, nilSeen = {}, {}, {}
     local interface
-    local cur = {} -- the current load: st, entries, saved mocks, counts, unhide, stopNil
+    local cur = {} -- the current load: st, entries, saved mocks, counts, unhide, stopNil, facts, api, runEvents
     local loads = 0
+    -- ct test (opts.checkThat): the run ctx.run opened, in RunEvents' shape. It lives outside the load, so it stays open across a reload.
+    local openRun
+    local ctModules -- CheckThat's own Plan, Facts, Entries and RunEvents, compiled once
+    -- The table the game gives as the global CheckThat (Facts.API), built from CheckThat's own modules for each load, as the game loads
+    -- CheckThat again at a reload. Entry also keeps the function for ctx.entry.
+    local function realCheckThat()
+        if not ctModules then
+            ctModules = {}
+            for _, m in ipairs({ "Plan", "Facts", "Entries", "RunEvents" }) do
+                ctModules[#ctModules + 1] = assert(loadfile(root .. "/CheckThat/Model/" .. m .. ".lua"))
+            end
+        end
+        local cns = {}
+        for _, chunk in ipairs(ctModules) do chunk("CheckThat", cns) end
+        local Plan = cns.Plan
+        -- An OnRun error goes to CheckThat's error list in game; here ctx.run and ctx.reload raise with it.
+        cns.Errors = { Record = function(msg) cur.runErrs[#cur.runErrs + 1] = (tostring(msg):gsub("^run callback: ", "")) end }
+        cns.App = { DeclareCommands = function(addon, list) return Runner.declareCommands(Plan, addon, list) end }
+        cns.Facts.Bind(cur.facts, function() return math.floor(cur.st.now or 0) end, function() return openRun ~= nil end)
+        cns.RunEvents.Bind(function() return openRun end)
+        cur.runEvents = cns.RunEvents
+        local api = cns.Facts.API()
+        local store, entries = api.Entry, cur.entries
+        api.Entry = function(addon, ename, fn)
+            local stored = store(addon, ename, fn)
+            if stored then entries[addon] = entries[addon] or {}; entries[addon][ename] = fn end
+            return stored
+        end
+        return api
+    end
 
     local allMocks = {}
     for api in pairs(spec.mocks or {}) do allMocks[api] = true end
@@ -407,7 +447,12 @@ function Runner.run(spec, opts)
 
     local function stopLoad()
         if cur.unhide then cur.unhide(); cur.unhide = nil end
-        if cur.stopNil then for _, n in ipairs(cur.stopNil()) do nilSeen[n] = true end; cur.stopNil = nil end
+        if cur.stopNil then
+            for _, n in ipairs(cur.stopNil()) do
+                if not (opts.checkThat and n == "CheckThat") then nilSeen[n] = true end -- ct test chose whether CheckThat is there
+            end
+            cur.stopNil = nil
+        end
         if cur.saved then restoreMocks(cur.saved); cur.saved = nil end
     end
 
@@ -434,6 +479,13 @@ function Runner.run(spec, opts)
             if e[1] == "PLAYER_LOGIN" then cur.st.loggedIn = true end
             local n, err = fire(unpack(e, 1, e.n or #e)) -- exactly the values the game passes: none for VARIABLES_LOADED
             if not n then return false, ("%s handler threw %s"):format(e[1], err) end
+            if e[1] == "ADDON_LOADED" and opts.checkThat == "late" then
+                -- CheckThat loads after the addon. In game it sets its global in its own ADDON_LOADED handler (AceAddon's OnInitialize);
+                -- which frame gets that event first is not measured, so the addon's handlers get it before the global is there.
+                n, err = fire("ADDON_LOADED", "CheckThat", ctBindings)
+                if not n then return false, ("ADDON_LOADED handler threw %s"):format(err) end
+                _G.CheckThat = cur.api
+            end
         end
         return true
     end
@@ -451,7 +503,7 @@ function Runner.run(spec, opts)
         if loads > 0 then stopLoad(); restoreGlobals() end
         loads = loads + 1
         local st = client()
-        cur = { st = st, entries = {}, counts = counts, saved = {}, mocks = mocks }
+        cur = { st = st, entries = {}, counts = counts, saved = {}, mocks = mocks, facts = {}, runErrs = {} }
         plainCreate = _G.CreateFrame
         -- What the shared fake client lacked: a record of the events a frame registered.
         local create = _G.CreateFrame
@@ -478,8 +530,11 @@ function Runner.run(spec, opts)
         end
         if opts.prepare then opts.prepare(H, st) end
         oldCT = _G.CheckThat
-        local entries = cur.entries
-        _G.CheckThat = {
+        local entries, facts = cur.entries, cur.facts
+        if opts.checkThat then -- ct test: CheckThat's own API, there before the addon (early), after it (late) or not at all (missing)
+            cur.api = opts.checkThat ~= "missing" and realCheckThat() or nil
+            _G.CheckThat = opts.checkThat == "early" and cur.api or nil
+        else _G.CheckThat = {
             PROTOTYPE = true,
             Entry = function(addon, ename, fn)
                 -- The same rules as CheckThat.Entry in the game (CheckThat/Model/Entries.lua).
@@ -490,8 +545,13 @@ function Runner.run(spec, opts)
                 return true
             end,
             API_VERSION = 2,
-            Report = function(addon, key, value) reports[#reports + 1] = ("[%s] %s=%s"):format(addon, key, tostring(value)); return true end,
-        }
+            Report = function(addon, key, value)
+                local line = ("[%s] %s=%s"):format(addon, key, tostring(value))
+                reports[#reports + 1] = line
+                facts[#facts + 1] = line
+                return true
+            end,
+        } end
         local function assign()
             for n, v in pairs(sv or {}) do rawset(_G, n, savedCopy(v)) end
         end
@@ -603,12 +663,56 @@ function Runner.run(spec, opts)
                 end
                 return rerr
             end,
+            -- Calls the entry the addon registered under its name, as addon code, and returns its values; nil when there is none.
+            entry = function(ename, ...)
+                local fn = cur.entries[name] and cur.entries[name][ename]
+                if not fn then return nil end
+                local ic = rawget(_G, "InCombatLockdown")
+                if ic and ic() then error(("entry %s is refused in combat, as a plan's call is"):format(tostring(ename)), 2) end
+                local r = pack(asAddon(H.budgeted, strict and H.DEFAULT_BUDGET or nil, fn, ...)) -- the script-time budget, as for a handler
+                if not r[1] then error(("entry %s threw %s"):format(tostring(ename), tostring(r[2])), 2) end
+                return unpack(r, 2, r.n)
+            end,
+            -- The fact lines Report recorded in this load (with ct test, only while a run is open, as in game).
+            reports = function()
+                local c = {}
+                for i, l in ipairs(cur.facts or {}) do c[i] = l end
+                return c
+            end,
+            -- Opens ("start") or ends ("end") a run of a plan for the addon, as CheckThat does in game: OnRun gets the event, ActiveRun
+            -- answers, Report records. A start while a run is open ends that one first ("replaced").
+            run = function(event, info)
+                if not opts.checkThat then error("ctx.run needs CheckThat's own API, which ct test gives; an offline block has the older fake", 2) end
+                if event ~= "start" and event ~= "end" then error('ctx.run: the event is "start" or "end", got ' .. tostring(event), 2) end
+                if info ~= nil and type(info) ~= "table" then error("ctx.run: info is a table", 2) end
+                info = info or {}
+                local before, reason = openRun, "replaced"
+                if event == "start" then
+                    openRun = { addon = info.addon or name, planTitle = info.plan or "Test plan", planDigest = info.digest or "00000000",
+                        runId = info.runId or "ct-test-1" }
+                else
+                    if not openRun then error("ctx.run: no run is open", 2) end
+                    reason = info.reason or "ended"
+                    if reason ~= "ended" and reason ~= "replaced" and reason ~= "deleted" then
+                        error("ctx.run: the reason is ended, replaced or deleted, got " .. tostring(reason), 2)
+                    end
+                    openRun = nil
+                end
+                local errs = #cur.runErrs
+                if cur.api then
+                    local cok, cerr = asAddon(H.budgeted, strict and H.DEFAULT_BUDGET or nil, cur.runEvents.Changed, before, openRun, reason)
+                    if not cok then error("the addon's OnRun function raised " .. tostring(cerr), 2) end
+                end
+                if #cur.runErrs > errs then error("the addon's OnRun function raised " .. table.concat(cur.runErrs, "; ", errs + 1), 2) end
+            end,
             -- The game's reload, as a reload step does it (hooks run at level 5 and up): ctx.ns then names the new load's namespace.
             reload = function()
                 if not lent then error("ctx.reload runs from the test or hook itself, not from a handler or timer it fires", 2) end
                 local rok, rerr = asAddon(reloadNow, mocks, counts)
                 if not rok then error("the reload failed: " .. tostring(rerr), 2) end
                 ctx.ns = cur.ns
+                -- An open run sends start again when the addon registers in the new load.
+                if #(cur.runErrs or {}) > 0 then error("the addon's OnRun function raised at the reload: " .. table.concat(cur.runErrs, "; "), 2) end
             end,
         }
         return ctx
