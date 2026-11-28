@@ -4332,10 +4332,11 @@ class PlanHardening(unittest.TestCase):
         self.assertTrue(any("item-count needs an id, a number" in e for e in errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1})),
                         errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1}))
         for a in ({"kind": "state", "probe": "item-count", "id": "6948", "op": "exists"},
-                  {"kind": "state", "probe": "bag-free-slots", "bag": 1.5, "op": "exists"}):
+                  {"kind": "state", "probe": "bag-free-slots", "bag": 1.5, "op": "exists"},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": -1, "op": "exists"}):
             self.assertNotEqual(errors(a), [], a)
         for a in ({"kind": "state", "probe": "money", "op": "ge", "value": 1},
-                  {"kind": "state", "probe": "bag-free-slots", "bag": -1, "op": "ge", "value": 0},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": 0, "op": "ge", "value": 0},
                   {"kind": "state", "probe": "item-count", "id": 6948, "op": "ge", "value": 1},
                   {"kind": "state", "probe": "frame-text", "name": "F", "op": "exists"}):
             self.assertEqual(errors(a), [], a)
