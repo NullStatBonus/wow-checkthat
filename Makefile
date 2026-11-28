@@ -35,8 +35,8 @@ test-py:
 BUNDLE := tools/ct.py tools/ct schema/test-plan.schema.json docs/test-plan.md docs/authoring-plans.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md tools/sv2json.lua tools/replay_sv.lua tools/entry_runner.lua tools/dump_options.lua tools/lua51_check.lua tests/harness.lua tests/replay.lua tests/replay_plan.lua requirements.txt tools/ct_tui.py requirements-tui.txt tests/manifests/README.md
 # The whole addon folder: the fake client loads it for flow replay and the offline block. tools/events holds the
 # clients' event lists (offline level 4) and tools/clients their surfaces (level 5). Census manifests stay local and
-# are never bundled.
-BUNDLE_DIR := CheckThat tools/events tools/clients tools/recordings
+# are never bundled. tools/ctprobe is the development addon that records what the game answers (/ctp record <call>).
+BUNDLE_DIR := CheckThat tools/events tools/clients tools/recordings tools/ctprobe
 
 install-skill:
 	@root=$$(pwd -P); mkdir -p "$(SKILL_DIR)" || exit 1; dest=$$(cd "$(SKILL_DIR)" && pwd -P); \

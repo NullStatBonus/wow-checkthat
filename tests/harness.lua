@@ -467,6 +467,14 @@ for n in ("assert collectgarbage dofile error gcinfo getfenv getmetatable ipairs
     .. "pairs pcall print rawequal rawget rawset require select setfenv setmetatable tonumber tostring type unpack xpcall"):gmatch("%S+") do
     LUA_BASE[n] = true
 end
+-- Whether a name is Lua's own: a base function, a function of a Lua library table (string.format), or the game's alias of one (strsub).
+-- The game's Lua helpers (Mixin, date) are not: an addon test may need to fix what they answer. The offline runner reads this for mocks.
+local LUA_TABLES = { string = true, table = true, math = true, bit = true, coroutine = true, os = true, io = true, debug = true, jit = true, package = true }
+function H.luaFunction(name)
+    local ns = name:match("^([^%.]+)%.")
+    if ns then return LUA_TABLES[ns] == true end
+    return LUA_BASE[name] == true or LUA_TABLES[name] == true or (not HELPERS[name] and luaAlias(name) ~= nil)
+end
 function H.applySurface(st, surface)
     st.generated = {}
     local function generic(name) st.generated[name] = true; return function() end end

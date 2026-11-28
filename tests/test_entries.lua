@@ -498,6 +498,51 @@ test("every read-only window call can be mocked, and no call that buys, learns o
         "C_AuctionHouse.StartCommoditiesPurchase", "C_AuctionHouse.PostItem", "C_AuctionHouse.SendBrowseQuery", "C_MerchantFrame.SellAllJunkItems" }) do T.ok(not R.MOCKABLE[n], n) end
 end)
 
+-- #214: from level 5 any function the client's surface lists can be mocked, except Lua's own and the fake client's model.
+test("a surface function the closed list does not name mocks at level 5, and fails the load below it", function()
+    local spec = function(level) return { toc = REC_ERA, level = level, mocks = { GetSpellInfo = { args = { 133 }, returns = { "Fireball" } }, UnitLevel = { returns = { 60 } } },
+        steps = { { call = { addon = "MockAddon", entry = "spell_name", args = { 133 } }, returns = { "Fireball" } },
+                  { call = { addon = "MockAddon", entry = "unit_level", args = { "target" } }, returns = { 60 } } } } end
+    local r5 = run(spec(5))
+    T.ok(r5.ok, tostring(r5.steps[1] and r5.steps[1].detail))
+    local r4 = run(spec(4))
+    T.ok(not r4.ok and tostring(r4.steps[1].detail):find("mock GetSpellInfo is not on the allow list", 1, true), tostring(r4.steps[1] and r4.steps[1].detail))
+end)
+
+test("Lua's own functions and the fake client's model cannot be mocked at level 5", function()
+    for _, n in ipairs({ "loadstring", "pcall", "string.format", "strsub", "tinsert", "InCombatLockdown", "hooksecurefunc", "CreateFrame", "issecurevariable", "C_Timer.After", "RunScript" }) do
+        local r = run({ toc = REC_ERA, level = 5, mocks = { [n] = { returns = { 1 } } }, steps = { recCall("spell_name", 133, { nil }) } })
+        T.ok(not r.ok and tostring(r.steps[1].detail):find("mock " .. n .. " is not on the allow list", 1, true), n .. ": " .. tostring(r.steps[1] and r.steps[1].detail))
+    end
+    local R = dofile("tools/entry_runner.lua")
+    local H = select(5, dofile("tests/harness.lua")())
+    T.ok(R.mockable("date", {}, H) and R.mockable("Mixin", {}, H), "the game's Lua helpers can be mocked")
+    T.ok(not R.mockable("GetSpellInfo", nil, H), "below level 5 only the closed list")
+end)
+
+test("a level 5 mock of a function the client lacks still fails as missing", function()
+    local r = run({ toc = REC_FOREVER, level = 5, mocks = { GetSpellInfo = { returns = { "x" } } }, steps = { recCall("spell_name", 133, { "x" }) } })
+    T.ok(not r.ok and tostring(r.steps[1].detail):find("mock GetSpellInfo: the forever client has no such function", 1, true), tostring(r.steps[1] and r.steps[1].detail))
+end)
+
+test("the addon's recordings folder adds calls and wins over the bundled file", function()
+    local dir = "tests/fixtures/MockAddon/recordings"
+    local r = run({ toc = REC_ERA, level = 5, recordings = dir, mocks = { GetSpellInfo = { recording = "GetSpellInfo(133)" }, GetItemInfo = { recording = "GetItemInfo(6948)" } },
+        steps = { recCall("spell_name", 133, { "Fireball" }), recCall("info_old", 6948, { "Hearthstone (the addon's)" }) } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail) .. " / " .. tostring(r.steps[2] and r.steps[2].detail))
+    local function loadError(spec) local x = run(spec); return (not x.ok) and tostring(x.steps[1].detail) or "ran" end
+    local missing = loadError({ toc = REC_ERA, level = 5, mocks = { GetSpellInfo = { recording = "GetSpellInfo(133)" } }, steps = { recCall("spell_name", 133, { "Fireball" }) } })
+    T.ok(missing:find("no recording GetSpellInfo(133) for the era client (tools/recordings/era.json)", 1, true), missing)
+    local both = loadError({ toc = REC_ERA, level = 5, recordings = dir, mocks = { GetSpellInfo = { recording = "GetSpellInfo(999)" } }, steps = { recCall("spell_name", 133, { "Fireball" }) } })
+    T.ok(both:find("(tools/recordings/era.json or " .. dir .. "/era.json)", 1, true), both)
+    local empty = run({ toc = REC_FOREVER, level = 5, recordings = dir, mocks = { ["C_Item.GetItemInfo"] = { recording = "C_Item.GetItemInfo(6948)" } }, steps = { recCall("info_first", 6948, { "Hearthstone" }) } })
+    T.ok(empty.ok, "a folder without the client's file adds nothing: " .. tostring(empty.steps[1] and empty.steps[1].detail))
+    local bad = loadError({ toc = REC_ERA, level = 5, recordings = "tests/fixtures/recordings-bad", mocks = { GetItemInfo = { recording = "GetItemInfo(6948)" } }, steps = { recCall("info_old", 6948, { "Hearthstone" }) } })
+    T.ok(bad:find("tests/fixtures/recordings-bad/era.json has format 2", 1, true), bad)
+    local low = loadError({ toc = REC_ERA, level = 4, recordings = dir, steps = { recCall("info_old", 6948, { "Real Item" }) } })
+    T.ok(low:find("recordings needs offline level 5", 1, true), low)
+end)
+
 test("a recording that does not fit fails the load step and says why", function()
     local steps = { recCall("info_first", 6948, { "Hearthstone" }) }
     local function loadError(r) return (not r.ok) and tostring(r.steps[1].detail) or "ran" end

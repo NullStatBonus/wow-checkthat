@@ -7,7 +7,7 @@ CheckThat is for what only a person in the live client can show: a window opens,
 ## What CheckThat does not do
 
 - It never runs plan text as code.
-- It does not replace API calls with fakes.
+- In game it reads the real API. Only `ct offline` replaces calls, with a plan's mocks or recorded answers ([Check addon code offline](authoring-plans.md#check-addon-code-offline)).
 - It never sends input. Every protected action is a real click or key press by the player.
 
 ## Better with: optional addons
@@ -47,5 +47,6 @@ From 1.0 these `tools/ct.py` commands keep their arguments and output: a change 
 - `diff`
 - `trend`
 - `setup`
+- `recordings`
 
-`recordings` and `census` are maintainer tools. Their help starts with "maintainer tool, output may change". The census manifests and the recordings have their own `format`. `from-md` writes a plan and `sv2json` prints saved variables as they are, so their output follows the plan format and the game's data. `decode` prints the plan or run as it is, and those carry `ct` and `formatRev` ([Results format](results-format.md)). The evidence folder's bookkeeping file `refused.json` is not a promise.
+`census` is a maintainer tool. Its help starts with "maintainer tool, output may change". The census manifests and the recordings have their own `format`. `from-md` writes a plan and `sv2json` prints saved variables as they are, so their output follows the plan format and the game's data. `decode` prints the plan or run as it is, and those carry `ct` and `formatRev` ([Results format](results-format.md)). The evidence folder's bookkeeping file `refused.json` is not a promise.

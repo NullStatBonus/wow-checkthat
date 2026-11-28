@@ -1,6 +1,6 @@
 # Adopt CheckThat in an addon repository
 
-Install the skills once: the Claude Code plugin from the marketplace, the toolkit zip from a GitHub release, or `make install-skill BIN_DIR=$HOME/bin` in a CheckThat checkout (see [skills](skills.md#install)). With the plugin or the zip, run `ct.py setup` once. Call the installed `ct-test-plan/ct/tools/ct` (in the plugin, `skills/plan/ct/tools/ct`), or the `ct` that `BIN_DIR` links, so `ct <command>` works from any folder. `ct doctor` checks Python and LuaJIT. Never point an addon's files at a CheckThat checkout.
+Install the skills once: the Claude Code plugin from the marketplace, the toolkit zip from a GitHub release, or `make install-skill BIN_DIR=$HOME/bin` in a CheckThat checkout (see [skills](skills.md#install)). With the plugin or the zip, run `python3 <tools>/ct.py setup` once ([skills](skills.md#install) says where `<tools>` is). With the plugin, the skills are `/checkthat:plan` and `/checkthat:verify`; the section below names them `/ct-test-plan` and `/ct-verify`, as the zip and `make install-skill` install them. Call the installed `ct-test-plan/ct/tools/ct` (in the plugin, `skills/plan/ct/tools/ct`), or the `ct` that `BIN_DIR` links, so `ct <command>` works from any folder. `ct doctor` checks Python and LuaJIT. Never point an addon's files at a CheckThat checkout.
 
 Paste this section into the addon's AGENTS.md and adjust the names:
 

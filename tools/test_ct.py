@@ -451,6 +451,28 @@ class Recordings(unittest.TestCase):
             self.assertEqual(ct.main(["recordings", "--src", bare, "-o", out]), 2)
         self.assertIn("/ctp record", err.getvalue())
 
+    def test_an_installed_copy_needs_o_and_a_checkout_keeps_its_default(self):
+        d, path = self.make()
+        installed = os.path.join(d, "ct")
+        os.makedirs(installed)
+        err = io.StringIO()
+        with unittest.mock.patch.object(ct, "ROOT", installed), contextlib.redirect_stderr(err):
+            self.assertEqual(ct.main(["recordings", "--src", path]), 2)
+        self.assertIn("-o", err.getvalue()); self.assertIn("offline.recordings", err.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(installed, "tools")), "nothing is written")
+        os.makedirs(os.path.join(installed, ".git"))
+        with unittest.mock.patch.object(ct, "ROOT", installed), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ct.main(["recordings", "--src", path]), 0)
+        self.assertTrue(os.path.isfile(os.path.join(installed, "tools", "recordings", "forever.json")), "a checkout writes tools/recordings")
+
+    def test_a_call_stored_with_a_player_argument_is_left_out(self):
+        build = '["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.15.9" }, { ["type"] = "string", ["value"] = "70576" }, { ["type"] = "string", ["value"] = "x" }, { ["type"] = "number", ["value"] = 11509 } } }'
+        one = lambda label, arg: '["%s"] = { ["n"] = 1, ["args"] = { { ["type"] = "string", ["value"] = "%s" } }, ["values"] = { { ["type"] = "number", ["value"] = 60 } } }' % (label, arg)
+        _, path = self.make('CTProbeDB = { ["fixtures"] = { %s, %s, %s } }' % (build, one("UnitLevel(player)", "player"), one("UnitLevel(target)", "target")))
+        _, rec, skipped = ct.probe_recordings(path)
+        self.assertEqual(rec["calls"]["UnitLevel(target)"]["args"], ["target"])
+        self.assertNotIn("UnitLevel(player)", rec["calls"]); self.assertIn("player", dict(skipped)["UnitLevel(player)"])
+
 class WindowRecordings(unittest.TestCase):
     """Calls CTProbe recorded with a vendor, trainer or auction window open carry a window tag. The file keeps format 1 and gains rev 2."""
     SV = '''CTProbeDB = {
@@ -959,6 +981,25 @@ class OfflineBlock(unittest.TestCase):
             self.assertNotEqual(ct.validate(with_tocs(both, level)), [], "tocs at level %d" % level)
         p = self.plan(lambda o: o.update(tocs=both)); p["offline"].pop("level", None)
         self.assertNotEqual(ct.validate(p), [], "tocs with no level")
+
+    def test_recordings_needs_level_5_and_stays_in_the_addons_folder(self):
+        def rec_plan(level=5, folder="MockAddon/recordings"):
+            def m(o):
+                o.clear()
+                o.update(toc="MockAddon/Rec_Vanilla.toc", recordings=folder, mocks={"GetSpellInfo": {"recording": "GetSpellInfo(133)"}},
+                         steps=[{"label": "Spell from the addon's recording", "call": {"addon": "MockAddon", "entry": "spell_name", "args": [133]}, "returns": ["Fireball"]}])
+                if level: o["level"] = level
+            return self.plan(m)
+        self.assertEqual(ct.validate(rec_plan()), [])
+        for level in (None, 4):
+            p = rec_plan(level); p["offline"]["mocks"] = {"GetItemInfo": {"returns": ["x"]}}   # no mock recording: only recordings needs the level
+            self.assertNotEqual(ct.validate(p), [], "recordings at level %s" % level)
+        self.assertNotEqual(ct.validate(rec_plan(folder="")), [], "an empty path")
+        addons = os.path.dirname(os.path.dirname(self.PLAN))
+        self.assertEqual([i["result"] for i in ct.offline_plan(rec_plan(), addons)], ["pass"])
+        with self.assertRaises(ValueError) as e:
+            ct.offline_plan(rec_plan(folder="../elsewhere"), addons)
+        self.assertIn("leaves the addons folder", str(e.exception))
 
     def client_plan(self, **extra):
         def m(o):
@@ -3025,12 +3066,19 @@ class BuildToolkit(unittest.TestCase):
                 z.extractall(skills)
             self.assertFalse(any(n.split("/")[1:2] == [".venv"] for n in names), "no private Python")
             self.assertEqual(sorted({n.split("/")[0] for n in names}), ["ct-test-plan", "ct-verify"])
+            for probe in ("CTProbe.lua", "CTProbe_Vanilla.toc", "CTProbe_Camelot.toc"):   # the probe that records a developer's own calls (#214)
+                self.assertIn("ct-test-plan/ct/tools/ctprobe/CTProbe/" + probe, names)
             ct = os.path.join(skills, "ct-test-plan", "ct")
             with open(os.path.join(ct, "VERSION")) as f:
                 self.assertEqual(f.read().strip(), self.version())
             for rel in InstallSkill.BUNDLE:
                 self.assertTrue(os.path.exists(os.path.join(ct, rel)), rel)
             self.assertTrue(os.path.isfile(os.path.join(skills, "ct-verify", "..", "ct-test-plan", "ct", "tools", "ct.py")))
+            for skill in ("ct-test-plan", "ct-verify"):   # every $CT path a skill names ships in the bundle (.venv comes from ct setup)
+                with open(os.path.join(skills, skill, "SKILL.md"), encoding="utf-8") as f:
+                    paths = set(re.findall(r"\$CT/([\w./<>-]*\w)", f.read()))
+                for rel in sorted(p.replace("<client>", "era") for p in paths if not p.startswith(".venv")):
+                    self.assertTrue(os.path.exists(os.path.join(ct, rel)), "%s names $CT/%s, which the bundle lacks" % (skill, rel))
             with open(os.path.join(skills, "ct-verify", "SKILL.md"), encoding="utf-8") as f:
                 self.assertIn("../ct-test-plan/ct", f.read())
             r = subprocess.run([sys.executable, os.path.join(ct, "tools", "ct.py"), "validate", os.path.join(ROOT, "plans", "dontdothat.yaml")],
