@@ -271,8 +271,13 @@ A hook step takes `args` and `returns` or `throws`, as a `call` step does: `hook
 | `ctx.mockCalls(api)` | How many times the mock of `api` was called in this group. |
 | `ctx.eq(got, want, what)` | Raises `what: expected want, got got` when they differ. The error text starts with the hook's file and line. |
 | `ctx.same(got, want, what)` | Compares tables deeply, a table that refers to itself included, and raises with the first differing path, such as `t.a.b: expected 2, got 1`. |
+| `ctx.ok(value, what)` | Raises `what: expected a true value, got value` when value is `false` or `nil`. |
+| `ctx.raises(fn, text, what)` | Calls fn and raises unless fn raises an error that contains the plain text (any error when text is `nil`). Returns the error. |
+| `ctx.reload()` | The game's reload, as a `reload` step does it: the logout events, the saved variables kept, then a fresh load. `ctx.ns` then names the new load's namespace. Raises when a handler raises. |
 
 A hook can change anything in the fake client, so its pass proves what the hook checks and nothing more.
+
+To test your addon's Lua outside a plan, with the same `ctx`, use `ct test` ([Test your addon's Lua](addon-tests.md)).
 
 ### Record your own calls
 

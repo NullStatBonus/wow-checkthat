@@ -726,6 +726,151 @@ class ContributeRecordings(unittest.TestCase):
         self.assertEqual(sorted(part["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetFlag(true, 5)"],
                          "an installed copy carries no recording to compare with, so every call the run fits is offered")
 
+class AddonTests(unittest.TestCase):
+    """ct test (#273): a developer's own tests/test_*.lua run in the fake client for each client the addon has a TOC for."""
+
+    def folder(self, files=None):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        dest = os.path.join(d, "TestedAddon")
+        shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "TestedAddon"), dest)
+        for name, text in (files or {}).items():
+            path = os.path.join(dest, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f: f.write(text)
+        return dest
+
+    def run_test(self, *argv):
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            code = ct.main(["test"] + list(argv))
+        return code, buf.getvalue(), err.getvalue()
+
+    def tocs(self, files, folder="MyAddon"):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        a = os.path.join(d, folder); os.makedirs(a)
+        for name, line in files.items():
+            with open(os.path.join(a, name), "w") as f: f.write(line + "\n")
+        return {k: (os.path.basename(v["toc"]), v["interface"], v["addon"]) for k, v in ct.addon_tocs(a).items()}
+
+    def test_the_toc_for_each_client_comes_from_its_interface_and_a_suffix_wins(self):
+        self.assertEqual(self.tocs({"MyAddon.toc": "## Interface: 11507, 16001", "MyAddon_Camelot.toc": "## Interface: 16001", "Other.txt": "## Interface: 11507"}),
+                         {"era": ("MyAddon.toc", 11507, "MyAddon"), "forever": ("MyAddon_Camelot.toc", 16001, "MyAddon")},
+                         "a comma list counts for each client, and the suffixed TOC wins its client")
+        self.assertEqual(self.tocs({"MyAddon.toc": "## Interface: 11507, 16001"}),
+                         {"era": ("MyAddon.toc", 11507, "MyAddon"), "forever": ("MyAddon.toc", 16001, "MyAddon")}, "each client gets its own number")
+
+    def test_a_suffix_the_client_reads_wins_and_other_clients_are_left_out(self):
+        self.assertEqual(self.tocs({"MyAddon_BCC.toc": "## Interface: 20504", "MyAddon_Mainline.toc": "## Interface: 110207",
+                                    "MyAddon_Camelot.toc": "## Interface: 16001", "MyAddon_Beta.toc": "## Interface: 16002",
+                                    "MyAddon_Vanilla.toc": "## Interface: 11509"}),
+                         {"era": ("MyAddon_Vanilla.toc", 11509, "MyAddon"), "forever": ("MyAddon_Camelot.toc", 16001, "MyAddon")})
+        self.assertEqual(self.tocs({"MyAddon_Mainline.toc": "## Interface: 110207", "MyAddon_BCC.toc": "## Interface: 20504"}), {},
+                         "a client the fake client does not model is not run as Forever")
+
+    def test_a_checkout_folder_takes_the_addon_name_from_its_tocs(self):
+        self.assertEqual(self.tocs({"TestedAddon.toc": "## Interface: 11509", "TestedAddon_Vanilla.toc": "## Interface: 11509"}, "my-repo"),
+                         {"era": ("TestedAddon_Vanilla.toc", 11509, "TestedAddon")})
+        with self.assertRaises(ValueError) as e:
+            self.tocs({"One.toc": "## Interface: 11509", "Two.toc": "## Interface: 11509"}, "my-repo")
+        self.assertIn("share no addon name", str(e.exception))
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_each_test_runs_once_for_each_client(self):
+        code, out, err = self.run_test(self.folder())
+        self.assertEqual(code, 0, out + err)
+        lines = [l for l in out.splitlines() if l.startswith(("ok", "FAIL"))]
+        self.assertEqual(len(lines), 10, out)
+        self.assertEqual(sum(" era " in l for l in lines), 5); self.assertEqual(sum(" forever " in l for l in lines), 5)
+        self.assertIn("test: 10 passed, 0 failed", out)
+        self.assertIn("era: Globals read as nil in this run (interface 11509)", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_failing_test_names_the_difference_and_exits_1(self):
+        code, out, _ = self.run_test(self.folder({"tests/test_fail.lua": 'local ct = ...\nct.test("counts twice", function(ctx) ctx.fire("BAG_UPDATE", 0); ctx.eq(ctx.ns.count, 2, "count") end)\n'}), "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  era      tests/test_fail.lua  counts twice: ", out)
+        self.assertIn("count: expected 2, got 1", out)
+        self.assertNotIn(" forever ", out, "--client era runs one client")
+        self.assertIn("test: 5 passed, 1 failed", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_file_that_cannot_run_fails_alone(self):
+        code, out, _ = self.run_test(self.folder({
+            "tests/test_a_raises.lua": 'error("setup broke")\n',
+            "tests/test_b_empty.lua": "local ct = ...\n",
+            "tests/test_c_option.lua": 'local ct = ...\nct.test("x", { mock = {} }, function() end)\n'}), "--client", "forever")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  forever  tests/test_a_raises.lua: the test file raised", out); self.assertIn("setup broke", out)
+        self.assertIn("tests/test_b_empty.lua: the test file registers no test (ct.test)", out)
+        self.assertIn("unknown option mock (mocks or savedVariables)", out)
+        self.assertIn("test: 5 passed, 3 failed", out, "the other file still ran")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_load_failure_and_a_test_files_own_nil_reads(self):
+        code, out, _ = self.run_test(self.folder({"tests/test_load.lua":
+            'local ct = ...\nlocal x = NotAGlobalAnywhere\n'
+            'ct.test("reads", function(ctx) ctx.ok(NotAGlobalEither == nil) end)\n'
+            'ct.test("absent mock", { mocks = { NoSuchGameCall = { returns = { 1 } } } }, function() end)\n'}), "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn("absent mock: the addon did not load: mock NoSuchGameCall", out)
+        self.assertNotIn("NotAGlobal", out, "a test file's nil reads are not the addon's")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_one_toc_for_both_clients_runs_each_client_and_what_a_file_writes_is_shown(self):
+        f = self.folder({"tests/test_where.lua": 'local ct = ...\nprint("loading")\nct.test("where", function(ctx) io.write(ctx.client, " ", select(4, GetBuildInfo()), "\\n") end)\n'})
+        for n in ("TestedAddon_Vanilla.toc", "TestedAddon_Camelot.toc"):
+            os.remove(os.path.join(f, n))
+        with open(os.path.join(f, "TestedAddon.toc"), "w") as t: t.write("## Interface: 11509, 16001\n## SavedVariables: TestedAddonDB\nCore.lua\n")
+        code, out, _ = self.run_test(f, "--name", "where")
+        self.assertEqual(code, 0, out)
+        self.assertIn("      | era 11509", out); self.assertIn("      | forever 16001", out)
+        self.assertIn("      | loading", out, "a test file's own output is shown, and does not break the result")
+        self.assertIn("forever: Globals read as nil in this run (interface 16001)", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_checkout_folder_loads_the_addon_under_its_own_name(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        repo = os.path.join(d, "my-repo")
+        shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "TestedAddon"), repo)
+        code, out, _ = self.run_test(repo)
+        self.assertEqual(code, 0, out); self.assertIn("test: 10 passed, 0 failed", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_helpers_load_from_the_tests_folder_and_their_nil_reads_are_not_the_addons(self):
+        code, out, _ = self.run_test(self.folder({
+            "tests/helper.lua": "local M = {}\nfunction M.read() return HelperUndefinedGlobal end\nreturn M\n",
+            "tests/test_help.lua": 'local ct = ...\nlocal helper = require("helper")\nlocal again = dofile("tests/helper.lua")\n'
+                                   'ct.test("help", function(ctx) ctx.eq(helper.read(), nil); ctx.eq(again.read(), nil) end)\n'}), "--client", "era", "--name", "help")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("HelperUndefinedGlobal", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_test_that_never_ends_is_stopped_and_no_load_gives_no_report(self):
+        with unittest.mock.patch.object(ct, "TEST_TIMEOUT", 2):
+            code, out, _ = self.run_test(self.folder({"tests/test_loop.lua": 'local ct = ...\nct.test("loop", function() while true do end end)\n'}), "--client", "era", "--name", "loop")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  era      tests/test_loop.lua: ran longer than 2 seconds, so it was stopped", out)
+        code, out, _ = self.run_test(self.folder({"tests/test_a.lua": 'error("broke")\n'}), "--client", "era", "--name", "nothing here")
+        self.assertNotIn("interface None", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_name_narrows_and_a_name_that_matches_nothing_is_an_error(self):
+        code, out, _ = self.run_test(self.folder(), "--name", "reload")
+        self.assertEqual(code, 0, out); self.assertIn("test: 2 passed, 0 failed", out)
+        code, out, err = self.run_test(self.folder(), "--name", "no such test")
+        self.assertEqual(code, 2); self.assertIn("no test matches 'no such test'", err)
+
+    def test_a_folder_without_tocs_tests_or_the_client_is_an_error(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        code, _, err = self.run_test(d)
+        self.assertEqual(code, 2); self.assertIn("has no .toc file", err)
+        f = self.folder(); shutil.rmtree(os.path.join(f, "tests"))
+        code, _, err = self.run_test(f)
+        self.assertEqual(code, 2); self.assertIn("has no tests/test_*.lua", err)
+        f = self.folder(); os.remove(os.path.join(f, "TestedAddon_Camelot.toc"))
+        code, _, err = self.run_test(f, "--client", "forever")
+        self.assertEqual(code, 2); self.assertIn("has no TOC for forever (its TOCs are for era)", err)
+
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
         plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))
@@ -2055,7 +2200,7 @@ class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "CheckThat/UI/Card.lua", "CheckThat/CheckThat_Vanilla.toc", "tools/sv2json.lua", "tools/replay_sv.lua",
-              "tools/ct", "tools/entry_runner.lua", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
+              "tools/ct", "tools/entry_runner.lua", "tools/addon_test.lua", "docs/addon-tests.md", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
               "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt", "tools/events/era.json", "tools/events/forever.json", "tools/clients/era.json", "tools/clients/forever.json",
               "tests/manifests/README.md")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
@@ -2176,6 +2321,9 @@ class InstallSkill(unittest.TestCase):
             r = run("offline", os.path.join(fx, "offline-plan", "plan.yaml"), "--addons", fx)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("offline: 5 passed, 0 failed", r.stderr)
+            r = subprocess.run([sys.executable, ctpy, "test"], capture_output=True, text=True, cwd=os.path.join(fx, "TestedAddon"))   # #273: ct test in the addon's folder
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("test: 10 passed, 0 failed", r.stdout)
             self.assertEqual(os.listdir(work), [], "nothing is written to the working folder")
 
     @unittest.skipIf(os.name == "nt", "the launcher is a shell script and the link needs a POSIX shell")

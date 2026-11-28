@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: TestedAddon (plain)
+## Notes: Fixture for ct test: a plain TOC that the suffixed one for the same client wins over. Not shipped.
+## SavedVariables: TestedAddonDB
+Plain.lua

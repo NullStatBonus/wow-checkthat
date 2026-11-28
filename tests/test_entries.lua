@@ -848,4 +848,102 @@ test("levels 1 to 3 keep GetTime at 1 and timers queued, check no event list, an
     end
 end)
 
+-- ct test (#273): tools/addon_test.lua hands a test function in as opts.hooks; ctx.reload, ctx.ok and ctx.raises serve tests and hooks.
+local TESTED = "tests/fixtures/TestedAddon/TestedAddon_Vanilla.toc"
+local function tested(fn, extra)
+    local spec = { toc = TESTED, level = Runner.LEVEL, steps = { { hook = "t" } } }
+    for k, v in pairs(extra or {}) do spec[k] = v end
+    return (Runner.run(spec, { hooks = { t = fn }, hooksFile = "tests/fixtures/TestedAddon/tests/test_core.lua" }))
+end
+test("ctx.reload keeps the saved variables, gives a new load and moves ctx.ns to it", function()
+    local seen = {}
+    local r = tested(function(ctx)
+        local old = ctx.ns
+        seen.before = old.runs
+        ctx.reload()
+        seen.after, seen.moved = ctx.ns.runs, ctx.ns ~= old
+    end, { savedVariables = { TestedAddonDB = { runs = 1 } } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+    same(seen, { before = 2, after = 3, moved = true })
+end)
+
+test("ctx.reload raises with the handler's error when the logout fails", function()
+    local r = tested(function(ctx)
+        local f = CreateFrame("Frame")
+        f:RegisterEvent("PLAYER_LOGOUT")
+        f:SetScript("OnEvent", function() error("logout broke") end)
+        ctx.reload()
+    end)
+    T.eq(r.ok, false)
+    T.ok(r.steps[1].detail:find("the reload failed: PLAYER_LOGOUT handler threw", 1, true), r.steps[1].detail)
+    T.ok(r.steps[1].detail:find("logout broke", 1, true), r.steps[1].detail)
+end)
+
+test("ctx.ok and ctx.raises fail with what was wrong, and ctx.raises returns the error", function()
+    local function detail(fn) local r = tested(fn); return r.ok, r.steps[1].detail end
+    local ok1, d1 = detail(function(ctx) ctx.ok(nil, "the flag") end)
+    T.eq(ok1, false); T.ok(d1:find("the flag: expected a true value, got nil", 1, true), d1)
+    local ok2, d2 = detail(function(ctx) ctx.raises(function() end, nil, "sell") end)
+    T.eq(ok2, false); T.ok(d2:find("sell: expected an error, the call returned", 1, true), d2)
+    local ok3, d3 = detail(function(ctx) ctx.raises(function() error("out of range") end, "in combat", "sell") end)
+    T.eq(ok3, false); T.ok(d3:find('sell: expected an error containing "in combat"', 1, true), d3)
+    local got
+    local ok4 = detail(function(ctx) ctx.combat(true); got = ctx.raises(ctx.ns.Sell, "in combat"); ctx.ok(ctx.ns.count == 0) end)
+    T.eq(ok4, true); T.ok(tostring(got):find("in combat", 1, true), tostring(got))
+end)
+
+test("a hooks table from ct test needs the named function, and a plan block still needs its hooks file", function()
+    local r = Runner.run({ toc = TESTED, level = Runner.LEVEL, steps = { { hook = "nope" } } }, { hooks = { t = function() end }, hooksFile = "x/test_a.lua" })
+    T.eq(r.ok, false); T.ok(r.steps[1].detail:find("hook nope is not in x/test_a.lua", 1, true), r.steps[1].detail)
+    local p = run({ toc = TESTED, level = Runner.LEVEL, steps = { { hook = "t" } } })
+    T.eq(p.ok, false); T.ok(p.steps[1].detail:find("a hook step needs a hooks file", 1, true), p.steps[1].detail)
+end)
+
+test("ctx.reload runs the logout as addon code and gives the test its library back", function()
+    local seen = {}
+    local r = tested(function(ctx)
+        local f = CreateFrame("Frame")
+        f:RegisterEvent("PLAYER_LOGOUT")
+        f:SetScript("OnEvent", function() seen.logoutIo = io == nil end)
+        ctx.reload()
+        seen.io, seen.req = io ~= nil, require ~= nil
+    end)
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+    same(seen, { logoutIo = true, io = true, req = true })
+end)
+
+test("ctx.fire from a handler fires, and ctx.reload from a handler says where it runs", function()
+    local seen = {}
+    local r = tested(function(ctx)
+        local f = CreateFrame("Frame")
+        f:RegisterEvent("BAG_UPDATE")
+        f:RegisterEvent("PLAYER_TARGET_CHANGED")
+        f:SetScript("OnEvent", function(_, ev)
+            if ev == "PLAYER_TARGET_CHANGED" then seen.nested = ctx.fire("BAG_UPDATE", 0)
+            else seen.ok, seen.err = pcall(ctx.reload) end
+        end)
+        ctx.fire("PLAYER_TARGET_CHANGED")
+    end)
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+    T.eq(seen.nested, 2, "the addon's frame and the test's frame")
+    T.eq(seen.ok, false)
+    T.ok(tostring(seen.err):find("ctx.reload runs from the test or hook itself", 1, true), tostring(seen.err))
+end)
+
+test("ct test's interface and addon name win over the TOC's first number and the folder", function()
+    local seen = {}
+    local r = Runner.run({ toc = "tests/fixtures/TestedAddon/TestedAddon.toc", level = Runner.LEVEL, steps = { { hook = "t" } } },
+        { hooks = { t = function(ctx) seen.client = ctx.client; seen.build = select(4, GetBuildInfo()) end }, interface = 16001, addonName = "Named" })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+    same(seen, { client = "forever", build = 16001 })
+end)
+
+test("an absolute path is kept on any system, and a relative one is under the root", function()
+    T.eq(Runner.pathJoin("r", "/a/b.toc"), "/a/b.toc")
+    T.eq(Runner.pathJoin("r", "C:\\a\\b.toc"), "C:\\a\\b.toc")
+    T.eq(Runner.pathJoin("r", "C:/a/b.toc"), "C:/a/b.toc")
+    T.eq(Runner.pathJoin("r", "\\\\srv\\a.toc"), "\\\\srv\\a.toc")
+    T.eq(Runner.pathJoin("r", "a/b.toc"), "r/a/b.toc")
+end)
+
 finish()

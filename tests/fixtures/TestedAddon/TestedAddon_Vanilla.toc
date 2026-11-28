@@ -1,0 +1,5 @@
+## Interface: 11509
+## Title: TestedAddon
+## Notes: Fixture for ct test (tools/addon_test.lua). Not shipped.
+## SavedVariables: TestedAddonDB
+Core.lua

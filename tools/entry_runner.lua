@@ -51,7 +51,12 @@ function Runner.mockable(api, surface, H)
     return not (H.luaFunction(api) or Runner.UNMOCKABLE[api] or (ns and Runner.UNMOCKABLE[ns .. "."]))
 end
 
-local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
+-- An absolute path (/x, C:\x, C:/x or \\server\x) is kept; any other is under root.
+local function pathJoin(root, p)
+    if p:sub(1, 1) == "/" or p:match("^%a:[/\\]") or p:sub(1, 2) == "\\\\" then return p end
+    return root .. "/" .. p
+end
+Runner.pathJoin = pathJoin
 
 local function deepEq(a, b)
     if type(a) ~= type(b) then return false end
@@ -215,6 +220,8 @@ function Runner.run(spec, opts)
     local _, _, _, _, H = dofile(root .. "/tests/harness.lua")()
     local Lua51 = dofile(root .. "/tools/lua51_check.lua")
     local tocPath = pathJoin(root, spec.toc)
+    -- The TOC's interface: its first number, or the one ct test names for the client it runs (opts, never a plan's key).
+    local function tocIface() return opts.interface or tocInterface(tocPath) end
     -- Offline level: what a plan opted in to. Level 1 (no level) keeps the fake client's first answers: interface 11507
     -- and issecurevariable false for every name. Level 2 answers with the TOC's interface and the secure game names.
     -- Level 3 adds the game's load order: saved variables, login events, reload and groups. Level 4 adds the client's
@@ -254,6 +261,13 @@ function Runner.run(spec, opts)
     local function loadHooks() -- after the other load checks pass, so the file runs only for a load that goes ahead; returns an error or nil
         if spec.hooks == nil and #hookNames == 0 then return nil end
         local hooksErr
+        if type(opts.hooks) == "table" then -- ct test (tools/addon_test.lua): the test file's functions, never a plan's
+            hooks = opts.hooks
+            for _, n in ipairs(hookNames) do
+                if type(hooks[n]) ~= "function" then return ("hook %s is not in %s"):format(tostring(n), tostring(opts.hooksFile)) end
+            end
+            return nil
+        end
         if type(spec.hooks) ~= "string" then
             hooksErr = "a hook step needs a hooks file (offline.hooks)"
         else
@@ -276,7 +290,7 @@ function Runner.run(spec, opts)
     -- with only their widget type's methods. A mock of a function the client lacks would hide the gap: it fails the load.
     local surface, surfaceErr
     if strict then
-        local n = tocInterface(tocPath) or 11507
+        local n = tocIface() or 11507
         surface, surfaceErr = H.clientSurface(n >= 16000 and "forever" or "era", root)
     end
     -- Level 4: the events of the client the TOC names (below interface 16000 Era, from 16000 Forever), from Blizzard's
@@ -291,7 +305,7 @@ function Runner.run(spec, opts)
         end
     end
     if timed then
-        local n = tocInterface(tocPath) or 11507
+        local n = tocIface() or 11507
         local client = n >= 16000 and "forever" or "era"
         local f = io.open(root .. "/tools/events/" .. client .. ".json", "r")
         if f then
@@ -316,8 +330,9 @@ function Runner.run(spec, opts)
 
     local restoreGlobals = H.snapshot()
     local plainCreate, oldCT -- what the run puts back at the end: the stub client's CreateFrame and CheckThat after prepare
-    local name = spec.toc:match("([^/]+)/[^/]+%.toc$") or spec.toc:match("([^/]+)%.toc$") or "Addon" -- the game passes the folder name
-    local folder = tocPath:match("^(.*)/[^/]+$") or "."
+    -- The game passes the folder name; ct test names the addon from its TOC files (opts.addonName), as a checkout's folder may differ.
+    local name = opts.addonName or spec.toc:match("([^/\\]+)[/\\][^/\\]+%.toc$") or spec.toc:match("([^/\\]+)%.toc$") or "Addon"
+    local folder = tocPath:match("^(.*)[/\\][^/\\]+$") or "."
     -- ADDON_LOADED's second value: whether the addon folder holds Bindings.xml. ADDONS_UNLOADING gets closingClient false.
     local hasBindings = false
     do local f = io.open(folder .. "/Bindings.xml"); if f then f:close(); hasBindings = true end end
@@ -425,7 +440,7 @@ function Runner.run(spec, opts)
 
     local clockStart -- GetTime goes on across a reload; a group starts again at 1
     local function client()
-        local st = H.stubClient({ taint = level >= 6, scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
+        local st = H.stubClient({ taint = level >= 6, scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocIface() or nil, allInsecure = level < 2, loggedIn = not lifecycle,
             clock = timed and { start = clockStart } or nil, client = surface })
         interface = select(4, _G.GetBuildInfo())
         return st
@@ -485,9 +500,14 @@ function Runner.run(spec, opts)
             if meta.savedVariablesFirst then assign() end
         end
         local skip = { "/libs/", "/libraries/" }
-        if type(spec.hooks) == "string" then -- a hooks file inside the addon folder is test code: its nil reads are not the addon's
-            local hp = pathJoin(root, spec.hooks)
+        local hooksFile = opts.hooksFile or spec.hooks -- ct test names its test file in opts.hooksFile
+        if type(hooksFile) == "string" then -- a hooks file inside the addon folder is test code: its nil reads are not the addon's
+            local hp = pathJoin(root, hooksFile)
             if hp:sub(1, #folder + 1) == folder .. "/" then skip[#skip + 1] = "/" .. hp:sub(#folder + 2):lower() end
+        end
+        if type(opts.testDir) == "string" then -- ct test: the addon's whole tests folder (helpers too) is test code
+            local td = pathJoin(root, opts.testDir)
+            if td:sub(1, #folder + 1) == folder .. "/" then skip[#skip + 1] = "/" .. td:sub(#folder + 2):lower() .. "/" end
         end
         cur.stopNil = H.recordNilReads({ "@" .. folder .. "/" }, skip)
         cur.unhide = hideGlobals()
@@ -525,13 +545,15 @@ function Runner.run(spec, opts)
     local function lend() lent = {}; for _, n in ipairs(Runner.HIDDEN) do lent[n] = rawget(_G, n); rawset(_G, n, host[n]) end end
     local function giveBack() for _, n in ipairs(Runner.HIDDEN) do rawset(_G, n, lent[n]) end; lent = nil end
     local function asAddon(f, ...)
+        if not lent then return f(...) end -- already addon code: a handler or timer that ctx.fire or ctx.advance runs
         giveBack()
         local r = pack(pcall(f, ...))
         lend()
         if not r[1] then error(r[2], 0) end
         return unpack(r, 2, r.n)
     end
-    local function ctxFor(counts)
+    local reloadNow -- the game's reload, as a reload step does it; set once chunks is known
+    local function ctxFor(counts, mocks)
         local function differ(a, b, path, seen)
             if type(a) ~= type(b) or type(a) ~= "table" then
                 if a ~= b then return path, a, b end
@@ -543,7 +565,8 @@ function Runner.run(spec, opts)
             for k, v in pairs(a) do if b[k] == nil then return path .. "." .. tostring(k), v, nil end end
             return nil
         end
-        return {
+        local ctx
+        ctx = {
             ns = cur.ns, client = surface and surface.client, level = level,
             fire = function(ev, ...)
                 if events then -- level 4 and up: the same check as an event step
@@ -568,16 +591,46 @@ function Runner.run(spec, opts)
                 local p, x, y = differ(got, want, what or "value", {})
                 if p then error(("%s: expected %s, got %s"):format(p, tostring(y), tostring(x)), 2) end
             end,
+            ok = function(v, what)
+                if not v then error(("%s: expected a true value, got %s"):format(what or "value", tostring(v)), 2) end
+            end,
+            -- fn must raise, with the plain text in its error when text is given. Returns the error.
+            raises = function(fn, text, what)
+                local rok, rerr = pcall(fn)
+                if rok then error(("%s: expected an error, the call returned"):format(what or "raises"), 2) end
+                if text ~= nil and not tostring(rerr):find(tostring(text), 1, true) then
+                    error(("%s: expected an error containing %q, got %q"):format(what or "raises", tostring(text), tostring(rerr)), 2)
+                end
+                return rerr
+            end,
+            -- The game's reload, as a reload step does it (hooks run at level 5 and up): ctx.ns then names the new load's namespace.
+            reload = function()
+                if not lent then error("ctx.reload runs from the test or hook itself, not from a handler or timer it fires", 2) end
+                local rok, rerr = asAddon(reloadNow, mocks, counts)
+                if not rok then error("the reload failed: " .. tostring(rerr), 2) end
+                ctx.ns = cur.ns
+            end,
         }
+        return ctx
     end
-    local function runHook(name, args, counts)
+    local function runHook(name, args, counts, mocks)
         lend()
-        local r = pack(pcall(hooks[name], ctxFor(counts), unpack(args, 1, #args)))
+        local r = pack(pcall(hooks[name], ctxFor(counts, mocks), unpack(args, 1, #args)))
         giveBack()
         return r
     end
 
     local chunks, loadErr
+    reloadNow = function(mocks, counts)
+        for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "ADDONS_UNLOADING", false }, { "PLAYER_LOGOUT" } }) do -- measured order
+            local n, ferr = fire(unpack(ev, 1, #ev))
+            if not n then return false, ("%s handler threw %s"):format(ev[1], ferr) end
+        end
+        clockStart = cur.st.now
+        local saved = {}
+        for n in pairs(declared) do saved[n] = savedCopy(rawget(_G, n)) end
+        return load(chunks, mocks, counts, saved, true)
+    end
     if badLevel then
         loadErr = ("offline level %s is not supported (this runner knows 1 to %d)"):format(tostring(spec.level), Runner.LEVEL)
     elseif spec.groups and spec.steps then
@@ -673,25 +726,14 @@ function Runner.run(spec, opts)
                     if werr then add(i, "wait", false, ("a timer callback threw %s"):format(werr))
                     else add(i, "wait", true, ("waited %ss, ran %d timer callback(s)"):format(tostring(step.wait), ran)) end
                 elseif step.reload then
-                    local rok, rerr = true, nil
-                    for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "ADDONS_UNLOADING", false }, { "PLAYER_LOGOUT" } }) do -- measured order
-                        local n, ferr = fire(unpack(ev, 1, #ev))
-                        ev = ev[1]
-                        if not n then rok, rerr = false, ("%s handler threw %s"):format(ev, ferr); break end
-                    end
-                    if rok then
-                        clockStart = cur.st.now
-                        local saved = {}
-                        for n in pairs(declared) do saved[n] = savedCopy(rawget(_G, n)) end
-                        rok, rerr = load(chunks, mocks, counts, saved, true)
-                    end
+                    local rok, rerr = reloadNow(mocks, counts)
                     add(i, "reload", rok, rok and "reloaded" or rerr)
                     if not rok then
                         for j = i + 1, #steps do add(j, "skipped", false, "not run: the reload failed") end
                         break
                     end
                 elseif step.hook ~= nil then
-                    local r = runHook(step.hook, step.args or {}, counts)
+                    local r = runHook(step.hook, step.args or {}, counts, mocks)
                     if step.throws ~= nil then
                         if r[1] then add(i, "hook", false, "expected a throw, got " .. show({ n = r.n - 1, unpack(r, 2, r.n) }))
                         elseif tostring(r[2]):find(step.throws, 1, true) then add(i, "hook", true, tostring(r[2]))
