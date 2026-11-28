@@ -300,10 +300,16 @@ test("a native call costs no more than the steps it is charged, and the worst na
     local A = { "a", "a?", "a", ".", ".*", ".-", "Z", "%d", "x", "a*", "(", ")", "b?", "[ab]", "a+" }
     local PRE = { "", "", ".*", ".-", "(.*)", ".*a?a?", ".-a?" }
     local worst, nativeCalls, ratioChecked = 0, 0, 0
+    -- A native call is timed three times and judged on the fastest: one sample also holds scheduler noise, which failed
+    -- about one run in eight on a loaded machine (#275). The step charge is the same each time.
     local function measure(p, s)
-        local t0 = os.clock()
-        local found, engine, cost = P.Search(s, p)
-        local ms = (os.clock() - t0) * 1000
+        local ms, engine, cost = math.huge
+        for _ = 1, 3 do
+            local t0 = os.clock()
+            local _, e, c = P.Search(s, p)
+            ms, engine, cost = math.min(ms, (os.clock() - t0) * 1000), e, c
+            if engine ~= "native" then break end
+        end
         if engine == "native" then
             nativeCalls = nativeCalls + 1
             if ms > worst then worst = ms end
