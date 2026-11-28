@@ -947,6 +947,12 @@
           "type": "string",
           "maxLength": 200,
           "description": "A Lua pattern of up to 200 characters, matched against the whole line. The validators reject one that Lua cannot read (an open ( or [, a lone %, a back reference to no capture, a NUL byte). A line that takes too long to match leaves the check unverified."
+        },
+        "within": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600,
+          "description": "A sequence item after the first: the whole seconds after the line of the item before it, within which this item's line must be written. The validators refuse it on the first item. The log must keep a time for every line of the window, or the check is unverified."
         }
       }
     },
@@ -1093,7 +1099,11 @@
               "enum": [
                 "addon-loaded",
                 "global-value",
-                "frame-shown"
+                "frame-shown",
+                "money",
+                "bag-free-slots",
+                "item-count",
+                "frame-text"
               ]
             },
             "name": {
@@ -1102,6 +1112,8 @@
             "path": {
               "type": "string"
             },
+            "id": { "type": "integer", "minimum": 0, "description": "The item of an item-count check." },
+            "bag": { "type": "integer", "description": "The one bag of a bag-free-slots check: 0 to 4, or a negative bank bag. Leave it out to sum bags 0 to 4." },
             "op": {
               "enum": [
                 "eq",

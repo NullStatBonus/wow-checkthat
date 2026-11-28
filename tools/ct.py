@@ -312,8 +312,30 @@ def expand_cases(plan):
 # checks). Revision 1 is the plan format as of 0.21.0. Each addition to the plan format raises both and adds a rule here: (revision, what, test),
 # where test(plan) is true when the plan uses the addition. compile writes "needs" from the rules, so an older CheckThat refuses the plan
 # with "needs a newer CheckThat" instead of skipping a check it does not know.
-PLAN_REV = 2
-PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p)]
+def _uses_within(plan):
+    """True when a log-sequence item of the plan gives within, the plan format addition of revision 3."""
+    for sec in plan.get("sections") or []:
+        for st in sec.get("steps") or []:
+            for a in st.get("assertions") or []:
+                if isinstance(a, dict) and a.get("kind") == "log-sequence":
+                    for m in a.get("sequence") or []:
+                        if isinstance(m, dict) and "within" in m:
+                            return True
+    return False
+
+
+def _uses_new_probes(plan):
+    """True when a state check of the plan reads money, bag-free-slots, item-count or frame-text, the probes of revision 3 (#67)."""
+    for sec in plan.get("sections") or []:
+        for st in sec.get("steps") or []:
+            for a in st.get("assertions") or []:
+                if isinstance(a, dict) and a.get("kind") == "state" and a.get("probe") in ("money", "bag-free-slots", "item-count", "frame-text"):
+                    return True
+    return False
+
+
+PLAN_REV = 3
+PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p), (3, "within", _uses_within), (3, "the money, bag-free-slots, item-count or frame-text probe", _uses_new_probes)]
 
 def plan_needs(plan):
     """(revision, what): the highest revision the plan's keys need, and the addition that needs it (None for revision 1)."""
@@ -443,13 +465,18 @@ def validate(plan, requirements=None):
                     errs.append("%s: unknown log source %s" % (sid, a["source"]))
                 if a["kind"] in ("fact", "state"):
                     check_op(a, sid, errs)
+                if a["kind"] == "state" and a.get("probe") == "item-count" and not is_num(a.get("id")):
+                    errs.append("%s: item-count needs an id, a number" % sid)  # the schema holds id and bag to their types
                 if a["kind"] in ("fact", "log"):
                     check_count(a, sid, errs)
                     c = a.get("count") or {}
                 if a["kind"] == "log":
                     check_matcher(a, sid, "log assertion", errs)
-                for m in a.get("sequence", []) if a["kind"] == "log-sequence" else []:
+                for i, m in enumerate(a.get("sequence", []) if a["kind"] == "log-sequence" else []):
                     check_matcher(m, sid, "sequence item", errs)
+                    if isinstance(m, dict) and "within" in m and i == 0:
+                        # The schema types within as a whole number, 1 to 600; a position in the sequence is not its job.
+                        errs.append("%s: the first sequence item has no earlier line, so within does not apply" % sid)
                 own = "[ct] step %s " % sid   # the game judges a result before it writes this line
                 if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
                     errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope run" % (sid, own))

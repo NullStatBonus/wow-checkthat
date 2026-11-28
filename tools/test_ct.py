@@ -20,6 +20,22 @@ class Validate(unittest.TestCase):
     def test_good(self):
         self.assertEqual(ct.validate(good()), [])
 
+    def test_within_needs_a_whole_number_after_the_first_item(self):
+        def errors(items):
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log-sequence", "source": "debug", "sequence": items}]
+            return ct.validate(p)
+        self.assertEqual(errors([{"contains": "a"}, {"contains": "b", "within": 2}]), [])
+        self.assertTrue(any("the first sequence item has no earlier line, so within does not apply" in e
+                            for e in errors([{"contains": "a", "within": 2}, {"contains": "b"}])))
+        for wrong in (0, 1.5, 601, "2"):
+            self.assertTrue(errors([{"contains": "a"}, {"contains": "b", "within": wrong}]), wrong)
+        self.assertEqual(ct.plan_needs(good()), (1, None))
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log-sequence", "source": "debug",
+                                                       "sequence": [{"contains": "a"}, {"contains": "b", "within": 2}]}]
+        self.assertEqual(ct.plan_needs(p), (3, "within"), "compile writes needs: 3 for within")
+
     def test_unknown_field(self):
         p = good(); p["sections"][0]["steps"][0]["bogus"] = 1
         self.assertTrue(ct.validate(p))
@@ -144,6 +160,20 @@ class Compile(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             code = ct.main(["compile", src, "-o", out])
         return code, (open(out).read().strip() if code == 0 else err.getvalue())
+
+    def test_the_new_state_probes_compile_to_needs_3_and_the_old_ones_do_not(self):
+        probes = {"money": {}, "bag-free-slots": {}, "item-count": {"id": 6948}, "frame-text": {"name": "MyAddonFrame"}}
+        for probe, extra in probes.items():
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [dict({"kind": "state", "probe": probe, "op": "exists"}, **extra)]
+            code, s = self.compile_out(p)
+            self.assertEqual(code, 0, s)
+            self.assertEqual(ct.decode(s).get("needs"), 3, "%s is plan revision 3, so CheckThat 1.0.0 says it needs a newer CheckThat" % probe)
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "addon-loaded", "name": "CheckThat", "op": "eq", "value": True}]
+        code, s = self.compile_out(p)
+        self.assertEqual(code, 0, s)
+        self.assertNotIn("needs", ct.decode(s), "a probe of revision 1 compiles as before")
 
     def test_a_revision_1_plan_compiles_without_needs_so_its_string_does_not_change(self):
         code, s = self.compile_out(good())
@@ -4284,6 +4314,21 @@ class PlanHardening(unittest.TestCase):
         p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "pattern": ".-.-.-.-Z", "absent": True},
                                                                   {"kind": "fact", "source": "debug", "addon": "A", "key": "k", "op": "matches", "value": "%d+%.?%d*"}]
         self.assertEqual(ct.validate(p), [])
+
+    def test_a_state_probe_needs_its_own_field(self):
+        def errors(a):
+            p = good(); p["sections"][0]["steps"][0]["assertions"] = [a]
+            return ct.validate(p)
+        self.assertTrue(any("item-count needs an id, a number" in e for e in errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1})),
+                        errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1}))
+        for a in ({"kind": "state", "probe": "item-count", "id": "6948", "op": "exists"},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": 1.5, "op": "exists"}):
+            self.assertNotEqual(errors(a), [], a)
+        for a in ({"kind": "state", "probe": "money", "op": "ge", "value": 1},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": -1, "op": "ge", "value": 0},
+                  {"kind": "state", "probe": "item-count", "id": 6948, "op": "ge", "value": 1},
+                  {"kind": "state", "probe": "frame-text", "name": "F", "op": "exists"}):
+            self.assertEqual(errors(a), [], a)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_pattern_problem_agrees_with_the_lua_validator_on_a_generated_set(self):

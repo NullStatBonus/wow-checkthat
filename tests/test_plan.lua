@@ -372,6 +372,19 @@ test("quiet must be a boolean and state assertions take the new operators", func
     badA({ kind = "state", probe = "global-value", name = "G", op = "between", value = 3 }, "between needs a value of two numbers")
 end)
 
+test("the game state probes validate, and item-count needs a numeric id", function()
+    for _, a in ipairs({
+        { kind = "state", probe = "money", op = "ge", value = 1 },
+        { kind = "state", probe = "bag-free-slots", op = "ge", value = 0 },
+        { kind = "state", probe = "bag-free-slots", bag = -1, op = "ge", value = 0 },
+        { kind = "state", probe = "item-count", id = 6948, op = "ge", value = 1 },
+        { kind = "state", probe = "frame-text", name = "F", op = "exists" },
+    }) do T.eq(#ns.Plan.Validate(with(a)), 0, table.concat(ns.Plan.Validate(with(a)), ";")) end
+    badA({ kind = "state", probe = "item-count", op = "exists" }, "item-count needs an id, a number")
+    badA({ kind = "state", probe = "item-count", id = "6948", op = "exists" }, "id must be a number")
+    badA({ kind = "state", probe = "bag-free-slots", bag = 1.5, op = "exists" }, "bag must be a whole number")
+end)
+
 test("count is refused on assertions that cannot count, so an import cannot crash the card", function()
     badA({ kind = "state", probe = "global-value", name = "G", op = "exists", count = true }, "count does not apply to state")
     badA({ kind = "log-sequence", source = "facts", sequence = { { contains = "x" } }, count = { min = 1 } }, "count does not apply to log-sequence")
@@ -473,4 +486,18 @@ test("the validator refuses a plan whose fields have the wrong type, as the card
     T.eq(#ns.Plan.Validate(p), 0, "an absent path or global stays valid")
 end)
 
+test("within: only an item after the first, whole seconds, 1 to the maximum", function()
+    local function withSeq(list)
+        return function(p) p.sections[1].steps[1].assertions[1] = { kind = "log-sequence", source = "debug", sequence = list } end
+    end
+    bad(withSeq({ { contains = "a", within = 2 }, { contains = "b" } }), "the first sequence item has no earlier line")
+    bad(withSeq({ { contains = "a" }, { contains = "b", within = 0 } }), "within must be a whole number of seconds")
+    bad(withSeq({ { contains = "a" }, { contains = "b", within = 1.5 } }), "within must be a whole number of seconds")
+    bad(withSeq({ { contains = "a" }, { contains = "b", within = ns.Plan.WITHIN_MAX + 1 } }), "within must be a whole number of seconds")
+    bad(withSeq({ { contains = "a" }, { contains = "b", within = "2" } }), "within must be a whole number of seconds")
+    local q = good()
+    q.sections[1].steps[1].assertions = { { kind = "log-sequence", source = "debug",
+        sequence = { { contains = "a" }, { contains = "b", within = 2 }, { pattern = "^c", within = ns.Plan.WITHIN_MAX } } } }
+    T.same(ns.Plan.Validate(q), {})
+end)
 finish()

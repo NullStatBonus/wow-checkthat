@@ -51,7 +51,7 @@ Each step SHALL have a stable `id` independent of numbering, `title`, `action`, 
 - **THEN** validation fails
 
 ### Requirement: Assertions and probes are typed
-Assertions SHALL be `log` (named log source, one of equals, contains, pattern, with scope attempt, run or session, optional absent), `log-sequence` (ordered matchers), or `state` (probe from a closed registry: addon-loaded, global-value, frame-shown; operator; value). Scope `attempt` reads the lines written after the step's attempt opened, `run` the lines written after the current run started (across `/reload`), and `session` the whole retained log. Any assertion MAY be `diagnostic`, recorded but never gating. `verify` SHALL be a set of `player`, `assertions`, `reviewer`; `assertions` requires assertions to exist and vice versa; `reviewer` requires reviewer text kept verbatim.
+Assertions SHALL be `log` (named log source, one of equals, contains, pattern, with scope attempt, run or session, optional absent), `log-sequence` (ordered matchers, and an item after the first MAY give `within`), or `state` (probe from a closed registry: addon-loaded, global-value, frame-shown, money, bag-free-slots, item-count, frame-text; operator; value). A `state` assertion MAY give `name` (an addon, a global or a frame), `path` (a dotted field of a table global), `id` (the item of `item-count`, a number) and `bag` (the one bag of `bag-free-slots`, a whole number). Scope `attempt` reads the lines written after the step's attempt opened, `run` the lines written after the current run started (across `/reload`), and `session` the whole retained log. Any assertion MAY be `diagnostic`, recorded but never gating. `verify` SHALL be a set of `player`, `assertions`, `reviewer`; `assertions` requires assertions to exist and vice versa; `reviewer` requires reviewer text kept verbatim.
 
 #### Scenario: Unknown probe
 - **WHEN** an assertion names a probe absent from the registry
@@ -68,6 +68,49 @@ Assertions SHALL be `log` (named log source, one of equals, contains, pattern, w
 #### Scenario: Unknown scope
 - **WHEN** an assertion sets `scope: forever`
 - **THEN** validation fails with "bad scope"
+
+### Requirement: A sequence item may name a gap
+
+An item of a `log-sequence` after the first MAY give `within`: the whole number of seconds, 1 to 600, within which its line SHALL be written after the line matched by the item before it. `ct validate`, `ct compile` and plan import SHALL refuse `within` on the first item, a `within` that is not a whole number, and a value below 1 or above 600. The check SHALL read the time of every line of its window; a source that keeps no time for its lines, and a window with a line whose time cannot be read, SHALL leave the check unverified with "this log keeps no time for these lines, so a within check cannot be judged". When the lines appear in order but a gap is longer than its `within`, the check SHALL be unverified with "sequence stopped at item N", where N is the item whose line it could not place, and never failed. An earlier line of an item that leaves too little time SHALL NOT fail a check that a later line of the same item satisfies. A plan that gives `within` SHALL need plan revision 3: `ct compile` SHALL write `needs: 3`, and a reader of revision 2 SHALL refuse the plan with "needs a newer CheckThat".
+
+#### Scenario: Two lines in time
+- **WHEN** a sequence's second item gives `within: 2` and its line is written 2 seconds after the first item's line
+- **THEN** the check passes
+
+#### Scenario: A line too late
+- **WHEN** the second line is written 3 seconds after the first
+- **THEN** the check is unverified with "sequence stopped at item 2"
+
+#### Scenario: A log with no times
+- **WHEN** the source's lines carry no time
+- **THEN** the check is unverified and never passes
+
+#### Scenario: The first item
+- **WHEN** the first item of a sequence gives `within`
+- **THEN** validation fails
+
+### Requirement: The game state probes are read-only and never guess
+`money` SHALL read `GetMoney()`, the balance in copper. `bag-free-slots` SHALL read `C_Container.GetContainerNumFreeSlots`, or the older global `GetContainerNumFreeSlots`, summed over bags 0 to 4, or for the one `bag` the assertion names. `item-count` SHALL read `C_Item.GetItemCount`, or the older global `GetItemCount`, for the item `id` names. `frame-text` SHALL read a named frame's `GetText` and cut it to 80 characters. A probe SHALL answer nil for a missing function, a raising call and a value the game hides (`issecretvalue`); `frame-text` SHALL also answer nil for a value that is not text, and a `bag-free-slots` sum SHALL be nil when one bag cannot be read. No probe SHALL be protected, change any state, or write anything. `ct validate`, plan import and the schema SHALL refuse `item-count` without a numeric `id`, an `id` that is not a number, and a `bag` that is not a whole number. The `money`, `bag-free-slots`, `item-count` and `frame-text` probes are plan revision 3: `ct compile` SHALL write `needs: 3` for a plan with a state check that names one.
+
+#### Scenario: Money
+- **WHEN** a state assertion names `money` with `op: ge` and `value: 100`
+- **THEN** the check passes with at least 100 copper, and is unverified when the game cannot say
+
+#### Scenario: One bag unknown
+- **WHEN** one of bags 0 to 4 cannot be read
+- **THEN** a `bag-free-slots` sum is unverified, never a smaller number
+
+#### Scenario: Item without an id
+- **WHEN** a state assertion names `item-count` and gives no numeric `id`
+- **THEN** validation fails
+
+#### Scenario: Frame text
+- **WHEN** a state assertion names `frame-text` for a frame that says `Bank`, with `op: eq` and `value: Bank`
+- **THEN** the check passes, and a missing or empty frame leaves it unverified
+
+#### Scenario: A new probe needs revision 3
+- **WHEN** a plan whose only addition is a `money` state check is compiled, and another plan checks only `addon-loaded`
+- **THEN** the first compiles with `needs: 3`, so CheckThat 1.0.0 says it needs a newer CheckThat, and the second compiles with no `needs`
 
 ### Requirement: Existing plans map without loss
 Each legacy checklist item SHALL map to one step whose `expect` is its `Check:` text. `Log: none` SHALL map to `verify: [player]`. Any other `Log:` text SHALL be kept verbatim as `reviewer`, and literal log lines SHALL become diagnostic assertions until a human promotes them. The plan's preamble prose SHALL map to `preamble`.
