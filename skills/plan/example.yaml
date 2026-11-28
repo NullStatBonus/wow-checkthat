@@ -1,0 +1,59 @@
+ct: 1
+kind: plan
+purpose: feature
+addon: ClosestVendor
+title: Example plan for a small change
+preamble: Example only. Type |cff99ccff/cvn debug on|r, then |cff99ccff/reload|r, before the checks.
+logs:
+  debug:
+    global: ClosestVendorCharDB
+    path: log.entries
+    format: entries
+sections:
+- id: s1
+  title: Test sell question
+  steps:
+  - id: cv.v
+    title: Check the ClosestVendor version
+    action:
+      kind: manual
+      text: Open the AddOns list at the character screen and read the ClosestVendor version.
+    expect: the version is the one under test. Press Pass.
+    verify:
+    - player
+  - id: cv.s1.1
+    title: Sell test question
+    action:
+      kind: manual
+      text: Press Run to show a test sell question.
+      commands:
+      - /cvn test sell
+    expect: a question shows a vendor name and a zone.
+    verify:
+    - player
+    - assertions
+    assertions:
+    - kind: log
+      source: debug
+      contains: 'test command: sell'
+      label: Sell test command ran
+    - kind: log
+      source: debug
+      contains: 'game call failed'
+      absent: true
+      scope: attempt
+      label: No game call failed
+  - id: cv.s1.2
+    title: No question when disabled
+    clients:
+    - forever-camelot
+    action:
+      kind: manual
+      text: Press Run to ask for a test sell question.
+      commands:
+      - /cvn test sell
+    setup: Turn the addon off in its settings.
+    cleanup: Turn the addon on again.
+    expect: no question shows.
+    verify:
+    - player

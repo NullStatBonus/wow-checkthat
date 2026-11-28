@@ -1,0 +1,36 @@
+ct: 1
+kind: plan
+purpose: feature
+addon: KeepThat
+title: Example tally plan, second character
+preamble: Example only. Run this plan on a second character that carries Arcanite Bar in the bags. Run the
+  partner plan keepthat-tally.bank.yaml on the bank character, then read both runs back with ct-verify.
+sections:
+- id: ka
+  title: Second character
+  steps:
+  - id: ka.v
+    title: Check the KeepThat version
+    action:
+      kind: manual
+      text: Open the AddOns list at the character screen and read the KeepThat version.
+    expect: the version is the one under test. Press Pass.
+    verify:
+    - player
+  - id: ka.1
+    title: Open your bags
+    action:
+      kind: manual
+      text: Open your bags.
+    expect: Arcanite Bar shows in your bags.
+    verify:
+    - player
+  - id: ka.2
+    title: Hover Arcanite Bar
+    action:
+      kind: manual
+      text: Hover Arcanite Bar in your bags.
+    expect: the tooltip has one KeepThat line that ends with how many you own in all. Write that total in the step note.
+    verify:
+    - player
+    reviewer: 'Compare with keepthat-tally.bank.yaml step kb.2. Both step notes must hold the same total.'

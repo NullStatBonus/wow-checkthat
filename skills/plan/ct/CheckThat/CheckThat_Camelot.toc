@@ -1,0 +1,48 @@
+## Interface: 16001
+## Title: CheckThat
+## Notes: Walks you through an addon's in-game test plan and records evidence for review.
+## Version: 1.0.0
+## Author: NullStatBonus
+## SavedVariables: CheckThatDB
+## OptionalDeps: BugGrabber
+## Category: Development
+## IconTexture: Interface\AddOns\CheckThat\Media\icon.tga
+## X-Curse-Project-ID: 1824610
+## X-Wago-ID: qGYB3eNg
+
+# Load order: libraries, Locales, Core, Model, Debug, UI, Options. Both TOC files list the same files in the same order (make check).
+
+embeds.xml
+
+Locales\enUS.lua
+
+Core\Init.lua
+Core\Adapter.lua
+Core\Defaults.lua
+
+Model\Json.lua
+Model\Codec.lua
+Model\Plan.lua
+Model\Pattern.lua
+Model\Evidence.lua
+Model\Facts.lua
+Model\Entries.lua
+Model\RunEvents.lua
+Model\Errors.lua
+Model\Blocked.lua
+Model\Run.lua
+Model\Census.lua
+Model\BuiltIn.lua
+Model\App.lua
+
+Core\Settings.lua
+Debug\Log.lua
+Debug\Export.lua
+Core\Addon.lua
+Core\Slash.lua
+
+UI\Sound.lua
+UI\Card.lua
+UI\Tracker.lua
+UI\Picker.lua
+Options\Options.lua

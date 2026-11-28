@@ -1,0 +1,732 @@
+{
+ "format": 1,
+ "about": "What each recorded call returns on each client: the names of its returns in order, their types, and the positions that may be nil (nilable) or that answer 1 or nil (oneornil). Taken from Blizzard's UI source (wow-api) and checked against the in-game recordings; ref names the source line. A recording that does not fit fails tests/test_entries.lua, and ct.py recordings lists it. A call that returns nothing at all (an item not cached yet) has n 0 and fits when emptyOk is true. A type that is not string, number or boolean names a structure in structures (its fields, \"?\" when the field may be missing) or a list of one: \"list<BrowseResultInfo>\". Structures come from Blizzard_APIDocumentationGenerated.",
+ "apis": {
+  "GetMerchantNumItems": {
+   "era": {
+    "returns": [
+     "numItems"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_UIPanels_Game/Vanilla/MerchantFrame.lua:163"
+   },
+   "forever": {
+    "returns": [
+     "numItems"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_UIPanels_Game/Mainline/MerchantFrame.lua:278"
+   }
+  },
+  "GetMerchantItemLink": {
+   "era": {
+    "returns": [
+     "link"
+    ],
+    "types": [
+     "string"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "MerchantFrame.lua (both trees); nil until the item is cached"
+   },
+   "forever": {
+    "returns": [
+     "link"
+    ],
+    "types": [
+     "string"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "MerchantFrame.lua (both trees); nil until the item is cached"
+   }
+  },
+  "GetMerchantItemID": {
+   "era": {
+    "returns": [
+     "itemID"
+    ],
+    "types": [
+     "number"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "Vanilla/MerchantFrame.lua:261"
+   },
+   "forever": {
+    "returns": [
+     "itemID"
+    ],
+    "types": [
+     "number"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "Mainline/MerchantFrame.lua:359"
+   }
+  },
+  "GetNumTrainerServices": {
+   "era": {
+    "returns": [
+     "numServices"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_TrainerUI/Blizzard_TrainerUI.lua:165"
+   },
+   "forever": {
+    "returns": [
+     "numServices"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_TrainerUI/Mainline/Blizzard_TrainerUI.lua:460"
+   }
+  },
+  "GetTrainerServiceCost": {
+   "era": {
+    "returns": [
+     "moneyCost",
+     "isProfession"
+    ],
+    "types": [
+     "number",
+     "boolean"
+    ],
+    "nilable": [
+     2
+    ],
+    "ref": "Blizzard_TrainerUI.lua:429; a header row returns the cost only"
+   },
+   "forever": {
+    "returns": [
+     "moneyCost",
+     "isProfession"
+    ],
+    "types": [
+     "number",
+     "boolean"
+    ],
+    "nilable": [
+     2
+    ],
+    "ref": "Mainline/Blizzard_TrainerUI.lua:692"
+   }
+  },
+  "GetTrainerServiceSkillReq": {
+   "era": {
+    "returns": [
+     "skill",
+     "rank",
+     "hasReq"
+    ],
+    "types": [
+     "string",
+     "number",
+     "boolean"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "Blizzard_TrainerUI.lua:397"
+   },
+   "forever": {
+    "returns": [
+     "skill",
+     "rank",
+     "hasReq"
+    ],
+    "types": [
+     "string",
+     "number",
+     "boolean"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "Mainline/Blizzard_TrainerUI.lua:637"
+   }
+  },
+  "IsTradeskillTrainer": {
+   "era": {
+    "returns": [
+     "isTradeskill"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "measured 2026-11-27 (CTProbe v8): false at a class trainer on both clients; the trainer windows read it for truth only"
+   },
+   "forever": {
+    "returns": [
+     "isTradeskill"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "measured 2026-11-27 (CTProbe v8): false at a class trainer on both clients; the trainer windows read it for truth only"
+   }
+  },
+  "GetTrainerServiceTypeFilter": {
+   "era": {
+    "returns": [
+     "shown"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "measured 2026-11-27 (CTProbe v8): true, true, false for available, unavailable, used"
+   },
+   "forever": {
+    "returns": [
+     "shown"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "measured 2026-11-27 (CTProbe v8): true, true, false for available, unavailable, used"
+   }
+  },
+  "GetMoney": {
+   "era": {
+    "returns": [
+     "copper"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "legacy global"
+   },
+   "forever": {
+    "returns": [
+     "copper"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/PlayerScriptDocumentation.lua:642"
+   }
+  },
+  "C_Item.GetItemInfo": {
+   "era": {
+    "returns": [
+     "itemName",
+     "itemLink",
+     "itemQuality",
+     "itemLevel",
+     "itemMinLevel",
+     "itemType",
+     "itemSubType",
+     "itemStackCount",
+     "itemEquipLoc",
+     "itemTexture",
+     "sellPrice",
+     "classID",
+     "subclassID",
+     "bindType",
+     "expansionID",
+     "setID",
+     "isCraftingReagent",
+     "itemDescription"
+    ],
+    "types": [
+     "string",
+     "string",
+     "number",
+     "number",
+     "number",
+     "string",
+     "string",
+     "number",
+     "string",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "boolean",
+     "string"
+    ],
+    "nilable": [
+     16
+    ],
+    "emptyOk": true,
+    "ref": "Blizzard_APIDocumentationGenerated/ItemDocumentation.lua (GetItemInfo); nothing until cached"
+   },
+   "forever": {
+    "returns": [
+     "itemName",
+     "itemLink",
+     "itemQuality",
+     "itemLevel",
+     "itemMinLevel",
+     "itemType",
+     "itemSubType",
+     "itemStackCount",
+     "itemEquipLoc",
+     "itemTexture",
+     "sellPrice",
+     "classID",
+     "subclassID",
+     "bindType",
+     "expansionID",
+     "setID",
+     "isCraftingReagent",
+     "itemDescription"
+    ],
+    "types": [
+     "string",
+     "string",
+     "number",
+     "number",
+     "number",
+     "string",
+     "string",
+     "number",
+     "string",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "boolean",
+     "string"
+    ],
+    "nilable": [
+     16
+    ],
+    "emptyOk": true,
+    "ref": "Blizzard_APIDocumentationGenerated/ItemDocumentation.lua (GetItemInfo); nothing until cached"
+   }
+  },
+  "GetItemInfo": {
+   "era": {
+    "returns": [
+     "itemName",
+     "itemLink",
+     "itemQuality",
+     "itemLevel",
+     "itemMinLevel",
+     "itemType",
+     "itemSubType",
+     "itemStackCount",
+     "itemEquipLoc",
+     "itemTexture",
+     "sellPrice",
+     "classID",
+     "subclassID",
+     "bindType",
+     "expansionID",
+     "setID",
+     "isCraftingReagent",
+     "itemDescription"
+    ],
+    "types": [
+     "string",
+     "string",
+     "number",
+     "number",
+     "number",
+     "string",
+     "string",
+     "number",
+     "string",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "number",
+     "boolean",
+     "string"
+    ],
+    "nilable": [
+     16
+    ],
+    "emptyOk": true,
+    "ref": "legacy global, same returns as C_Item.GetItemInfo"
+   }
+  },
+  "GetMerchantItemInfo": {
+   "era": {
+    "returns": [
+     "name",
+     "texture",
+     "price",
+     "stackCount",
+     "numAvailable",
+     "isPurchasable",
+     "isUsable",
+     "extendedCost",
+     "currencyID"
+    ],
+    "types": [
+     "string",
+     "number",
+     "number",
+     "number",
+     "number",
+     "boolean",
+     "boolean",
+     "boolean",
+     "number"
+    ],
+    "nilable": [
+     1,
+     9
+    ],
+    "ref": "Vanilla/MerchantFrame.lua:200; name nil until cached"
+   }
+  },
+  "GetTrainerServiceInfo": {
+   "era": {
+    "returns": [
+     "name",
+     "subText",
+     "type",
+     "isExpanded"
+    ],
+    "types": [
+     "string",
+     "string",
+     "string",
+     "number"
+    ],
+    "nilable": [
+     2
+    ],
+    "oneornil": [
+     4
+    ],
+    "ref": "Blizzard_TrainerUI.lua:202"
+   },
+   "forever": {
+    "returns": [
+     "name",
+     "type",
+     "texture",
+     "reqLevel",
+     "subText",
+     "category"
+    ],
+    "types": [
+     "string",
+     "string",
+     "number",
+     "number",
+     "string",
+     "string"
+    ],
+    "nilable": [
+     5
+    ],
+    "ref": "Mainline/Blizzard_TrainerUI.lua:469"
+   }
+  },
+  "GetTrainerServiceLevelReq": {
+   "era": {
+    "returns": [
+     "reqLevel"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_TrainerUI.lua:378"
+   },
+   "forever": {
+    "returns": [
+     "reqLevel"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "measured 2026-11-27 (CTProbe v5); Forever UI reads reqLevel from GetTrainerServiceInfo instead"
+   }
+  },
+  "GetNumAuctionItems": {
+   "era": {
+    "returns": [
+     "batch",
+     "total"
+    ],
+    "types": [
+     "number",
+     "number"
+    ],
+    "ref": "Blizzard_AuctionUI/Classic/Blizzard_AuctionUI.lua:947"
+   }
+  },
+  "GetAuctionItemInfo": {
+   "era": {
+    "returns": [
+     "name",
+     "texture",
+     "count",
+     "quality",
+     "canUse",
+     "level",
+     "levelColHeader",
+     "minBid",
+     "minIncrement",
+     "buyoutPrice",
+     "bidAmount",
+     "highBidder",
+     "bidderFullName",
+     "owner",
+     "ownerFullName",
+     "saleStatus",
+     "itemId",
+     "hasAllInfo"
+    ],
+    "types": [
+     "string",
+     "number",
+     "number",
+     "number",
+     "boolean",
+     "number",
+     "string",
+     "number",
+     "number",
+     "number",
+     "number",
+     "boolean",
+     "string",
+     "string",
+     "string",
+     "number",
+     "number",
+     "boolean"
+    ],
+    "nilable": [
+     1,
+     13,
+     14,
+     15
+    ],
+    "ref": "Blizzard_AuctionUI.lua:977; a row is shown only when hasAllInfo"
+   }
+  },
+  "GetAuctionItemLink": {
+   "era": {
+    "returns": [
+     "link"
+    ],
+    "types": [
+     "string"
+    ],
+    "nilable": [
+     1
+    ],
+    "ref": "Blizzard_AuctionUI.lua:502"
+   }
+  },
+  "C_MerchantFrame.GetItemInfo": {
+   "forever": {
+    "returns": [
+     "info"
+    ],
+    "types": [
+     "MerchantItemInfo"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/MerchantFrameDocumentation.lua; Mainline/MerchantFrame.lua:290"
+   }
+  },
+  "C_AuctionHouse.GetBrowseResults": {
+   "forever": {
+    "returns": [
+     "browseResults"
+    ],
+    "types": [
+     "list<BrowseResultInfo>"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.HasFullBrowseResults": {
+   "forever": {
+    "returns": [
+     "hasFullBrowseResults"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.GetNumItemSearchResults": {
+   "forever": {
+    "returns": [
+     "numItemSearchResults"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.HasFullItemSearchResults": {
+   "forever": {
+    "returns": [
+     "hasFullResults"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.GetItemSearchResultInfo": {
+   "forever": {
+    "returns": [
+     "result"
+    ],
+    "types": [
+     "ItemSearchResultInfo"
+    ],
+    "nilable": [
+     1
+    ],
+    "emptyOk": true,
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.GetItemKeyInfo": {
+   "forever": {
+    "returns": [
+     "itemKeyInfo"
+    ],
+    "types": [
+     "ItemKeyInfo"
+    ],
+    "nilable": [
+     1
+    ],
+    "emptyOk": true,
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.GetNumCommoditySearchResults": {
+   "forever": {
+    "returns": [
+     "numSearchResults"
+    ],
+    "types": [
+     "number"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.HasFullCommoditySearchResults": {
+   "forever": {
+    "returns": [
+     "hasFullResults"
+    ],
+    "types": [
+     "boolean"
+    ],
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  },
+  "C_AuctionHouse.GetCommoditySearchResultInfo": {
+   "forever": {
+    "returns": [
+     "result"
+    ],
+    "types": [
+     "CommoditySearchResultInfo"
+    ],
+    "nilable": [
+     1
+    ],
+    "emptyOk": true,
+    "ref": "Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua"
+   }
+  }
+ },
+ "structures": {
+  "ItemKey": {
+   "itemID": "number",
+   "itemLevel": "number?",
+   "itemSuffix": "number?",
+   "battlePetSpeciesID": "number?"
+  },
+  "MerchantItemInfo": {
+   "name": "string?",
+   "texture": "number",
+   "price": "number",
+   "stackCount": "number",
+   "numAvailable": "number",
+   "isPurchasable": "boolean",
+   "isUsable": "boolean",
+   "hasExtendedCost": "boolean",
+   "currencyID": "number?",
+   "spellID": "number?",
+   "isQuestStartItem": "boolean"
+  },
+  "BrowseResultInfo": {
+   "itemKey": "ItemKey",
+   "appearanceLink": "string?",
+   "totalQuantity": "number",
+   "minPrice": "number",
+   "containsOwnerItem": "boolean"
+  },
+  "ItemSearchResultInfo": {
+   "itemKey": "ItemKey",
+   "owners": "list<string>",
+   "totalNumberOfOwners": "number",
+   "timeLeft": "number",
+   "auctionID": "number",
+   "quantity": "number",
+   "itemLink": "string?",
+   "containsOwnerItem": "boolean",
+   "containsAccountItem": "boolean",
+   "containsSocketedItem": "boolean",
+   "bidder": "string?",
+   "minBid": "number?",
+   "bidAmount": "number?",
+   "buyoutAmount": "number?",
+   "timeLeftSeconds": "number?"
+  },
+  "CommoditySearchResultInfo": {
+   "itemID": "number",
+   "quantity": "number",
+   "unitPrice": "number",
+   "auctionID": "number",
+   "owners": "list<string>",
+   "totalNumberOfOwners": "number",
+   "timeLeftSeconds": "number?",
+   "numOwnerItems": "number",
+   "containsOwnerItem": "boolean",
+   "containsAccountItem": "boolean"
+  },
+  "ItemKeyInfo": {
+   "itemID": "number",
+   "battlePetSpeciesID": "number",
+   "itemName": "string",
+   "battlePetLink": "string?",
+   "appearanceLink": "string?",
+   "quality": "number",
+   "iconFileID": "number",
+   "isPet": "boolean",
+   "isCommodity": "boolean",
+   "isEquipment": "boolean"
+  }
+ }
+}

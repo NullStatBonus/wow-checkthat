@@ -1,0 +1,88 @@
+---
+name: verify
+description: Read a finished CheckThat (CT) test run back against its plan. Collects the saved variables, matches each step to its recorded result and evidence, compares runs across characters, and reports pass, fail, unverified and contradicted steps. Use when the user asks to verify, check or review a finished CT run, a /ct export string, or a copied /ct log report.
+---
+
+# Verify a finished CT run
+
+Report what a run recorded against what its plan asked. Report only. Never edit a plan, never run the game, never put raw saved variables in Git.
+
+## 0. Locate the tools
+
+The tools root holds `tools/ct.py`, `tools/sv2json.lua`, `CheckThat/Model/Json.lua` and `CheckThat/Model/Plan.lua`. A path counts as the root only when all four exist under it.
+
+1. Try `ct/` beside this file.
+2. Else try `../plan/ct`, the bundle `make install-skill` puts next to this skill. Use `../plan/.venv/bin/python` as `$PY` if it exists. A plugin or toolkit install has no private Python: use the per-user Python that `ct setup` creates when it exists: `$XDG_DATA_HOME/checkthat/venv/bin/python` (default `~/.local/share/checkthat/venv/bin/python`; on Windows `%LOCALAPPDATA%\checkthat\venv\Scripts\python.exe`), else `python3` when `python3 -c "import yaml, jsonschema"` succeeds. If neither works, stop and tell the author to run `python3 $CT/tools/ct.py setup` once.
+3. Else try two folders up from this file (the skill runs inside the checkout). Use `$CT/.venv/bin/python` as `$PY` if it exists, else `python3` under the same import check and stop rule as step 2.
+4. If none is a root, ask: "Where is your CheckThat checkout?" Say that `make install-skill` in it sets up both skills. Do not use the working directory.
+
+Read `$CT/VERSION` and tell the author which tools version you use. Only an installed bundle has that file; in a checkout say that you use the checkout. `collect` needs no `luajit`. For a plan about another addon, run `collect --plan <plan>` so that addon's saved variables are collected. If it is missing, say so and stop; do not guess results from raw files.
+
+## 1. Ask what to verify
+
+Ask one question at a time. Skip what the author already gave.
+
+1. **Plans.** "Which plan files did you run?" For a plan set (names like `<name>.<role>.yaml`), read every partner the preambles name.
+2. **Results.** Prefer the full result: the saved run data. Ask for the WoW game folder (`CT_WOW`, also read from `$CT_ENV`, `.ct.env` or `~/.checkthat.env`) or a folder of copied SavedVariables. A `/ct export` string also holds the full run. A pasted `/ct log` report is partial evidence only: it has a summary, failures and a bounded debug log, not every step's attempts.
+3. **Evidence folder.** Suggest `evidence/` in the working directory. Never write under this skill's folder. Remind the author to keep it out of Git.
+
+## 2. Collect
+
+Read saved variables before you ask the author for more in-game steps: collect first, then decide what is still unknown.
+
+Pass `--dest` every time, because the default sits under the tools root.
+
+- Saved variables: `$PY $CT/tools/ct.py collect --wow <game folder> --dest <evidence>` (or `--src <WTF folder>`).
+- An export string: `$PY $CT/tools/ct.py import-results <string or file> --dest <evidence>`.
+
+After collecting, run `$PY $CT/tools/ct.py status --dest <evidence>`. It lists every unreadable revision, every conflict or decode failure `collect` logged and any run near the 2 MB export limit, and exits 1 when something is wrong. Tell the author what it names before you read steps. It does not judge test results.
+
+`collect` exits 1 and names the file when it cannot decode a saved-variables file. Report that and stop. A run folder holds `r<N>.json` revisions. Use the highest revision of each run ID. Zero new revisions is fine when you collected the same data before.
+
+## 3. Bind each run to its plan
+
+A run stores `planDigest`, not the plan. The digest is the 8-hex field of the compiled string (`!CT1!<digest>!...`), with a `-2`, `-3` suffix when two plans collided.
+
+1. For each role, compile the plan file (`$PY $CT/tools/ct.py compile <plan> -o <file>.ct`) and read its digest, or take the plan from the copied saved variables: `$PY $CT/tools/ct.py sv2json <evidence>/sv/<CheckThat copy>` and look in `CheckThatDB.planStore[<digest>]` of the JSON it prints. The copy's name carries a hash, so list `<evidence>/sv/` first. `planStore` holds only the plans that runs in that file used, so a plan file is the usual source; when both exist, they must give the same digest.
+2. Check the run's `planDigest` against it. If you cannot establish the exact plan, say so before you read any assertion index or reviewer text, and judge only the recorded verdicts.
+3. A run from another plan, or a plan that changed since the run, does not count for that role.
+
+## 4. Read each step
+
+First run `$PY $CT/tools/ct.py report --dest <evidence> --addon-src <addon folder> --plan <plan file>` (the expected version is the addon TOC's `## Version:`; without the source, give `--expect-version <tested addon version>`) and relay every `warning:` it prints before you read a step. It names a run that tested another version of the addon (the 0.17 plan once ran on 0.16.0, so its twelve failures meant nothing), a run written by another CheckThat version than these tools, and a run made from an older plan file ("edits since that run are untested"). A run with a version warning does not count for the build under test; say so in the report.
+
+`$PY $CT/tools/ct.py report --dest <evidence>` prints a `result:` line for each run, keeps the failed or unverified attempts of a step that later passed, and shows the Lua error stack raised during a failed or unverified attempt (matched by time, so it may say it also fits another attempt). `report --failed-only` keeps only the failing steps, and `show <run> <step>` prints one step with every attempt. `--format json` gives step results and, for each attempt, the checks that did not pass with their rule, counts and hit positions (add `--lines` for the line text and values, `--stacks` for error stacks), and `--strict` exits 1 on any failed or unverified step.
+
+To compare two finished runs of one plan (for example before and after a change), run `$PY $CT/tools/ct.py diff <run A> <run B> --dest <evidence>`. It labels each step `regressed`, `fixed`, `newly-unverified`, `still-failing`, `not-comparable`, `added` or `removed`, and `--strict` exits 1 on a regression. `ct.py trend --dest <evidence>` lines up many runs and marks flaky steps. Report a `not-comparable` step as unknown, not as a change, and relay any warning (a newer-format run left out, a plan that is not stored).
+
+When the plan's offline block has `offline.predicts` and `tocs`, `$PY $CT/tools/ct.py drift <plan> --dest <evidence> --expect-version <addon version>` compares what the fake client predicted for each step with the collected runs of each client and lists each wrong prediction. A drift line is a lead: say whether the addon or the fake client is the likelier cause, and do not call it a fake-client bug until the same step drifts again.
+
+A step record holds the effective `verdict` and attempts. Run revisions need not be contiguous (`r2.json` can be the first). Each attempt holds `claimed` (what the player or CheckThat recorded), `by` (`player` or `auto`), `evidence` (`matched`, `contradicts`, `unverified` or `diagnostic-only`) and `outcomes`, one per assertion in plan order, each `result` (`pass`, `fail`, `unverified`), `why`, and `diagnostic`. A check that did not pass also keeps what it looked at: `kind`, `scope`, `source`, `rule` (what it required, in words, with the plan's literals) and `shape` (the same without them), `window` and `matched` (counts), and `hits`, up to three `{n, line}` where `n` is the position inside the lines the check read. These are the log lines that decided the check: name them when you explain a failure, and cite the `rule`. A hit can carry `item` (sequence) or `value` (fact); a sequence has `stoppedAt`; a state check has `observed`; `trimmed` means hit text was dropped for size, which is not "nothing matched". An older run has none of this: use `why`. `schema/run-results.schema.json` describes it. A run has `ct` (the major: refuse a higher one and say so), `formatRev` and `writerVersion` (who wrote it; absent in a run saved before 0.15.0, so read absent as unknown), and a finished attempt has `formatRev`. [docs/results-format.md](../../docs/results-format.md) has the rules; `ct.py status` names a revision it cannot read and why. A failed or unverified attempt may also hold `excerpt`: the first new lines of each log the step checks, keyed by log source. Quote them when you explain a failure. Use the last finished attempt.
+
+A run may hold `categories`, `cat` (step id to category) and `selected`. `report` prints one `categories:` line with blue, yellow, red, green or grey for each category; a run saved before categories has none. The effective verdict can stay `pass` while the evidence contradicts it, so never read the verdict alone. `claimed` and `by` sit on the attempt, not on the step. Report four things apart for every step: effective verdict (`pass`, `partial`, `fail`, `unverified`, `skip`, `pending`, `inapplicable`, `deselected`; a deselected step was not picked at the start and is not a gap), claimed verdict, who set it, and the evidence.
+
+- **Contradicted.** The claim is `pass` or `partial` and a required assertion recorded `fail`: a state assertion failed, or a forbidden line appeared. A diagnostic assertion never contradicts.
+- **Unverified.** A required assertion found no evidence. A hand `pass` with a required log line missing is this, as the runner records it. It is not contradicted.
+- **No evidence.** The step has no assertions, so its attempts hold no `evidence` field and no `outcomes`. Say so and suggest one log line that would prove it.
+- Cite run ID, revision, step ID, attempt number and assertion index. Quote a log line only when the data holds it. An exported assertion may hold only a result; then cite the index and the `why`.
+
+## 5. Plan sets: compare across characters
+
+For each `reviewer` line that names partner files, step IDs and a relationship:
+
+1. Resolve each reference as a role file plus a step ID. Step IDs are local to a plan.
+2. A role needs exactly one eligible run: the right plan digest, the latest revision of its run ID, and a different character from every other role. If more than one eligible assignment of runs to roles remains, list the runs (run ID, character, start time converted from the run's `started` epoch seconds, and counts of steps by verdict: pass, fail, open) and ask the author for run IDs. If exactly one assignment exists, use it without asking.
+3. A role with no collected run reads unverified, never pass. Name the missing role.
+4. Compare what the reviewer line asks, and report the relationship as held, broken or unverified, with the cited values. The number of roles is not limited.
+
+## 6. Report
+
+When a step failed because of the plan and not the addon (a circular assertion, an unreadable log, a pattern stricter than the line), say so in the report and point the author to the `plan` skill's "Revise after a run" section. You still never edit the plan.
+
+Start with the `status` result (healthy or not) in one line. Print one table per run (step, effective, claimed, by, evidence, citation), then the cross-character results, then a short list of: contradicted steps, unverified steps, steps with no evidence, and suggested assertions or log lines. Say what you could not judge and why (partial input, plan not established, missing role). Do not edit the plan; the author decides what to change. Do not commit the evidence folder.
+
+## Rules
+
+- Report only. Never edit a plan, never send input to the game, never open or answer a game prompt.
+- Keep raw saved variables and collected evidence out of Git. Anonymize character names if you quote a fixture.
+- A missing run or plan is "unverified", not "pass".

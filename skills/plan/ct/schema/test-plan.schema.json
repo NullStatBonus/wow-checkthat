@@ -1,0 +1,1266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wow-checkthat/schema/test-plan.schema.json",
+  "title": "CT test plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ct",
+    "addon",
+    "title",
+    "sections"
+  ],
+  "properties": {
+    "ct": {
+      "const": 1
+    },
+    "kind": {
+      "const": "plan"
+    },
+    "needs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The plan revision the plan needs (#245). compile writes it when the plan uses a key added after revision 1; leave it out otherwise. CheckThat refuses a plan that needs more than it reads."
+    },
+    "addon": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.!-]{1,64}$",
+      "description": "The addon's folder name. The runner ships the command list of the addons it knows; any other addon's commands are listed in commands (#244)."
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^/[A-Za-z0-9_]+$" },
+      "description": "Plan revision 2. The addon's own slash command prefixes (one word each), for Run buttons and the CT macro. CheckThat offers one only when the game says the addon under test registered it (or the addon declared it with CheckThat.Commands). /run, /script, /dump, /console and other addons' commands are refused."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "description": "The plan author's own label for this plan file, such as 1.2. CheckThat and ct.py do not read it."
+    },
+    "preamble": {
+      "type": "string",
+      "description": "Once-per-run setup shown before the first step."
+    },
+    "handoff": {
+      "type": "string",
+      "description": "What to do after the last step."
+    },
+    "purpose": {
+      "enum": [
+        "foundation",
+        "feature"
+      ],
+      "description": "Tools only: foundation is the release gate (the systems every feature depends on, one character, one run per client); feature goes deep on one feature. ct.py validate adds wording warnings, and a size warning for foundation, when it is set. The compiler drops it; the game never sees it."
+    },
+    "logs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/logSource"
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/requirement"
+      }
+    },
+    "macros": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/macro"
+      }
+    },
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/category"
+      },
+      "description": "Groups of steps the tester can pick when a run starts. Without it each section is a category."
+    },
+    "offline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toc"
+      ],
+      "description": "Tools only. Mocks, entry calls and fake events run by tools/entry_runner.lua. Compile removes it. It holds steps or groups.",
+      "oneOf": [
+        {
+          "required": [
+            "steps"
+          ],
+          "not": {
+            "required": [
+              "groups"
+            ]
+          }
+        },
+        {
+          "required": [
+            "groups"
+          ],
+          "not": {
+            "required": [
+              "steps"
+            ]
+          }
+        }
+      ],
+      "if": {
+        "not": {
+          "required": [
+            "level"
+          ],
+          "properties": {
+            "level": {
+              "minimum": 3
+            }
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "groups"
+              ]
+            },
+            {
+              "required": [
+                "savedVariables"
+              ]
+            },
+            {
+              "required": [
+                "steps"
+              ],
+              "properties": {
+                "steps": {
+                  "contains": {
+                    "required": [
+                      "reload"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "minimum": 5
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mocks": {
+                "additionalProperties": {
+                  "anyOf": [
+                    { "type": "object", "not": { "required": ["recording"] } },
+                    { "type": "array", "items": { "type": "object", "not": { "required": ["recording"] } } }
+                  ]
+                }
+              },
+              "groups": {
+                "items": {
+                  "properties": {
+                    "mocks": {
+                "additionalProperties": {
+                  "anyOf": [
+                    { "type": "object", "not": { "required": ["recording"] } },
+                    { "type": "array", "items": { "type": "object", "not": { "required": ["recording"] } } }
+                  ]
+                }
+              }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "minimum": 5
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "tocs"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "minimum": 4
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "steps"
+                  ],
+                  "properties": {
+                    "steps": {
+                      "contains": {
+                        "required": [
+                          "wait"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "groups"
+                  ],
+                  "properties": {
+                    "groups": {
+                      "contains": {
+                        "properties": {
+                          "steps": {
+                            "contains": {
+                              "required": [
+                                "wait"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "minimum": 5
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "steps"
+                  ],
+                  "properties": {
+                    "steps": {
+                      "contains": {
+                        "required": [
+                          "tooltip"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "groups"
+                  ],
+                  "properties": {
+                    "groups": {
+                      "contains": {
+                        "properties": {
+                          "steps": {
+                            "contains": {
+                              "required": [
+                                "tooltip"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "toc": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tocs": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "description": "Level 5. One TOC for each client the block can run on. ct offline --client era, forever or both runs the block with the TOC for that client (both runs it twice). Without --client only toc runs. toc stays required. replay-flow does not run the offline block, so it does not use tocs.",
+          "properties": {
+            "era": {
+              "type": "string",
+              "minLength": 1
+            },
+            "forever": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "mockAfterLoad": {
+          "type": "boolean"
+        },
+        "predicts": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Tools only. Links plan steps to offline steps, so a prediction can be compared with a real run: each key is a plan step id, each value lists the offline step ids (offline.N, or offline.G.N in a group) whose result predicts that step. The prediction is a pass when all of them pass.",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^offline\\.[0-9]+(\\.[0-9]+)?$" }
+          }
+        },
+        "level": {
+          "enum": [1, 2, 3, 4, 5, 6],
+          "description": "Offline level the plan opts in to. No level is level 1, the first fake-client answers. Level 2: GetBuildInfo gives the TOC interface and issecurevariable knows the game names. Level 3: the game's load order (saved variables, ADDON_LOADED, PLAYER_LOGIN, PLAYER_ENTERING_WORLD), reload steps, groups and savedVariables. Level 4: the client's event list (RegisterEvent and event steps) and a virtual clock (GetTime, time, C_Timer) with wait steps. Level 5: the client's real surface (only its game functions, its build, frames with only their type's methods). Level 6: taint of the game's global names (issecurevariable reads a name that addon code replaced as insecure, and it stays so after the original is put back; hooksecurefunc does not taint)."
+        },
+        "savedVariables": {
+          "type": "object",
+          "description": "Level 3. What the saved-variables file holds: a global the TOC declares, mapped to its value. JSON keys are strings.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Level 3. Each group gets a fresh load of the addon, with the block's mocks and its own over them, and its own savedVariables or else the block's.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "steps"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "mocks": {
+                "$ref": "#/properties/offline/properties/mocks"
+              },
+              "savedVariables": {
+                "$ref": "#/properties/offline/properties/savedVariables"
+              },
+              "steps": {
+                "$ref": "#/properties/offline/properties/steps"
+              }
+            }
+          }
+        },
+        "mocks": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "args": {
+                    "type": "array"
+                  },
+                  "returns": {
+                    "type": "array"
+                  },
+                  "recording": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Level 5. The label of a recorded call (tools/recordings/<client>.json, made from a CTProbe run), for example GetItemInfo(6948), or with a scene name for a second vendor or trainer, for example gear:GetMerchantItemInfo(1). Its arguments and return values replace args and returns, for the client the block runs on. Not with args or returns."
+                  }
+                },
+                "not": {
+                  "required": ["recording"],
+                  "anyOf": [{ "required": ["args"] }, { "required": ["returns"] }]
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "args": {
+                      "type": "array"
+                    },
+                    "returns": {
+                      "type": "array"
+                    },
+                    "recording": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "not": {
+                    "required": ["recording"],
+                    "anyOf": [{ "required": ["args"] }, { "required": ["returns"] }]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "call"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "call": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "addon",
+                      "entry"
+                    ],
+                    "properties": {
+                      "addon": {
+                        "type": "string"
+                      },
+                      "entry": {
+                        "type": "string"
+                      },
+                      "args": {
+                        "type": "array"
+                      }
+                    }
+                  },
+                  "returns": {
+                    "type": "array"
+                  },
+                  "throws": {
+                    "type": "string"
+                  }
+                },
+                "not": {
+                  "required": [
+                    "returns",
+                    "throws"
+                  ]
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "event": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "args": {
+                        "type": "array"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reload"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "reload": {
+                    "const": true,
+                    "description": "Level 3. /reload: logout events, saved variables kept as the game writes them, a fresh load and the login events."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "wait"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "wait": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 86400,
+                    "description": "Level 4. Seconds the virtual clock moves on. Each timer that comes due runs, in the game's order."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "mockCalls"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "mockCalls": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "api",
+                      "count"
+                    ],
+                    "properties": {
+                      "api": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tooltip"
+                ],
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "tooltip": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "description": "Level 5. Checks the lines the addon put on GameTooltip so far: lines (how many), or equals or contains (the text of a line; with line, that line, else any line).",
+                    "properties": {
+                      "lines": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "equals": {
+                        "type": "string"
+                      },
+                      "contains": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "anyOf": [
+                          { "required": ["lines"] },
+                          { "required": ["equals"] },
+                          { "required": ["contains"] }
+                        ]
+                      },
+                      {
+                        "not": {
+                          "required": ["equals", "contains"]
+                        }
+                      },
+                      {
+                        "if": {
+                          "required": ["lines"]
+                        },
+                        "then": {
+                          "not": {
+                            "anyOf": [
+                              { "required": ["line"] },
+                              { "required": ["equals"] },
+                              { "required": ["contains"] }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/section"
+      }
+    }
+  },
+  "$defs": {
+    "logSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "global",
+        "path",
+        "format"
+      ],
+      "properties": {
+        "global": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "strings",
+            "entries"
+          ]
+        },
+        "cap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "How many lines the log keeps before it drops the oldest. With it, a log that holds fewer lines is known never to have rolled, so where a step began is certain."
+        },
+        "quiet": {
+          "type": "boolean",
+          "description": "No new lines is a valid result, so an absence or a count of zero can pass. Use it for an error list."
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "class": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "MONK", "DRUID", "DEMONHUNTER", "EVOKER"] },
+          "description": "Holds when the character's class token is listed."
+        },
+        "profession": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Holds when the character knows one of these professions, named as the plan's locale shows them."
+        },
+        "unmet": {
+          "enum": ["blocked", "inapplicable"],
+          "description": "blocked (the default): the card shows the requirement as blocked. inapplicable: the step does not apply to this character."
+        },
+        "probe": {
+          "enum": [
+            "addon-loaded",
+            "global-value",
+            "frame-shown"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "op": {
+          "enum": [
+            "eq",
+            "ne",
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "contains",
+            "exists",
+            "missing",
+            "between",
+            "approx",
+            "matches",
+            "type",
+            "in"
+          ]
+        },
+        "value": { "type": ["string", "number", "boolean", "array", "object"], "description": "Never null: the game cannot read it." },
+        "tolerance": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Allowed distance from value for op approx."
+        }
+      }
+    },
+    "macro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 255
+        }
+      }
+    },
+    "clients": {
+      "type": "array",
+      "description": "era and forever are short names for classic-era and forever-camelot; compile writes the long names",
+      "items": {
+        "enum": [
+          "classic-era",
+          "forever-camelot",
+          "era",
+          "forever"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "steps"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "intro": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "description": "Default category of the steps in this section."
+        },
+        "covers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Tools only: names of requirements (### Requirement: headings in the addon's openspec specs) that the steps of this section covers. ct.py coverage reads it, ct.py validate checks the names and the compiler drops it; the game never sees it."
+        },
+        "clients": {
+          "$ref": "#/$defs/clients"
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "setup": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "share": {
+          "enum": [
+            "none",
+            "reload",
+            "export"
+          ],
+          "description": "Applied to the last step of the section."
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "manual",
+            "copy-slash",
+            "secure-macro",
+            "reload",
+            "wait-event"
+          ]
+        },
+        "text": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } }
+          ],
+          "description": "What the player does: one sentence, or a list of two to six actions the card shows as checkboxes the player ticks. A copy-slash step's text is its one command."
+        },
+        "macro": {
+          "type": "string"
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "matcher": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "equals": {
+          "type": "string"
+        },
+        "contains": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "A Lua pattern of up to 200 characters, matched against the whole line. The validators reject one that Lua cannot read (an open ( or [, a lone %, a back reference to no capture, a NUL byte). A line that takes too long to match leaves the check unverified."
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "description": "The id failed is reserved for /ct rerun failed; the validator rejects it." },
+        "title": { "type": "string", "minLength": 1 },
+        "intro": { "type": "string" }
+      }
+    },
+    "count": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "exactly": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "min": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "max": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      },
+      "description": "How many matching new lines the step needs. exactly cannot combine with min or max."
+    },
+    "assertion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source", "addon", "key", "op"],
+          "properties": {
+            "kind": { "const": "fact" },
+            "source": { "type": "string" },
+            "addon": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "op": { "enum": ["eq","ne","gt","ge","lt","le","contains","exists","missing","between","approx","matches","type","in"] },
+            "value": { "type": ["string", "number", "boolean", "array", "object"], "description": "Never null: the game cannot read it." },
+            "tolerance": { "type": "number", "minimum": 0 },
+            "which": { "enum": ["last", "any", "all"] },
+            "scope": { "enum": ["attempt", "run", "session"] },
+            "count": { "$ref": "#/$defs/count" },
+            "diagnostic": { "type": "boolean" },
+            "label": { "type": "string", "description": "Player-readable name of this check, shown on the card while CheckThat watches for it." }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source"
+          ],
+          "properties": {
+            "kind": {
+              "const": "log"
+            },
+            "source": {
+              "type": "string"
+            },
+            "equals": {
+              "type": "string"
+            },
+            "contains": {
+              "type": "string"
+            },
+            "pattern": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "A Lua pattern of up to 200 characters, matched against the whole line. The validators reject one that Lua cannot read (an open ( or [, a lone %, a back reference to no capture, a NUL byte). A line that takes too long to match leaves the check unverified."
+            },
+            "scope": {
+              "enum": [
+                "attempt",
+                "run",
+                "session"
+              ]
+            },
+            "absent": {
+              "type": "boolean"
+            },
+            "count": {
+              "$ref": "#/$defs/count"
+            },
+            "diagnostic": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string",
+              "description": "Player-readable name of this check, shown on the card while CheckThat watches for it."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "source",
+            "sequence"
+          ],
+          "properties": {
+            "kind": {
+              "const": "log-sequence"
+            },
+            "source": {
+              "type": "string"
+            },
+            "sequence": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/matcher"
+              }
+            },
+            "scope": {
+              "enum": [
+                "attempt",
+                "run",
+                "session"
+              ]
+            },
+            "diagnostic": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string",
+              "description": "Player-readable name of this check, shown on the card while CheckThat watches for it."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "probe",
+            "op"
+          ],
+          "properties": {
+            "kind": {
+              "const": "state"
+            },
+            "probe": {
+              "enum": [
+                "addon-loaded",
+                "global-value",
+                "frame-shown"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "op": {
+              "enum": [
+                "eq",
+                "ne",
+                "gt",
+                "ge",
+                "lt",
+                "le",
+                "contains",
+                "exists",
+                "missing",
+                "between",
+                "approx",
+                "matches",
+                "type",
+                "in"
+              ]
+            },
+            "value": { "type": ["string", "number", "boolean", "array", "object"], "description": "Never null: the game cannot read it." },
+            "tolerance": { "type": "number", "minimum": 0 },
+            "diagnostic": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string",
+              "description": "Player-readable name of this check, shown on the card while CheckThat watches for it."
+            }
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "dependentSchemas": { "call": { "required": ["auto"], "properties": { "auto": { "const": true } } } },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "action",
+        "expect",
+        "verify"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clients": {
+          "$ref": "#/$defs/clients"
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "setup": {
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        },
+        "expect": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } }
+          ],
+          "description": "What the player should see: one sentence, or a list of two to six short results."
+        },
+        "async": {
+          "type": "boolean",
+          "description": "Auto steps only: judge the required checks once when the run starts. A pass is recorded then and the card skips the step."
+        },
+        "verify": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "player",
+              "assertions",
+              "reviewer"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assertion"
+          }
+        },
+        "reviewer": {
+          "type": "string",
+          "description": "Reviewer-only instruction kept verbatim in exports."
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of this step. Overrides the section's category."
+        },
+        "covers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Tools only: names of requirements (### Requirement: headings in the addon's openspec specs) that this step covers. ct.py coverage reads it, ct.py validate checks the names and the compiler drops it; the game never sees it."
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "vars"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+              "vars": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            }
+          },
+          "description": "Expands this step into one per case when the plan compiles. {{name}} in the step's text is replaced by the case's var. The step id becomes id.case-id."
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "call": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "addon",
+            "entry"
+          ],
+          "description": "An auto step calls an entry the addon registered with CheckThat.Entry when the step opens, outside combat. The outcome is a fact line [addon] entry.<entry>=<result>, so assert on it as a fact log. Literal arguments only.",
+          "properties": {
+            "addon": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,32}$"
+            },
+            "entry": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,42}$"
+            },
+            "args": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          }
+        },
+        "auto": {
+          "type": "boolean",
+          "description": "CheckThat records the result itself when every required assertion is met. Needs assertions in verify, no player, and at least one required assertion. A check that something did not happen (an absence, a missing fact, a count with exactly or max) is judged when the timeout ends, so such a step needs a timeout."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 300,
+          "description": "Seconds after the step opens when an auto step settles with the evidence it has. Auto steps only."
+        },
+        "cleanup": {
+          "type": "string"
+        },
+        "reload": {
+          "enum": [
+            "none",
+            "after_action"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        },
+        "share": {
+          "enum": [
+            "none",
+            "reload",
+            "export"
+          ],
+          "description": "After this step: ask for a reload (logs reach saved variables) or open the export string."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["auto"], "properties": { "auto": { "const": true } } },
+          "then": {
+            "required": ["assertions"],
+            "properties": {
+              "verify": { "contains": { "const": "assertions" }, "not": { "contains": { "const": "player" } } },
+              "assertions": {
+                "contains": { "not": { "required": ["diagnostic"], "properties": { "diagnostic": { "const": true } } } }
+              }
+            }
+          },
+          "else": { "not": { "required": ["timeout"] } }
+        },
+        {
+          "if": { "required": ["action"], "properties": { "action": { "required": ["kind"], "properties": { "kind": { "const": "wait-event" } } } } },
+          "then": { "required": ["auto"], "properties": { "auto": { "const": true } } }
+        }
+      ]
+    }
+  }
+}
