@@ -205,6 +205,9 @@ end
 -- fake client is built, so a test can add the "real" values a mock will replace. opts.loaded(ns, st, n) runs after
 -- load n of the addon (1 for the first, then once for each reload or group), so a test can drive the addon's own code.
 function Runner.run(spec, opts)
+    -- The host's own values of the hidden names, taken before a level 5 surface strips require, dofile and loadfile: a hook gets them all.
+    local host = {}
+    for _, n in ipairs(Runner.HIDDEN) do host[n] = rawget(_G, n) end
     opts = opts or {}
     local root = opts.root or "."
     local jns = {}
@@ -239,6 +242,36 @@ function Runner.run(spec, opts)
         for _, s in ipairs(g.steps or {}) do if s.tooltip ~= nil then needs5 = "a tooltip step" end end
     end
     if spec.recordings ~= nil then needs5 = needs5 or "recordings" end
+    -- Lua hooks (#273's first slice): the developer's own file, named by the block and loaded once before the addon. A hook step calls
+    -- hooks[name](ctx, ...). The names are checked here, so a typo fails the load step before any addon file runs.
+    local hookNames = {}
+    for _, g in ipairs(groups) do
+        for _, s in ipairs(g.steps or {}) do if s.hook ~= nil then hookNames[#hookNames + 1] = s.hook end end
+    end
+    if spec.hooks ~= nil then needs5 = needs5 or "hooks" end
+    if #hookNames > 0 then needs5 = needs5 or "a hook step" end
+    local hooks
+    local function loadHooks() -- after the other load checks pass, so the file runs only for a load that goes ahead; returns an error or nil
+        if spec.hooks == nil and #hookNames == 0 then return nil end
+        local hooksErr
+        if type(spec.hooks) ~= "string" then
+            hooksErr = "a hook step needs a hooks file (offline.hooks)"
+        else
+            local chunk, lerr = loadfile(pathJoin(root, spec.hooks))
+            local ok, t = false, lerr
+            if chunk then ok, t = pcall(chunk) end
+            if not chunk then hooksErr = ("hooks %s cannot be loaded: %s"):format(spec.hooks, tostring(lerr))
+            elseif not ok then hooksErr = ("hooks %s raised %s"):format(spec.hooks, tostring(t))
+            elseif type(t) ~= "table" then hooksErr = ("hooks %s returned %s, not a table of functions"):format(spec.hooks, type(t))
+            else
+                hooks = t
+                for _, n in ipairs(hookNames) do
+                    if type(t[n]) ~= "function" then hooksErr = ("hook %s is not in %s"):format(tostring(n), spec.hooks); break end
+                end
+            end
+        end
+        return hooksErr
+    end
     -- Level 5: the client's real surface (tools/clients/<client>.json): only its game functions, its build, and frames
     -- with only their widget type's methods. A mock of a function the client lacks would hide the gap: it fails the load.
     local surface, surfaceErr
@@ -249,6 +282,14 @@ function Runner.run(spec, opts)
     -- Level 4: the events of the client the TOC names (below interface 16000 Era, from 16000 Forever), from Blizzard's
     -- generated API documentation and the events Blizzard's own code registers. An event step is checked before load.
     local events, eventsErr
+    -- What is wrong with firing name with nargs values on this client (level 4), or nil. who names the step or ctx.fire.
+    local function eventProblem(evName, nargs, who)
+        local e = events and events[evName]
+        if not e then return ("the client has no event %s"):format(tostring(evName)) end
+        if e.payload and (nargs > e.payload or nargs < e.required) then
+            return ("%s carries %d value(s), %d of them always, and %s gives %d"):format(evName, e.payload, e.required, who, nargs)
+        end
+    end
     if timed then
         local n = tocInterface(tocPath) or 11507
         local client = n >= 16000 and "forever" or "era"
@@ -261,15 +302,7 @@ function Runner.run(spec, opts)
         for _, g in ipairs(groups) do
             for _, s in ipairs(g.steps or {}) do
                 local ev = s.event
-                if ev and events and not eventsErr then
-                    local e = events[ev.name]
-                    local nargs = #(ev.args or {})
-                    if not e then
-                        eventsErr = ("the client has no event %s"):format(tostring(ev.name))
-                    elseif e.payload and (nargs > e.payload or nargs < e.required) then
-                        eventsErr = ("%s carries %d value(s), %d of them always, and the step gives %d"):format(ev.name, e.payload, e.required, nargs)
-                    end
-                end
+                if ev and events and not eventsErr then eventsErr = eventProblem(ev.name, #(ev.args or {}), "the step") end
             end
         end
     end
@@ -451,9 +484,15 @@ function Runner.run(spec, opts)
             for n in pairs(declared) do rawset(_G, n, nil) end
             if meta.savedVariablesFirst then assign() end
         end
-        cur.stopNil = H.recordNilReads({ "@" .. folder .. "/" }, { "/libs/", "/libraries/" })
+        local skip = { "/libs/", "/libraries/" }
+        if type(spec.hooks) == "string" then -- a hooks file inside the addon folder is test code: its nil reads are not the addon's
+            local hp = pathJoin(root, spec.hooks)
+            if hp:sub(1, #folder + 1) == folder .. "/" then skip[#skip + 1] = "/" .. hp:sub(#folder + 2):lower() end
+        end
+        cur.stopNil = H.recordNilReads({ "@" .. folder .. "/" }, skip)
         cur.unhide = hideGlobals()
         local ns = {}
+        cur.ns = ns -- a hook's ctx.ns: the namespace of this load
         local ok, err
         local lok, lerr = xpcall(function()
             if spec.mockAfterLoad then
@@ -476,6 +515,66 @@ function Runner.run(spec, opts)
             if not cok then return false, "opts.loaded failed: " .. tostring(cerr) end
         end
         return ok, err
+    end
+
+    -- The hook context (ctx), the first public fake-client API: fields are only added, never removed or changed in meaning.
+    -- A hook is test code, so the globals hidden from addon code are back while it runs.
+    -- While a hook runs the hidden names hold the host's values (lend); the addon's own values, such as an ffi it set, go back after
+    -- it (giveBack). Addon code a hook runs through ctx.fire and ctx.advance gets the addon's values for that time (asAddon).
+    local lent
+    local function lend() lent = {}; for _, n in ipairs(Runner.HIDDEN) do lent[n] = rawget(_G, n); rawset(_G, n, host[n]) end end
+    local function giveBack() for _, n in ipairs(Runner.HIDDEN) do rawset(_G, n, lent[n]) end; lent = nil end
+    local function asAddon(f, ...)
+        giveBack()
+        local r = pack(pcall(f, ...))
+        lend()
+        if not r[1] then error(r[2], 0) end
+        return unpack(r, 2, r.n)
+    end
+    local function ctxFor(counts)
+        local function differ(a, b, path, seen)
+            if type(a) ~= type(b) or type(a) ~= "table" then
+                if a ~= b then return path, a, b end
+                return nil
+            end
+            if seen[a] == b then return nil end -- a table that refers back to itself is compared once
+            seen[a] = b
+            for k, v in pairs(b) do local p, x, y = differ(a[k], v, path .. "." .. tostring(k), seen); if p then return p, x, y end end
+            for k, v in pairs(a) do if b[k] == nil then return path .. "." .. tostring(k), v, nil end end
+            return nil
+        end
+        return {
+            ns = cur.ns, client = surface and surface.client, level = level,
+            fire = function(ev, ...)
+                if events then -- level 4 and up: the same check as an event step
+                    local p = eventProblem(ev, select("#", ...), "ctx.fire")
+                    if p then error(p, 2) end
+                end
+                local n, ferr = asAddon(fire, ev, ...)
+                if not n then error(("%s handler threw %s"):format(tostring(ev), tostring(ferr)), 2) end
+                return n
+            end,
+            combat = function(on) cur.st.setCombat(on) end,
+            advance = function(seconds)
+                local ran, werr = asAddon(cur.st.advance, seconds)
+                if werr then error(("a timer callback threw %s"):format(tostring(werr)), 2) end
+                return ran
+            end,
+            mockCalls = function(api) return counts[api] or 0 end,
+            eq = function(got, want, what)
+                if got ~= want then error(("%s: expected %s, got %s"):format(what or "value", tostring(want), tostring(got)), 2) end
+            end,
+            same = function(got, want, what)
+                local p, x, y = differ(got, want, what or "value", {})
+                if p then error(("%s: expected %s, got %s"):format(p, tostring(y), tostring(x)), 2) end
+            end,
+        }
+    end
+    local function runHook(name, args, counts)
+        lend()
+        local r = pack(pcall(hooks[name], ctxFor(counts), unpack(args, 1, #args)))
+        giveBack()
+        return r
     end
 
     local chunks, loadErr
@@ -504,7 +603,8 @@ function Runner.run(spec, opts)
     elseif absent then
         loadErr = ("mock %s: the %s client has no such function"):format(absent, surface.client)
     else
-        chunks, loadErr = compileToc(Lua51, H, tocPath)
+        loadErr = loadHooks()
+        if not loadErr then chunks, loadErr = compileToc(Lua51, H, tocPath) end
     end
     if not chunks then -- no load: the fake client is still built once, as before, for the caller's prepare
         cur = { st = client() }
@@ -590,6 +690,19 @@ function Runner.run(spec, opts)
                         for j = i + 1, #steps do add(j, "skipped", false, "not run: the reload failed") end
                         break
                     end
+                elseif step.hook ~= nil then
+                    local r = runHook(step.hook, step.args or {}, counts)
+                    if step.throws ~= nil then
+                        if r[1] then add(i, "hook", false, "expected a throw, got " .. show({ n = r.n - 1, unpack(r, 2, r.n) }))
+                        elseif tostring(r[2]):find(step.throws, 1, true) then add(i, "hook", true, tostring(r[2]))
+                        else add(i, "hook", false, ("threw %q, expected text %q"):format(tostring(r[2]), step.throws)) end
+                    elseif not r[1] then
+                        add(i, "hook", false, "threw " .. tostring(r[2]))
+                    else
+                        local got = { n = r.n - 1, unpack(r, 2, r.n) }
+                        if step.returns == nil or sameList(got, step.returns) then add(i, "hook", true, "returned " .. show(got))
+                        else add(i, "hook", false, ("returned %s, expected %s"):format(show(got), show(step.returns))) end
+                    end
                 elseif step.tooltip then
                     local t, lines = step.tooltip, H.tooltipLines(rawget(_G, "GameTooltip"))
                     local function has(l) -- a line matches by its left or right text
@@ -618,7 +731,7 @@ function Runner.run(spec, opts)
                         else add(i, "tooltip", false, ("no line %s %q; the lines are %s"):format(t.equals ~= nil and "equals" or "contains", t.equals or t.contains, show(shown))) end
                     end
                 else
-                    add(i, "unknown", false, "step has no call, event, mockCalls, wait, tooltip or reload")
+                    add(i, "unknown", false, "step has no call, event, mockCalls, wait, tooltip, hook or reload")
                 end
             end
             end, tostring)

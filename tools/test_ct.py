@@ -982,6 +982,39 @@ class OfflineBlock(unittest.TestCase):
         p = self.plan(lambda o: o.update(tocs=both)); p["offline"].pop("level", None)
         self.assertNotEqual(ct.validate(p), [], "tocs with no level")
 
+    def test_hooks_need_level_5_stay_in_the_addons_folder_and_run(self):
+        def hook_plan(level=5, hooks="hooks/offline_hooks.lua", step=None, groups=False):
+            def m(o):
+                o.clear()
+                st = step or {"label": "Count from the namespace", "hook": "count", "returns": [0]}
+                o.update(toc="MockAddon/Hook.toc", hooks=hooks)
+                if groups: o["groups"] = [{"steps": [st]}]
+                else: o["steps"] = [st]
+                if level: o["level"] = level
+            return self.plan(m)
+        self.assertEqual(ct.validate(hook_plan()), [])
+        self.assertEqual(ct.validate(hook_plan(groups=True)), [], "in a group")
+        for level in (None, 4):
+            self.assertNotEqual(ct.validate(hook_plan(level)), [], "hooks at level %s" % level)
+            p = hook_plan(level); del p["offline"]["hooks"]
+            self.assertNotEqual(ct.validate(p), [], "a hook step at level %s" % level)
+            p = hook_plan(level, groups=True); del p["offline"]["hooks"]
+            self.assertNotEqual(ct.validate(p), [], "a hook step in a group at level %s" % level)
+            p = hook_plan(level, step={"call": {"addon": "MockAddon", "entry": "x"}})
+            self.assertNotEqual(ct.validate(p), [], "the hooks key alone at level %s" % level)
+        self.assertNotEqual(ct.validate(hook_plan(step={"hook": "count", "returns": [0], "throws": "x"})), [], "returns and throws")
+        for groups in (False, True):
+            p = hook_plan(groups=groups); del p["offline"]["hooks"]
+            self.assertNotEqual(ct.validate(p), [], "a hook step without a hooks file (groups=%s)" % groups)
+        self.assertNotEqual(ct.validate(hook_plan(step={"hook": "not a name"})), [], "a hook name is a Lua name")
+        self.assertNotEqual(ct.validate(hook_plan(step={"hook": "count", "call": {"addon": "A", "entry": "b"}})), [], "a hook step is not a call")
+        addons = os.path.dirname(os.path.dirname(self.PLAN))
+        self.assertEqual([i["result"] for i in ct.offline_plan(hook_plan(), addons)], ["pass"])
+        self.assertEqual([i["label"] for i in ct.offline_plan(hook_plan(), addons)], ["Count from the namespace"])
+        with self.assertRaises(ValueError) as e:
+            ct.offline_plan(hook_plan(hooks="../elsewhere.lua"), addons)
+        self.assertIn("leaves the addons folder", str(e.exception))
+
     def test_recordings_needs_level_5_and_stays_in_the_addons_folder(self):
         def rec_plan(level=5, folder="MockAddon/recordings"):
             def m(o):

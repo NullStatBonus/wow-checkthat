@@ -213,7 +213,8 @@
             "not": {
               "anyOf": [
                 { "required": ["tocs"] },
-                { "required": ["recordings"] }
+                { "required": ["recordings"] },
+                { "required": ["hooks"] }
               ]
             }
           }
@@ -295,9 +296,7 @@
                   "properties": {
                     "steps": {
                       "contains": {
-                        "required": [
-                          "tooltip"
-                        ]
+                        "anyOf": [{ "required": ["tooltip"] }, { "required": ["hook"] }]
                       }
                     }
                   }
@@ -312,9 +311,7 @@
                         "properties": {
                           "steps": {
                             "contains": {
-                              "required": [
-                                "tooltip"
-                              ]
+                              "anyOf": [{ "required": ["tooltip"] }, { "required": ["hook"] }]
                             }
                           }
                         }
@@ -325,12 +322,26 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "anyOf": [
+              { "required": ["steps"], "properties": { "steps": { "contains": { "required": ["hook"] } } } },
+              { "required": ["groups"], "properties": { "groups": { "contains": { "properties": { "steps": { "contains": { "required": ["hook"] } } } } } } }
+            ]
+          },
+          "then": { "required": ["hooks"] }
         }
       ],
       "properties": {
         "toc": {
           "type": "string",
           "minLength": 1
+        },
+        "hooks": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Level 5. The addon's own Lua hooks file, a path inside the addons folder as for toc (for example MyAddon/tests/offline_hooks.lua). It returns a table of functions that hook steps call as fn(ctx, ...). Local code the developer writes; compile drops the offline block, so a plan string never carries it."
         },
         "recordings": {
           "type": "string",
@@ -459,6 +470,38 @@
           "type": "array",
           "items": {
             "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hook"
+                ],
+                "description": "Level 5. Calls hooks[hook](ctx, ...args) from the block's hooks file, judged as a call step.",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "hook": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "args": {
+                    "type": "array"
+                  },
+                  "returns": {
+                    "type": "array"
+                  },
+                  "throws": {
+                    "type": "string"
+                  }
+                },
+                "not": {
+                  "required": [
+                    "returns",
+                    "throws"
+                  ]
+                }
+              },
               {
                 "type": "object",
                 "additionalProperties": false,

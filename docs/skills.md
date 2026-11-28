@@ -40,7 +40,7 @@ The plugin and the zip have no private Python. Run `python3 <tools>/ct.py setup`
 
 `<tools>/ct doctor` (or `ct doctor` when the launcher is on your `PATH`) ends with a tools section: the tools version, the Python in use and its packages, and whether `luajit` is on the path, with the install command for each missing one. `replay`, `replay-flow`, `offline`, `drift` and `coverage --harness` need LuaJIT. The rest of the tools do not.
 
-The bundle's `tests/` files serve the plan commands (`replay-flow`, `offline`). They are internal and not a contract for your addon's own tests. A public fake-client library is #273.
+The bundle's `tests/` files serve the plan commands (`replay-flow`, `offline`). They are internal and not a contract for your addon's own tests. The public part is the `ctx` of offline hook steps ([Lua hooks](authoring-plans.md#lua-hooks-level-5-and-later)); a full fake-client library is #273.
 
 ### From a checkout
 

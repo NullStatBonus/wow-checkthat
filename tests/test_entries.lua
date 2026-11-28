@@ -543,6 +543,109 @@ test("the addon's recordings folder adds calls and wins over the bundled file", 
     T.ok(low:find("recordings needs offline level 5", 1, true), low)
 end)
 
+-- #273's first slice: offline hook steps run the developer's Lua with a small ctx API.
+local HOOK_TOC, HOOKS = "tests/fixtures/MockAddon/Hook.toc", "tests/fixtures/hooks/offline_hooks.lua"
+local function hk(name, extra) local s = { hook = name }; for k, v in pairs(extra or {}) do s[k] = v end; return s end
+test("hook steps reach the addon's namespace, fire events and are judged like calls", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, mocks = { GetItemInfo = { returns = { "x" } } }, steps = {
+        hk("count", { returns = { 0 } }),
+        { event = { name = "BAG_UPDATE", args = { 0 } } },
+        hk("count", { returns = { 1 } }),
+        hk("fire_twice", { returns = { 2 } }),
+        hk("count", { returns = { 3 } }),
+        hk("info", { args = { "x" }, returns = { "era", 5, "x" } }),
+        hk("mocked", { returns = { 2 } }),
+        hk("boom", { throws = "bad thing" }),
+        hk("same_ok"),
+        hk("count", { returns = { 9 } }),
+    } })
+    same(names(r), { true, true, true, true, true, true, true, true, true, false })
+    T.ok(r.steps[10].detail:find("returned [3], expected [9]", 1, true), r.steps[10].detail)
+    T.eq(r.steps[1].kind, "hook")
+end)
+
+test("a hook that raises fails its step with the text, ctx.eq and ctx.same name the difference, and ctx.fire counts frames", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("rows"), hk("deep"), hk("boom"), hk("no_frame", { returns = { 0 } }) } })
+    same(names(r), { false, false, false, true })
+    T.ok(r.steps[1].detail:find("rows: expected 3, got 2", 1, true), r.steps[1].detail)
+    T.ok(r.steps[2].detail:find("t.a.b: expected 2, got 1", 1, true), r.steps[2].detail)
+    T.ok(r.steps[3].detail:find("threw bad thing", 1, true), r.steps[3].detail)
+    T.ok(r.steps[4].detail:find("returned [0]", 1, true), "ctx.fire returns 0 when no frame registered the event")
+end)
+
+test("ctx.combat and ctx.advance drive the fake client's combat and clock", function()
+    local r = run({ toc = HOOK_TOC, level = 6, hooks = HOOKS, steps = { hk("combat_timer", { returns = { true, 1 } }) } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+end)
+
+test("a hook sees Lua's full library while the addon's code does not", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("libs", { returns = { "table", "nil" } }) } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+end)
+
+test("ctx.ns follows a reload to the new load's namespace", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("mark"), hk("has_mark", { returns = { true } }), { reload = true }, hk("has_mark", { returns = { false } }) } })
+    same(names(r), { true, true, true, true })
+end)
+
+test("a bad hooks file, an unknown name or a level below 5 fails the load before the addon runs", function()
+    local function loadError(spec) local x = run(spec); return (not x.ok) and tostring(x.steps[1].detail) or "ran" end
+    local steps = { hk("count") }
+    T.ok(loadError({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("nope") } }):find("hook nope is not in " .. HOOKS, 1, true))
+    T.ok(loadError({ toc = HOOK_TOC, level = 5, hooks = "tests/fixtures/hooks/missing.lua", steps = steps }):find("cannot be loaded", 1, true))
+    T.ok(loadError({ toc = HOOK_TOC, level = 5, hooks = "tests/fixtures/hooks/raises.lua", steps = steps }):find("raised broken hooks file", 1, true))
+    T.ok(loadError({ toc = HOOK_TOC, level = 5, hooks = "tests/fixtures/hooks/not_table.lua", steps = steps }):find("returned number, not a table", 1, true))
+    T.ok(loadError({ toc = HOOK_TOC, level = 5, steps = steps }):find("a hook step needs a hooks file", 1, true))
+    T.ok(loadError({ toc = HOOK_TOC, level = 4, hooks = HOOKS, steps = steps }):find("hooks needs offline level 5", 1, true))
+    T.ok(loadError({ toc = HOOK_TOC, level = 4, steps = steps }):find("a hook step needs offline level 5", 1, true))
+    local g = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, groups = { { steps = { hk("count", { returns = { 0 } }) } }, { steps = { hk("nope") } } } })
+    T.ok(not g.ok and tostring(g.steps[1].detail):find("hook nope is not in", 1, true), "a name in a group is checked too")
+end)
+
+test("addon code a hook runs through ctx.fire and ctx.advance does not see the hidden globals", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("handler_libs", { returns = { "nil" } }), hk("timer_libs", { returns = { "nil" } }) } })
+    same(names(r), { true, true })
+end)
+
+test("a hook gets every hidden global, require, dofile and loadfile included", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("all_libs", { returns = { "table", "table", "function", "function", "function", "table", "table" } }) } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+end)
+
+test("a hook's own nil reads are not in the addon's nil-read report", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = "tests/fixtures/MockAddon/hooks_inside.lua", steps = { hk("nil_read") } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+    for _, n in ipairs(r.nilReads) do T.ok(n ~= "HookOnlyMissingGlobal", "a read in the hooks file is not the addon's") end
+end)
+
+test("ctx.fire checks the event against the client as an event step does", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("bad_event"), hk("short_event") } })
+    same(names(r), { false, false })
+    T.ok(r.steps[1].detail:find("the client has no event NOT_A_REAL_EVENT", 1, true), r.steps[1].detail)
+    T.ok(r.steps[2].detail:find("ctx.fire gives 0", 1, true), r.steps[2].detail)
+end)
+
+test("a hook step keeps the addon's own value of a hidden name", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("ffi_mine", { returns = { true } }), hk("noop"), hk("ffi_mine", { returns = { true } }) } })
+    same(names(r), { true, true, true })
+end)
+
+test("ctx.same compares a table that refers back to itself", function()
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = HOOKS, steps = { hk("cyclic") } })
+    T.ok(r.ok, tostring(r.steps[1] and r.steps[1].detail))
+end)
+
+test("the hooks file does not run when the load is refused for another reason", function()
+    local probe = {}
+    _G.HookProbe = probe
+    T.finally(function() _G.HookProbe = nil end)
+    local r = run({ toc = HOOK_TOC, level = 5, hooks = "tests/fixtures/hooks/marks.lua", mocks = { loadstring = { returns = { 1 } } }, steps = { hk("noop") } })
+    T.ok(not r.ok and tostring(r.steps[1].detail):find("not on the allow list", 1, true), tostring(r.steps[1] and r.steps[1].detail))
+    T.eq(probe.ran, nil, "the hooks file did not run")
+    run({ toc = HOOK_TOC, level = 5, hooks = "tests/fixtures/hooks/marks.lua", steps = { hk("noop") } })
+    T.eq(probe.ran, true, "it runs for a load that goes ahead")
+end)
+
 test("a recording that does not fit fails the load step and says why", function()
     local steps = { recCall("info_first", 6948, { "Hearthstone" }) }
     local function loadError(r) return (not r.ok) and tostring(r.steps[1].detail) or "ran" end

@@ -186,7 +186,7 @@ offline:
   - 2: the TOC's interface and the secure game names.
   - 3: the game's load order, saved variables, reload and groups (see Load order below).
   - 4: the client's events and a clock (see Events and Clock below).
-  - 5: the client's real functions and frame methods (see Client below), `tocs`, recordings and `tooltip` steps.
+  - 5: the client's real functions and frame methods (see Client below), `tocs`, recordings, `tooltip` steps and Lua hooks ([Lua hooks](#lua-hooks-level-5-and-later)).
   - 6: the taint of the game's global names (see Taint below).
 
   New plans declare `level: 6`. A stricter check comes as a new level, so an existing plan keeps its result. Below, "level 5 and later" means level 5 or 6.
@@ -228,6 +228,51 @@ offline:
 - `predicts: { <plan step id>: [offline.1, offline.2.1] }` (optional) links a plan step to the offline steps whose result predicts it: a pass when all of them pass. `ct.py drift` compares that prediction with a real run (see [Drift ledger](harvesting.md#drift-ledger)). The ids are the ones `ct.py offline` prints.
 - Set `mockAfterLoad: true` to mock after the addon loads. A file-scope `local f = f` then keeps the real function.
 - An offline pass does not prove the game agrees. Whether a replaced global taints a protected action is not measured (#98).
+
+### Lua hooks (level 5 and later)
+
+A hook step runs your own Lua in the fake client, for what data steps cannot do: set state, call code that is not a `CheckThat.Entry` entry, or check a result that is not a return value. Name a hooks file in the block. It is a path inside the addons folder, as for `toc`, and it stays in your repository: compile drops the offline block, so a plan string never carries it.
+
+```yaml
+offline:
+  toc: MyAddon/MyAddon_Vanilla.toc
+  level: 6
+  hooks: MyAddon/tests/offline_hooks.lua
+  steps:
+  - { event: { name: BAG_UPDATE, args: [0] } }
+  - label: The bag handler counted the update
+    hook: bag_count
+    returns: [1]
+  - { hook: sell_in_combat, throws: "in combat" }
+```
+
+```lua
+-- MyAddon/tests/offline_hooks.lua
+return {
+    bag_count = function(ctx) return ctx.ns.bagUpdates end,
+    sell_in_combat = function(ctx)
+        ctx.combat(true)
+        ctx.ns.SellJunk()   -- raises "in combat" when the addon refuses
+    end,
+}
+```
+
+A hook step takes `args` and `returns` or `throws`, as a `call` step does: `hooks[name](ctx, ...args)`. A hook that raises fails its step with the error text, unless `throws` expects it. A missing file, a file that does not return a table, a step that names a function the file lacks, or a hook step without `hooks` fails the load step before the addon runs. The file runs only when the rest of the load checks pass. A hook runs with Lua's full library (`io`, `os`, `require`, `dofile` and the rest). Addon code that `ctx.fire` and `ctx.advance` run (handlers, timers) still sees what it sees in game, without them. A function you call straight from a hook, such as `ctx.ns.SellJunk()`, runs with the hook's library. A global the hooks file reads as nil is not in the addon's nil-read report.
+
+`ctx` is a public API. Fields are only added, never removed or changed in meaning:
+
+| Field | What it does |
+| --- | --- |
+| `ctx.ns` | The addon's private namespace (the second value of `...` in its files) for the current load. A `reload` step or a new group gives a new one. |
+| `ctx.client`, `ctx.level` | `era` or `forever`, and the block's level. |
+| `ctx.fire(event, ...)` | Fires an event at the frames that registered it. Returns how many; raises when a handler raises, and when the client has no such event or the values do not fit it, as for an `event` step. |
+| `ctx.combat(on)` | Enters (`true`) or leaves (`false`) combat, as the fake client models it. |
+| `ctx.advance(seconds)` | Moves the clock and runs the timers that come due. Returns how many ran; raises when one raises. |
+| `ctx.mockCalls(api)` | How many times the mock of `api` was called in this group. |
+| `ctx.eq(got, want, what)` | Raises `what: expected want, got got` when they differ. The error text starts with the hook's file and line. |
+| `ctx.same(got, want, what)` | Compares tables deeply, a table that refers to itself included, and raises with the first differing path, such as `t.a.b: expected 2, got 1`. |
+
+A hook can change anything in the fake client, so its pass proves what the hook checks and nothing more.
 
 ### Record your own calls
 
