@@ -63,7 +63,7 @@ The record also holds `current` (the step the card showed, which browsing moves 
 
 ## Privacy
 
-`character` is `Name-Realm`, so every results string names the tester's character and realm. The export window says "The results include your character and realm name." A plan's `logs` and `global-value` checks can add what those variables hold, and a `frame-text` check can add what a frame says; the start screen lists them.
+`character` is `Name-Realm`, so every results string names the tester's character and realm. The export window says "The results include your character and realm name." A plan's `logs` and `global-value` checks can add what those variables hold, and a `frame-text` check can add what a frame says; the start screen lists them. A failed `money` check saves no amount.
 
 ## Other versions
 

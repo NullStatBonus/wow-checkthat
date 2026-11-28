@@ -48,6 +48,23 @@ test("the sounds plan replays with no problem (#229)", function()
     T.eq(#out.trace, 20)
 end)
 
+test("a within check in attempt scope replays and settles (#280)", function()
+    fresh()
+    local seqA = { kind = "log-sequence", source = "debug", scope = "attempt", label = "in time",
+        sequence = { { contains = "[w] first" }, { contains = "[w] second", within = 5 } } }
+    local out = Replay.run(ns, plan({ step("w", { auto = true, timeout = 30, verify = { "assertions" }, assertions = { seqA } }) }), { hooks = { action = {
+        w = function(R)
+            local g = R.env.CheckThatDB.global
+            g.log = g.log or {}; g.log.entries = g.log.entries or {}
+            local e = g.log.entries
+            e[#e + 1] = { t = 100, msg = "[w] first" }
+            e[#e + 1] = { t = 102, msg = "[w] second" }
+            local a = R.App.AutoSettle()
+            assert(a and a.verdict == "pass", "the timed sequence passes: " .. tostring(a and a.verdict))
+        end } } })
+    T.eq(#out.problems, 0, table.concat(out.problems, "; "))
+end)
+
 test("a step that asserts its own result line is a problem", function()
     local out = Replay.run(ns, plan({ step("a", { verify = { "assertions" }, assertions = { log("[ct] step a pass") } }) }))
     T.ok(has(out.problems, "asserts the line its own result writes"), "named")

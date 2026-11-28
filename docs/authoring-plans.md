@@ -415,7 +415,7 @@ A `state` check reads one value from the game and compares it with the operators
       value: 1
     - kind: state
       probe: bag-free-slots
-      bag: -1            # a bank bag, one bag
+      bag: 0             # the backpack only
       op: ge
       value: 5
     - kind: state
@@ -433,7 +433,9 @@ A `state` check reads one value from the game and compares it with the operators
 Good to know:
 
 - A value the game does not answer, or hides (a secret value), leaves the check unverified. It is never 0 or false. A free-slot sum with one bag the game cannot read is unverified, because the sum is unknown.
-- A bank bag (`bag: -1` and lower) answers only while the bank is open. Open the bank in the step that checks it.
+- `bag` is 0 (the backpack) to 4. Bank bags are not read: their numbers differ between the clients.
+- `item-count` counts the item in your bags, not the bank.
+- A failed `money` check does not save the amount, so the results string does not hold your money.
 - `frame-text` reads text only. A missing frame, a frame that says nothing, and a frame that is not text leave the check unverified.
 - On Era, `bag-free-slots` also counts the free slots of quivers, ammo pouches and soul bags, which hold only their own kind of item. Do not read it as room for any item.
 - A plan that uses `money`, `bag-free-slots`, `item-count` or `frame-text` needs plan revision 3: `compile` writes `needs: 3`, and an older CheckThat says the plan needs a newer one.

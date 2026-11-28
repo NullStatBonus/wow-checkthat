@@ -253,7 +253,8 @@ local function ruleOf(a, lit)
         r = ("fact [%s] %s %s %s"):format(cut(a.addon, 30), cut(a.key, 40), tostring(a.op), lit and cut(valText(a.value), 40) or "…")
         if a.count then r = r .. ", count " .. countText(a.count) elseif a.which then r = r .. ", " .. tostring(a.which) end
     else
-        r = ("%s %s %s %s"):format(tostring(a.probe), cut(a.name or "", 40), tostring(a.op), lit and cut(valText(a.value), 40) or "…")
+        local what = a.name or (a.id ~= nil and ("id " .. tostring(a.id))) or (a.bag ~= nil and ("bag " .. tostring(a.bag))) or ""
+        r = (what ~= "" and "%s %s %s %s" or "%s%s %s %s"):format(tostring(a.probe), what ~= "" and cut(what, 40) or "", tostring(a.op), lit and cut(valText(a.value), 40) or "…")
     end
     return cut(r, Evidence.RULE_LEN)
 end
@@ -462,7 +463,8 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
     if a.scope == "session" then
         lines, first = current, 1
     else
-        lines, first = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times)
+        local _
+        lines, _, first = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times) -- the second value is whether the boundary is exact
     end
     if not lines then return bad("log rolled over; evidence lost") end
     for _, m in ipairs(type(a.sequence) == "table" and a.sequence or {}) do
@@ -490,9 +492,10 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
 end
 
 -- A timed log-sequence: an item's within (whole seconds) holds its line to at most that many seconds after the line of
--- the item before it. The positions are chained from the last item back, so an early match of an item that leaves too
--- little time is swapped for a later one, which leaves less. A log that keeps no time for every line of the window
--- cannot judge the check: it is unverified, never a pass.
+-- the item before it. The chain goes forward: each item keeps every line it can reach from a placed line of the item
+-- before it, paired with the latest such line (the one that leaves the least time), so an early match that leaves too
+-- little time gives way to a later one. The first item with no reachable line is where the sequence stopped. A log that
+-- keeps no time for every line of the window, or whose clock runs back in it, cannot judge the check: it is unverified.
 function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
     local open, unchecked = nil, 0 -- lines a pattern could not be run on, as in the untimed path: not counted as misses
     local function detail(matched, stopped)
@@ -517,6 +520,9 @@ function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
         end
     end
     if not at then return bad("this log keeps no time for these lines, so a within check cannot be judged") end
+    for i = 2, #at do
+        if at[i] < at[i - 1] then return bad("this log's clock runs back in these lines, so a within check cannot be judged") end
+    end
     local hits = {}
     for k, m in ipairs(a.sequence) do
         local mine = {}
@@ -527,28 +533,19 @@ function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
         hits[k] = mine
     end
     local last = #a.sequence
-    local ok = {}
-    for _, i in ipairs(hits[last]) do ok[i] = true end
-    if next(ok) == nil then return stop(last, last - 1) end
-    local stopped
-    for k = last - 1, 1, -1 do
-        local gap = a.sequence[k + 1].within
-        local nexts = {}
-        for i in pairs(ok) do nexts[#nexts + 1] = i end
-        table.sort(nexts)
-        local now, j = {}, 1
-        for _, i in ipairs(hits[k]) do
-            while j <= #nexts and nexts[j] <= i do j = j + 1 end
-            if j > #nexts then break end
-            -- The first line after i gives the most time left; a later one gives less, so one answer per position.
-            if not gap or at[nexts[j]] - at[i] <= gap then now[i] = true end
+    local placed = hits[1] -- the lines each item can end on, in order
+    if #placed == 0 then return stop(1, 0) end
+    for k = 2, last do
+        local gap = a.sequence[k].within
+        local now, p = {}, 0
+        for _, j in ipairs(hits[k]) do
+            while p < #placed and placed[p + 1] < j do p = p + 1 end -- placed[p]: the latest placed line before j
+            if p > 0 and (not gap or at[j] - at[placed[p]] <= gap) then now[#now + 1] = j end
         end
-        ok = now
-        if next(ok) == nil then stopped = k; break end
+        if #now == 0 then return stop(k, k - 1) end
+        placed = now
     end
-    if not stopped then return "pass", nil, detail(last) end
-    -- stopped is the item whose lines could not reach the item after it, so that item is the one it did not place.
-    return stop(stopped + 1, stopped)
+    return "pass", nil, detail(last)
 end
 
 -- A fact assertion. No fact is unverified, facts that break the operator fail. With count, the facts that pass
@@ -647,6 +644,8 @@ function Evidence.CheckFact(a, snapshots, plan, env, wantDetail)
     return r, why, detail
 end
 
+-- Probes that read the game: nil is a value the game did not give, never "not there", so exists cannot judge it.
+local GAME_READ = { money = true, ["bag-free-slots"] = true, ["item-count"] = true, ["frame-text"] = true }
 function Evidence.CheckState(a, env, wantDetail)
     local d = wantDetail and baseDetail(a) or nil -- cheap: no log scan; dropped by the caller for a pass
     if not ns.Plan.PROBES[a.probe] then return "unverified", "unknown probe", d end
@@ -659,11 +658,12 @@ function Evidence.CheckState(a, env, wantDetail)
         local found, why = safeFind(x, a.value)
         if found == nil then return "unverified", skipReason(why), d end
     end
-    if d and x ~= nil then d.observed = type(x) == "table" and "table" or cut(tostring(x), Evidence.VALUE_LEN) end
+    -- The player's money is personal (CTProbe records it by type only), so a check of it never saves the amount.
+    if d and x ~= nil and a.probe ~= "money" then d.observed = type(x) == "table" and "table" or cut(tostring(x), Evidence.VALUE_LEN) end
     if a.op == "missing" then -- a path that is not there, in a global that is
         local root = a.probe == "global-value" and a.path and (env or _G)[a.name]
         if type(root) ~= "table" then return "unverified", "value unavailable", d end
-    elseif x == nil and a.op ~= "exists" then return "unverified", "value unavailable", d end
+    elseif x == nil and (a.op ~= "exists" or GAME_READ[a.probe]) then return "unverified", "value unavailable", d end -- a game read never guesses
     return op(x, a.value, a) and "pass" or "fail", nil, d
 end
 

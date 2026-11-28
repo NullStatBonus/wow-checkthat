@@ -296,8 +296,9 @@ local function checkAssertion(a, i, errs, logs, where)
         if not Plan.PROBES[a.probe] then errs[#errs + 1] = where .. ": unknown probe " .. tostring(a.probe) end
         if a.count ~= nil then errs[#errs + 1] = where .. ": count does not apply to state" end
         if a.probe == "item-count" and type(a.id) ~= "number" then errs[#errs + 1] = where .. ": item-count needs an id, a number" end
-        if a.id ~= nil and type(a.id) ~= "number" then errs[#errs + 1] = where .. ": id must be a number" end
-        if a.bag ~= nil and (type(a.bag) ~= "number" or a.bag % 1 ~= 0) then errs[#errs + 1] = where .. ": bag must be a whole number" end
+        if a.id ~= nil and (type(a.id) ~= "number" or a.id < 0 or a.id % 1 ~= 0) then errs[#errs + 1] = where .. ": id must be a whole number, 0 or more" end
+        -- Bags 0 to 4 only: bank and keyring indexes differ between the clients and are not measured (docs/contracts.md).
+        if a.bag ~= nil and (type(a.bag) ~= "number" or a.bag % 1 ~= 0 or a.bag < 0 or a.bag > 4) then errs[#errs + 1] = where .. ": bag must be a whole number, 0 to 4" end
         checkOp(a, errs, where)
     else errs[#errs + 1] = where .. ": unknown assertion kind " .. tostring(a.kind) end
 end

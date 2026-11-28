@@ -36,6 +36,16 @@ class Validate(unittest.TestCase):
                                                        "sequence": [{"contains": "a"}, {"contains": "b", "within": 2}]}]
         self.assertEqual(ct.plan_needs(p), (3, "within"), "compile writes needs: 3 for within")
 
+    def test_the_state_probe_id_and_bag_have_the_bounds_the_game_reads(self):
+        def errors(extra):
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [dict({"kind": "state", "op": "ge", "value": 1}, **extra)]
+            return ct.validate(p)
+        self.assertEqual(errors({"probe": "bag-free-slots", "bag": 4}), [])
+        self.assertEqual(errors({"probe": "item-count", "id": 6948}), [])
+        for bad in ({"probe": "bag-free-slots", "bag": -1}, {"probe": "bag-free-slots", "bag": 5}, {"probe": "item-count", "id": 1.5}, {"probe": "item-count", "id": -3}):
+            self.assertTrue(errors(bad), bad)
+
     def test_unknown_field(self):
         p = good(); p["sections"][0]["steps"][0]["bogus"] = 1
         self.assertTrue(ct.validate(p))

@@ -11,9 +11,9 @@ local function ent(list)
     for i, v in ipairs(list) do out[i] = { t = v[1], msg = v[2] } end
     return out
 end
-local function seq(items) return { kind = "log-sequence", source = "e", scope = "session", sequence = items } end
-local function verdict(items, en, snaps)
-    return E.CheckSequence(seq(items), snaps or {}, plan, en)
+local function seq(items, scope) return { kind = "log-sequence", source = "e", scope = scope or "session", sequence = items } end
+local function verdict(items, en, snaps, scope)
+    return E.CheckSequence(seq(items, scope), snaps or {}, plan, en)
 end
 
 test("within passes when the second line came in time", function()
@@ -58,10 +58,34 @@ test("a sequence without within needs no times", function()
     local a = { kind = "log-sequence", source = "s", scope = "session", sequence = { { contains = "A" }, { contains = "B" } } }
     T.eq((E.CheckSequence(a, {}, plan, env(nil, { "A", "B" }))), "pass")
 end)
-test("within reads the times of the lines after the step opened", function()
-    local en = env(ent({ { 5, "old" }, { 10, "A" }, { 12, "B" } }))
-    local snaps = { e = { n = 1, tail = { "old" }, times = { 5 } } }
-    T.eq((verdict({ { contains = "A" }, { contains = "B", within = 2 } }, en, snaps)), "pass")
+test("within reads the times of the lines after the step opened, in attempt and run scope", function()
+    -- The old line's time (5) would make the gap 7 if the times were read from the start of the log.
+    local items = { { contains = "A" }, { contains = "B", within = 2 } }
+    local en = env(ent({ { 5, "A" }, { 10, "A" }, { 12, "B" } }))
+    T.eq((verdict(items, en, { e = { n = 1, tail = { "A" }, times = { 5 } } }, "attempt")), "pass", "attempt")
+    T.eq((verdict(items, en, { ["@run e"] = { n = 1, tail = { "A" }, times = { 5 } } }, "run")), "pass", "run")
+    local late = env(ent({ { 5, "A" }, { 10, "A" }, { 13, "B" } }))
+    T.eq((verdict(items, late, { e = { n = 1, tail = { "A" }, times = { 5 } } }, "attempt")), "unverified", "a late line in attempt scope")
+end)
+test("within with an inexact boundary still reads the times of the new lines", function()
+    -- A tail of one repeated line, saved with no times, finds more than one place: the boundary is inexact, not the start of the log.
+    local en = env(ent({ { 1, "x" }, { 2, "x" }, { 10, "A" }, { 12, "B" } }))
+    local v, why = verdict({ { contains = "A" }, { contains = "B", within = 2 } }, en, { e = { n = 1, tail = { "x" } } }, "attempt")
+    T.eq(v, "pass", tostring(why))
+end)
+test("a timed sequence stops at the first item it cannot place", function()
+    local items = { { contains = "A" }, { contains = "B", within = 2 }, { contains = "C" } }
+    local v, why, d = E.CheckSequence(seq(items), {}, plan, env(ent({ { 10, "B" }, { 11, "C" } })), true)
+    T.eq(v, "unverified"); T.eq(why, "sequence stopped at item 1"); T.eq(d.stoppedAt, 1); T.eq(d.matched, 0)
+    local _, why2, d2 = E.CheckSequence(seq(items), {}, plan, env(ent({ { 10, "A" }, { 11, "B" } })), true)
+    T.eq(why2, "sequence stopped at item 3"); T.eq(d2.matched, 2)
+    local _, why3, d3 = E.CheckSequence(seq(items), {}, plan, env(ent({ { 10, "A" }, { 20, "B" }, { 21, "C" } })), true)
+    T.eq(why3, "sequence stopped at item 2", "B came too late"); T.eq(d3.matched, 1)
+end)
+test("a clock that runs back cannot pass a within check", function()
+    local v, why = verdict({ { contains = "A" }, { contains = "B", within = 2 } }, env(ent({ { 100, "A" }, { 50, "B" } })))
+    T.eq(v, "unverified")
+    T.eq(why, "this log's clock runs back in these lines, so a within check cannot be judged")
 end)
 test("the detail of a timed sequence says which item stopped", function()
     local v, _, d = E.CheckSequence(seq({ { contains = "A" }, { contains = "B", within = 2 } }), {}, plan, env(ent({ { 10, "A" }, { 40, "B" } })), true)

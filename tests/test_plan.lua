@@ -376,13 +376,18 @@ test("the game state probes validate, and item-count needs a numeric id", functi
     for _, a in ipairs({
         { kind = "state", probe = "money", op = "ge", value = 1 },
         { kind = "state", probe = "bag-free-slots", op = "ge", value = 0 },
-        { kind = "state", probe = "bag-free-slots", bag = -1, op = "ge", value = 0 },
+        { kind = "state", probe = "bag-free-slots", bag = 0, op = "ge", value = 0 },
+        { kind = "state", probe = "bag-free-slots", bag = 4, op = "ge", value = 0 },
         { kind = "state", probe = "item-count", id = 6948, op = "ge", value = 1 },
         { kind = "state", probe = "frame-text", name = "F", op = "exists" },
     }) do T.eq(#ns.Plan.Validate(with(a)), 0, table.concat(ns.Plan.Validate(with(a)), ";")) end
     badA({ kind = "state", probe = "item-count", op = "exists" }, "item-count needs an id, a number")
-    badA({ kind = "state", probe = "item-count", id = "6948", op = "exists" }, "id must be a number")
-    badA({ kind = "state", probe = "bag-free-slots", bag = 1.5, op = "exists" }, "bag must be a whole number")
+    badA({ kind = "state", probe = "item-count", id = "6948", op = "exists" }, "id must be a whole number, 0 or more")
+    badA({ kind = "state", probe = "item-count", id = 1.5, op = "exists" }, "id must be a whole number, 0 or more")
+    badA({ kind = "state", probe = "item-count", id = -3, op = "exists" }, "id must be a whole number, 0 or more")
+    badA({ kind = "state", probe = "bag-free-slots", bag = 1.5, op = "exists" }, "bag must be a whole number, 0 to 4")
+    badA({ kind = "state", probe = "bag-free-slots", bag = -1, op = "exists" }, "bag must be a whole number, 0 to 4")
+    badA({ kind = "state", probe = "bag-free-slots", bag = 5, op = "exists" }, "bag must be a whole number, 0 to 4")
 end)
 
 test("count is refused on assertions that cannot count, so an import cannot crash the card", function()

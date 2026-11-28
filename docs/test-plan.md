@@ -171,6 +171,10 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
     Check: the step's check is met when you click Run.
     Log: the attempt's check has `rule: sequence of 2 lines`; a check that did not pass has `stoppedAt: 2`.
 
+17. **Your money and free bag space.** Setup: a character with at least 1 copper and one free slot in its bags, and a plan step with two `state` checks: `probe: money, op: ge, value: 1` and `probe: bag-free-slots, op: ge, value: 1`.
+    Check: both of the step's checks are met before you press anything.
+    Log: when a check does not pass, its detail has `rule: money ge 1` or `rule: bag-free-slots ge 1`, and a money check has no `observed` amount.
+
 ## 5. Categories and unit-test checks
 
 

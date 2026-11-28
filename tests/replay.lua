@@ -128,7 +128,7 @@ function Replay.run(ns, planString, opts)
     if not run then ns.Run.Unmet = realUnmet; problem("the run did not start"); return out end
     db.log.enabled = true
 
-    local R = { App = App, ns = ns }
+    local R = { App = App, ns = ns, env = env } -- env: the fake game, for a hook that writes a log line itself
     local _, ctx0 = App.Current()
     local assumed = {}
     -- Write what the step's checks need: the debug lines and facts a tester's actions would produce.
