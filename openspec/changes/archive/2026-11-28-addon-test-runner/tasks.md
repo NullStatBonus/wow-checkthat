@@ -17,3 +17,4 @@
 
 - [x] 3.1 `docs/addon-tests.md` with a worked example; `ctx` table in `docs/authoring-plans.md`; stable list in `docs/tools-guide.md`; `docs/skills.md`; plan skill
 - [x] 3.2 Run the docs example in a scratch addon through the installed layout
+- [x] 3.3 `--tests DIR` for repos that keep tests outside the shipped folder: test in `tools/test_ct.py`, `docs/addon-tests.md`, spec scenario

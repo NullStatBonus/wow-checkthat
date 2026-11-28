@@ -6,7 +6,7 @@ An addon developer can reach the fake client only through a plan's offline block
 
 ## What Changes
 
-- **`ct test [folder]`**, a new stable command. It runs every `<folder>/tests/test_*.lua` of the developer's addon against each client the addon has a TOC for (Era below interface 16000, Forever from 16000), at the newest offline level. `--client era|forever|both`, `--name TEXT` and `--recordings DIR` narrow or extend a run. It prints one line for each test and client, the nil-read report for each client, and a summary, and exits 1 when a test fails.
+- **`ct test [folder]`**, a new stable command. It runs every `<folder>/tests/test_*.lua` of the developer's addon against each client the addon has a TOC for (Era below interface 16000, Forever from 16000), at the newest offline level. `--client era|forever|both`, `--name TEXT`, `--recordings DIR` and `--tests DIR` (tests kept outside the shipped folder) narrow or extend a run. It prints one line for each test and client, the nil-read report for each client, and a summary, and exits 1 when a test fails.
 - **A test file** gets `ct` as its `...`: `ct.test(name, [options,] fn)` registers a test, and `ct.API` is 1. Each test gets a fresh load of the addon and calls `fn(ctx)` with the same `ctx` as a hook step. `options` takes `mocks` and `savedVariables` in the offline block's shapes.
 - **`ctx` gains fields** (additive): `ctx.reload()` (the game's reload: logout events, saved variables kept, a fresh load; `ctx.ns` follows), `ctx.ok(value, what)` and `ctx.raises(fn, text, what)`. Hook steps get them too.
 - `tools/addon_test.lua` (the Lua side) joins the bundle. Docs: a new `docs/addon-tests.md`, the stable list in `docs/tools-guide.md`, `docs/skills.md`, the `ctx` table in `docs/authoring-plans.md`.

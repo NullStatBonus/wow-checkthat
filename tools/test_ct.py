@@ -785,6 +785,25 @@ class AddonTests(unittest.TestCase):
         self.assertIn("era: Globals read as nil in this run (interface 11509)", out)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_tests_runs_a_folder_outside_the_addon_instead_of_its_tests(self):
+        a = self.folder()
+        outside = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, outside)
+        with open(os.path.join(outside, "test_outside.lua"), "w") as f:
+            f.write('local ct = ...\nct.test("runs from outside", function(ctx) ctx.ok(ctx.ns, "ns") end)\n')
+        with open(os.path.join(outside, "harness_test.lua"), "w") as f:
+            f.write('error("not a ct test file")\n')
+        code, out, err = self.run_test(a, "--tests", outside, "--client", "era")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("test_outside.lua  runs from outside", out)
+        self.assertNotIn("tests/test_core.lua", out, "--tests replaces <folder>/tests")
+        self.assertIn("test: 1 passed, 0 failed", out, "only test_*.lua in the folder runs")
+        code, _, err = self.run_test(a, "--tests", os.path.join(outside, "missing"))
+        self.assertEqual(code, 2); self.assertIn("is not a folder", err)
+        empty = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, empty)
+        code, _, err = self.run_test(a, "--tests", empty)
+        self.assertEqual(code, 2); self.assertIn("has no test_*.lua", err)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_failing_test_names_the_difference_and_exits_1(self):
         code, out, _ = self.run_test(self.folder({"tests/test_fail.lua": 'local ct = ...\nct.test("counts twice", function(ctx) ctx.fire("BAG_UPDATE", 0); ctx.eq(ctx.ns.count, 2, "count") end)\n'}), "--client", "era")
         self.assertEqual(code, 1, out)

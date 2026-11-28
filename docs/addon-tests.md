@@ -46,6 +46,7 @@ From your addon's folder (the one with its TOC files):
 - `--client era` or `--client forever` runs one client. By default each client you have a TOC for runs.
 - `--name TEXT` runs only the tests whose name contains the text.
 - `--recordings DIR` adds your own recordings folder (`ct recordings -o`, see [Record your own calls](authoring-plans.md#record-your-own-calls)).
+- `--tests DIR` runs the `test_*.lua` files in that folder instead of the addon's `tests/`. Use it when your repo keeps its tests outside the folder it ships, such as `ct test MyAddon --tests tests/ct`. Keep `ct` test files in their own folder: a file that registers no `ct.test` fails.
 
 It prints a line for each test on each client, then the globals your addon read as nil on each client, then a summary:
 
@@ -56,7 +57,7 @@ FAIL  forever  tests/test_bags.lua  money comes from the mock: threw .../MyAddon
 test: 7 passed, 1 failed
 ```
 
-It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: no TOC with an `## Interface:` line, no `tests/test_*.lua`, no TOC for the client you named, or no test matching `--name`.
+It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: no TOC with an `## Interface:` line, no `tests/test_*.lua` (or no `test_*.lua` in the `--tests` folder), no TOC for the client you named, or no test matching `--name`.
 
 ## Good to know
 
