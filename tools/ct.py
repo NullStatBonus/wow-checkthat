@@ -1152,11 +1152,25 @@ def tools_version():
     return None
 
 
-def setup_env(venv=None, python=None, run=subprocess.run, platform=None):
-    """Creates the per-user environment with requirements.txt. It is built in a sibling folder and renamed into place only after
-    pip succeeds, so a failed run keeps the earlier environment. Standard library only: it runs before PyYAML exists.
+def base_python():
+    """The interpreter a new environment is built from. Inside a venv (the launcher runs the per-user one) that is the base
+    Python, never the venv's own, which ct setup is about to replace."""
+    if sys.prefix == sys.base_prefix:
+        return sys.executable
+    names = ("python.exe",) if sys.platform.startswith("win") else ("python%d.%d" % sys.version_info[:2], "python3", "python")
+    for folder in ((sys.base_prefix,) if sys.platform.startswith("win") else (os.path.join(sys.base_prefix, "bin"),)):
+        for n in names:
+            p = os.path.join(folder, n)
+            if os.path.isfile(p):
+                return p
+    return getattr(sys, "_base_executable", None) or sys.executable
+
+
+def setup_env(venv=None, python=None, run=subprocess.run, platform=None, rename=os.rename):
+    """Creates the per-user environment with requirements.txt. It is built in a sibling folder and swapped in only after
+    pip succeeds; a failed build or swap keeps the earlier environment. Standard library only: it runs before PyYAML exists.
     Returns (exit code, message)."""
-    venv, python = venv or user_venv(platform=platform), python or sys.executable
+    venv, python = venv or user_venv(platform=platform), python or base_python()
     parent = os.path.dirname(venv)
     os.makedirs(parent, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix=".venv-new.", dir=parent)
@@ -1169,11 +1183,16 @@ def setup_env(venv=None, python=None, run=subprocess.run, platform=None):
         if r.returncode != 0:
             return 1, "installing PyYAML and jsonschema failed (need network access): %s" % (r.stderr or r.stdout or "").strip()
         old = None
-        if os.path.exists(venv):
-            old = venv + ".old"
-            shutil.rmtree(old, ignore_errors=True)
-            os.rename(venv, old)
-        os.rename(tmp, venv)   # pip runs as python -m pip, so no script path inside the environment depends on its folder
+        try:
+            if os.path.exists(venv):
+                old = tempfile.mkdtemp(prefix=".venv-old.", dir=parent)
+                os.rmdir(old)   # a fresh name, so a leftover from an earlier run never blocks the rename
+                rename(venv, old)
+            rename(tmp, venv)   # pip runs as python -m pip, so no script path inside the environment depends on its folder
+        except OSError as e:
+            if old and os.path.exists(old) and not os.path.exists(venv):
+                rename(old, venv)
+            return 1, "replacing %s failed, the earlier environment is kept: %s" % (venv, e)
         tmp = None
         if old:
             shutil.rmtree(old, ignore_errors=True)

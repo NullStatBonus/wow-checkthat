@@ -233,7 +233,7 @@ After `compile` the skill SHALL run `tests/replay_plan.lua` on the plan and SHAL
 - **THEN** the review lists the step and the plan stays open
 
 ### Requirement: Skill warns about a stale bundle
-When `$CT/VERSION` and a checkout both exist and differ, the skill SHALL warn that the bundle is stale and name `make install-skill`.
+When `$CT/VERSION` and a checkout both exist and differ, the skill SHALL warn that the bundle is stale and name the update for the install: a plugin update, a newer toolkit zip, or `make install-skill`.
 
 #### Scenario: Bundle older than checkout
 - **WHEN** `$CT/VERSION` is 0.16.0 and the checkout is 0.17.0

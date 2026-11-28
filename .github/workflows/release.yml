@@ -22,6 +22,11 @@ on:
 permissions:
   contents: write
 
+# One release run at a time: two runs pushing the plugin branch at once would race.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -46,7 +51,7 @@ jobs:
           node-version: 22
       - name: Validate the plugin and the marketplace
         run: |
-          npm install -g @anthropic-ai/claude-code
+          npm install -g @anthropic-ai/claude-code@2.1.332   # pinned: a new CLI must not block an addon release
           claude plugin validate build/plugin
           claude plugin validate .
       - name: Upload the dry-run outputs
@@ -54,6 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: developer-toolkit
+          include-hidden-files: true   # build/plugin/.claude-plugin holds the manifest
           path: |
             build/plugin
             build/CheckThat-toolkit-*.zip
@@ -62,6 +68,17 @@ jobs:
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      - name: Replace the toolkit zip on the current release
+        if: github.ref_type != 'tag' && inputs.publish && github.ref == 'refs/heads/main'
+        run: gh release upload "v$(cat build/toolkit/ct-test-plan/ct/VERSION)" build/CheckThat-toolkit-*.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: GitHub release
+        if: github.ref_type == 'tag'
+        run: gh release create "$GITHUB_REF_NAME" .release/*.zip build/CheckThat-toolkit-*.zip --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Last, so the plugin goes live only after its release and toolkit zip exist.
       - name: Publish the plugin branch
         if: github.ref_type == 'tag' || (inputs.publish && github.ref == 'refs/heads/main')
         run: |
@@ -82,13 +99,3 @@ jobs:
           if git diff --cached --quiet; then echo "plugin unchanged"; exit 0; fi
           git commit -q -m "checkthat $(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' .claude-plugin/plugin.json)"
           git push origin plugin
-      - name: Replace the toolkit zip on the current release
-        if: github.ref_type != 'tag' && inputs.publish && github.ref == 'refs/heads/main'
-        run: gh release upload "v$(cat build/toolkit/ct-test-plan/ct/VERSION)" build/CheckThat-toolkit-*.zip --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: GitHub release
-        if: github.ref_type == 'tag'
-        run: gh release create "$GITHUB_REF_NAME" .release/*.zip build/CheckThat-toolkit-*.zip --title "$GITHUB_REF_NAME" --generate-notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

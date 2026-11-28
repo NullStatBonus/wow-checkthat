@@ -79,7 +79,7 @@ build-toolkit:
 	@rm -rf "$(TOOLKIT_DIR)" && mkdir -p "$(TOOLKIT_DIR)" || exit 1; \
 	cp -R skills/ct-test-plan "$(TOOLKIT_DIR)/ct-test-plan" && cp -R skills/ct-verify "$(TOOLKIT_DIR)/ct-verify" || { echo "build-toolkit: copying the skills failed" >&2; exit 1; }; \
 	sh tools/bundle.sh "$(TOOLKIT_DIR)/ct-test-plan/ct" "$(BUNDLE)" "$(BUNDLE_DIR)" || exit 1; \
-	ver=$$(cat "$(TOOLKIT_DIR)/ct-test-plan/ct/VERSION"); zip="$(dir $(TOOLKIT_DIR))CheckThat-toolkit-$$ver"; rm -f "$$zip.zip"; \
+	ver=$$(cat "$(TOOLKIT_DIR)/ct-test-plan/ct/VERSION"); zip="$(dir $(patsubst %/,%,$(TOOLKIT_DIR)))CheckThat-toolkit-$$ver"; rm -f "$$zip.zip"; \
 	python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", sys.argv[2])' "$$zip" "$(TOOLKIT_DIR)" || { echo "build-toolkit: zipping failed" >&2; exit 1; }; \
 	echo "built $$zip.zip"
 

@@ -9,7 +9,8 @@ while [ -L "$self" ]; do   # followed through links, so a link on the PATH finds
 done
 here=$(cd "$(dirname "$self")" && pwd -P)
 root=$(dirname "$here")
-for py in "$root/.venv/bin/python" "$(dirname "$root")/.venv/bin/python" "${XDG_DATA_HOME:-$HOME/.local/share}/checkthat/venv/bin/python"; do
+for py in "$root/.venv/bin/python" "$(dirname "$root")/.venv/bin/python" "${XDG_DATA_HOME:-$HOME/.local/share}/checkthat/venv/bin/python" \
+          ${LOCALAPPDATA:+"$LOCALAPPDATA/checkthat/venv/Scripts/python.exe"}; do
     [ -x "$py" ] && exec "$py" "$here/ct.py" "$@"
 done
 exec python3 "$here/ct.py" "$@"

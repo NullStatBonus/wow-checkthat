@@ -2337,6 +2337,30 @@ class ToolSetup(unittest.TestCase):
                 self.assertTrue(os.path.exists(os.path.join(venv, "marker")), "earlier environment kept")
                 self.assertEqual(os.listdir(d), ["venv"])
 
+    def test_a_failed_swap_puts_the_earlier_environment_back(self):
+        with tempfile.TemporaryDirectory() as d:
+            venv = os.path.join(d, "venv")
+            os.makedirs(venv)
+            open(os.path.join(venv, "marker"), "w").close()
+            calls = []
+            def rename(a, b):
+                calls.append((a, b))
+                if len(calls) == 2:
+                    raise OSError("locked")
+                os.rename(a, b)
+            run, _ = self.fake_run()
+            code, msg = ct.setup_env(venv, python="py", run=run, platform="linux", rename=rename)
+            self.assertEqual(code, 1)
+            self.assertIn("earlier environment is kept", msg)
+            self.assertTrue(os.path.exists(os.path.join(venv, "marker")))
+            self.assertEqual(os.listdir(d), ["venv"])
+
+    def test_setup_builds_from_the_base_python_not_the_venv_it_replaces(self):
+        py = ct.base_python()
+        self.assertTrue(os.path.isfile(py), py)
+        if sys.prefix != sys.base_prefix:   # the suite runs in .venv: the base must lie outside it
+            self.assertFalse(os.path.abspath(py).startswith(os.path.abspath(sys.prefix) + os.sep), py)   # no realpath: the venv's python links out
+
     def test_setup_replaces_an_earlier_environment(self):
         with tempfile.TemporaryDirectory() as d:
             venv = os.path.join(d, "venv")
@@ -2419,6 +2443,11 @@ class ToolSetup(unittest.TestCase):
             self.assertEqual(run(), "private")
             shutil.rmtree(os.path.join(skill, ".venv"))
             self.assertEqual(run(), "user")
+            shutil.rmtree(os.path.join(d, "data"))
+            fake(os.path.join(d, "local", "checkthat", "venv", "Scripts", "python.exe"), "windows")
+            r = subprocess.run(["sh", os.path.join(skill, "ct", "tools", "ct")], capture_output=True, text=True,
+                               env=dict(os.environ, XDG_DATA_HOME=os.path.join(d, "data"), LOCALAPPDATA=os.path.join(d, "local")))
+            self.assertEqual(r.stdout.strip(), "windows")
 
 class Collect(unittest.TestCase):
     def test_sv2json_and_collect_dedupe(self):
@@ -2990,6 +3019,13 @@ class BuildToolkit(unittest.TestCase):
                                capture_output=True, text=True, cwd=d)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_a_trailing_slash_keeps_the_zip_beside_the_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run(["make", "build-toolkit", "TOOLKIT_DIR=" + os.path.join(d, "toolkit") + "/"], cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(sorted(os.listdir(d)), ["CheckThat-toolkit-%s.zip" % self.version(), "toolkit"])
+            self.assertEqual(sorted(os.listdir(os.path.join(d, "toolkit"))), ["ct-test-plan", "ct-verify"])
+
     def test_every_output_holds_the_same_bundle(self):
         def tree(top):
             out = {}
@@ -3042,6 +3078,10 @@ class ReleaseWorkflow(unittest.TestCase):
         self.assertIn("claude plugin validate .", steps["Validate the plugin and the marketplace"]["run"])
         self.assertIn("build/CheckThat-toolkit-*.zip", steps["GitHub release"]["run"])
         self.assertEqual(steps["Upload the dry-run outputs"].get("if"), "github.event_name == 'workflow_dispatch'")
+        self.assertIs(steps["Upload the dry-run outputs"]["with"]["include-hidden-files"], True, "the plugin manifest is in a dot folder")
+        self.assertEqual(names[-1], "Publish the plugin branch", "the plugin goes live after its release and zip exist")
+        self.assertEqual(wf["concurrency"], {"group": "release", "cancel-in-progress": False})
+        self.assertRegex(steps["Validate the plugin and the marketplace"]["run"], r"@anthropic-ai/claude-code@\d+\.\d+\.\d+")
 
     def git(self, cwd, *args):
         r = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True)
