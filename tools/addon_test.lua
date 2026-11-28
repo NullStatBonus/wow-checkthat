@@ -2,7 +2,8 @@
 -- fake client at the newest offline level, with one hook step that calls the test function with ctx (docs/addon-tests.md).
 --
 --   luajit tools/addon_test.lua JOB.json
---   JOB: { "toc": path, "file": path, "out": path, "interface": n?, "addon": name?, "testDir": path?, "name": text?, "recordings": folder? }
+--   JOB: { "toc": path, "file": path, "out": path, "client": "era"|"forever"?, "interface": n?, "addon": name?, "testDir": path?, "name": text?,
+--          "recordings": folder? }
 --
 -- Writes { "format": 1, "file", "interface", "tests": [ { "name", "ok", "detail" } ], "nilReads": [names], "error"? } to JOB.out, so
 -- what the test file writes to stdout stays its own, and exits 1 when a test fails or the file cannot run. The test file runs with the
@@ -17,22 +18,31 @@ local f = assert(io.open(arg[1], "r"))
 local job = assert(Json.Decode(f:read("*a")))
 f:close()
 
-local OPTIONS = { mocks = true, savedVariables = true, checkThat = true }
+local OPTIONS = { mocks = true, savedVariables = true, checkThat = true, clients = true }
+local CLIENTS = { era = true, forever = true }
 local LOAD_ORDER = { early = true, late = true, missing = true } -- when CheckThat's global is there (docs/addon-tests.md)
 local tests = {}
 -- The test file's `...`: fields are only added, never removed or changed in meaning.
-local ct = { API = 1 }
+-- client and interface say which client this run of the file is for, so a file can pick its mocks before it registers tests.
+local ct = { API = 1, client = job.client, interface = job.interface }
 function ct.test(name, options, fn)
     if fn == nil then fn, options = options, nil end
     if type(name) ~= "string" or name == "" then error("ct.test: the first value is the test's name", 2) end
     if type(fn) ~= "function" then error(("ct.test %q: the last value is the test function"):format(name), 2) end
     if options ~= nil and type(options) ~= "table" then error(("ct.test %q: the options are a table"):format(name), 2) end
     for k in pairs(options or {}) do
-        if not OPTIONS[k] then error(("ct.test %q: unknown option %s (mocks, savedVariables or checkThat)"):format(name, tostring(k)), 2) end
+        if not OPTIONS[k] then error(("ct.test %q: unknown option %s (mocks, savedVariables, checkThat or clients)"):format(name, tostring(k)), 2) end
     end
     local order = (options or {}).checkThat
     if order ~= nil and not LOAD_ORDER[order] then
         error(("ct.test %q: checkThat is \"early\", \"late\" or \"missing\", got %s"):format(name, tostring(order)), 2)
+    end
+    local clients = (options or {}).clients
+    if clients ~= nil then
+        local bad = type(clients) ~= "table" or #clients == 0
+        for i, c in ipairs(type(clients) == "table" and clients or {}) do if not CLIENTS[c] then bad = true end end
+        if not bad then for k in pairs(clients) do if type(k) ~= "number" or k > #clients then bad = true end end end
+        if bad then error(("ct.test %q: clients is a list of \"era\" and \"forever\""):format(name), 2) end
     end
     tests[#tests + 1] = { name = name, options = options or {}, fn = fn }
 end
@@ -55,7 +65,12 @@ if #tests == 0 then out.error = "the test file registers no test (ct.test)"; fin
 
 local seen, failed = {}, false
 for _, t in ipairs(tests) do
-    if not job.name or t.name:find(job.name, 1, true) then
+    local forClient = true -- a test with clients runs only on those clients
+    if t.options.clients and job.client then
+        forClient = false
+        for _, c in ipairs(t.options.clients) do if c == job.client then forClient = true end end
+    end
+    if forClient and (not job.name or t.name:find(job.name, 1, true)) then
         local spec = { toc = job.toc, level = Runner.LEVEL, mocks = t.options.mocks, savedVariables = t.options.savedVariables,
             recordings = job.recordings, steps = { { hook = "test" } } }
         local rok, r = pcall(Runner.run, spec, { root = here, hooks = { test = t.fn }, hooksFile = job.file, testDir = job.testDir,

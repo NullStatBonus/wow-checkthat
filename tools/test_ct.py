@@ -819,6 +819,30 @@ class AddonTests(unittest.TestCase):
         self.assertEqual(code, 2); self.assertIn("has 1 test file(s), and none calls ct.test", err)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_file_knows_its_client_and_a_test_can_run_on_one_client(self):
+        a = self.folder()
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, "test_client.lua"), "w") as f:
+            f.write('local ct = ...\n'
+                    'local want = ct.client == "era" and 1 or ct.client == "forever" and 2 or error("no client")\n'
+                    'ct.test("the file knows its client", { mocks = { GetMoney = { returns = { want } } } }, function(ctx)\n'
+                    '    ctx.eq(ctx.client, ct.client, "client"); ctx.eq(ctx.ns.Money(), want, "money")\n'
+                    '    ctx.eq(ct.interface, ct.client == "era" and 11509 or 16001, "interface")\n'
+                    'end)\n'
+                    'ct.test("forever only", { clients = { "forever" } }, function(ctx) ctx.eq(ctx.client, "forever", "client") end)\n')
+        code, out, err = self.run_test(a, "--tests", d)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("ok    era      ", out)
+        self.assertIn("test_client.lua  the file knows its client", out)
+        self.assertEqual([l.split()[1] for l in out.splitlines() if "forever only" in l], ["forever"], "clients skips the test on Era")
+        self.assertIn("test: 3 passed, 0 failed", out)
+        with open(os.path.join(d, "test_client.lua"), "w") as f:
+            f.write('local ct = ...\nct.test("bad", { clients = { "retail" } }, function() end)\n')
+        code, out, _ = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn('clients is a list of "era" and "forever"', out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_failing_test_names_the_difference_and_exits_1(self):
         code, out, _ = self.run_test(self.folder({"tests/test_fail.lua": 'local ct = ...\nct.test("counts twice", function(ctx) ctx.fire("BAG_UPDATE", 0); ctx.eq(ctx.ns.count, 2, "count") end)\n'}), "--client", "era")
         self.assertEqual(code, 1, out)
@@ -837,7 +861,7 @@ class AddonTests(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("FAIL  forever  tests/test_a_raises.lua: the test file raised", out); self.assertIn("setup broke", out)
         self.assertIn("tests/test_b_empty.lua: the test file registers no test (ct.test)", out)
-        self.assertIn("unknown option mock (mocks, savedVariables or checkThat)", out)
+        self.assertIn("unknown option mock (mocks, savedVariables, checkThat or clients)", out)
         self.assertIn('checkThat is "early", "late" or "missing", got sometimes', out)
         self.assertIn("test: 10 passed, 4 failed", out, "the other files still ran")
 

@@ -1642,7 +1642,7 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
             for path in files:
                 t = tocs[cl]
                 with open(job, "w", encoding="utf-8") as f:
-                    json.dump({k: v for k, v in {"toc": t["toc"], "interface": t["interface"], "addon": t["addon"], "file": path, "out": out,
+                    json.dump({k: v for k, v in {"toc": t["toc"], "client": cl, "interface": t["interface"], "addon": t["addon"], "file": path, "out": out,
                                                  "testDir": tests_dir, "name": name, "recordings": recordings}.items() if v}, f)
                 if os.path.exists(out):
                     os.remove(out)

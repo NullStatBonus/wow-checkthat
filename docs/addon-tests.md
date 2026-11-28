@@ -30,7 +30,22 @@ ct.test("selling stops in combat", function(ctx)
 end)
 ```
 
-The optional second value of `ct.test` holds `mocks` and `savedVariables`, in the same shapes as an offline block's ([Offline checks](authoring-plans.md)), and `checkThat` ([Test your CheckThat integration](#test-your-checkthat-integration)). A mock is set before your addon loads. A `{ recording = "..." }` mock reads the bundled recordings, and also your own when you pass `--recordings`. A test passes when its function returns, and fails with the error text when it raises or your addon does not load.
+The optional second value of `ct.test` holds `mocks` and `savedVariables`, in the same shapes as an offline block's ([Offline checks](authoring-plans.md)), `clients` and `checkThat` ([Test your CheckThat integration](#test-your-checkthat-integration)). A mock is set before your addon loads. A `{ recording = "..." }` mock reads the bundled recordings, and also your own when you pass `--recordings`. A test passes when its function returns, and fails with the error text when it raises or your addon does not load.
+
+A file runs once for each client, and `ct.client` (`"era"` or `"forever"`) and `ct.interface` say which. Read them at file scope to pick mocks that differ by client: a mock of a function the client does not have fails the load, and a recording can differ by client. `clients = { "forever" }` runs a test on those clients only. On the others the test is left out, with no line.
+
+```lua
+local ct = ...
+local money = ct.client == "forever" and "merchant:GetMoney()" or "gear:GetMoney()"
+
+ct.test("money comes from the recording", { mocks = { GetMoney = { { recording = money } } } }, function(ctx)
+    ctx.ok(ctx.ns.Money(), "money")
+end)
+
+ct.test("the auction house hook", { clients = { "forever" } }, function(ctx)
+    ctx.ok(ctx.ns.AuctionHooked, "hooked")
+end)
+```
 
 ## Test your CheckThat integration
 
@@ -108,7 +123,7 @@ It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: n
 - **What runs where.** Your test function runs with Lua's full library (`io`, `os`, `require` and the rest). Your addon's code that `ctx.fire`, `ctx.advance` and `ctx.reload` run sees only what it sees in game. A function you call straight from a test, such as `ctx.ns.SellJunk()`, runs with the test's library. A global your test file reads as nil is not in your addon's nil-read report.
 - **Trust.** `ct test` runs your addon's Lua and your tests with your permissions. Use it on code you trust.
 - **What a pass proves.** A test can change anything in the fake client, so a pass proves what the test checks. The fake client models the game's answers. The game itself can differ, so keep an in-game plan for what only the game shows.
-- **Stable.** `ct test`, `ct.test`, `ct.API` (1) and every `ctx` field are stable. A change only adds. CheckThat's own `tests/harness.lua` is internal.
+- **Stable.** `ct test`, `ct.test`, `ct.API` (1), `ct.client`, `ct.interface` and every `ctx` field are stable. A change only adds. CheckThat's own `tests/harness.lua` is internal.
 
 ## The ctx reference
 
