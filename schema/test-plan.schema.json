@@ -211,8 +211,9 @@
           },
           "then": {
             "not": {
-              "required": [
-                "tocs"
+              "anyOf": [
+                { "required": ["tocs"] },
+                { "required": ["recordings"] }
               ]
             }
           }
@@ -330,6 +331,11 @@
         "toc": {
           "type": "string",
           "minLength": 1
+        },
+        "recordings": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Level 5. The addon's own recordings folder, a path inside the addons folder as for toc (for example MyAddon/recordings). The runner reads <folder>/<client>.json beside tools/recordings/<client>.json, and the addon's entry wins for the same label. ct recordings -o <folder> writes it."
         },
         "tocs": {
           "type": "object",

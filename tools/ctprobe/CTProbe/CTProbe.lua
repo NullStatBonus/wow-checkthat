@@ -2,7 +2,7 @@
 -- The game runs this file first and loads the saved variables afterwards, then fires ADDON_LOADED. A CTProbeDB made here
 -- would be replaced by the table from disk, and every line written to the old one would be lost. So the saved table is
 -- only touched in ADDON_LOADED (see the event handler below).
-local VERSION = 8 -- v8: table returns kept three levels deep, table arguments stored, Forever auction house scenes (browse, itemsearch, commodity) (#234). v7: last update wins per opening, headers skipped, trainer filter and kind recorded, auction waits for complete rows, old window rows cleared at arm, record status (review of #240). v6: one window opening fills one scene; a nil IsTradeskillTrainer is a class trainer. v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
+local VERSION = 9 -- v9: /ctp record <call> records one read-only call a developer names (#214). v8: table returns kept three levels deep, table arguments stored, Forever auction house scenes (browse, itemsearch, commodity) (#234). v7: last update wins per opening, headers skipped, trainer filter and kind recorded, auction waits for complete rows, old window rows cleared at arm, record status (review of #240). v6: one window opening fills one scene; a nil IsTradeskillTrainer is a class trainer. v5: two scenes per window, money, item info for vendor rows, trainer level, auction links (issue 240). v4: armed window capture and candidate items (ctprobe-window-recordings). v2: taint probe (issue 98). v3: lifecycle order (163), tooltip hooks (151), hooksecurefunc taint (154), script time (190), fixtures (153). The saved file carries it, so a stale copy of this addon shows up in CTProbe.lua.
 local log -- CTProbeDB.log, set in ADDON_LOADED
 local early = {} -- lines made before ADDON_LOADED, written to the log when it arrives
 local realGetTime = GetTime -- say() reads the clock through this, so a hook on GetTime from /ctp taint hookerror cannot reach the log
@@ -96,7 +96,7 @@ ev:SetScript("OnEvent", function(_, e, ...)
     elseif e == "PLAYER_LOGIN" then
         life(e, ...)
         build()
-        say("v" .. VERSION .. " loaded. /ctp taint run, tooltip, budget, record, record arm, life")
+        say("v" .. VERSION .. " loaded. /ctp taint run, tooltip, budget, record, record <call>, record arm, life")
     elseif e == "PLAYER_REGEN_DISABLED" then
         shows = 0
         say("event PLAYER_REGEN_DISABLED; button shown=" .. tostring(b and b:IsShown()))
@@ -319,7 +319,7 @@ end
 local function record()
     if not CTProbeDB then say("record: saved variables are not loaded yet") return end
     local kept = {}
-    for label, entry in pairs(CTProbeDB.fixtures or {}) do if entry.window then kept[label] = entry end end -- what the windows recorded stays
+    for label, entry in pairs(CTProbeDB.fixtures or {}) do if entry.window or entry.picked then kept[label] = entry end end -- what the windows and /ctp record <call> recorded stays
     CTProbeDB.fixtures = kept
     local good, bad = 0, 0
     for _, id in ipairs(ITEMS) do
@@ -544,6 +544,84 @@ local function status()
     say(("record status: recorded %s; still waiting for %s"):format(#done > 0 and table.concat(done, ", ") or "nothing", #left > 0 and table.concat(left, ", ") or "nothing"))
 end
 
+-- /ctp record <call> (#214): one call a developer names, such as /ctp record GetItemInfo(6948). The last part of the name must read as a
+-- query (Get, Is, Has, Can or Num, or a Unit read, then a capital letter) and not be on ACTS, the query-named calls that act. Each
+-- argument is a literal (a number, true, false, nil, quoted text or a bare word read as text): nothing in the command runs as code.
+local QUERY = { "Get", "Is", "Has", "Can", "Num", "Unit" }
+local ACTS = { GetQuestReward = true } -- takes the quest reward the argument names
+local function literal(s)
+    s = s:match("^%s*(.-)%s*$")
+    local n = s:match("^%-?%d+%.?%d*$") and tonumber(s)
+    if n then return true, n end
+    if s == "true" then return true, true elseif s == "false" then return true, false elseif s == "nil" then return true, nil end
+    local q = s:sub(1, 1)
+    if (q == '"' or q == "'") and #s >= 2 and s:sub(-1) == q and not s:sub(2, -2):find(q, 1, true) and not s:find("\\", 1, true) then return true, s:sub(2, -2) end
+    if s:match("^[%a_][%w_]*$") then return true, s end
+    return false
+end
+local function splitArgs(text) -- commas inside quotes stay in the argument; nil when a quote is not closed
+    local parts, cur, quote = {}, "", nil
+    for i = 1, #text do
+        local c = text:sub(i, i)
+        if quote then cur = cur .. c; if c == quote then quote = nil end
+        elseif c == '"' or c == "'" then quote = c; cur = cur .. c
+        elseif c == "," then parts[#parts + 1] = cur; cur = ""
+        else cur = cur .. c end
+    end
+    if quote then return nil end
+    if #parts > 0 or cur:match("%S") then parts[#parts + 1] = cur end
+    return parts
+end
+local function argText(v)
+    if type(v) == "string" then return v:match("^[%a_][%w_]*$") and v or ("%q"):format(v) end
+    return tostring(v)
+end
+-- A personal call: an argument that names a player unit, or a return that is or holds the character's name, realm, GUID or money.
+local function personal(args, r)
+    for i = 1, args.n do
+        local a = args[i]
+        if type(a) == "string" and UnitIsPlayer then local ok, p = pcall(UnitIsPlayer, a); if ok and p then return true end end
+    end
+    local function get(f, ...) if type(f) == "function" then local ok, v = pcall(f, ...); if ok then return v end end end
+    local words, money = {}, get(GetMoney)
+    for _, w in ipairs({ get(UnitName, "player"), get(GetRealmName), get(GetNormalizedRealmName), get(UnitGUID, "player") }) do
+        if type(w) == "string" and w ~= "" then words[#words + 1] = w end
+    end
+    local function holds(v, depth)
+        if type(v) == "string" then for _, w in ipairs(words) do if v:find(w, 1, true) then return true end end
+        elseif type(v) == "number" then return money ~= nil and v == money
+        elseif type(v) == "table" and depth < 4 then for k, x in pairs(v) do if holds(k, depth + 1) or holds(x, depth + 1) then return true end end end
+        return false
+    end
+    for i = 2, r.n do if holds(r[i], 1) then return true end end
+    return false
+end
+local function recordOne(text)
+    if not CTProbeDB then say("record: saved variables are not loaded yet") return end
+    local name, inner = text:match("^%s*([%a_][%w_%.]*)%s*%((.*)%)%s*$")
+    if not name then say("record: write one call, such as /ctp record GetItemInfo(6948)") return end
+    local last, query = name:match("([^.]+)$"), false
+    for _, p in ipairs(QUERY) do if last:match("^" .. p .. "%u") then query = true end end
+    if not query or ACTS[last] then say(("record: %s is not a read-only call; the name must start with Get, Is, Has, Can, Num or Unit"):format(name)) return end
+    local parts = splitArgs(inner)
+    if not parts then say("record: a quote is not closed") return end
+    local args, shown = { n = #parts }, {}
+    for i, p in ipairs(parts) do
+        local ok, v = literal(p)
+        if not ok then say(("record: argument %d (%s) is not a number, true, false, nil or text"):format(i, p)) return end
+        args[i], shown[i] = v, argText(v)
+    end
+    CTProbeDB.fixtures = CTProbeDB.fixtures or {}
+    if not CTProbeDB.fixtures["GetBuildInfo()"] then store("GetBuildInfo()", function() return GetBuildInfo() end) end -- ct.py reads the client from it
+    local label = name .. "(" .. table.concat(shown, ", ") .. ")"
+    local r = pack(pcall(call, name, unpack(args, 1, args.n)))
+    local typeOnly = r[1] and personal(args, r) or nil
+    local entry = store(label, function() if not r[1] then error(r[2], 0) end; return unpack(r, 2, r.n) end, typeOnly, nil, nil, args)
+    entry.picked = true
+    if entry.error then say(("record: %s raised an error: %s"):format(label, entry.error))
+    else say(("record: %s recorded, %d values%s; /reload to save it"):format(label, entry.n, typeOnly and ", by type only (it holds a personal value)" or "")) end
+end
+
 SLASH_CTPROBE1 = "/ctp"
 SlashCmdList.CTPROBE = function(msg)
     if msg == "build" then build()
@@ -553,9 +631,10 @@ SlashCmdList.CTPROBE = function(msg)
     elseif msg == "record arm" or msg:match("^record arm ") then arm(msg:match("^record arm%s+(.+)$"))
     elseif msg == "record status" then status()
     elseif msg == "record" then record()
+    elseif msg:match("^record%s+[%a_][%w_%.]*%s*%(") then recordOne(msg:match("^record%s+(.+)$"))
     elseif msg:match("^budget") then budget(msg:match("^budget%s*(%S*)"))
     elseif msg == "life" then
         for _, l in ipairs(log or early) do if l:find("life", 1, true) then print(l) end end -- the whole log, all sessions
     elseif msg:match("^taint") then taint(msg:match("^taint%s*(%S*)"))
-    else say("button=" .. tostring(b and b:IsShown()) .. "; /ctp now, taint, tooltip, budget, record, record arm, life, clear") end
+    else say("button=" .. tostring(b and b:IsShown()) .. "; /ctp now, taint, tooltip, budget, record, record <call>, record arm, life, clear") end
 end

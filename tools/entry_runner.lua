@@ -35,6 +35,22 @@ for _, n in ipairs({ "GetItemInfo", "GetItemCount", "C_Item.GetItemInfo", "C_Ite
     "C_AuctionHouse.HasFullItemSearchResults", "C_AuctionHouse.GetItemSearchResultInfo", "C_AuctionHouse.GetItemKeyInfo",
     "C_AuctionHouse.GetNumCommoditySearchResults", "C_AuctionHouse.HasFullCommoditySearchResults", "C_AuctionHouse.GetCommoditySearchResultInfo" }) do Runner.MOCKABLE[n] = true end
 
+-- From level 5 a spec may also mock any function the client's surface lists (#214), except Lua's own (H.luaFunction) and these: the
+-- fake client's taint, frame, combat, error and timer model rests on them, so a mock would fake that model rather than a game answer.
+-- A name ending in "." covers its whole table.
+Runner.UNMOCKABLE = {}
+for _, n in ipairs({ "CreateFrame", "hooksecurefunc", "issecurevariable", "issecure", "securecall", "securecallfunction", "secureexecuterange",
+    "forceinsecure", "InCombatLockdown", "RunScript", "seterrorhandler", "geterrorhandler", "C_Timer." }) do Runner.UNMOCKABLE[n] = true end
+
+-- Whether a spec may mock api. surface is the level 5 client surface, or nil below level 5 (the closed list only). A name the surface
+-- lacks is allowed here: the load step then fails it as a function the client does not have.
+function Runner.mockable(api, surface, H)
+    if Runner.MOCKABLE[api] then return true end
+    if not surface then return false end
+    local ns = api:match("^([^%.]+)%.")
+    return not (H.luaFunction(api) or Runner.UNMOCKABLE[api] or (ns and Runner.UNMOCKABLE[ns .. "."]))
+end
+
 local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
 
 local function deepEq(a, b)
@@ -222,6 +238,7 @@ function Runner.run(spec, opts)
     for _, g in ipairs(groups) do
         for _, s in ipairs(g.steps or {}) do if s.tooltip ~= nil then needs5 = "a tooltip step" end end
     end
+    if spec.recordings ~= nil then needs5 = needs5 or "recordings" end
     -- Level 5: the client's real surface (tools/clients/<client>.json): only its game functions, its build, and frames
     -- with only their widget type's methods. A mock of a function the client lacks would hide the gap: it fails the load.
     local surface, surfaceErr
@@ -283,10 +300,11 @@ function Runner.run(spec, opts)
     for api in pairs(allMocks) do mockNames[#mockNames + 1] = api end
     table.sort(mockNames)
     local unlisted
-    for _, api in ipairs(mockNames) do if not Runner.MOCKABLE[api] then unlisted = api; break end end
+    for _, api in ipairs(mockNames) do if not Runner.mockable(api, surface, H) then unlisted = api; break end end
     -- A mock entry { recording = "GetItemInfo(6948)" } takes its args and returns from tools/recordings/<client>.json (made from a CTProbe
     -- run by ct.py recordings) for the client the TOC names. The entry is filled in place: makeMock then reads it like any other.
     local recErr, recFileErr
+    local recPaths = {} -- the files a recording label is looked up in, for the error
     local function fill(api, entry)
         if type(entry) ~= "table" or not entry.recording then return end
         local label = entry.recording
@@ -297,7 +315,7 @@ function Runner.run(spec, opts)
         local call = surface.recordings and surface.recordings.calls and surface.recordings.calls[label]
         if recFileErr then recErr = recErr or recFileErr; return end
         if not call then
-            recErr = recErr or ("mock %s: no recording %s for the %s client (tools/recordings/%s.json)"):format(api, label, surface.client, surface.client)
+            recErr = recErr or ("mock %s: no recording %s for the %s client (%s)"):format(api, label, surface.client, table.concat(recPaths, " or "))
             return
         end
         local function copy(list) local c = {}; for i, v in pairs(list or {}) do c[i] = v end; return c end -- the recording stays as it was read
@@ -312,14 +330,22 @@ function Runner.run(spec, opts)
             end
         end
     end
+    -- The bundled recordings, then the addon's own folder (spec.recordings, #214): for the same label the addon's entry wins.
+    -- A folder without the client's file adds nothing.
     if surface then
-        local rf = io.open(root .. "/tools/recordings/" .. surface.client .. ".json", "r")
-        if rf then
+        local calls = {}
+        local function read(path, shown)
+            recPaths[#recPaths + 1] = shown
+            local rf = io.open(path, "r")
+            if not rf then return end
             local rec, derr = jns.Json.Decode(rf:read("*a")); rf:close()
-            if type(rec) ~= "table" then recFileErr = ("tools/recordings/%s.json cannot be read: %s"):format(surface.client, tostring(derr))
-            elseif rec.format ~= 1 then recFileErr = ("tools/recordings/%s.json has format %s: this runner reads format 1"):format(surface.client, tostring(rec.format))
-            else surface.recordings = rec end
+            if type(rec) ~= "table" then recFileErr = recFileErr or ("%s cannot be read: %s"):format(shown, tostring(derr))
+            elseif rec.format ~= 1 then recFileErr = recFileErr or ("%s has format %s: this runner reads format 1"):format(shown, tostring(rec.format))
+            else for label, call in pairs(type(rec.calls) == "table" and rec.calls or {}) do calls[label] = call end end
         end
+        read(root .. "/tools/recordings/" .. surface.client .. ".json", "tools/recordings/" .. surface.client .. ".json")
+        if type(spec.recordings) == "string" then read(pathJoin(root, spec.recordings) .. "/" .. surface.client .. ".json", spec.recordings .. "/" .. surface.client .. ".json") end
+        surface.recordings = { calls = calls }
     end
     fillMocks(spec.mocks); for _, g in ipairs(groups) do fillMocks(g.mocks) end
     local absent

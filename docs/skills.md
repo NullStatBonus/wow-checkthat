@@ -2,7 +2,7 @@
 
 Two skills help addon developers write plans and read finished runs back. They are plain `SKILL.md` folders and developer tools. They are separate from the in-game `/ct` commands.
 
-- **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time. For an offline block it prefers a mock replayed from a call recorded in game (`tools/recordings/`) to a hand-written return value.
+- **`ct-test-plan`** interviews you one question at a time and drafts a plan one step at a time. For an offline block it prefers a mock replayed from a call recorded in game (`tools/recordings/`, or the addon's own folder recorded with CTProbe's `/ctp record <call>`, see [Harvesting](authoring-plans.md#record-your-own-calls)) to a hand-written return value.
   - It scopes first: a plan checks only what a fake game cannot prove, so a check a unit test proves gets no step. It drafts the essential steps first, never a one-for-one conversion of a manual document.
   - It asks first what the plan is for. A foundation plan is the release gate: one step per pillar, about 8 to 12 steps, for one character of any class in one place. A feature plan goes deep on one feature and runs when that feature changes. It sets `purpose` on the plan.
   - Steps are in player language: commands only behind Run, and Expect says what is on screen, never what is logged.
@@ -36,9 +36,9 @@ Pick one. None needs a CheckThat checkout except the last.
 - **Toolkit zip, for any agent.** Download `CheckThat-toolkit-<version>.zip` from a GitHub release and unzip it into your agent's skills folder: `~/.claude/skills` for Claude Code, `~/.codex/skills` for Codex, or the folder your agent reads. It holds `ct-test-plan` and `ct-verify`, side by side. If the extractor drops the exec bit, run the launcher as `sh ct-test-plan/ct/tools/ct`.
 - **From a checkout.** `make install-skill`, below.
 
-The plugin and the zip have no private Python. Run `python3 <tools>/ct.py setup` once, where `<tools>` is the `ct` folder of the plan skill (`ct-test-plan/ct/tools` in the zip). It creates a Python with PyYAML and jsonschema in your user data folder (`~/.local/share/checkthat/venv`, or `%LOCALAPPDATA%\checkthat\venv` on Windows), and a plugin update keeps it. It needs Python 3 with `venv`, and network access once. The `ct` launcher and the skills use it when no private Python is beside the skill.
+The plugin and the zip have no private Python. Run `python3 <tools>/ct.py setup` once, where `<tools>` is the folder that holds `ct.py`: `ct-test-plan/ct/tools` in the zip, `skills/plan/ct/tools` in the plugin (under `~/.claude/plugins/cache/checkthat/checkthat/<version>/`). It creates a Python with PyYAML and jsonschema in your user data folder (`~/.local/share/checkthat/venv`, or `%LOCALAPPDATA%\checkthat\venv` on Windows), and a plugin update keeps it. It needs Python 3 with `venv`, and network access once. The `ct` launcher and the skills use it when no private Python is beside the skill.
 
-`ct doctor` ends with a tools section: the tools version, the Python in use and its packages, and whether `luajit` is on the path, with the install command for each missing one. `replay`, `replay-flow`, `offline`, `drift` and `coverage --harness` need LuaJIT. The rest of the tools do not.
+`<tools>/ct doctor` (or `ct doctor` when the launcher is on your `PATH`) ends with a tools section: the tools version, the Python in use and its packages, and whether `luajit` is on the path, with the install command for each missing one. `replay`, `replay-flow`, `offline`, `drift` and `coverage --harness` need LuaJIT. The rest of the tools do not.
 
 The bundle's `tests/` files serve the plan commands (`replay-flow`, `offline`). They are internal and not a contract for your addon's own tests. A public fake-client library is #273.
 

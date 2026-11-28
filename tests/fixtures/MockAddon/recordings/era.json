@@ -1,0 +1,33 @@
+{
+ "format": 1,
+ "rev": 5,
+ "client": "era",
+ "build": "1.15.9.70576",
+ "calls": {
+  "GetSpellInfo(133)": {
+   "api": "GetSpellInfo",
+   "args": [
+    133
+   ],
+   "n": 6,
+   "returns": [
+    "Fireball",
+    "",
+    135812,
+    1500,
+    0,
+    35
+   ]
+  },
+  "GetItemInfo(6948)": {
+   "api": "GetItemInfo",
+   "args": [
+    6948
+   ],
+   "n": 1,
+   "returns": [
+    "Hearthstone (the addon's)"
+   ]
+  }
+ }
+}

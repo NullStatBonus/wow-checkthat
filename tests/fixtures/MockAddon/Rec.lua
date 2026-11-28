@@ -11,4 +11,6 @@ CheckThat.Entry(addonName, "vendor_info", function(i) local info = C_MerchantFra
 CheckThat.Entry(addonName, "commodity_price", function(id, i) local r = C_AuctionHouse.GetCommoditySearchResultInfo(id, i); return r and r.unitPrice, r and #r.owners end)
 CheckThat.Entry(addonName, "item_result", function(key, i) local r = C_AuctionHouse.GetItemSearchResultInfo(key, i); if r then return r.buyoutAmount, r.itemKey.itemID end end)
 CheckThat.Entry(addonName, "browse_count", function() return #C_AuctionHouse.GetBrowseResults() end)
+CheckThat.Entry(addonName, "spell_name", function(id) return (GetSpellInfo(id)) end) -- a call the closed mock list does not name (#214)
+CheckThat.Entry(addonName, "unit_level", function(unit) return (UnitLevel(unit)) end)
 CheckThat.Entry(addonName, "vendor_price", function(i) return (select(3, GetMerchantItemInfo(i))) end)

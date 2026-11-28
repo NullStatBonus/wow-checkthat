@@ -492,6 +492,86 @@ local function forever()
     }
 end
 
+-- v9 (#214): /ctp record <call> records one read-only call a developer names.
+test("v9: /ctp record <call> records one read-only call with its arguments, and a later /ctp record keeps it", function()
+    probe({})
+    local got
+    _G.GetSpellInfo = function(id, extra) got = { id, extra }; return "Fireball", nil, 135812 end
+    _G.UnitIsPlayer = function() return false end
+    SlashCmdList.CTPROBE("record GetSpellInfo(133, 'a, b')")
+    local e = CTProbeDB.fixtures['GetSpellInfo(133, "a, b")']
+    T.ok(e, "the label names the call and its arguments")
+    T.same(got, { 133, "a, b" }, "the arguments reach the call as values; a comma inside quotes stays in the text")
+    T.eq(e.n, 3); T.eq(e.values[1].value, "Fireball"); T.eq(e.values[2].type, "nil"); T.eq(e.args[1].value, 133); T.eq(e.args[2].value, "a, b")
+    T.ok(e.typeOnly == nil, "not personal")
+    T.ok(CTProbeDB.fixtures["GetBuildInfo()"], "the build is recorded, so ct.py knows the client")
+    T.ok(has("record: GetSpellInfo(133, \"a, b\") recorded, 3 values"), "the probe says what it recorded")
+    SlashCmdList.CTPROBE("record C_Item.GetItemCount(6948, true, nil, target)")
+    T.ok(CTProbeDB.fixtures["C_Item.GetItemCount(6948, true, nil, target)"], "a dotted name, a boolean, nil and a bare word")
+    SlashCmdList.CTPROBE("record")
+    T.ok(CTProbeDB.fixtures['GetSpellInfo(133, "a, b")'], "a later /ctp record keeps the call")
+end)
+
+test("v9: a call that is not a query, or is on the block list, records nothing and calls nothing", function()
+    probe({})
+    local called = {}
+    for _, n in ipairs({ "BuyMerchantItem", "GetQuestReward", "Getaway", "SetCVar", "UnitPopup_Show" }) do _G[n] = function() called[#called + 1] = n end end
+    for _, cmd in ipairs({ "BuyMerchantItem(1)", "GetQuestReward(1)", "Getaway()", "SetCVar(x, 1)" }) do
+        SlashCmdList.CTPROBE("record " .. cmd)
+        T.eq(CTProbeDB.fixtures and CTProbeDB.fixtures[cmd], nil, cmd)
+    end
+    T.same(called, {}, "nothing was called")
+    T.ok(has("record: GetQuestReward is not a read-only call"), "the probe says why")
+end)
+
+test("v9: an argument that is not a literal is refused before anything is called", function()
+    probe({})
+    local ran = false
+    _G.GetItemInfo = function() ran = true end
+    _G.loadstring = function() ran = true; return function() end end
+    for _, cmd in ipairs({ 'GetItemInfo(loadstring("x"))', "GetItemInfo(1 + 1)", "GetItemInfo({})", 'GetItemInfo("open)' }) do
+        SlashCmdList.CTPROBE("record " .. cmd)
+    end
+    T.ok(not ran, "nothing ran")
+    T.ok(has('record: argument 1 (loadstring("x")) is not a number'), "the probe names the argument")
+    T.ok(has("record: a quote is not closed"))
+end)
+
+test("v9: a call on a player unit, or one whose returns hold a personal value, is recorded by type only", function()
+    probe({})
+    _G.UnitIsPlayer = function(u) return u == "player" or u == "party1" end
+    _G.UnitLevel = function() return 42 end
+    _G.UnitName = function() return "Secretname" end
+    _G.GetRealmName = function() return "Secretrealm" end
+    _G.UnitGUID = function() return "Player-1-0ABC" end
+    _G.GetMoney = function() return 98765 end
+    _G.GetGuildInfo = function() return "Guild", "Rank", 1, "Secretrealm" end
+    _G.GetCoinInfo = function() return { total = 98765 } end
+    _G.GetSomeLink = function() return "|Hplayer:Secretname|h" end
+    SlashCmdList.CTPROBE("record UnitLevel(player)")
+    SlashCmdList.CTPROBE("record UnitLevel(party1)")
+    SlashCmdList.CTPROBE("record UnitLevel(target)")
+    SlashCmdList.CTPROBE("record GetGuildInfo(target)")
+    SlashCmdList.CTPROBE("record GetCoinInfo()")
+    SlashCmdList.CTPROBE("record GetSomeLink()")
+    local fx = CTProbeDB.fixtures
+    T.eq(fx["UnitLevel(player)"].typeOnly, true); T.eq(fx["UnitLevel(player)"].values[1].value, nil)
+    T.eq(fx["UnitLevel(party1)"].typeOnly, true, "any unit that is a player")
+    T.eq(fx["UnitLevel(target)"].typeOnly, nil); T.eq(fx["UnitLevel(target)"].values[1].value, 42, "an NPC unit keeps its values")
+    T.eq(fx["GetGuildInfo(target)"].typeOnly, true, "the realm in a return")
+    T.eq(fx["GetCoinInfo()"].typeOnly, true, "money inside a table")
+    T.eq(fx["GetSomeLink()"].typeOnly, true, "the name inside text")
+    T.ok(has("by type only (it holds a personal value)"))
+end)
+
+test("v9: a call that raises is stored as an error entry", function()
+    probe({})
+    _G.GetBroken = function() error("boom", 0) end
+    SlashCmdList.CTPROBE("record GetBroken()")
+    T.eq(CTProbeDB.fixtures["GetBroken()"].error, "boom")
+    T.ok(has("record: GetBroken() raised an error: boom"))
+end)
+
 test("v8: a table return is kept three levels deep, and a table cut short says so", function()
     probe({})
     vendorFakes(1)
