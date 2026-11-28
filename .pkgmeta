@@ -11,6 +11,7 @@ manual-changelog:
 
 ignore:
   - .claude
+  - .claude-plugin
   - .github
   - skills
   - .venv

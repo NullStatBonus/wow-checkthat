@@ -30,6 +30,20 @@ Ask in plain words: "write a CheckThat test plan for this branch", or "verify my
 
 ## Install
 
+Pick one. None needs a CheckThat checkout except the last.
+
+- **Claude Code plugin.** Run `claude plugin marketplace add NullStatBonus/wow-checkthat`, then `claude plugin install checkthat@checkthat` (or `/plugin install checkthat@checkthat` in a session). The commands are `/checkthat:plan` and `/checkthat:verify`. Updates come with each publish. The plugin version is the CheckThat version plus the commit, such as `1.0.0+3f9c2a1b7d4e`.
+- **Toolkit zip, for any agent.** Download `CheckThat-toolkit-<version>.zip` from a GitHub release and unzip it into your agent's skills folder: `~/.claude/skills` for Claude Code, `~/.codex/skills` for Codex, or the folder your agent reads. It holds `ct-test-plan` and `ct-verify`, side by side. If the extractor drops the exec bit, run the launcher as `sh ct-test-plan/ct/tools/ct`.
+- **From a checkout.** `make install-skill`, below.
+
+The plugin and the zip have no private Python. Run `python3 <tools>/ct.py setup` once, where `<tools>` is the `ct` folder of the plan skill (`ct-test-plan/ct/tools` in the zip). It creates a Python with PyYAML and jsonschema in your user data folder (`~/.local/share/checkthat/venv`, or `%LOCALAPPDATA%\checkthat\venv` on Windows), and a plugin update keeps it. It needs Python 3 with `venv`, and network access once. The `ct` launcher and the skills use it when no private Python is beside the skill.
+
+`ct doctor` ends with a tools section: the tools version, the Python in use and its packages, and whether `luajit` is on the path, with the install command for each missing one. `replay`, `replay-flow`, `offline`, `drift` and `coverage --harness` need LuaJIT. The rest of the tools do not.
+
+The bundle's `tests/` files serve the plan commands (`replay-flow`, `offline`). They are internal and not a contract for your addon's own tests. A public fake-client library is #273.
+
+### From a checkout
+
 Run this in the CheckThat checkout:
 
 ```
@@ -53,11 +67,10 @@ Tested with Claude Code only. Codex and other agents read the same `SKILL.md` fo
 
 [Adopt CheckThat in an addon repository](adopting.md) has the AGENTS.md section to paste into an addon that uses the skills.
 
-## Claude Code plugin
+## Build the plugin and the toolkit
 
-`make build-plugin` builds a Claude Code plugin in `build/plugin/` (`PLUGIN_DIR=<dir>` changes the target) with both skills, the plan tools and the version stamp.
+`make build-plugin` builds the Claude Code plugin in `build/plugin/` (`PLUGIN_DIR=<dir>` changes the target) with both skills, the plan tools and the version stamp. `make build-toolkit` builds the toolkit zip as `build/CheckThat-toolkit-<version>.zip` (`TOOLKIT_DIR=<dir>` changes the folder, and the zip goes beside it). `make install-skill`, `build-plugin` and `build-toolkit` copy the bundle with one script (`tools/bundle.sh`), so the three hold the same files.
 
-- Load it for one session with `claude --plugin-dir build/plugin`.
+- Load the built plugin for one session with `claude --plugin-dir build/plugin`.
 - Its commands are `/checkthat:plan` and `/checkthat:verify`. The installed skills run as `/ct-test-plan` and `/ct-verify`.
-- A plugin has no private Python. The skills use `python3` when it imports PyYAML and jsonschema, and print the command that creates an environment when it does not.
-- The plugin is not published yet (#53). `make install-skill` is the install for other repositories.
+- A tag, or a manual publish run with no tag, publishes both: the plugin to the `plugin` branch, which `.claude-plugin/marketplace.json` names, and the zip on the GitHub release ([Publishing](publishing.md)).

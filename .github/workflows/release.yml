@@ -3,9 +3,21 @@ name: Release
 # Tag vX.Y.Z to test, package and publish. The tag must equal the version in both TOC files.
 # CurseForge and Wago uploads are skipped for a site whose project ID is missing from the TOCs
 # (## X-Curse-Project-ID, ## X-Wago-ID); see docs/publishing.md.
+# A tag push also publishes the developer toolkit: the plugin to the plugin branch (the marketplace in
+# .claude-plugin/marketplace.json installs from it) and the toolkit zip on the GitHub release.
+# Run it by hand (workflow_dispatch) on main to check or publish the toolkit without a tag. It builds and
+# validates the plugin and the toolkit and uploads them as workflow artifacts. With publish ticked it also
+# replaces the toolkit zip on the release of the current version and commits the plugin to the plugin branch.
+# A manual run never packages the addon or creates a release, whatever ref it runs from.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the plugin and the toolkit zip (main only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,12 +38,55 @@ jobs:
       - name: Checks
         run: |
           make check
-          sh tools/check-version.sh "$GITHUB_REF_NAME"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then sh tools/check-version.sh "$GITHUB_REF_NAME"; fi
+      - name: Build the plugin and the toolkit
+        run: make build-plugin build-toolkit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # A toolkit problem must not block an addon release: on a tag push this step may fail, and then only the
+      # toolkit is held back. A manual run stops here.
+      - name: Validate the plugin and the marketplace
+        id: validate
+        continue-on-error: ${{ github.event_name == 'push' }}
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.332   # pinned: raise it on purpose
+          claude plugin validate build/plugin
+          claude plugin validate .
+      - name: Upload the dry-run outputs
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: developer-toolkit
+          include-hidden-files: true   # build/plugin/.claude-plugin holds the manifest
+          path: |
+            build/plugin
+            build/CheckThat-toolkit-*.zip
       - uses: BigWigsMods/packager@v2
+        if: github.event_name == 'push'
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
       - name: GitHub release
+        if: github.event_name == 'push'
         run: gh release create "$GITHUB_REF_NAME" .release/*.zip --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attach the toolkit zip to the release
+        if: github.event_name == 'push' && steps.validate.outcome == 'success'
+        run: gh release upload "$GITHUB_REF_NAME" build/CheckThat-toolkit-*.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Replace the toolkit zip on the current release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+        run: gh release upload "v$(cat build/toolkit/ct-test-plan/ct/VERSION)" build/CheckThat-toolkit-*.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Last, so the plugin goes live only after its release and toolkit zip exist. The script skips a commit that is
+      # not on main or older than the published tools, and retries a push that races another run.
+      - name: Publish the plugin branch
+        if: steps.validate.outcome == 'success' && (github.event_name == 'push' || (inputs.publish && github.ref == 'refs/heads/main'))
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          sh tools/publish_plugin.sh build/plugin

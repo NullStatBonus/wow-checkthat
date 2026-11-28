@@ -36,6 +36,7 @@ CheckThat is half of a toolkit. The other half lives on GitHub: https://github.c
 - **Plan format.** The schema and the rules for steps, checks, categories and the commands a plan may offer.
 - **Integration API.** Report facts with `CheckThat.Report`, register entry points for automatic steps with `CheckThat.Entry`, learn when a run starts or ends with `CheckThat.OnRun`, and declare your addon's commands with `CheckThat.Commands`. These names are stable from 1.0.0.
 - **Skills** that draft a test plan for a change and read a finished run back against its plan.
+- **Install without cloning.** In Claude Code, add the marketplace with `claude plugin marketplace add NullStatBonus/wow-checkthat`. For any other agent, download the toolkit zip from a GitHub release.
 
 Start with the README, then "Adopting CheckThat" in the docs folder. Report problems and ask for features in the GitHub issues.
 
