@@ -106,6 +106,19 @@ test("commands an addon declared are offered without the game check, and let a p
     T.eq(App.DeclareCommands("MyAddon", { "/script" }), false)
 end)
 
+test("ct test's CheckThat.Commands gives the same answers as App.DeclareCommands (tools/entry_runner.lua)", function()
+    boot()
+    local Runner = dofile("tools/entry_runner.lua")
+    T.finally(function() App.commands.MyAddon = nil end)
+    local cases = { { "MyAddon", { "/my" } }, { "MyAddon", { "/my", "/mine" } }, { "MyAddon", { "/script" } }, { "MyAddon", { "/run" } },
+        { "MyAddon", { "/ct" } }, { "MyAddon", { "/kt" } }, { "MyAddon", { "my" } }, { "MyAddon", { "/a b" } }, { "MyAddon", { 5 } },
+        { "MyAddon", {} }, { "MyAddon", { "/a", "/b", "/c", "/d", "/e", "/f", "/g", "/h", "/i" } }, { "My Addon", { "/my" } },
+        { ("x"):rep(65), { "/my" } }, { 5, { "/my" } }, { "MyAddon", "/my" } }
+    for i, c in ipairs(cases) do
+        T.eq(Runner.declareCommands(ns.Plan, c[1], c[2]), App.DeclareCommands(c[1], c[2]), "case " .. i)
+    end
+end)
+
 test("a plan that needs a newer CheckThat is refused with that sentence, and nothing is stored", function()
     local db = boot()
     local p = plan(); p.needs = ns.Plan.REV + 1; p.brandNewKey = { 1 }
@@ -370,22 +383,24 @@ test("a slash verdict on a step that has a result needs Redo or Undo first", fun
     T.eq(run.steps["kt.1"].verdict, "skip"); T.eq(#run.steps["kt.1"].attempts, 1)
     App.Begin(); T.ok(App.Verdict("pass"), "after Redo a verdict is taken")
 end)
-test("PlanReads lists each log global and each global-value name once, sorted, and leaves frame probes out", function()
+test("PlanReads lists each log global and each value-reading probe once, sorted, and leaves a frame's shown state out", function()
     local p = { logs = { kt = { global = "KeepThatDB", path = "global.log" }, again = { global = "KeepThatDB", path = "global.other" },
             ddt = { global = "DontDoThatDB", path = "log" } },
         sections = { { id = "s", title = "S", steps = {
             { id = "a", assertions = { { kind = "state", probe = "global-value", name = "ZetaVar", op = "exists" },
                 { kind = "state", probe = "frame-shown", name = "SomeFrame", op = "eq", value = true },
+                { kind = "state", probe = "frame-text", name = "TipFrame", op = "eq", value = "x" },
+                { kind = "state", probe = "money", op = "ge", value = 0 },
                 { kind = "state", probe = "addon-loaded", name = "KeepThat" },
                 { kind = "state", probe = "global-value", name = "KeepThatDB", path = "x", op = "exists" } } },
             { id = "b" } } } } }
-    T.same(App.PlanReads(p), { "DontDoThatDB", "KeepThatDB", "ZetaVar" })
+    T.same(App.PlanReads(p), { "DontDoThatDB", "KeepThatDB", "TipFrame", "ZetaVar" })
     T.same(App.PlanReads({ sections = {} }), {})
     T.eq(App.ReadsNote({ sections = {} }), nil, "a plan that reads nothing has no note")
-    T.eq(App.ReadsNote(p), "This plan reads these variables: DontDoThatDB, KeepThatDB, ZetaVar. A results string can include what they hold.")
+    T.eq(App.ReadsNote(p), "This plan reads these variables: DontDoThatDB, KeepThatDB, TipFrame, ZetaVar. A results string can include what they hold.")
     for i = 1, 8 do p.logs["n" .. i] = { global = "Aaa" .. i, path = "x" } end
     local note = App.ReadsNote(p)
-    T.ok(note:find("Aaa1, Aaa2, Aaa3, Aaa4, Aaa5, Aaa6, and 5 more.", 1, true), "six names, then a count: " .. note)
+    T.ok(note:find("Aaa1, Aaa2, Aaa3, Aaa4, Aaa5, Aaa6, and 6 more.", 1, true), "six names, then a count: " .. note)
     T.ok(App.ReadsNote({ logs = { bar = { global = "A|cffff0000x", path = "x" } }, sections = {} }):find("A||cffff0000x", 1, true),
         "a name is escaped: the card shows it as text")
 end)

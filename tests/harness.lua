@@ -667,6 +667,9 @@ end
 H.DEFAULT_BUDGET = 100000000
 local CALL_COST, COUNT_STEP = 20, 100
 local budgetActive = false
+-- Read now: the offline runner hides jit (and may hide debug) from addon code, and a budgeted call can start while they are hidden.
+-- Without jit.off a compiled loop never reaches the hook.
+local debug, jit = debug, rawget(_G, "jit")
 local HARNESS_SRC = debug.getinfo(1, "S").short_src
 function H.budgeted(budget, fn, ...)
     -- A nested call (a handler that fires another budgeted callback) is counted by the outer call, so it is a plain pcall.

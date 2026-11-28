@@ -312,8 +312,30 @@ def expand_cases(plan):
 # checks). Revision 1 is the plan format as of 0.21.0. Each addition to the plan format raises both and adds a rule here: (revision, what, test),
 # where test(plan) is true when the plan uses the addition. compile writes "needs" from the rules, so an older CheckThat refuses the plan
 # with "needs a newer CheckThat" instead of skipping a check it does not know.
-PLAN_REV = 2
-PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p)]
+def _uses_within(plan):
+    """True when a log-sequence item of the plan gives within, the plan format addition of revision 3."""
+    for sec in plan.get("sections") or []:
+        for st in sec.get("steps") or []:
+            for a in st.get("assertions") or []:
+                if isinstance(a, dict) and a.get("kind") == "log-sequence":
+                    for m in a.get("sequence") or []:
+                        if isinstance(m, dict) and "within" in m:
+                            return True
+    return False
+
+
+def _uses_new_probes(plan):
+    """True when a state check of the plan reads money, bag-free-slots, item-count or frame-text, the probes of revision 3 (#67)."""
+    for sec in plan.get("sections") or []:
+        for st in sec.get("steps") or []:
+            for a in st.get("assertions") or []:
+                if isinstance(a, dict) and a.get("kind") == "state" and a.get("probe") in ("money", "bag-free-slots", "item-count", "frame-text"):
+                    return True
+    return False
+
+
+PLAN_REV = 3
+PLAN_NEEDS = [(2, "commands", lambda p: "commands" in p), (3, "within", _uses_within), (3, "the money, bag-free-slots, item-count or frame-text probe", _uses_new_probes)]
 
 def plan_needs(plan):
     """(revision, what): the highest revision the plan's keys need, and the addition that needs it (None for revision 1)."""
@@ -443,13 +465,18 @@ def validate(plan, requirements=None):
                     errs.append("%s: unknown log source %s" % (sid, a["source"]))
                 if a["kind"] in ("fact", "state"):
                     check_op(a, sid, errs)
+                if a["kind"] == "state" and a.get("probe") == "item-count" and not is_num(a.get("id")):
+                    errs.append("%s: item-count needs an id, a number" % sid)  # the schema holds id and bag to their types
                 if a["kind"] in ("fact", "log"):
                     check_count(a, sid, errs)
                     c = a.get("count") or {}
                 if a["kind"] == "log":
                     check_matcher(a, sid, "log assertion", errs)
-                for m in a.get("sequence", []) if a["kind"] == "log-sequence" else []:
+                for i, m in enumerate(a.get("sequence", []) if a["kind"] == "log-sequence" else []):
                     check_matcher(m, sid, "sequence item", errs)
+                    if isinstance(m, dict) and "within" in m and i == 0:
+                        # The schema types within as a whole number, 1 to 600; a position in the sequence is not its job.
+                        errs.append("%s: the first sequence item has no earlier line, so within does not apply" % sid)
                 own = "[ct] step %s " % sid   # the game judges a result before it writes this line
                 if a["kind"] == "log" and (own in a.get("contains", "") or a.get("equals", "").startswith(own)):
                     errs.append("%s: asserts its own result line (%s...); the game judges the result before it writes the line, so check it on a later step with scope run" % (sid, own))
@@ -1550,6 +1577,138 @@ def offline_plan(plan, addons, requirements=None, info=None, client=None):
     if not res["ok"] and not any(i["result"] == "fail" for i in items):
         items.append({"step": "offline.0", "label": "run", "result": "fail", "why": "a step produced no result"})
     return items
+
+
+def toc_interfaces(path):
+    """The ## Interface: numbers of a TOC file (a comma list gives several), or [] when it names none."""
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
+        for line in f:
+            m = re.match(r"##\s*Interface\s*:\s*(.*)", line)
+            if m:
+                return [int(n) for n in re.findall(r"\d+", m.group(1))]
+    return []
+
+# The TOC suffixes each modelled client reads first (CheckThat ships _Vanilla and _Camelot).
+TOC_SUFFIXES = {"era": ("vanilla", "classic"), "forever": ("camelot",)}
+TEST_TIMEOUT = 300   # seconds for one test file on one client: a test that never ends fails instead of hanging ct test
+
+def toc_client(n):
+    """The client the fake client models for an interface number: Era 10000-15999, Forever 16000-19999, otherwise None."""
+    return "era" if 10000 <= n < 16000 else "forever" if 16000 <= n < 20000 else None
+
+def addon_tocs(folder):
+    """{client: {"toc", "interface", "addon"}} for the TOCs in an addon folder. The interface decides the client; a comma list counts
+    for each number. The addon's name is the folder's when a TOC is named after it, else the name all TOC names share (a checkout's
+    folder may differ). When TOCs compete for a client, a suffix the client reads (_Vanilla, _Camelot) wins, then any suffix, then the
+    plain name, then name order. Raises ValueError when the TOC names share no addon name."""
+    tocs = [n for n in sorted(os.listdir(folder)) if n.lower().endswith(".toc") and os.path.isfile(os.path.join(folder, n))]
+    stems = [n[:-4] for n in tocs]
+    if not stems:
+        return {}
+    def fits(name):
+        return all(s.lower() == name.lower() or (s.lower().startswith(name.lower()) and s[len(name)] in "_-") for s in stems)
+    base = os.path.basename(os.path.normpath(folder))
+    name = base if fits(base) else os.path.commonprefix(stems).rstrip("_-")
+    if not name or not fits(name):
+        raise ValueError("the TOC files in %s (%s) share no addon name: name them after the addon, such as MyAddon_Vanilla.toc" % (folder, ", ".join(tocs)))
+    out = {}
+    for toc, stem in zip(tocs, stems):
+        suffix = stem[len(name) + 1:].lower()
+        for n in toc_interfaces(os.path.join(folder, toc)):
+            cl = toc_client(n)
+            if not cl:
+                continue
+            rank = 2 if suffix in TOC_SUFFIXES[cl] else 1 if suffix else 0
+            if cl not in out or rank > out[cl][0]:
+                out[cl] = (rank, {"toc": os.path.join(folder, toc), "interface": n, "addon": name})
+    return {cl: v for cl, (_, v) in out.items()}
+
+# A file that names ct.test (as a word: not subject.test) is a ct test file; any other test file is for another runner.
+CT_TEST_NAMED = re.compile(r"(?<![\w.])ct\.test\b")
+
+def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
+    """Run ct test for an addon folder: every test_*.lua and *_test.lua in tests/ (or in tests, a folder anywhere) that calls ct.test, once for each client the folder has a TOC for, each file and client in
+    its own luajit process (tools/addon_test.lua), from the addon's folder. Returns {"results": [{client, file, name, ok, detail}],
+    "outputs": {(client, file): what the file wrote}, "nilReads": {client: (interface, names)}, "skipped": [files]}. Raises ValueError for a folder that
+    cannot be tested."""
+    if not os.path.exists(os.path.join(ROOT, "tools", "addon_test.lua")):
+        raise ValueError("test needs tools/addon_test.lua (missing): reinstall the tools")
+    folder = os.path.realpath(folder)
+    if not os.path.isdir(folder):
+        raise ValueError("%s is not a folder" % folder)
+    tocs = addon_tocs(folder)
+    if not tocs:
+        raise ValueError("%s has no .toc file with an ## Interface: line for Era (10000-15999) or Forever (16000-19999): run ct test in the addon's folder, or name it" % folder)
+    if client:
+        if client not in tocs:
+            raise ValueError("%s has no TOC for %s (its TOCs are for %s)" % (folder, client, ", ".join(sorted(tocs))))
+        tocs = {client: tocs[client]}
+    if tests:   # a repo that keeps its tests outside the folder it ships
+        tests_dir = os.path.realpath(tests)
+        if not os.path.isdir(tests_dir):
+            raise ValueError("%s is not a folder" % tests)
+    else:
+        tests_dir = os.path.join(folder, "tests")
+    # test_x.lua or x_test.lua. A file that never names ct.test belongs to another runner (such as the addon's own harness): it is skipped.
+    pat = glob.escape(tests_dir)
+    named = sorted(p for p in set(glob.glob(os.path.join(pat, "test_*.lua")) + glob.glob(os.path.join(pat, "*_test.lua"))) if os.path.isfile(p))
+    files, skipped = [], []
+    for path in named:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                (files if CT_TEST_NAMED.search(f.read()) else skipped).append(path)
+        except OSError as e:
+            raise ValueError("cannot read %s: %s" % (path, e))
+    if not files:
+        where = tests_dir if tests else os.path.join(folder, "tests")
+        if skipped:
+            raise ValueError("%s has %d test file(s), and none calls ct.test: they are for another runner. Put ct tests in their own files (docs/addon-tests.md)" % (where, len(skipped)))
+        raise ValueError("%s has no test_*.lua or *_test.lua: write one (docs/addon-tests.md)" % where)
+    if recordings:
+        recordings = os.path.realpath(recordings)
+    def shown(p):   # inside the addon folder: from it; elsewhere: from the current folder, or whole when that is another drive
+        try:
+            return os.path.relpath(p, folder if p.startswith(folder + os.sep) else os.getcwd())
+        except ValueError:
+            return p
+    results, outputs, nil_reads, left = [], {}, {}, 0
+    with tempfile.TemporaryDirectory() as d:
+        job, out = os.path.join(d, "job.json"), os.path.join(d, "result.json")
+        for cl in ("era", "forever"):
+            if cl not in tocs:
+                continue
+            names, interface = set(), None
+            for path in files:
+                t = tocs[cl]
+                with open(job, "w", encoding="utf-8") as f:
+                    json.dump({k: v for k, v in {"toc": t["toc"], "client": cl, "interface": t["interface"], "addon": t["addon"], "file": path, "out": out,
+                                                 "testDir": tests_dir, "name": name, "recordings": recordings}.items() if v}, f)
+                if os.path.exists(out):
+                    os.remove(out)
+                rel = shown(path)
+                try:
+                    r = run_luajit([os.path.join(ROOT, "tools", "addon_test.lua"), job], folder, TEST_TIMEOUT)
+                    printed = (r.stdout or "") + (r.stderr or "")
+                except subprocess.TimeoutExpired as e:
+                    r, printed = None, e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+                try:
+                    with open(out, encoding="utf-8") as f:
+                        res = json.load(f)
+                except (OSError, ValueError):
+                    why = "ran longer than %d seconds, so it was stopped" % TEST_TIMEOUT if r is None else "the runner wrote no result"
+                    res, printed = {"error": why, "tests": []}, printed
+                if printed.strip():
+                    outputs[(cl, rel)] = printed
+                if res.get("error"):
+                    results.append({"client": cl, "file": rel, "name": None, "ok": False, "detail": res["error"]})
+                for t in res.get("tests") or []:
+                    results.append({"client": cl, "file": rel, "name": t["name"], "ok": bool(t.get("ok")), "detail": t.get("detail") or ""})
+                left += res.get("leftOut") or 0
+                names.update(res.get("nilReads") or [])
+                interface = interface or res.get("interface")
+            if interface:   # no test reached a load: no report to give
+                nil_reads[cl] = (interface, names)
+    return {"results": results, "outputs": outputs, "nilReads": nil_reads, "skipped": [shown(p) for p in skipped], "leftOut": left, "clients": [c for c in ("era", "forever") if c in tocs]}
 
 
 FLAVOR = {"classic-era": "era", "forever-camelot": "forever"}
@@ -3080,7 +3239,7 @@ JSON_FORMAT = 1
 # maintainer tools: their help says the output may change.
 # from-md, sv2json and drift are stable because the shipped skills run them.
 STABLE_COMMANDS = ("validate", "compile", "coverage", "replay", "offline", "replay-flow", "lines", "decode", "from-md", "sv2json",
-                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend", "setup", "recordings")
+                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend", "setup", "recordings", "test")
 MAINTAINER_COMMANDS = ("census",)
 MAINTAINER_NOTE = "maintainer tool, output may change: "
 
@@ -3701,6 +3860,7 @@ def main(argv=None):
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
     p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into <folder>/<client>.json, the recorded calls a plan mock can name (docs/authoring-plans.md, Record your own calls)"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording, such as a folder in your addon's repository that the plan's offline.recordings names (default in a checkout: tools/recordings; an installed copy of the tools needs -o, because an update replaces it)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)"); p.add_argument("--contribute", action="store_true", help="print, between markers, the calls this run recorded that tools/recordings/<client>.json lacks or holds in another shape and that fit signatures.json, ready for a pull request (docs/harvesting.md); writes no file, so an installed copy needs no -o")
     p = sub.add_parser("census", help=MAINTAINER_NOTE + "write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
+    p = sub.add_parser("test", help="run the addon's own tests (tests/test_*.lua and tests/*_test.lua that call ct.test) in the fake client, once for each client the folder has a TOC for (needs luajit; docs/addon-tests.md). It runs the addon's Lua and the tests: use addons you trust"); p.add_argument("folder", nargs="?", default=".", help="the addon's folder, the one with its TOC files (default: the current folder)"); p.add_argument("--client", choices=("era", "forever", "both"), default="both", help="run one client only (default: each client the folder has a TOC for)"); p.add_argument("--name", help="run only the tests whose name contains this text"); p.add_argument("--recordings", help="your own recordings folder (ct recordings -o), for mocks that name a recording"); p.add_argument("--tests", metavar="DIR", help="run the test_*.lua and *_test.lua in this folder instead of <folder>/tests, for tests kept outside the folder the addon ships")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
@@ -3849,6 +4009,36 @@ def main(argv=None):
             open(a.o, "w", encoding="utf-8").write(xml)
         else:
             print(xml, end="")
+        return 1 if bad else 0
+    if a.cmd == "test":
+        try:
+            got = addon_tests(a.folder, None if a.client == "both" else a.client, a.name, a.recordings, a.tests)
+        except ValueError as e:
+            print("error:", e, file=sys.stderr); return 2
+        res = got["results"]
+        if not any(r["name"] for r in res) and all(r["ok"] for r in res):
+            ran = " or ".join(got["clients"])
+            if got["leftOut"]:
+                print("error: no test runs on %s: every test%s has clients without it" % (ran, " that matches %r" % a.name if a.name else ""), file=sys.stderr); return 2
+            if a.name:
+                print("error: no test matches %r" % a.name, file=sys.stderr); return 2
+        for i, r in enumerate(res):
+            what = "%s  %s" % (r["file"], r["name"]) if r["name"] else r["file"]
+            print("%-5s %-8s %s%s" % ("ok" if r["ok"] else "FAIL", r["client"], what, "" if r["ok"] else ": " + r["detail"]))
+            key = (r["client"], r["file"])
+            if key in got["outputs"] and (i + 1 == len(res) or (res[i + 1]["client"], res[i + 1]["file"]) != key):   # what the file wrote, after its lines
+                for line in got["outputs"][key].rstrip("\n").split("\n"):
+                    print("      | " + line)
+        manifests = census_manifests()
+        for cl in ("era", "forever"):
+            if cl in got["nilReads"]:
+                interface, names = got["nilReads"][cl]
+                rep, _ = nil_read_report(interface, names, manifests)
+                print("%s: %s" % (cl, rep), end="")
+        if got["skipped"]:
+            print("skipped %d file(s) that do not call ct.test: %s" % (len(got["skipped"]), ", ".join(got["skipped"][:5]) + (", ..." if len(got["skipped"]) > 5 else "")))
+        bad = sum(not r["ok"] for r in res)
+        print("test: %d passed, %d failed" % (len(res) - bad, bad))
         return 1 if bad else 0
     if a.cmd == "decode":
         s = a.string_or_file

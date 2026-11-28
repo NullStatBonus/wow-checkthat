@@ -32,7 +32,7 @@ test-py:
 # Install the ct-test-plan and ct-verify skills with everything they run, outside this checkout: the skill text,
 # a bundle of the plan tools (same layout as the checkout), and a private Python with PyYAML and
 # jsonschema. SKILL_DIR changes the target; SKILL_NO_VENV=1 skips the pip step (tests).
-BUNDLE := tools/ct.py tools/ct schema/test-plan.schema.json docs/test-plan.md docs/authoring-plans.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md tools/sv2json.lua tools/replay_sv.lua tools/entry_runner.lua tools/dump_options.lua tools/lua51_check.lua tests/harness.lua tests/replay.lua tests/replay_plan.lua requirements.txt tools/ct_tui.py requirements-tui.txt tests/manifests/README.md
+BUNDLE := tools/ct.py tools/ct schema/test-plan.schema.json docs/test-plan.md docs/authoring-plans.md docs/addon-tests.md docs/debug-logging.md openspec/specs/test-plan-format/spec.md tools/sv2json.lua tools/replay_sv.lua tools/entry_runner.lua tools/addon_test.lua tools/dump_options.lua tools/lua51_check.lua tests/harness.lua tests/replay.lua tests/replay_plan.lua requirements.txt tools/ct_tui.py requirements-tui.txt tests/manifests/README.md
 # The whole addon folder: the fake client loads it for flow replay and the offline block. tools/events holds the
 # clients' event lists (offline level 4) and tools/clients their surfaces (level 5). Census manifests stay local and
 # are never bundled. tools/ctprobe is the development addon that records what the game answers (/ctp record <call>).

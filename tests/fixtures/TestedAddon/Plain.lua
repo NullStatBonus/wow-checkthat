@@ -1,0 +1,3 @@
+-- Fixture: loaded only when ct test picks the plain TOC, which it must not. Not shipped.
+local _, ns = ...
+ns.plain = true

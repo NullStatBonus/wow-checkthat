@@ -46,14 +46,15 @@ end
 -- time, and a tail whose times are not all equal finds one place: a log's clock does not run back, so the same
 -- lines at the same times cannot be written again later. That boundary is exact even in a full ring with repeated
 -- blocks (#158). A tail written within one tick of the clock falls back to the rules without times.
+-- Returns the new lines, whether the boundary is exact, and the index in current of the first new line.
 function Evidence.NewLines(snapshot, current, cap, times)
     if not current then return nil end
     if snapshot and (snapshot.unavailable or snapshot.norun) then return nil end -- unreadable when the step (or run) opened, or no run position
-    if not snapshot then return current, true end
+    if not snapshot then return current, true, 1 end
     -- A position is { n = length, tail = last lines }; runs saved before it hold the whole log as an array.
     local n = snapshot.tail and snapshot.n or #snapshot
     local tail = snapshot.tail or snapshot
-    if not n or n == 0 then return current, true end
+    if not n or n == 0 then return current, true, 1 end
     local k = math.min(Evidence.TAIL, n) -- a long tail: startup blocks repeat every session, so a short one is ambiguous
     local tl = #tail
     local st = snapshot.tail and snapshot.times
@@ -87,7 +88,7 @@ function Evidence.NewLines(snapshot, current, cap, times)
         -- Timed: the place found is the only one, unless the clock ran back (two places found).
         local out = {}
         for i = last + 1, #current do out[#out + 1] = current[i] end
-        return out, found <= 1
+        return out, found <= 1, last + 1
     end
     -- A log that keeps cap lines and holds fewer has never dropped one, so a boundary at the snapshot position is
     -- certain, however alike the lines are.
@@ -97,7 +98,7 @@ function Evidence.NewLines(snapshot, current, cap, times)
     if cap and last == n and #current >= cap then exact = false end
     local out = {}
     for i = last + 1, #current do out[#out + 1] = current[i] end
-    return out, exact
+    return out, exact, last + 1
 end
 
 -- Where an assertion's window starts: the attempt's own position of the source, or for scope run a copy of the
@@ -252,7 +253,8 @@ local function ruleOf(a, lit)
         r = ("fact [%s] %s %s %s"):format(cut(a.addon, 30), cut(a.key, 40), tostring(a.op), lit and cut(valText(a.value), 40) or "…")
         if a.count then r = r .. ", count " .. countText(a.count) elseif a.which then r = r .. ", " .. tostring(a.which) end
     else
-        r = ("%s %s %s %s"):format(tostring(a.probe), cut(a.name or "", 40), tostring(a.op), lit and cut(valText(a.value), 40) or "…")
+        local what = a.name or (a.id ~= nil and ("id " .. tostring(a.id))) or (a.bag ~= nil and ("bag " .. tostring(a.bag))) or ""
+        r = (what ~= "" and "%s %s %s %s" or "%s%s %s %s"):format(tostring(a.probe), what ~= "" and cut(what, 40) or "", tostring(a.op), lit and cut(valText(a.value), 40) or "…")
     end
     return cut(r, Evidence.RULE_LEN)
 end
@@ -378,7 +380,15 @@ local ops = {
 }
 Evidence.Ops = ops
 
--- Closed registry of read-only probes. env supplies the game (or a fake).
+-- One number a probe reads: a missing function, a raising call or any other answer reads nil, never a guess.
+local function readNumber(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn, ...)
+    if not ok or type(v) ~= "number" then return nil end
+    return v
+end
+
+-- Closed registry of read-only probes. env supplies the game (or a fake). A value the game hides reads nil, never a guess.
 function Evidence.Probe(a, env)
     env = env or _G
     if a.probe == "addon-loaded" then
@@ -401,6 +411,39 @@ function Evidence.Probe(a, env)
         if not ok then return nil end
         return shown
     end
+    if a.probe == "money" then
+        return readNumber(env.GetMoney)
+    elseif a.probe == "bag-free-slots" then
+        local read = env.ContainerFreeSlots
+        if type(read) ~= "function" then return nil end
+        if a.bag ~= nil then return readNumber(read, a.bag) end
+        local total = 0
+        for bag = 0, 4 do
+            local free = readNumber(read, bag)
+            if free == nil then return nil end -- one bag unreadable: the sum is unknown, never a smaller number
+            total = total + free
+        end
+        return total
+    elseif a.probe == "item-count" then
+        if type(a.id) ~= "number" then return nil end
+        return readNumber(env.ItemCount, a.id)
+    elseif a.probe == "frame-text" then
+        -- env.FrameText (the adapter) also reads a hidden value as nil. The cut is inside the guard too, so nothing can raise outside it.
+        local ok, text = pcall(function()
+            local t
+            if type(env.FrameText) == "function" then
+                t = env.FrameText(a.name)
+            else
+                local f = env[a.name]
+                if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
+                t = f:GetText()
+            end
+            if type(t) ~= "string" then return nil end
+            return cut(t, Evidence.VALUE_LEN)
+        end)
+        if not ok then return nil end
+        return text
+    end
 end
 
 -- Ordered matches: each item must appear after the previous one in the attempt window.
@@ -416,8 +459,17 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
         local problem = positionProblem(a, snapshots)
         if problem then return bad(problem) end
     end
-    local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times)
+    local lines, first
+    if a.scope == "session" then
+        lines, first = current, 1
+    else
+        local _
+        lines, _, first = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times) -- the second value is whether the boundary is exact
+    end
     if not lines then return bad("log rolled over; evidence lost") end
+    for _, m in ipairs(type(a.sequence) == "table" and a.sequence or {}) do
+        if type(m) == "table" and m.within ~= nil then return Evidence.CheckTimedSequence(a, lines, first, times, wantDetail) end
+    end
     local want, lastAt = 1, nil
     local skipped, unchecked = nil, 0
     for i, l in ipairs(lines) do
@@ -437,6 +489,63 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
     end
     if done then return "pass", nil, d end
     return "unverified", skipped and skipReason(skipped) or ("sequence stopped at item %d"):format(want), d
+end
+
+-- A timed log-sequence: an item's within (whole seconds) holds its line to at most that many seconds after the line of
+-- the item before it. The chain goes forward: each item keeps every line it can reach from a placed line of the item
+-- before it, paired with the latest such line (the one that leaves the least time), so an early match that leaves too
+-- little time gives way to a later one. The first item with no reachable line is where the sequence stopped. A log that
+-- keeps no time for every line of the window, or whose clock runs back in it, cannot judge the check: it is unverified.
+function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
+    local open, unchecked = nil, 0 -- lines a pattern could not be run on, as in the untimed path: not counted as misses
+    local function detail(matched, stopped)
+        if not wantDetail then return nil end
+        local d = baseDetail(a)
+        d.window, d.matched = #lines, matched
+        if stopped then d.stoppedAt = stopped end
+        if unchecked > 0 then d.unchecked = unchecked end
+        return d
+    end
+    local function stop(item, matched) -- a line left unchecked may have matched, so its reason wins, as in CheckSequence
+        return "unverified", open and skipReason(open) or ("sequence stopped at item %d"):format(item), detail(matched, item)
+    end
+    local function bad(why) return "unverified", why, detail(0) end
+    local at
+    if times then
+        at = {}
+        for i = 1, #lines do
+            local t = times[(first or 1) + i - 1]
+            if type(t) ~= "number" then at = nil; break end
+            at[i] = t
+        end
+    end
+    if not at then return bad("this log keeps no time for these lines, so a within check cannot be judged") end
+    for i = 2, #at do
+        if at[i] < at[i - 1] then return bad("this log's clock runs back in these lines, so a within check cannot be judged") end
+    end
+    local hits = {}
+    for k, m in ipairs(a.sequence) do
+        local mine = {}
+        for i, line in ipairs(lines) do
+            local hit, left = lineMatches(m, line)
+            if hit then mine[#mine + 1] = i elseif left then open = worse(open, left); unchecked = unchecked + 1 end
+        end
+        hits[k] = mine
+    end
+    local last = #a.sequence
+    local placed = hits[1] -- the lines each item can end on, in order
+    if #placed == 0 then return stop(1, 0) end
+    for k = 2, last do
+        local gap = a.sequence[k].within
+        local now, p = {}, 0
+        for _, j in ipairs(hits[k]) do
+            while p < #placed and placed[p + 1] < j do p = p + 1 end -- placed[p]: the latest placed line before j
+            if p > 0 and (not gap or at[j] - at[placed[p]] <= gap) then now[#now + 1] = j end
+        end
+        if #now == 0 then return stop(k, k - 1) end
+        placed = now
+    end
+    return "pass", nil, detail(last)
 end
 
 -- A fact assertion. No fact is unverified, facts that break the operator fail. With count, the facts that pass
@@ -535,6 +644,8 @@ function Evidence.CheckFact(a, snapshots, plan, env, wantDetail)
     return r, why, detail
 end
 
+-- Probes that read the game: nil is a value the game did not give, never "not there", so exists cannot judge it.
+local GAME_READ = { money = true, ["bag-free-slots"] = true, ["item-count"] = true, ["frame-text"] = true }
 function Evidence.CheckState(a, env, wantDetail)
     local d = wantDetail and baseDetail(a) or nil -- cheap: no log scan; dropped by the caller for a pass
     if not ns.Plan.PROBES[a.probe] then return "unverified", "unknown probe", d end
@@ -547,11 +658,12 @@ function Evidence.CheckState(a, env, wantDetail)
         local found, why = safeFind(x, a.value)
         if found == nil then return "unverified", skipReason(why), d end
     end
-    if d and x ~= nil then d.observed = type(x) == "table" and "table" or cut(tostring(x), Evidence.VALUE_LEN) end
+    -- The player's money is personal (CTProbe records it by type only), so a check of it never saves the amount.
+    if d and x ~= nil and a.probe ~= "money" then d.observed = type(x) == "table" and "table" or cut(tostring(x), Evidence.VALUE_LEN) end
     if a.op == "missing" then -- a path that is not there, in a global that is
         local root = a.probe == "global-value" and a.path and (env or _G)[a.name]
         if type(root) ~= "table" then return "unverified", "value unavailable", d end
-    elseif x == nil and a.op ~= "exists" then return "unverified", "value unavailable", d end
+    elseif x == nil and (a.op ~= "exists" or GAME_READ[a.probe]) then return "unverified", "value unavailable", d end -- a game read never guesses
     return op(x, a.value, a) and "pass" or "fail", nil, d
 end
 

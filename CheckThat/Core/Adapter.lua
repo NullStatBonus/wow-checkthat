@@ -6,17 +6,55 @@ local _, ns = ...
 local Adapter = {}
 ns.Adapter = Adapter
 
+-- A value the game hides (a secret value) reads as nil: a probe never guesses (#67).
+local function secret(v)
+    local f = _G.issecretvalue
+    if type(f) ~= "function" then return false end
+    local ok, s = pcall(f, v)
+    return ok and s and true or false
+end
+
 local function call(name, ...)
     local f = _G[name]
     if type(f) ~= "function" then return nil end
     local r = { pcall(f, ...) }
-    if r[1] then return unpack(r, 2) end
+    if r[1] then
+        if secret(r[2]) then return nil end
+        return unpack(r, 2)
+    end
+end
+
+-- A read on a client table (C_Item.GetItemCount), or the older global of the same name when the table or its function
+-- is not there. The first spelling that has the function answers, also with nil. Missing, raising and secret reads are nil.
+local function callName(space, name, ...)
+    local t = _G[space]
+    local f = type(t) == "table" and t[name] or nil
+    if type(f) ~= "function" then return call(name, ...) end
+    local r = { pcall(f, ...) }
+    if r[1] then
+        if secret(r[2]) then return nil end
+        return unpack(r, 2)
+    end
 end
 
 function Adapter.Env()
     local env = {}
-    for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time", "date" }) do
+    for _, name in ipairs({ "GetBuildInfo", "UnitName", "GetRealmName", "GetNormalizedRealmName", "UnitFullName", "time", "date", "GetMoney" }) do
         env[name] = function(...) return call(name, ...) end
+    end
+    -- Reads for the state probes (#67). Model asks for these names, so the client's spelling of each function stays here.
+    env.ContainerFreeSlots = function(bag) return callName("C_Container", "GetContainerNumFreeSlots", bag) end
+    env.ItemCount = function(id) return callName("C_Item", "GetItemCount", id) end
+    -- What a named frame says: nil for a missing frame, one with no GetText, a raising read, a hidden (secret) value or one that is not text.
+    env.FrameText = function(name)
+        local ok, t = pcall(function()
+            local f = type(name) == "string" and _G[name] or nil
+            if type(f) ~= "table" or type(f.GetText) ~= "function" then return nil end
+            local v = f:GetText()
+            if secret(v) or type(v) ~= "string" then return nil end
+            return v
+        end)
+        return ok and t or nil
     end
     -- Missing or failing reads as in combat: nothing may run when the game cannot say.
     env.InCombatLockdown = function()

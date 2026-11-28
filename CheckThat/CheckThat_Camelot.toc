@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: CheckThat
 ## Notes: Walks you through an addon's in-game test plan and records evidence for review.
-## Version: 1.0.0
+## Version: 1.1.0
 ## Author: NullStatBonus
 ## SavedVariables: CheckThatDB
 ## OptionalDeps: BugGrabber

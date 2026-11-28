@@ -38,9 +38,9 @@ Pick one. None needs a CheckThat checkout except the last.
 
 The plugin and the zip have no private Python. Run `python3 <tools>/ct.py setup` once, where `<tools>` is the folder that holds `ct.py`: `ct-test-plan/ct/tools` in the zip, `skills/plan/ct/tools` in the plugin (under `~/.claude/plugins/cache/checkthat/checkthat/<version>/`). It creates a Python with PyYAML and jsonschema in your user data folder (`~/.local/share/checkthat/venv`, or `%LOCALAPPDATA%\checkthat\venv` on Windows), and a plugin update keeps it. It needs Python 3 with `venv`, and network access once. The `ct` launcher and the skills use it when no private Python is beside the skill.
 
-`<tools>/ct doctor` (or `ct doctor` when the launcher is on your `PATH`) ends with a tools section: the tools version, the Python in use and its packages, and whether `luajit` is on the path, with the install command for each missing one. `replay`, `replay-flow`, `offline`, `drift` and `coverage --harness` need LuaJIT. The rest of the tools do not.
+`<tools>/ct doctor` (or `ct doctor` when the launcher is on your `PATH`) ends with a tools section: the tools version, the Python in use and its packages, and whether `luajit` is on the path, with the install command for each missing one. `replay`, `replay-flow`, `offline`, `test`, `drift` and `coverage --harness` need LuaJIT. The rest of the tools do not.
 
-The bundle's `tests/` files serve the plan commands (`replay-flow`, `offline`). They are internal and not a contract for your addon's own tests. The public part is the `ctx` of offline hook steps ([Lua hooks](authoring-plans.md#lua-hooks-level-5-and-later)); a full fake-client library is #273.
+The bundle's `tests/` files serve the plan commands (`replay-flow`, `offline`, `test`). They are internal. For your addon's own tests, use `ct test` and its `ctx` ([Test your addon's Lua](addon-tests.md)).
 
 ### From a checkout
 

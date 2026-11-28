@@ -193,6 +193,68 @@ test("frame probe survives a throwing frame", function()
     T.eq((E.CheckState(a, en)), "unverified")
 end)
 
+test("money probe reads the balance, and an unreadable balance is unverified, never a guess", function()
+    local rich = { GetMoney = function() return 12345 end }
+    T.eq((E.CheckState({ kind = "state", probe = "money", op = "ge", value = 10000 }, rich)), "pass")
+    local r, _, d = E.CheckState({ kind = "state", probe = "money", op = "eq", value = 0 }, rich, true)
+    T.eq(r, "fail")
+    T.eq(d.observed, nil, "the player's money is personal: a failed check does not save the amount")
+    local a = { kind = "state", probe = "money", op = "eq", value = 0 }
+    T.eq((E.CheckState(a, {})), "unverified", "no GetMoney")
+    T.eq((E.CheckState(a, { GetMoney = function() error("boom") end })), "unverified", "a raising read")
+    T.eq((E.CheckState(a, { GetMoney = function() return nil end })), "unverified", "a missing answer (a secret value reads nil in the adapter)")
+end)
+
+test("a game read that answers nothing is unverified with every operator, exists too", function()
+    for _, a in ipairs({ { probe = "money" }, { probe = "bag-free-slots" }, { probe = "item-count", id = 6948 }, { probe = "frame-text", name = "F" } }) do
+        a.kind, a.op = "state", "exists"
+        T.eq((E.CheckState(a, {})), "unverified", a.probe .. " exists with no answer")
+    end
+    T.eq((E.CheckState({ kind = "state", probe = "global-value", name = "Nope", op = "exists" }, {})), "fail", "a global that is not there still fails exists")
+end)
+test("a failed money check saves no amount, and the saved rule names the item or bag", function()
+    local _, _, d = E.CheckState({ kind = "state", probe = "money", op = "ge", value = 100 }, { GetMoney = function() return 12345 end }, true)
+    T.eq(d.observed, nil, "the player's money is not saved")
+    local _, _, d2 = E.CheckState({ kind = "state", probe = "item-count", id = 6948, op = "ge", value = 5 }, { ItemCount = function() return 2 end }, true)
+    T.eq(d2.observed, "2", "an item count is saved")
+    T.ok(d2.rule:find("id 6948", 1, true), "the rule names the item: " .. tostring(d2.rule))
+    local _, _, d3 = E.CheckState({ kind = "state", probe = "bag-free-slots", bag = 2, op = "ge", value = 5 }, { ContainerFreeSlots = function() return 1 end }, true)
+    T.ok(d3.rule:find("bag 2", 1, true), "the rule names the bag: " .. tostring(d3.rule))
+    local _, _, d4 = E.CheckState({ kind = "state", probe = "money", op = "ge", value = 100 }, { GetMoney = function() return 1 end }, true)
+    T.eq(d4.rule, "money ge 100", "no name, no double space")
+end)
+test("bag-free-slots probe sums bags 0 to 4, or reads the one bag it names", function()
+    local env = { ContainerFreeSlots = function(bag) return bag end } -- bag n holds n free slots
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", op = "eq", value = 10 }, env)), "pass", "0+1+2+3+4")
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", bag = 3, op = "eq", value = 3 }, env)), "pass")
+    local half = { ContainerFreeSlots = function(bag) if bag == 2 then return nil end return 1 end }
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", op = "ge", value = 0 }, half)), "unverified", "one bag unknown makes the sum unknown")
+    T.eq((E.CheckState({ kind = "state", probe = "bag-free-slots", op = "ge", value = 0 }, {})), "unverified", "no such read")
+end)
+
+test("item-count probe reads one item by id, and needs an id", function()
+    local env = { ItemCount = function(id) return id == 6948 and 5 or 0 end }
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", id = 6948, op = "eq", value = 5 }, env)), "pass")
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", id = 6948, op = "eq", value = 5 }, {})), "unverified", "no such read")
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", op = "eq", value = 0 }, env)), "unverified", "an id is required")
+    T.eq((E.CheckState({ kind = "state", probe = "item-count", id = "6948", op = "eq", value = 0 }, env)), "unverified", "an id is a number")
+end)
+
+test("frame-text probe reads a frame's text, cut to 80 characters, and never guesses", function()
+    local env = { Tip = { GetText = function() return "Bank" end } }
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "eq", value = "Bank" }, env)), "pass")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "contains", value = "ank" }, env)), "pass")
+    local long = { Long = { GetText = function() return string.rep("a", 200) end } }
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Long", op = "eq", value = string.rep("a", 80) }, long)), "pass", "cut to VALUE_LEN")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Gone", op = "eq", value = "Bank" }, env)), "unverified", "no such frame")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Bad", op = "eq", value = "x" }, { Bad = { GetText = function() error("boom") end } })), "unverified", "a raising read")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Num", op = "eq", value = "5" }, { Num = { GetText = function() return 5 end } })), "unverified", "text only")
+    local viaAdapter = { FrameText = function(name) return name == "Tip" and string.rep("b", 200) or nil end }
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "eq", value = string.rep("b", 80) }, viaAdapter)), "pass", "the adapter read, cut")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Gone", op = "eq", value = "x" }, viaAdapter)), "unverified", "the adapter says nil")
+    T.eq((E.CheckState({ kind = "state", probe = "frame-text", name = "Tip", op = "eq", value = "x" }, { FrameText = function() error("boom") end })), "unverified", "a raising adapter read")
+end)
+
 -- Typed facts, counts and quiet sources
 local fplan = { logs = {
     f = { global = "DB", path = "facts", format = "strings" },

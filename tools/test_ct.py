@@ -20,6 +20,32 @@ class Validate(unittest.TestCase):
     def test_good(self):
         self.assertEqual(ct.validate(good()), [])
 
+    def test_within_needs_a_whole_number_after_the_first_item(self):
+        def errors(items):
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log-sequence", "source": "debug", "sequence": items}]
+            return ct.validate(p)
+        self.assertEqual(errors([{"contains": "a"}, {"contains": "b", "within": 2}]), [])
+        self.assertTrue(any("the first sequence item has no earlier line, so within does not apply" in e
+                            for e in errors([{"contains": "a", "within": 2}, {"contains": "b"}])))
+        for wrong in (0, 1.5, 601, "2"):
+            self.assertTrue(errors([{"contains": "a"}, {"contains": "b", "within": wrong}]), wrong)
+        self.assertEqual(ct.plan_needs(good()), (1, None))
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log-sequence", "source": "debug",
+                                                       "sequence": [{"contains": "a"}, {"contains": "b", "within": 2}]}]
+        self.assertEqual(ct.plan_needs(p), (3, "within"), "compile writes needs: 3 for within")
+
+    def test_the_state_probe_id_and_bag_have_the_bounds_the_game_reads(self):
+        def errors(extra):
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [dict({"kind": "state", "op": "ge", "value": 1}, **extra)]
+            return ct.validate(p)
+        self.assertEqual(errors({"probe": "bag-free-slots", "bag": 4}), [])
+        self.assertEqual(errors({"probe": "item-count", "id": 6948}), [])
+        for bad in ({"probe": "bag-free-slots", "bag": -1}, {"probe": "bag-free-slots", "bag": 5}, {"probe": "item-count", "id": 1.5}, {"probe": "item-count", "id": -3}):
+            self.assertTrue(errors(bad), bad)
+
     def test_unknown_field(self):
         p = good(); p["sections"][0]["steps"][0]["bogus"] = 1
         self.assertTrue(ct.validate(p))
@@ -144,6 +170,20 @@ class Compile(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             code = ct.main(["compile", src, "-o", out])
         return code, (open(out).read().strip() if code == 0 else err.getvalue())
+
+    def test_the_new_state_probes_compile_to_needs_3_and_the_old_ones_do_not(self):
+        probes = {"money": {}, "bag-free-slots": {}, "item-count": {"id": 6948}, "frame-text": {"name": "MyAddonFrame"}}
+        for probe, extra in probes.items():
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [dict({"kind": "state", "probe": probe, "op": "exists"}, **extra)]
+            code, s = self.compile_out(p)
+            self.assertEqual(code, 0, s)
+            self.assertEqual(ct.decode(s).get("needs"), 3, "%s is plan revision 3, so CheckThat 1.0.0 says it needs a newer CheckThat" % probe)
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "state", "probe": "addon-loaded", "name": "CheckThat", "op": "eq", "value": True}]
+        code, s = self.compile_out(p)
+        self.assertEqual(code, 0, s)
+        self.assertNotIn("needs", ct.decode(s), "a probe of revision 1 compiles as before")
 
     def test_a_revision_1_plan_compiles_without_needs_so_its_string_does_not_change(self):
         code, s = self.compile_out(good())
@@ -725,6 +765,268 @@ class ContributeRecordings(unittest.TestCase):
             part, out = self.contribute(self.CONTRIBUTE_SV)
         self.assertEqual(sorted(part["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetFlag(true, 5)"],
                          "an installed copy carries no recording to compare with, so every call the run fits is offered")
+
+class AddonTests(unittest.TestCase):
+    """ct test (#273): a developer's own tests/test_*.lua run in the fake client for each client the addon has a TOC for."""
+
+    def folder(self, files=None):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        dest = os.path.join(d, "TestedAddon")
+        shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "TestedAddon"), dest)
+        for name, text in (files or {}).items():
+            path = os.path.join(dest, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f: f.write(text)
+        return dest
+
+    def run_test(self, *argv):
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            code = ct.main(["test"] + list(argv))
+        return code, buf.getvalue(), err.getvalue()
+
+    def tocs(self, files, folder="MyAddon"):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        a = os.path.join(d, folder); os.makedirs(a)
+        for name, line in files.items():
+            with open(os.path.join(a, name), "w") as f: f.write(line + "\n")
+        return {k: (os.path.basename(v["toc"]), v["interface"], v["addon"]) for k, v in ct.addon_tocs(a).items()}
+
+    def test_the_toc_for_each_client_comes_from_its_interface_and_a_suffix_wins(self):
+        self.assertEqual(self.tocs({"MyAddon.toc": "## Interface: 11507, 16001", "MyAddon_Camelot.toc": "## Interface: 16001", "Other.txt": "## Interface: 11507"}),
+                         {"era": ("MyAddon.toc", 11507, "MyAddon"), "forever": ("MyAddon_Camelot.toc", 16001, "MyAddon")},
+                         "a comma list counts for each client, and the suffixed TOC wins its client")
+        self.assertEqual(self.tocs({"MyAddon.toc": "## Interface: 11507, 16001"}),
+                         {"era": ("MyAddon.toc", 11507, "MyAddon"), "forever": ("MyAddon.toc", 16001, "MyAddon")}, "each client gets its own number")
+
+    def test_a_suffix_the_client_reads_wins_and_other_clients_are_left_out(self):
+        self.assertEqual(self.tocs({"MyAddon_BCC.toc": "## Interface: 20504", "MyAddon_Mainline.toc": "## Interface: 110207",
+                                    "MyAddon_Camelot.toc": "## Interface: 16001", "MyAddon_Beta.toc": "## Interface: 16002",
+                                    "MyAddon_Vanilla.toc": "## Interface: 11509"}),
+                         {"era": ("MyAddon_Vanilla.toc", 11509, "MyAddon"), "forever": ("MyAddon_Camelot.toc", 16001, "MyAddon")})
+        self.assertEqual(self.tocs({"MyAddon_Mainline.toc": "## Interface: 110207", "MyAddon_BCC.toc": "## Interface: 20504"}), {},
+                         "a client the fake client does not model is not run as Forever")
+
+    def test_a_checkout_folder_takes_the_addon_name_from_its_tocs(self):
+        self.assertEqual(self.tocs({"TestedAddon.toc": "## Interface: 11509", "TestedAddon_Vanilla.toc": "## Interface: 11509"}, "my-repo"),
+                         {"era": ("TestedAddon_Vanilla.toc", 11509, "TestedAddon")})
+        with self.assertRaises(ValueError) as e:
+            self.tocs({"One.toc": "## Interface: 11509", "Two.toc": "## Interface: 11509"}, "my-repo")
+        self.assertIn("share no addon name", str(e.exception))
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_each_test_runs_once_for_each_client(self):
+        code, out, err = self.run_test(self.folder())
+        self.assertEqual(code, 0, out + err)
+        lines = [l for l in out.splitlines() if l.startswith(("ok", "FAIL"))]
+        self.assertEqual(len(lines), 20, out)
+        self.assertEqual(sum(" era " in l for l in lines), 10); self.assertEqual(sum(" forever " in l for l in lines), 10)
+        self.assertIn("test: 20 passed, 0 failed", out)
+        self.assertIn("tests/test_checkthat.lua  CheckThat that loads after the addon is found by PLAYER_LOGIN", out)
+        self.assertIn("era: Globals read as nil in this run (interface 11509)", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_tests_runs_a_folder_outside_the_addon_instead_of_its_tests(self):
+        a = self.folder()
+        outside = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, outside)
+        with open(os.path.join(outside, "test_outside.lua"), "w") as f:
+            f.write('local ct = ...\nct.test("runs from outside", function(ctx) ctx.ok(ctx.ns, "ns") end)\n')
+        with open(os.path.join(outside, "harness_test.lua"), "w") as f:
+            f.write('error("not a ct test file")\n')
+        code, out, err = self.run_test(a, "--tests", outside, "--client", "era")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("test_outside.lua  runs from outside", out)
+        self.assertNotIn("tests/test_core.lua", out, "--tests replaces <folder>/tests")
+        self.assertIn("test: 1 passed, 0 failed", out, "harness_test.lua does not call ct.test, so it does not run")
+        self.assertIn("skipped 1 file(s) that do not call ct.test: ", out); self.assertIn("harness_test.lua", out)
+        code, _, err = self.run_test(a, "--tests", os.path.join(outside, "missing"))
+        self.assertEqual(code, 2); self.assertIn("is not a folder", err)
+        empty = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, empty)
+        code, _, err = self.run_test(a, "--tests", empty)
+        self.assertEqual(code, 2); self.assertIn("has no test_*.lua or *_test.lua", err)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_test_suffix_counts_and_files_for_another_runner_are_skipped(self):
+        a = self.folder({"tests/bags_test.lua": 'local ct = ...\nct.test("suffix", function(ctx) ctx.ok(ctx.ns, "ns") end)\n',
+                         "tests/merchant_test.lua": 'local H = dofile("tests/harness.lua")\nerror("another runner")\n'})
+        code, out, err = self.run_test(a, "--client", "era", "--name", "suffix")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("ok    era      tests/bags_test.lua  suffix", out)
+        self.assertIn("skipped 1 file(s) that do not call ct.test: tests/merchant_test.lua", out)
+        only = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, only)
+        with open(os.path.join(only, "merchant_test.lua"), "w") as f: f.write('error("another runner")\n')
+        code, _, err = self.run_test(a, "--tests", only)
+        self.assertEqual(code, 2); self.assertIn("has 1 test file(s), and none calls ct.test", err)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_file_knows_its_client_and_a_test_can_run_on_one_client(self):
+        a = self.folder()
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, "test_client.lua"), "w") as f:
+            f.write('local ct = ...\n'
+                    'local want = ct.client == "era" and 1 or ct.client == "forever" and 2 or error("no client")\n'
+                    'ct.test("the file knows its client", { mocks = { GetMoney = { returns = { want } } } }, function(ctx)\n'
+                    '    ctx.eq(ctx.client, ct.client, "client"); ctx.eq(ctx.ns.Money(), want, "money")\n'
+                    '    ctx.eq(ct.interface, ct.client == "era" and 11509 or 16001, "interface")\n'
+                    'end)\n'
+                    'ct.test("forever only", { clients = { "forever" } }, function(ctx) ctx.eq(ctx.client, "forever", "client") end)\n')
+        code, out, err = self.run_test(a, "--tests", d)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("ok    era      ", out)
+        self.assertIn("test_client.lua  the file knows its client", out)
+        self.assertEqual([l.split()[1] for l in out.splitlines() if "forever only" in l], ["forever"], "clients skips the test on Era")
+        self.assertIn("test: 3 passed, 0 failed", out)
+        with open(os.path.join(d, "test_client.lua"), "w") as f:
+            f.write('local ct = ...\nct.test("bad", { clients = { "retail" } }, function() end)\n')
+        code, out, _ = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn('clients is a list of "era" and "forever"', out)
+
+    def outside(self, files, name=None):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        if name:
+            d = os.path.join(d, name); os.makedirs(d)
+        for n, text in files.items():
+            p = os.path.join(d, n)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            if text is None:
+                os.makedirs(p)
+            else:
+                with open(p, "w") as f: f.write(text)
+        return d
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_relative_tests_folder_runs_requires_its_helpers_and_shows_paths_from_here(self):
+        a = self.folder()
+        d = self.outside({"test_helper.lua": "-- registers through the helper: ct.test\nrequire(\"reg\")(...)\n",
+                          "reg.lua": 'return function(ct) ct.test("from the helper", function(ctx) ctx.ok(ctx.ns, "ns") end) end\n'})
+        rel = os.path.relpath(d)
+        code, out, err = self.run_test(a, "--tests", rel, "--client", "era")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("ok    era      %s  from the helper\n" % os.path.relpath(os.path.join(os.path.realpath(d), "test_helper.lua")), out,
+                      "a relative --tests is read from here, require finds its helpers, and the path is shown from here")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_only_the_word_ct_test_makes_a_ct_file_and_skipped_files_come_last(self):
+        a = self.folder()
+        files = {"test_ct.lua": 'local ct = ...\nct.test("runs", function() end)\n', "merchant_test.lua": "subject.test()\nprint('other runner')\n",
+                 "dir_test.lua": None}
+        files.update({"test_other%d.lua" % i: "-- for another runner\n" for i in range(6)})
+        d = self.outside(files, "t[1]")
+        code, out, err = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 0, out + err)
+        self.assertNotIn("other runner", out, "subject.test is not ct.test, so that file is not run")
+        self.assertIn("skipped 7 file(s) that do not call ct.test: ", out)
+        self.assertIn(", ...\n", out, "more than 5 skipped files are cut short")
+        self.assertLess(out.index("era: Globals"), out.index("skipped 7"), "the skipped list comes after the nil-read report")
+        self.assertNotIn("dir_test.lua", out, "a folder is not a test file")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_clients_with_a_gap_fail_and_no_test_for_the_client_exits_2(self):
+        a = self.folder()
+        d = self.outside({"test_gap.lua": 'local ct = ...\nct.test("gap", { clients = { nil, "era" } }, function() end)\n'})
+        code, out, _ = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn('clients is a list of "era" and "forever"', out)
+        d = self.outside({"test_f.lua": 'local ct = ...\nct.test("forever one", { clients = { "forever" } }, function() end)\nct.test("forever two", { clients = { "forever" } }, function() end)\n'})
+        code, out, err = self.run_test(a, "--tests", d, "--client", "era")
+        self.assertEqual(code, 2, out + err)
+        self.assertIn("no test runs on era: every test has clients without it", err)
+        code, out, err = self.run_test(a, "--tests", d, "--client", "era", "--name", "two")
+        self.assertEqual(code, 2, out + err)
+        self.assertIn("every test that matches 'two' has clients without it", err)
+        code, out, err = self.run_test(a, "--tests", d, "--name", "two")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual([l.split()[1] for l in out.splitlines() if l.startswith("ok")], ["forever"], "--name and clients narrow together")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_failing_test_names_the_difference_and_exits_1(self):
+        code, out, _ = self.run_test(self.folder({"tests/test_fail.lua": 'local ct = ...\nct.test("counts twice", function(ctx) ctx.fire("BAG_UPDATE", 0); ctx.eq(ctx.ns.count, 2, "count") end)\n'}), "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  era      tests/test_fail.lua  counts twice: ", out)
+        self.assertIn("count: expected 2, got 1", out)
+        self.assertNotIn(" forever ", out, "--client era runs one client")
+        self.assertIn("test: 10 passed, 1 failed", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_file_that_cannot_run_fails_alone(self):
+        code, out, _ = self.run_test(self.folder({
+            "tests/test_a_raises.lua": 'local ct = ...\nerror("setup broke")\nct.test("never", function() end)\n',
+            "tests/test_b_empty.lua": 'local ct = ...\nif false then ct.test("never", function() end) end\n',
+            "tests/test_c_option.lua": 'local ct = ...\nct.test("x", { mock = {} }, function() end)\n',
+            "tests/test_d_order.lua": 'local ct = ...\nct.test("y", { checkThat = "sometimes" }, function() end)\n'}), "--client", "forever")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  forever  tests/test_a_raises.lua: the test file raised", out); self.assertIn("setup broke", out)
+        self.assertIn("tests/test_b_empty.lua: the test file registers no test (ct.test)", out)
+        self.assertIn("unknown option mock (mocks, savedVariables, checkThat or clients)", out)
+        self.assertIn('checkThat is "early", "late" or "missing", got sometimes', out)
+        self.assertIn("test: 10 passed, 4 failed", out, "the other files still ran")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_load_failure_and_a_test_files_own_nil_reads(self):
+        code, out, _ = self.run_test(self.folder({"tests/test_load.lua":
+            'local ct = ...\nlocal x = NotAGlobalAnywhere\n'
+            'ct.test("reads", function(ctx) ctx.ok(NotAGlobalEither == nil) end)\n'
+            'ct.test("absent mock", { mocks = { NoSuchGameCall = { returns = { 1 } } } }, function() end)\n'}), "--client", "era")
+        self.assertEqual(code, 1, out)
+        self.assertIn("absent mock: the addon did not load: mock NoSuchGameCall", out)
+        self.assertNotIn("NotAGlobal", out, "a test file's nil reads are not the addon's")
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_one_toc_for_both_clients_runs_each_client_and_what_a_file_writes_is_shown(self):
+        f = self.folder({"tests/test_where.lua": 'local ct = ...\nprint("loading")\nct.test("where", function(ctx) io.write(ctx.client, " ", select(4, GetBuildInfo()), "\\n") end)\n'})
+        for n in ("TestedAddon_Vanilla.toc", "TestedAddon_Camelot.toc"):
+            os.remove(os.path.join(f, n))
+        with open(os.path.join(f, "TestedAddon.toc"), "w") as t: t.write("## Interface: 11509, 16001\n## SavedVariables: TestedAddonDB\nCore.lua\n")
+        code, out, _ = self.run_test(f, "--name", "where")
+        self.assertEqual(code, 0, out)
+        self.assertIn("      | era 11509", out); self.assertIn("      | forever 16001", out)
+        self.assertIn("      | loading", out, "a test file's own output is shown, and does not break the result")
+        self.assertIn("forever: Globals read as nil in this run (interface 16001)", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_checkout_folder_loads_the_addon_under_its_own_name(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        repo = os.path.join(d, "my-repo")
+        shutil.copytree(os.path.join(ROOT, "tests", "fixtures", "TestedAddon"), repo)
+        code, out, _ = self.run_test(repo)
+        self.assertEqual(code, 0, out); self.assertIn("test: 20 passed, 0 failed", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_helpers_load_from_the_tests_folder_and_their_nil_reads_are_not_the_addons(self):
+        code, out, _ = self.run_test(self.folder({
+            "tests/helper.lua": "local M = {}\nfunction M.read() return HelperUndefinedGlobal end\nreturn M\n",
+            "tests/test_help.lua": 'local ct = ...\nlocal helper = require("helper")\nlocal again = dofile("tests/helper.lua")\n'
+                                   'ct.test("help", function(ctx) ctx.eq(helper.read(), nil); ctx.eq(again.read(), nil) end)\n'}), "--client", "era", "--name", "help")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("HelperUndefinedGlobal", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_test_that_never_ends_is_stopped_and_no_load_gives_no_report(self):
+        with unittest.mock.patch.object(ct, "TEST_TIMEOUT", 2):
+            code, out, _ = self.run_test(self.folder({"tests/test_loop.lua": 'local ct = ...\nct.test("loop", function() while true do end end)\n'}), "--client", "era", "--name", "loop")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL  era      tests/test_loop.lua: ran longer than 2 seconds, so it was stopped", out)
+        code, out, _ = self.run_test(self.folder({"tests/test_a.lua": 'error("broke")\n'}), "--client", "era", "--name", "nothing here")
+        self.assertNotIn("interface None", out)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_name_narrows_and_a_name_that_matches_nothing_is_an_error(self):
+        code, out, _ = self.run_test(self.folder(), "--name", "saved count")
+        self.assertEqual(code, 0, out); self.assertIn("test: 2 passed, 0 failed", out)
+        code, out, err = self.run_test(self.folder(), "--name", "no such test")
+        self.assertEqual(code, 2); self.assertIn("no test matches 'no such test'", err)
+
+    def test_a_folder_without_tocs_tests_or_the_client_is_an_error(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        code, _, err = self.run_test(d)
+        self.assertEqual(code, 2); self.assertIn("has no .toc file", err)
+        f = self.folder(); shutil.rmtree(os.path.join(f, "tests"))
+        code, _, err = self.run_test(f)
+        self.assertEqual(code, 2); self.assertIn("has no test_*.lua or *_test.lua", err)
+        f = self.folder(); os.remove(os.path.join(f, "TestedAddon_Camelot.toc"))
+        code, _, err = self.run_test(f, "--client", "forever")
+        self.assertEqual(code, 2); self.assertIn("has no TOC for forever (its TOCs are for era)", err)
 
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
@@ -2055,7 +2357,7 @@ class InstallSkill(unittest.TestCase):
     SRC = os.path.join(ROOT, "skills", "ct-test-plan")
     BUNDLE = ("tools/ct.py", "schema/test-plan.schema.json", "docs/test-plan.md", "docs/debug-logging.md",
               "openspec/specs/test-plan-format/spec.md", "CheckThat/Model/Plan.lua", "CheckThat/Model/Json.lua", "CheckThat/Model/Evidence.lua", "CheckThat/UI/Card.lua", "CheckThat/CheckThat_Vanilla.toc", "tools/sv2json.lua", "tools/replay_sv.lua",
-              "tools/ct", "tools/entry_runner.lua", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
+              "tools/ct", "tools/entry_runner.lua", "tools/addon_test.lua", "docs/addon-tests.md", "tests/harness.lua", "tests/replay.lua", "tests/replay_plan.lua", "docs/authoring-plans.md",
               "requirements.txt", "tools/ct_tui.py", "requirements-tui.txt", "tools/events/era.json", "tools/events/forever.json", "tools/clients/era.json", "tools/clients/forever.json",
               "tests/manifests/README.md")
     VERIFY = os.path.join(ROOT, "skills", "ct-verify")
@@ -2176,6 +2478,9 @@ class InstallSkill(unittest.TestCase):
             r = run("offline", os.path.join(fx, "offline-plan", "plan.yaml"), "--addons", fx)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("offline: 5 passed, 0 failed", r.stderr)
+            r = subprocess.run([sys.executable, ctpy, "test"], capture_output=True, text=True, cwd=os.path.join(fx, "TestedAddon"))   # #273: ct test in the addon's folder
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("test: 20 passed, 0 failed", r.stdout)
             self.assertEqual(os.listdir(work), [], "nothing is written to the working folder")
 
     @unittest.skipIf(os.name == "nt", "the launcher is a shell script and the link needs a POSIX shell")
@@ -4019,6 +4324,22 @@ class PlanHardening(unittest.TestCase):
         p = good(); p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log", "source": "debug", "pattern": ".-.-.-.-Z", "absent": True},
                                                                   {"kind": "fact", "source": "debug", "addon": "A", "key": "k", "op": "matches", "value": "%d+%.?%d*"}]
         self.assertEqual(ct.validate(p), [])
+
+    def test_a_state_probe_needs_its_own_field(self):
+        def errors(a):
+            p = good(); p["sections"][0]["steps"][0]["assertions"] = [a]
+            return ct.validate(p)
+        self.assertTrue(any("item-count needs an id, a number" in e for e in errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1})),
+                        errors({"kind": "state", "probe": "item-count", "op": "ge", "value": 1}))
+        for a in ({"kind": "state", "probe": "item-count", "id": "6948", "op": "exists"},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": 1.5, "op": "exists"},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": -1, "op": "exists"}):
+            self.assertNotEqual(errors(a), [], a)
+        for a in ({"kind": "state", "probe": "money", "op": "ge", "value": 1},
+                  {"kind": "state", "probe": "bag-free-slots", "bag": 0, "op": "ge", "value": 0},
+                  {"kind": "state", "probe": "item-count", "id": 6948, "op": "ge", "value": 1},
+                  {"kind": "state", "probe": "frame-text", "name": "F", "op": "exists"}):
+            self.assertEqual(errors(a), [], a)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_pattern_problem_agrees_with_the_lua_validator_on_a_generated_set(self):

@@ -167,7 +167,16 @@ Setup: copy `CheckThat/` into `Interface/AddOns/`, type `/console scriptErrors 1
    Check: under "N steps. Ready to test. Select Start run." a grey line says "This plan reads these variables: CheckThatDB. A results string can include what they hold."
    Log: after you select Start run and type `/ct log`, the report shows `Plan reads: CheckThatDB`.
 
+16. **A line within a few seconds of the one before it.** Setup: debug recording is on, and a plan step runs one secure macro that holds `/ct debug on` and then `/ct status`, with a `log-sequence` check on CheckThat's own log (format `entries`) whose second item gives `within: 5`.
+    Check: the step's check is met when you click Run.
+    Log: the attempt's check has `rule: sequence of 2 lines`; a check that did not pass has `stoppedAt: 2`.
+
+17. **Your money and free bag space.** Setup: a character with at least 1 copper and one free slot in its bags, and a plan step with two `state` checks: `probe: money, op: ge, value: 1` and `probe: bag-free-slots, op: ge, value: 1`.
+    Check: both of the step's checks are met before you press anything.
+    Log: when a check does not pass, its detail has `rule: money ge 1` or `rule: bag-free-slots ge 1`, and a money check has no `observed` amount.
+
 ## 5. Categories and unit-test checks
+
 
 Import `build/selftest.ct` first (`/ct import`). It has 16 steps in five categories: Card and Run button, Log evidence, Facts, Unit checks and Lua errors.
 

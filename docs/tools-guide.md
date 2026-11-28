@@ -48,5 +48,6 @@ From 1.0 these `tools/ct.py` commands keep their arguments and output: a change 
 - `trend`
 - `setup`
 - `recordings`
+- `test`
 
 `census` is a maintainer tool. Its help starts with "maintainer tool, output may change". The census manifests and the recordings have their own `format`. `from-md` writes a plan and `sv2json` prints saved variables as they are, so their output follows the plan format and the game's data. `decode` prints the plan or run as it is, and those carry `ct` and `formatRev` ([Results format](results-format.md)). The evidence folder's bookkeeping file `refused.json` is not a promise.

@@ -9,7 +9,7 @@ Plan.CLIENT_ALIAS = { era = "classic-era", forever = "forever-camelot" }
 -- The highest plan revision this version reads. A plan says the revision it needs in "needs" (ct.py compile writes it when a plan
 -- uses a key added after revision 1); a plan without "needs" is revision 1, the format as of 0.21.0. Raise this with each addition
 -- to the plan format, and add the key to PLAN_NEEDS in tools/ct.py, so an older CheckThat refuses the plan instead of skipping a check.
-Plan.REV = 2 -- 2: commands (#244)
+Plan.REV = 3 -- 2: commands (#244); 3: the within of a log-sequence item (#59), and the money, bag-free-slots, item-count and frame-text probes (#67)
 Plan.ACTIONS = { manual = true, ["copy-slash"] = true, ["secure-macro"] = true, reload = true, ["wait-event"] = true }
 Plan.VERIFY = { player = true, assertions = true, reviewer = true }
 -- Runner-shipped slash allow list for the addons CheckThat knows. Any other addon's commands come from the addon itself
@@ -21,7 +21,10 @@ Plan.SLASH = {
     DontDoThat = { ["/ddt"] = true, ["/dontdothat"] = true },
     ClosestVendor = { ["/cvn"] = true, ["/closestvendor"] = true },
 }
-Plan.PROBES = { ["addon-loaded"] = true, ["global-value"] = true, ["frame-shown"] = true }
+Plan.PROBES = { ["addon-loaded"] = true, ["global-value"] = true, ["frame-shown"] = true,
+    money = true, ["bag-free-slots"] = true, ["item-count"] = true, ["frame-text"] = true }
+-- The longest gap a sequence item's within may name, in whole seconds: the game's clock counts whole seconds.
+Plan.WITHIN_MAX = 600
 Plan.OPS = { eq = true, ne = true, gt = true, ge = true, lt = true, le = true, contains = true, exists = true, missing = true,
     between = true, approx = true, matches = true, type = true, ["in"] = true }
 Plan.TYPES = { number = true, boolean = true, string = true }
@@ -280,10 +283,22 @@ local function checkAssertion(a, i, errs, logs, where)
         if a.count ~= nil then errs[#errs + 1] = where .. ": count does not apply to log-sequence" end
         if not (logs and logs[a.source]) then errs[#errs + 1] = where .. ": unknown log source " .. tostring(a.source) end
         if type(a.sequence) ~= "table" or #a.sequence == 0 then errs[#errs + 1] = where .. ": empty sequence" end
-        for _, m in ipairs(type(a.sequence) == "table" and a.sequence or {}) do checkMatcher(m, errs, where, "sequence item") end
+        for i, m in ipairs(type(a.sequence) == "table" and a.sequence or {}) do
+            checkMatcher(m, errs, where, "sequence item")
+            if type(m) == "table" and m.within ~= nil then
+                if i == 1 then errs[#errs + 1] = where .. ": the first sequence item has no earlier line, so within does not apply" end
+                if type(m.within) ~= "number" or m.within % 1 ~= 0 or m.within < 1 or m.within > Plan.WITHIN_MAX then
+                    errs[#errs + 1] = where .. ": within must be a whole number of seconds, 1 to " .. Plan.WITHIN_MAX
+                end
+            end
+        end
     elseif a.kind == "state" then
         if not Plan.PROBES[a.probe] then errs[#errs + 1] = where .. ": unknown probe " .. tostring(a.probe) end
         if a.count ~= nil then errs[#errs + 1] = where .. ": count does not apply to state" end
+        if a.probe == "item-count" and type(a.id) ~= "number" then errs[#errs + 1] = where .. ": item-count needs an id, a number" end
+        if a.id ~= nil and (type(a.id) ~= "number" or a.id < 0 or a.id % 1 ~= 0) then errs[#errs + 1] = where .. ": id must be a whole number, 0 or more" end
+        -- Bags 0 to 4 only: bank and keyring indexes differ between the clients and are not measured (docs/contracts.md).
+        if a.bag ~= nil and (type(a.bag) ~= "number" or a.bag % 1 ~= 0 or a.bag < 0 or a.bag > 4) then errs[#errs + 1] = where .. ": bag must be a whole number, 0 to 4" end
         checkOp(a, errs, where)
     else errs[#errs + 1] = where .. ": unknown assertion kind " .. tostring(a.kind) end
 end

@@ -17,6 +17,15 @@
 -- Mocks are set before the addon loads (a file-scope "local f = f" then sees them) unless mockAfterLoad is set,
 -- and the earlier values come back when the run ends. Every step result says whether mocks were in play.
 local Runner = {}
+-- CheckThat.Commands' checks (App.DeclareCommands in CheckThat/Model/App.lua, which needs the whole addon), on CheckThat's own Plan
+-- rules. tests/test_app.lua checks that both give the same answers.
+function Runner.declareCommands(Plan, addon, list)
+    if type(addon) ~= "string" or #addon > Plan.ADDON_MAX or not addon:match(Plan.ADDON_NAME) then return false end
+    if type(list) ~= "table" or #list == 0 or #list > Plan.COMMANDS_MAX then return false end
+    for _, c in ipairs(list) do if Plan.CommandProblem(c, addon) then return false end end
+    return true
+end
+local loadfile = loadfile -- read now: the fake client hides it from addon code, and CheckThat's modules load during a load
 
 -- The newest offline level. A plan without a level runs at level 1, so its results do not change.
 Runner.LEVEL = 6
@@ -51,7 +60,12 @@ function Runner.mockable(api, surface, H)
     return not (H.luaFunction(api) or Runner.UNMOCKABLE[api] or (ns and Runner.UNMOCKABLE[ns .. "."]))
 end
 
-local function pathJoin(root, p) return p:sub(1, 1) == "/" and p or (root .. "/" .. p) end
+-- An absolute path (/x, C:\x, C:/x or \\server\x) is kept; any other is under root.
+local function pathJoin(root, p)
+    if p:sub(1, 1) == "/" or p:match("^%a:[/\\]") or p:sub(1, 2) == "\\\\" then return p end
+    return root .. "/" .. p
+end
+Runner.pathJoin = pathJoin
 
 local function deepEq(a, b)
     if type(a) ~= type(b) then return false end
@@ -215,6 +229,8 @@ function Runner.run(spec, opts)
     local _, _, _, _, H = dofile(root .. "/tests/harness.lua")()
     local Lua51 = dofile(root .. "/tools/lua51_check.lua")
     local tocPath = pathJoin(root, spec.toc)
+    -- The TOC's interface: its first number, or the one ct test names for the client it runs (opts, never a plan's key).
+    local function tocIface() return opts.interface or tocInterface(tocPath) end
     -- Offline level: what a plan opted in to. Level 1 (no level) keeps the fake client's first answers: interface 11507
     -- and issecurevariable false for every name. Level 2 answers with the TOC's interface and the secure game names.
     -- Level 3 adds the game's load order: saved variables, login events, reload and groups. Level 4 adds the client's
@@ -254,6 +270,13 @@ function Runner.run(spec, opts)
     local function loadHooks() -- after the other load checks pass, so the file runs only for a load that goes ahead; returns an error or nil
         if spec.hooks == nil and #hookNames == 0 then return nil end
         local hooksErr
+        if type(opts.hooks) == "table" then -- ct test (tools/addon_test.lua): the test file's functions, never a plan's
+            hooks = opts.hooks
+            for _, n in ipairs(hookNames) do
+                if type(hooks[n]) ~= "function" then return ("hook %s is not in %s"):format(tostring(n), tostring(opts.hooksFile)) end
+            end
+            return nil
+        end
         if type(spec.hooks) ~= "string" then
             hooksErr = "a hook step needs a hooks file (offline.hooks)"
         else
@@ -276,7 +299,7 @@ function Runner.run(spec, opts)
     -- with only their widget type's methods. A mock of a function the client lacks would hide the gap: it fails the load.
     local surface, surfaceErr
     if strict then
-        local n = tocInterface(tocPath) or 11507
+        local n = tocIface() or 11507
         surface, surfaceErr = H.clientSurface(n >= 16000 and "forever" or "era", root)
     end
     -- Level 4: the events of the client the TOC names (below interface 16000 Era, from 16000 Forever), from Blizzard's
@@ -291,7 +314,7 @@ function Runner.run(spec, opts)
         end
     end
     if timed then
-        local n = tocInterface(tocPath) or 11507
+        local n = tocIface() or 11507
         local client = n >= 16000 and "forever" or "era"
         local f = io.open(root .. "/tools/events/" .. client .. ".json", "r")
         if f then
@@ -316,15 +339,47 @@ function Runner.run(spec, opts)
 
     local restoreGlobals = H.snapshot()
     local plainCreate, oldCT -- what the run puts back at the end: the stub client's CreateFrame and CheckThat after prepare
-    local name = spec.toc:match("([^/]+)/[^/]+%.toc$") or spec.toc:match("([^/]+)%.toc$") or "Addon" -- the game passes the folder name
-    local folder = tocPath:match("^(.*)/[^/]+$") or "."
+    -- The game passes the folder name; ct test names the addon from its TOC files (opts.addonName), as a checkout's folder may differ.
+    local name = opts.addonName or spec.toc:match("([^/\\]+)[/\\][^/\\]+%.toc$") or spec.toc:match("([^/\\]+)%.toc$") or "Addon"
+    local folder = tocPath:match("^(.*)[/\\][^/\\]+$") or "."
     -- ADDON_LOADED's second value: whether the addon folder holds Bindings.xml. ADDONS_UNLOADING gets closingClient false.
-    local hasBindings = false
+    local hasBindings, ctBindings = false, false
     do local f = io.open(folder .. "/Bindings.xml"); if f then f:close(); hasBindings = true end end
+    do local f = io.open(root .. "/CheckThat/Bindings.xml"); if f then f:close(); ctBindings = true end end -- for ct test's late CheckThat
     local reports, results, nilSeen = {}, {}, {}
     local interface
-    local cur = {} -- the current load: st, entries, saved mocks, counts, unhide, stopNil
+    local cur = {} -- the current load: st, entries, saved mocks, counts, unhide, stopNil, facts, api, runEvents
     local loads = 0
+    -- ct test (opts.checkThat): the run ctx.run opened, in RunEvents' shape. It lives outside the load, so it stays open across a reload.
+    local openRun
+    local ctModules -- CheckThat's own Plan, Facts, Entries and RunEvents, compiled once
+    -- The table the game gives as the global CheckThat (Facts.API), built from CheckThat's own modules for each load, as the game loads
+    -- CheckThat again at a reload. Entry also keeps the function for ctx.entry.
+    local function realCheckThat()
+        if not ctModules then
+            ctModules = {}
+            for _, m in ipairs({ "Plan", "Facts", "Entries", "RunEvents" }) do
+                ctModules[#ctModules + 1] = assert(loadfile(root .. "/CheckThat/Model/" .. m .. ".lua"))
+            end
+        end
+        local cns = {}
+        for _, chunk in ipairs(ctModules) do chunk("CheckThat", cns) end
+        local Plan = cns.Plan
+        -- An OnRun error goes to CheckThat's error list in game; here ctx.run and ctx.reload raise with it.
+        cns.Errors = { Record = function(msg) cur.runErrs[#cur.runErrs + 1] = (tostring(msg):gsub("^run callback: ", "")) end }
+        cns.App = { DeclareCommands = function(addon, list) return Runner.declareCommands(Plan, addon, list) end }
+        cns.Facts.Bind(cur.facts, function() return math.floor(cur.st.now or 0) end, function() return openRun ~= nil end)
+        cns.RunEvents.Bind(function() return openRun end)
+        cur.runEvents = cns.RunEvents
+        local api = cns.Facts.API()
+        local store, entries = api.Entry, cur.entries
+        api.Entry = function(addon, ename, fn)
+            local stored = store(addon, ename, fn)
+            if stored then entries[addon] = entries[addon] or {}; entries[addon][ename] = fn end
+            return stored
+        end
+        return api
+    end
 
     local allMocks = {}
     for api in pairs(spec.mocks or {}) do allMocks[api] = true end
@@ -392,7 +447,12 @@ function Runner.run(spec, opts)
 
     local function stopLoad()
         if cur.unhide then cur.unhide(); cur.unhide = nil end
-        if cur.stopNil then for _, n in ipairs(cur.stopNil()) do nilSeen[n] = true end; cur.stopNil = nil end
+        if cur.stopNil then
+            for _, n in ipairs(cur.stopNil()) do
+                if not (opts.checkThat and n == "CheckThat") then nilSeen[n] = true end -- ct test chose whether CheckThat is there
+            end
+            cur.stopNil = nil
+        end
         if cur.saved then restoreMocks(cur.saved); cur.saved = nil end
     end
 
@@ -419,13 +479,20 @@ function Runner.run(spec, opts)
             if e[1] == "PLAYER_LOGIN" then cur.st.loggedIn = true end
             local n, err = fire(unpack(e, 1, e.n or #e)) -- exactly the values the game passes: none for VARIABLES_LOADED
             if not n then return false, ("%s handler threw %s"):format(e[1], err) end
+            if e[1] == "ADDON_LOADED" and opts.checkThat == "late" then
+                -- CheckThat loads after the addon. In game it sets its global in its own ADDON_LOADED handler (AceAddon's OnInitialize);
+                -- which frame gets that event first is not measured, so the addon's handlers get it before the global is there.
+                n, err = fire("ADDON_LOADED", "CheckThat", ctBindings)
+                if not n then return false, ("ADDON_LOADED handler threw %s"):format(err) end
+                _G.CheckThat = cur.api
+            end
         end
         return true
     end
 
     local clockStart -- GetTime goes on across a reload; a group starts again at 1
     local function client()
-        local st = H.stubClient({ taint = level >= 6, scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocInterface(tocPath) or nil, allInsecure = level < 2, loggedIn = not lifecycle,
+        local st = H.stubClient({ taint = level >= 6, scriptBudget = strict and H.DEFAULT_BUDGET or nil, toc = level >= 2 and tocIface() or nil, allInsecure = level < 2, loggedIn = not lifecycle,
             clock = timed and { start = clockStart } or nil, client = surface })
         interface = select(4, _G.GetBuildInfo())
         return st
@@ -436,7 +503,7 @@ function Runner.run(spec, opts)
         if loads > 0 then stopLoad(); restoreGlobals() end
         loads = loads + 1
         local st = client()
-        cur = { st = st, entries = {}, counts = counts, saved = {}, mocks = mocks }
+        cur = { st = st, entries = {}, counts = counts, saved = {}, mocks = mocks, facts = {}, runErrs = {} }
         plainCreate = _G.CreateFrame
         -- What the shared fake client lacked: a record of the events a frame registered.
         local create = _G.CreateFrame
@@ -463,8 +530,11 @@ function Runner.run(spec, opts)
         end
         if opts.prepare then opts.prepare(H, st) end
         oldCT = _G.CheckThat
-        local entries = cur.entries
-        _G.CheckThat = {
+        local entries, facts = cur.entries, cur.facts
+        if opts.checkThat then -- ct test: CheckThat's own API, there before the addon (early), after it (late) or not at all (missing)
+            cur.api = opts.checkThat ~= "missing" and realCheckThat() or nil
+            _G.CheckThat = opts.checkThat == "early" and cur.api or nil
+        else _G.CheckThat = {
             PROTOTYPE = true,
             Entry = function(addon, ename, fn)
                 -- The same rules as CheckThat.Entry in the game (CheckThat/Model/Entries.lua).
@@ -475,8 +545,13 @@ function Runner.run(spec, opts)
                 return true
             end,
             API_VERSION = 2,
-            Report = function(addon, key, value) reports[#reports + 1] = ("[%s] %s=%s"):format(addon, key, tostring(value)); return true end,
-        }
+            Report = function(addon, key, value)
+                local line = ("[%s] %s=%s"):format(addon, key, tostring(value))
+                reports[#reports + 1] = line
+                facts[#facts + 1] = line
+                return true
+            end,
+        } end
         local function assign()
             for n, v in pairs(sv or {}) do rawset(_G, n, savedCopy(v)) end
         end
@@ -485,9 +560,14 @@ function Runner.run(spec, opts)
             if meta.savedVariablesFirst then assign() end
         end
         local skip = { "/libs/", "/libraries/" }
-        if type(spec.hooks) == "string" then -- a hooks file inside the addon folder is test code: its nil reads are not the addon's
-            local hp = pathJoin(root, spec.hooks)
+        local hooksFile = opts.hooksFile or spec.hooks -- ct test names its test file in opts.hooksFile
+        if type(hooksFile) == "string" then -- a hooks file inside the addon folder is test code: its nil reads are not the addon's
+            local hp = pathJoin(root, hooksFile)
             if hp:sub(1, #folder + 1) == folder .. "/" then skip[#skip + 1] = "/" .. hp:sub(#folder + 2):lower() end
+        end
+        if type(opts.testDir) == "string" then -- ct test: the addon's whole tests folder (helpers too) is test code
+            local td = pathJoin(root, opts.testDir)
+            if td:sub(1, #folder + 1) == folder .. "/" then skip[#skip + 1] = "/" .. td:sub(#folder + 2):lower() .. "/" end
         end
         cur.stopNil = H.recordNilReads({ "@" .. folder .. "/" }, skip)
         cur.unhide = hideGlobals()
@@ -525,13 +605,15 @@ function Runner.run(spec, opts)
     local function lend() lent = {}; for _, n in ipairs(Runner.HIDDEN) do lent[n] = rawget(_G, n); rawset(_G, n, host[n]) end end
     local function giveBack() for _, n in ipairs(Runner.HIDDEN) do rawset(_G, n, lent[n]) end; lent = nil end
     local function asAddon(f, ...)
+        if not lent then return f(...) end -- already addon code: a handler or timer that ctx.fire or ctx.advance runs
         giveBack()
         local r = pack(pcall(f, ...))
         lend()
         if not r[1] then error(r[2], 0) end
         return unpack(r, 2, r.n)
     end
-    local function ctxFor(counts)
+    local reloadNow -- the game's reload, as a reload step does it; set once chunks is known
+    local function ctxFor(counts, mocks)
         local function differ(a, b, path, seen)
             if type(a) ~= type(b) or type(a) ~= "table" then
                 if a ~= b then return path, a, b end
@@ -543,7 +625,8 @@ function Runner.run(spec, opts)
             for k, v in pairs(a) do if b[k] == nil then return path .. "." .. tostring(k), v, nil end end
             return nil
         end
-        return {
+        local ctx
+        ctx = {
             ns = cur.ns, client = surface and surface.client, level = level,
             fire = function(ev, ...)
                 if events then -- level 4 and up: the same check as an event step
@@ -568,16 +651,90 @@ function Runner.run(spec, opts)
                 local p, x, y = differ(got, want, what or "value", {})
                 if p then error(("%s: expected %s, got %s"):format(p, tostring(y), tostring(x)), 2) end
             end,
+            ok = function(v, what)
+                if not v then error(("%s: expected a true value, got %s"):format(what or "value", tostring(v)), 2) end
+            end,
+            -- fn must raise, with the plain text in its error when text is given. Returns the error.
+            raises = function(fn, text, what)
+                local rok, rerr = pcall(fn)
+                if rok then error(("%s: expected an error, the call returned"):format(what or "raises"), 2) end
+                if text ~= nil and not tostring(rerr):find(tostring(text), 1, true) then
+                    error(("%s: expected an error containing %q, got %q"):format(what or "raises", tostring(text), tostring(rerr)), 2)
+                end
+                return rerr
+            end,
+            -- Calls the entry the addon registered under its name, as addon code, and returns its values; nil when there is none.
+            entry = function(ename, ...)
+                local fn = cur.entries[name] and cur.entries[name][ename]
+                if not fn then return nil end
+                local ic = rawget(_G, "InCombatLockdown")
+                if ic and ic() then error(("entry %s is refused in combat, as a plan's call is"):format(tostring(ename)), 2) end
+                local r = pack(asAddon(H.budgeted, strict and H.DEFAULT_BUDGET or nil, fn, ...)) -- the script-time budget, as for a handler
+                if not r[1] then error(("entry %s threw %s"):format(tostring(ename), tostring(r[2])), 2) end
+                return unpack(r, 2, r.n)
+            end,
+            -- The fact lines Report recorded in this load (with ct test, only while a run is open, as in game).
+            reports = function()
+                local c = {}
+                for i, l in ipairs(cur.facts or {}) do c[i] = l end
+                return c
+            end,
+            -- Opens ("start") or ends ("end") a run of a plan for the addon, as CheckThat does in game: OnRun gets the event, ActiveRun
+            -- answers, Report records. A start while a run is open ends that one first ("replaced").
+            run = function(event, info)
+                if not opts.checkThat then error("ctx.run needs CheckThat's own API, which ct test gives; an offline block has the older fake", 2) end
+                if event ~= "start" and event ~= "end" then error('ctx.run: the event is "start" or "end", got ' .. tostring(event), 2) end
+                if info ~= nil and type(info) ~= "table" then error("ctx.run: info is a table", 2) end
+                info = info or {}
+                local before, reason = openRun, "replaced"
+                if event == "start" then
+                    openRun = { addon = info.addon or name, planTitle = info.plan or "Test plan", planDigest = info.digest or "00000000",
+                        runId = info.runId or "ct-test-1" }
+                else
+                    if not openRun then error("ctx.run: no run is open", 2) end
+                    reason = info.reason or "ended"
+                    if reason ~= "ended" and reason ~= "replaced" and reason ~= "deleted" then
+                        error("ctx.run: the reason is ended, replaced or deleted, got " .. tostring(reason), 2)
+                    end
+                    openRun = nil
+                end
+                local errs = #cur.runErrs
+                if cur.api then
+                    local cok, cerr = asAddon(H.budgeted, strict and H.DEFAULT_BUDGET or nil, cur.runEvents.Changed, before, openRun, reason)
+                    if not cok then error("the addon's OnRun function raised " .. tostring(cerr), 2) end
+                end
+                if #cur.runErrs > errs then error("the addon's OnRun function raised " .. table.concat(cur.runErrs, "; ", errs + 1), 2) end
+            end,
+            -- The game's reload, as a reload step does it (hooks run at level 5 and up): ctx.ns then names the new load's namespace.
+            reload = function()
+                if not lent then error("ctx.reload runs from the test or hook itself, not from a handler or timer it fires", 2) end
+                local rok, rerr = asAddon(reloadNow, mocks, counts)
+                if not rok then error("the reload failed: " .. tostring(rerr), 2) end
+                ctx.ns = cur.ns
+                -- An open run sends start again when the addon registers in the new load.
+                if #(cur.runErrs or {}) > 0 then error("the addon's OnRun function raised at the reload: " .. table.concat(cur.runErrs, "; "), 2) end
+            end,
         }
+        return ctx
     end
-    local function runHook(name, args, counts)
+    local function runHook(name, args, counts, mocks)
         lend()
-        local r = pack(pcall(hooks[name], ctxFor(counts), unpack(args, 1, #args)))
+        local r = pack(pcall(hooks[name], ctxFor(counts, mocks), unpack(args, 1, #args)))
         giveBack()
         return r
     end
 
     local chunks, loadErr
+    reloadNow = function(mocks, counts)
+        for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "ADDONS_UNLOADING", false }, { "PLAYER_LOGOUT" } }) do -- measured order
+            local n, ferr = fire(unpack(ev, 1, #ev))
+            if not n then return false, ("%s handler threw %s"):format(ev[1], ferr) end
+        end
+        clockStart = cur.st.now
+        local saved = {}
+        for n in pairs(declared) do saved[n] = savedCopy(rawget(_G, n)) end
+        return load(chunks, mocks, counts, saved, true)
+    end
     if badLevel then
         loadErr = ("offline level %s is not supported (this runner knows 1 to %d)"):format(tostring(spec.level), Runner.LEVEL)
     elseif spec.groups and spec.steps then
@@ -673,25 +830,14 @@ function Runner.run(spec, opts)
                     if werr then add(i, "wait", false, ("a timer callback threw %s"):format(werr))
                     else add(i, "wait", true, ("waited %ss, ran %d timer callback(s)"):format(tostring(step.wait), ran)) end
                 elseif step.reload then
-                    local rok, rerr = true, nil
-                    for _, ev in ipairs({ { "PLAYER_LEAVING_WORLD" }, { "ADDONS_UNLOADING", false }, { "PLAYER_LOGOUT" } }) do -- measured order
-                        local n, ferr = fire(unpack(ev, 1, #ev))
-                        ev = ev[1]
-                        if not n then rok, rerr = false, ("%s handler threw %s"):format(ev, ferr); break end
-                    end
-                    if rok then
-                        clockStart = cur.st.now
-                        local saved = {}
-                        for n in pairs(declared) do saved[n] = savedCopy(rawget(_G, n)) end
-                        rok, rerr = load(chunks, mocks, counts, saved, true)
-                    end
+                    local rok, rerr = reloadNow(mocks, counts)
                     add(i, "reload", rok, rok and "reloaded" or rerr)
                     if not rok then
                         for j = i + 1, #steps do add(j, "skipped", false, "not run: the reload failed") end
                         break
                     end
                 elseif step.hook ~= nil then
-                    local r = runHook(step.hook, step.args or {}, counts)
+                    local r = runHook(step.hook, step.args or {}, counts, mocks)
                     if step.throws ~= nil then
                         if r[1] then add(i, "hook", false, "expected a throw, got " .. show({ n = r.n - 1, unpack(r, 2, r.n) }))
                         elseif tostring(r[2]):find(step.throws, 1, true) then add(i, "hook", true, tostring(r[2]))
