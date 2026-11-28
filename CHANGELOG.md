@@ -1,6 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+New: **A gap between two log lines.** A sequence check can name the seconds it allows between two lines. A log that keeps no time for its lines leaves the check unverified.
+
 ## 1.0.0
+
 
 New: **Result sounds.** Each result plays a short sound. A pass that CheckThat records plays two rising notes. A fail that CheckThat records plays two falling notes. An unverified step plays an alert. The last result of a run plays a finish sound. Turn the sounds off in Appearance.
 New: **Built-in self-test.** The import window lists "CheckThat self-test (built-in)". Select it to try CheckThat without other tools.
