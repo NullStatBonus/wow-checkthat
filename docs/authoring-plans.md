@@ -298,7 +298,7 @@ For a plan with `tocs` for both clients, record and export once on each client: 
 
 **Before you share the file.** Use arguments that name no person. Check the labels, arguments and returned text in the JSON: CTProbe cannot know that a word you typed is a name.
 
-More about the export rules and the maintainer's recordings: [Harvesting](harvesting.md#record-calls-for-plan-mocks) (in a CheckThat checkout).
+More about the export rules and the maintainer's recordings: [Harvesting](harvesting.md#record-calls-for-plan-mocks) (in a CheckThat checkout). A call you recorded yourself can go into the bundled recordings: [Contribute a call the bundled recordings lack](harvesting.md#contribute-a-call-the-bundled-recordings-lack).
 
 ## Call an entry from a step
 

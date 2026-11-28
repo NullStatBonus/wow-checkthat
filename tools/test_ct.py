@@ -657,6 +657,75 @@ class WindowRecordings(unittest.TestCase):
         p = subprocess.run(["luajit", os.path.join(root, "tools", "entry_runner.lua"), os.path.join(root, "spec.json")], capture_output=True, text=True, cwd=root)
         self.assertEqual(p.returncode, 0, "a rev 3 file and a scene label: " + p.stdout + p.stderr)
 
+class ContributeRecordings(unittest.TestCase):
+    """ct.py recordings --contribute: what a run offers the bundled recordings, printed as a pull request body, never written."""
+
+    CONTRIBUTE_SV = '''CTProbeDB = {
+["fixtures"] = {
+["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.60.1" }, { ["type"] = "string", ["value"] = "71139" }, { ["type"] = "string", ["value"] = "Nov 24 2026" }, { ["type"] = "number", ["value"] = 16001 } } },
+["C_Container.GetContainerNumSlots(0)"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 20 } } },
+["C_Item.GetItemInfo(6948)"] = { ["n"] = 1, ["values"] = { { ["type"] = "string", ["value"] = "Hearthstone" } } },
+["C_Item.GetItemInfo(12785)"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 5 } } },
+["GetFlag(true, 5)"] = { ["n"] = 1, ["values"] = { { ["type"] = "boolean", ["value"] = true } } },
+},
+}
+'''
+
+    BUNDLED_ONLY_SV = '''CTProbeDB = {
+["fixtures"] = {
+["GetBuildInfo()"] = { ["n"] = 4, ["values"] = { { ["type"] = "string", ["value"] = "1.60.1" }, { ["type"] = "string", ["value"] = "71139" }, { ["type"] = "string", ["value"] = "Nov 24 2026" }, { ["type"] = "number", ["value"] = 16001 } } },
+["C_Container.GetContainerNumSlots(0)"] = { ["n"] = 1, ["values"] = { { ["type"] = "number", ["value"] = 20 } } },
+},
+}
+'''
+
+    def make(self, text):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d)
+        path = os.path.join(d, "CTProbeDB.lua")
+        with open(path, "w") as f: f.write(text)
+        return path
+
+    def contribute(self, text):
+        """(slice, everything printed) of a --contribute run: the JSON between the markers, or None when it printed none."""
+        path = self.make(text)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = ct.main(["recordings", "--src", path, "--contribute"])
+        out = buf.getvalue()
+        self.assertEqual(code, 0, out)
+        if "---8<--- contribute:forever\n" not in out:
+            return None, out
+        return json.loads(out.split("---8<--- contribute:forever\n", 1)[1].split("\n---8<---", 1)[0]), out
+
+    def test_contribute_prints_the_new_and_changed_calls_and_names_the_rest(self):
+        """--contribute offers what a maintainer does not have yet: a new call, and one the bundled entry knows in another shape. A
+        call that matches, or that does not fit its signature, is named instead and stays out."""
+        bundled = os.path.join(ROOT, "tools", "recordings", "forever.json")
+        with open(bundled, "rb") as f: before = f.read()
+        part, out = self.contribute(self.CONTRIBUTE_SV)
+        self.assertEqual((part["client"], part["build"]), ("forever", "1.60.1.71139"))
+        self.assertEqual(sorted(part["calls"]), ["C_Item.GetItemInfo(6948)", "GetFlag(true, 5)"],
+                         "a new call and one the bundled entry holds in another shape")
+        self.assertEqual(part["calls"]["GetFlag(true, 5)"], {"api": "GetFlag", "args": [True, 5], "returns": [True], "n": 1})
+        self.assertNotIn("C_Container.GetContainerNumSlots(0)", part["calls"], "a call the bundled recording matches is not sent again")
+        self.assertIn("already recorded", out)
+        self.assertIn("changes ", out)
+        self.assertIn("differs from signature", out); self.assertIn("C_Item.GetItemInfo(12785)", out)
+        self.assertNotIn("C_Item.GetItemInfo(12785)", part["calls"], "a call that does not fit its signature waits for the signature to be looked at")
+        with open(bundled, "rb") as f: self.assertEqual(f.read(), before, "--contribute writes no file")
+
+    def test_contribute_prints_no_slice_when_the_run_adds_no_call(self):
+        part, out = self.contribute(self.BUNDLED_ONLY_SV)
+        self.assertIsNone(part, "no markers, so there is nothing to paste")
+        self.assertIn("nothing new", out); self.assertIn("already recorded", out)
+
+    def test_contribute_needs_no_output_folder_in_an_installed_copy(self):
+        """A developer runs the installed tools, where a write needs -o; --contribute only prints, so it asks for none."""
+        with unittest.mock.patch.object(ct, "ROOT", os.path.join(tempfile.mkdtemp(), "installed")):
+            part, out = self.contribute(self.CONTRIBUTE_SV)
+        self.assertEqual(sorted(part["calls"]), ["C_Container.GetContainerNumSlots(0)", "C_Item.GetItemInfo(6948)", "GetFlag(true, 5)"],
+                         "an installed copy carries no recording to compare with, so every call the run fits is offered")
+
 class KeepThatPlans(unittest.TestCase):
     def test_the_fixture_plan_validates_and_stays_short(self):
         plan = ct.load_yaml(os.path.join(ROOT, "tests", "fixtures", "keepthat.yaml"))
