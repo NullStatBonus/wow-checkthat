@@ -21,7 +21,8 @@ Plan.SLASH = {
     DontDoThat = { ["/ddt"] = true, ["/dontdothat"] = true },
     ClosestVendor = { ["/cvn"] = true, ["/closestvendor"] = true },
 }
-Plan.PROBES = { ["addon-loaded"] = true, ["global-value"] = true, ["frame-shown"] = true }
+Plan.PROBES = { ["addon-loaded"] = true, ["global-value"] = true, ["frame-shown"] = true,
+    money = true, ["bag-free-slots"] = true, ["item-count"] = true, ["frame-text"] = true }
 Plan.OPS = { eq = true, ne = true, gt = true, ge = true, lt = true, le = true, contains = true, exists = true, missing = true,
     between = true, approx = true, matches = true, type = true, ["in"] = true }
 Plan.TYPES = { number = true, boolean = true, string = true }
@@ -284,6 +285,9 @@ local function checkAssertion(a, i, errs, logs, where)
     elseif a.kind == "state" then
         if not Plan.PROBES[a.probe] then errs[#errs + 1] = where .. ": unknown probe " .. tostring(a.probe) end
         if a.count ~= nil then errs[#errs + 1] = where .. ": count does not apply to state" end
+        if a.probe == "item-count" and type(a.id) ~= "number" then errs[#errs + 1] = where .. ": item-count needs an id, a number" end
+        if a.id ~= nil and type(a.id) ~= "number" then errs[#errs + 1] = where .. ": id must be a number" end
+        if a.bag ~= nil and (type(a.bag) ~= "number" or a.bag % 1 ~= 0) then errs[#errs + 1] = where .. ": bag must be a whole number" end
         checkOp(a, errs, where)
     else errs[#errs + 1] = where .. ": unknown assertion kind " .. tostring(a.kind) end
 end
