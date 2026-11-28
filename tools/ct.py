@@ -1597,9 +1597,9 @@ def addon_tocs(folder):
     return {cl: v for cl, (_, v) in out.items()}
 
 def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
-    """Run ct test for an addon folder: every tests/test_*.lua (or every test_*.lua in tests, a folder anywhere), once for each client the folder has a TOC for, each file and client in
+    """Run ct test for an addon folder: every test_*.lua and *_test.lua in tests/ (or in tests, a folder anywhere) that calls ct.test, once for each client the folder has a TOC for, each file and client in
     its own luajit process (tools/addon_test.lua), from the addon's folder. Returns {"results": [{client, file, name, ok, detail}],
-    "outputs": {(client, file): what the file wrote}, "nilReads": {client: (interface, names)}}. Raises ValueError for a folder that
+    "outputs": {(client, file): what the file wrote}, "nilReads": {client: (interface, names)}, "skipped": [files]}. Raises ValueError for a folder that
     cannot be tested."""
     if not os.path.exists(os.path.join(ROOT, "tools", "addon_test.lua")):
         raise ValueError("test needs tools/addon_test.lua (missing): reinstall the tools")
@@ -1619,9 +1619,17 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
             raise ValueError("%s is not a folder" % tests)
     else:
         tests_dir = os.path.join(folder, "tests")
-    files = sorted(glob.glob(os.path.join(tests_dir, "test_*.lua")))
+    # test_x.lua or x_test.lua. A file that never names ct.test belongs to another runner (such as the addon's own harness): it is skipped.
+    named = sorted(set(glob.glob(os.path.join(tests_dir, "test_*.lua")) + glob.glob(os.path.join(tests_dir, "*_test.lua"))))
+    files, skipped = [], []
+    for path in named:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            (files if "ct.test" in f.read() else skipped).append(path)
     if not files:
-        raise ValueError("%s has no test_*.lua: write one (docs/addon-tests.md)" % tests_dir if tests else "%s has no tests/test_*.lua: write one (docs/addon-tests.md)" % folder)
+        where = tests_dir if tests else os.path.join(folder, "tests")
+        if skipped:
+            raise ValueError("%s has %d test file(s), and none calls ct.test: they are for another runner. Put ct tests in their own files (docs/addon-tests.md)" % (where, len(skipped)))
+        raise ValueError("%s has no test_*.lua or *_test.lua: write one (docs/addon-tests.md)" % where)
     if recordings:
         recordings = os.path.realpath(recordings)
     results, outputs, nil_reads = [], {}, {}
@@ -1660,7 +1668,7 @@ def addon_tests(folder, client=None, name=None, recordings=None, tests=None):
                 interface = interface or res.get("interface")
             if interface:   # no test reached a load: no report to give
                 nil_reads[cl] = (interface, names)
-    return {"results": results, "outputs": outputs, "nilReads": nil_reads}
+    return {"results": results, "outputs": outputs, "nilReads": nil_reads, "skipped": [os.path.relpath(p, folder if p.startswith(folder + os.sep) else os.getcwd()) for p in skipped]}
 
 
 FLAVOR = {"classic-era": "era", "forever-camelot": "forever"}
@@ -3812,7 +3820,7 @@ def main(argv=None):
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
     p = sub.add_parser("recordings", help="turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into <folder>/<client>.json, the recorded calls a plan mock can name (docs/authoring-plans.md, Record your own calls)"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording, such as a folder in your addon's repository that the plan's offline.recordings names (default in a checkout: tools/recordings; an installed copy of the tools needs -o, because an update replaces it)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)"); p.add_argument("--contribute", action="store_true", help="print, between markers, the calls this run recorded that tools/recordings/<client>.json lacks or holds in another shape and that fit signatures.json, ready for a pull request (docs/harvesting.md); writes no file, so an installed copy needs no -o")
     p = sub.add_parser("census", help=MAINTAINER_NOTE + "write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
-    p = sub.add_parser("test", help="run the addon's own tests (tests/test_*.lua) in the fake client, once for each client the folder has a TOC for (needs luajit; docs/addon-tests.md). It runs the addon's Lua and the tests: use addons you trust"); p.add_argument("folder", nargs="?", default=".", help="the addon's folder, the one with its TOC files (default: the current folder)"); p.add_argument("--client", choices=("era", "forever", "both"), default="both", help="run one client only (default: each client the folder has a TOC for)"); p.add_argument("--name", help="run only the tests whose name contains this text"); p.add_argument("--recordings", help="your own recordings folder (ct recordings -o), for mocks that name a recording"); p.add_argument("--tests", metavar="DIR", help="run the test_*.lua in this folder instead of <folder>/tests, for tests kept outside the folder the addon ships")
+    p = sub.add_parser("test", help="run the addon's own tests (tests/test_*.lua and tests/*_test.lua that call ct.test) in the fake client, once for each client the folder has a TOC for (needs luajit; docs/addon-tests.md). It runs the addon's Lua and the tests: use addons you trust"); p.add_argument("folder", nargs="?", default=".", help="the addon's folder, the one with its TOC files (default: the current folder)"); p.add_argument("--client", choices=("era", "forever", "both"), default="both", help="run one client only (default: each client the folder has a TOC for)"); p.add_argument("--name", help="run only the tests whose name contains this text"); p.add_argument("--recordings", help="your own recordings folder (ct recordings -o), for mocks that name a recording"); p.add_argument("--tests", metavar="DIR", help="run the test_*.lua and *_test.lua in this folder instead of <folder>/tests, for tests kept outside the folder the addon ships")
     p = sub.add_parser("drift", help="compare what the offline block predicts (offline.predicts) with the steps of real runs, for each client (needs luajit). It runs the addon's Lua: use addons you trust"); p.add_argument("plan"); p.add_argument("--addons", default=default_addons(), help="folder that holds the addon checkouts (as for offline)"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--specs", help=specs_help); p.add_argument("--format", choices=("text", "json"), default="text"); p.add_argument("--expect-version", dest="expect_version", help="compare only runs of this addon version (the version of the checkout under test)"); p.add_argument("--strict", action="store_true", help="exit 1 when a prediction was wrong or no step was compared")
     p = sub.add_parser("report"); p.add_argument("--dest", default=os.path.join(ROOT, "evidence")); p.add_argument("--expect-version", dest="expect_version", help="warn about a run that tested another version of the addon (default: the ## Version: of the TOC from --addon-src or the --plan file's offline.toc)"); p.add_argument("--addon-src", dest="addon_src", help="the addon's folder (the one with its TOC): its ## Version: is the expected version when --expect-version is not given"); p.add_argument("--plan", dest="plan_file", help="warn about a run made from another version of this plan file")
     p.add_argument("--format", choices=("md", "json", "junit"), default="md", help="md also writes REPORT.md; json and junit go to stdout (or --out)")
@@ -3983,6 +3991,8 @@ def main(argv=None):
                 interface, names = got["nilReads"][cl]
                 rep, _ = nil_read_report(interface, names, manifests)
                 print("%s: %s" % (cl, rep), end="")
+        if got["skipped"]:
+            print("skipped %d file(s) that do not call ct.test: %s" % (len(got["skipped"]), ", ".join(got["skipped"][:5]) + (", ..." if len(got["skipped"]) > 5 else "")))
         bad = sum(not r["ok"] for r in res)
         print("test: %d passed, %d failed" % (len(res) - bad, bad))
         return 1 if bad else 0

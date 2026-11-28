@@ -797,12 +797,26 @@ class AddonTests(unittest.TestCase):
         self.assertEqual(code, 0, out + err)
         self.assertIn("test_outside.lua  runs from outside", out)
         self.assertNotIn("tests/test_core.lua", out, "--tests replaces <folder>/tests")
-        self.assertIn("test: 1 passed, 0 failed", out, "only test_*.lua in the folder runs")
+        self.assertIn("test: 1 passed, 0 failed", out, "harness_test.lua does not call ct.test, so it does not run")
+        self.assertIn("skipped 1 file(s) that do not call ct.test: ", out); self.assertIn("harness_test.lua", out)
         code, _, err = self.run_test(a, "--tests", os.path.join(outside, "missing"))
         self.assertEqual(code, 2); self.assertIn("is not a folder", err)
         empty = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, empty)
         code, _, err = self.run_test(a, "--tests", empty)
-        self.assertEqual(code, 2); self.assertIn("has no test_*.lua", err)
+        self.assertEqual(code, 2); self.assertIn("has no test_*.lua or *_test.lua", err)
+
+    @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
+    def test_a_test_suffix_counts_and_files_for_another_runner_are_skipped(self):
+        a = self.folder({"tests/bags_test.lua": 'local ct = ...\nct.test("suffix", function(ctx) ctx.ok(ctx.ns, "ns") end)\n',
+                         "tests/merchant_test.lua": 'local H = dofile("tests/harness.lua")\nerror("another runner")\n'})
+        code, out, err = self.run_test(a, "--client", "era", "--name", "suffix")
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("ok    era      tests/bags_test.lua  suffix", out)
+        self.assertIn("skipped 1 file(s) that do not call ct.test: tests/merchant_test.lua", out)
+        only = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, only)
+        with open(os.path.join(only, "merchant_test.lua"), "w") as f: f.write('error("another runner")\n')
+        code, _, err = self.run_test(a, "--tests", only)
+        self.assertEqual(code, 2); self.assertIn("has 1 test file(s), and none calls ct.test", err)
 
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_failing_test_names_the_difference_and_exits_1(self):
@@ -816,8 +830,8 @@ class AddonTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("luajit"), "luajit is not installed")
     def test_a_file_that_cannot_run_fails_alone(self):
         code, out, _ = self.run_test(self.folder({
-            "tests/test_a_raises.lua": 'error("setup broke")\n',
-            "tests/test_b_empty.lua": "local ct = ...\n",
+            "tests/test_a_raises.lua": 'local ct = ...\nerror("setup broke")\nct.test("never", function() end)\n',
+            "tests/test_b_empty.lua": 'local ct = ...\nif false then ct.test("never", function() end) end\n',
             "tests/test_c_option.lua": 'local ct = ...\nct.test("x", { mock = {} }, function() end)\n',
             "tests/test_d_order.lua": 'local ct = ...\nct.test("y", { checkThat = "sometimes" }, function() end)\n'}), "--client", "forever")
         self.assertEqual(code, 1, out)
@@ -888,7 +902,7 @@ class AddonTests(unittest.TestCase):
         self.assertEqual(code, 2); self.assertIn("has no .toc file", err)
         f = self.folder(); shutil.rmtree(os.path.join(f, "tests"))
         code, _, err = self.run_test(f)
-        self.assertEqual(code, 2); self.assertIn("has no tests/test_*.lua", err)
+        self.assertEqual(code, 2); self.assertIn("has no test_*.lua or *_test.lua", err)
         f = self.folder(); os.remove(os.path.join(f, "TestedAddon_Camelot.toc"))
         code, _, err = self.run_test(f, "--client", "forever")
         self.assertEqual(code, 2); self.assertIn("has no TOC for forever (its TOCs are for era)", err)

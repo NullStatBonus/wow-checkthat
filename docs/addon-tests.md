@@ -4,7 +4,7 @@
 
 ## Write a test
 
-Put test files in your addon's folder as `tests/test_<name>.lua`. A file gets `ct` as its `...`, and `ct.test(name, fn)` registers a test. The test function gets `ctx`, the same object a plan's [Lua hook](authoring-plans.md#lua-hooks-level-5-and-later) gets. `ctx.ns` is your addon's private namespace (the second value of `...` in its files).
+Put test files in your addon's folder as `tests/test_<name>.lua` or `tests/<name>_test.lua`. A file that never names `ct.test` is left out, so the files of your own test runner can sit in the same folder: `ct test` lists them as skipped. A file gets `ct` as its `...`, and `ct.test(name, fn)` registers a test. The test function gets `ctx`, the same object a plan's [Lua hook](authoring-plans.md#lua-hooks-level-5-and-later) gets. `ctx.ns` is your addon's private namespace (the second value of `...` in its files).
 
 ```lua
 -- MyAddon/tests/test_bags.lua
@@ -78,7 +78,7 @@ From your addon's folder (the one with its TOC files):
 - `--client era` or `--client forever` runs one client. By default each client you have a TOC for runs.
 - `--name TEXT` runs only the tests whose name contains the text.
 - `--recordings DIR` adds your own recordings folder (`ct recordings -o`, see [Record your own calls](authoring-plans.md#record-your-own-calls)).
-- `--tests DIR` runs the `test_*.lua` files in that folder instead of the addon's `tests/`. Use it when your repo keeps its tests outside the folder it ships, such as `ct test MyAddon --tests tests/ct`. Keep `ct` test files in their own folder: a file that registers no `ct.test` fails.
+- `--tests DIR` runs the `test_*.lua` and `*_test.lua` files in that folder instead of the addon's `tests/`. Use it when your repo keeps its tests outside the folder it ships, such as `ct test MyAddon --tests ../tests`. Files there that never name `ct.test` are skipped. A file that names `ct.test` but registers no test fails.
 
 It prints a line for each test on each client, then the globals your addon read as nil on each client, then a summary:
 
@@ -89,7 +89,7 @@ FAIL  forever  tests/test_bags.lua  money comes from the mock: threw .../MyAddon
 test: 7 passed, 1 failed
 ```
 
-It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: no TOC with an `## Interface:` line, no `tests/test_*.lua` (or no `test_*.lua` in the `--tests` folder), no TOC for the client you named, or no test matching `--name`.
+It exits 0 when every test passes, 1 when one fails, and 2 when it cannot run: no TOC with an `## Interface:` line, no `test_*.lua` or `*_test.lua` that names `ct.test` in `tests/` (or in the `--tests` folder), no TOC for the client you named, or no test matching `--name`.
 
 ## Good to know
 
