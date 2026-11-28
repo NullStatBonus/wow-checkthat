@@ -3,7 +3,7 @@
 
 Needs PyYAML and jsonschema (see requirements.txt). Run via .venv/bin/python tools/ct.py.
 """
-import argparse, base64, copy, glob, hashlib, json, math, os, re, shutil, subprocess, sys, time, zlib
+import argparse, base64, copy, glob, hashlib, importlib.util, json, math, os, re, shutil, subprocess, sys, tempfile, time, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "test-plan.schema.json")
@@ -1109,7 +1109,91 @@ def run_luajit(cmd, cwd=None, timeout=None):
     try:
         return subprocess.run(["luajit"] + cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout)
     except FileNotFoundError:
-        raise ValueError("this command needs luajit, which is not installed")
+        raise ValueError("this command needs luajit, which is not installed. Install it with: %s (ct doctor checks the tools)" % luajit_hint())
+
+
+# ---------------------------------------------------------------- tool prerequisites (setup, doctor)
+
+def luajit_hint(platform=None, which=shutil.which):
+    """The command that installs LuaJIT on this platform. A hint, not a measured contract."""
+    platform = platform or sys.platform
+    if platform == "darwin":
+        return "brew install luajit"
+    if platform.startswith("win"):
+        return "scoop install luajit"
+    if which("apt-get"):
+        return "sudo apt install luajit"
+    return "the luajit package of your package manager"
+
+
+def user_venv(env=None, platform=None):
+    """The per-user Python environment ct setup creates. It sits outside every install, so a plugin update keeps it."""
+    env = os.environ if env is None else env
+    if (platform or sys.platform).startswith("win"):
+        base = env.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    else:
+        base = env.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    return os.path.join(base, "checkthat", "venv")
+
+
+def venv_python(venv, platform=None):
+    return os.path.join(venv, "Scripts", "python.exe") if (platform or sys.platform).startswith("win") else os.path.join(venv, "bin", "python")
+
+
+def tools_version():
+    """This tools bundle's version: VERSION in an installed bundle, the TOC's ## Version: in a checkout, else None."""
+    for name in ("VERSION", os.path.join("CheckThat", "CheckThat_Vanilla.toc")):
+        try:
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                text = f.read()
+            return (re.search(r"## Version:\s*(\S+)", text) or [None, text.strip()])[1] or None
+        except OSError:
+            pass
+    return None
+
+
+def setup_env(venv=None, python=None, run=subprocess.run, platform=None):
+    """Creates the per-user environment with requirements.txt. It is built in a sibling folder and renamed into place only after
+    pip succeeds, so a failed run keeps the earlier environment. Standard library only: it runs before PyYAML exists.
+    Returns (exit code, message)."""
+    venv, python = venv or user_venv(platform=platform), python or sys.executable
+    parent = os.path.dirname(venv)
+    os.makedirs(parent, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix=".venv-new.", dir=parent)
+    try:
+        r = run([python, "-m", "venv", tmp], capture_output=True, text=True)
+        if r.returncode != 0:
+            return 1, "creating the Python environment failed (need Python 3 with venv): %s" % (r.stderr or r.stdout or "").strip()
+        r = run([venv_python(tmp, platform), "-m", "pip", "install", "-q", "--disable-pip-version-check", "-r", os.path.join(ROOT, "requirements.txt")],
+                capture_output=True, text=True)
+        if r.returncode != 0:
+            return 1, "installing PyYAML and jsonschema failed (need network access): %s" % (r.stderr or r.stdout or "").strip()
+        old = None
+        if os.path.exists(venv):
+            old = venv + ".old"
+            shutil.rmtree(old, ignore_errors=True)
+            os.rename(venv, old)
+        os.rename(tmp, venv)   # pip runs as python -m pip, so no script path inside the environment depends on its folder
+        tmp = None
+        if old:
+            shutil.rmtree(old, ignore_errors=True)
+        return 0, "created %s with PyYAML and jsonschema; the ct launcher and the skills use it" % venv
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def tools_lines(which=shutil.which, find_spec=importlib.util.find_spec, platform=None):
+    """The tools section of ct doctor: the tools version, the Python in use and its packages, and LuaJIT, each miss with its fix."""
+    lines = ["tools: CheckThat %s at %s" % (tools_version() or "(unknown version)", ROOT), "  python: %s" % sys.executable]
+    missing = [pkg for mod, pkg in (("yaml", "PyYAML"), ("jsonschema", "jsonschema")) if find_spec(mod) is None]
+    if missing:
+        lines.append("  missing Python packages: %s. Run ct setup: it creates %s, which the launcher and the skills use" % (", ".join(missing), user_venv(platform=platform)))
+    else:
+        lines.append("  Python packages: PyYAML and jsonschema found")
+    lj = which("luajit")
+    lines.append("  luajit: %s" % lj if lj else "  luajit: not found. replay, replay-flow, offline, drift and coverage --harness need it. Install it with: %s" % luajit_hint(platform, which))
+    return lines
 
 
 CLIENTS = (("forever-camelot", "16000"), ("classic-era", "11507"))
@@ -2209,8 +2293,8 @@ def doctor_report(src=None, wow=None, env=None, want=(WATCH, ())):
 def cmd_doctor(a):
     plan = getattr(a, "plan", None)
     lines, found = doctor_report(getattr(a, "src", None), getattr(a, "wow", None), want=sv_wanted(load_yaml(plan)) if plan else (WATCH, ()))
-    print("\n".join(lines))
-    return 0 if found else 1
+    print("\n".join(lines + [""] + tools_lines()))
+    return 0 if found else 1   # the tools section never changes the exit code: it stays the saved-variables answer
 
 
 CENSUS_MISSING = "no census in the saved variables. Run /ct census, wait for completion, type /reload, then copy SavedVariables again."
@@ -2735,15 +2819,7 @@ def stack_hits(r, stacks):
 def run_warnings(runs, expect_version=None, digest=None, addon=None, title=None):
     """Warnings about the build a run used: the tested addon's version, CheckThat's own version against this tools bundle, and
     the plan digest. A run with no record of a field says nothing about it."""
-    bundle = None
-    for name in ("VERSION", os.path.join("CheckThat", "CheckThat_Vanilla.toc")):  # an installed bundle has VERSION, a checkout the TOC
-        try:
-            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
-                text = f.read()
-            bundle = (re.search(r"## Version:\s*(\S+)", text) or [None, text.strip()])[1] or None
-            break
-        except OSError:
-            pass
+    bundle = tools_version()
     out, told = [], set()
     for rid, r in sorted(runs.items()):
         if (addon and r.get("addon") != addon) or (title and r.get("planTitle") != title):
@@ -2902,7 +2978,7 @@ JSON_FORMAT = 1
 # maintainer tools: their help says the output may change.
 # from-md, sv2json and drift are stable because the shipped skills run them.
 STABLE_COMMANDS = ("validate", "compile", "coverage", "replay", "offline", "replay-flow", "lines", "decode", "from-md", "sv2json",
-                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend")
+                   "collect", "doctor", "drift", "report", "show", "browse", "status", "import-results", "diff", "trend", "setup")
 MAINTAINER_COMMANDS = ("recordings", "census")
 MAINTAINER_NOTE = "maintainer tool, output may change: "
 
@@ -3519,6 +3595,7 @@ def main(argv=None):
     p.add_argument("--shot-slack", dest="shot_slack", type=float, default=2, help="seconds a screenshot may lie outside an attempt's window and still match it (default 2)")
     p.add_argument("--verbose", action="store_true", help="name each screenshot that matched no attempt, with the nearest step and the gap in seconds")
     p.add_argument("--all-shots", dest="all_shots", action="store_true", help="copy screenshots that matched no attempt to runs/<id>/unassigned-shots/ of the nearest run")
+    p = sub.add_parser("setup", help="create the per-user Python environment with the tools' requirements (PyYAML, jsonschema) that the ct launcher and the skills use; needs Python 3 with venv and network access once")
     p = sub.add_parser("doctor", help="say where collect looks for saved variables, what it finds, the file times and the likely reason for a miss (reads folder listings only)"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder"); p.add_argument("--plan", help="look for the files collect --plan would copy")
     p = sub.add_parser("recordings", help=MAINTAINER_NOTE + "turn the CTProbe saved variables (CTProbe.lua after /ctp record and /reload) into tools/recordings/<client>.json, the recorded calls a plan mock can name"); p.add_argument("--src", required=True, help="the CTProbe.lua saved-variables file from the game folder"); p.add_argument("-o", dest="out", help="folder for the recording (default: tools/recordings)"); p.add_argument("--merge", action="store_true", help="keep the calls of the existing file that this run did not record (this run wins where both have a call)")
     p = sub.add_parser("census", help=MAINTAINER_NOTE + "write tests/manifests/<client>-<build>.json from the census that /ct census saved (docs/harvesting.md), or compare two manifests with --diff OLD NEW"); p.add_argument("--src", default=os.environ.get("CT_WTF"), help="one WTF folder; wins over --wow"); p.add_argument("--wow", default=os.environ.get("CT_WOW"), help="game folder; reads _classic_era_ and _forever_"); p.add_argument("-o", help="folder for the manifests (default: tests/manifests)"); p.add_argument("--diff", nargs=2, metavar=("OLD", "NEW"), help="print added, removed and type-changed names between two manifests")
@@ -3542,6 +3619,10 @@ def main(argv=None):
     p.add_argument("--format", choices=("md", "json"), default="md"); p.add_argument("--include-open", dest="include_open", action="store_true", help="add runs that have not ended")
     a = ap.parse_args(argv)
 
+    if a.cmd == "setup":
+        code, msg = setup_env()
+        print(msg, file=sys.stderr if code else sys.stdout)
+        return code
     if a.cmd == "validate":
         plan = load_yaml(a.plan)
         errs = validate(plan, plan_requirements(plan, a.plan, a.specs))

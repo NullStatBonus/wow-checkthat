@@ -1,0 +1,18 @@
+{
+  "name": "checkthat",
+  "owner": {
+    "name": "NullStatBonus"
+  },
+  "description": "CheckThat plan tools for World of Warcraft addon developers: draft test plans, run them in a fake client, and verify finished runs.",
+  "plugins": [
+    {
+      "name": "checkthat",
+      "description": "Draft CheckThat test plans and read finished runs back against them.",
+      "source": {
+        "source": "github",
+        "repo": "NullStatBonus/wow-checkthat",
+        "ref": "plugin"
+      }
+    }
+  ]
+}

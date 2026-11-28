@@ -5,7 +5,12 @@ The plan and evidence tools (`tools/ct.py`, the `ct-test-plan` and `ct-verify` s
 | What you want | You need |
 | --- | --- |
 | `validate`, `compile`, `collect`, `status`, `report`, `diff`, `trend`, `coverage`, `browse` | Python 3.9 or newer, with PyYAML and jsonschema |
-| `replay`, `offline`, `make test`, `make check` | The above, plus LuaJIT and `make` (macOS, Linux or WSL on Windows) |
+| `replay`, `replay-flow`, `offline`, `drift` | The above, plus LuaJIT |
+| `make test`, `make check` | The above, plus `make` (macOS, Linux or WSL on Windows) |
+
+Install LuaJIT with `brew install luajit` (macOS), `sudo apt install luajit` (Debian, Ubuntu) or `scoop install luajit` (Windows). Other systems have it in their package manager. `ct.py doctor` ends with a tools section that says what is missing and how to install it.
+
+With the plugin or the toolkit zip, and no checkout, `ct.py setup` creates the Python environment for you ([Plan skills](skills.md#install)). The steps below are for a checkout.
 
 ## 1. Install Python 3
 

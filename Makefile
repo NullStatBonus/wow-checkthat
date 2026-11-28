@@ -1,4 +1,4 @@
-.PHONY: test test-lua test-py build builtin check install-skill build-plugin mutate
+.PHONY: test test-lua test-py build builtin check install-skill build-plugin build-toolkit mutate
 
 PY := .venv/bin/python
 SKILL_DIR ?= $(HOME)/.claude/skills
@@ -48,9 +48,7 @@ install-skill:
 	fi; \
 	tmp=$$(mktemp -d "$$dest/.ct-test-plan.XXXXXX") || exit 1; tmp2=$$(mktemp -d "$$dest/.ct-verify.XXXXXX") || exit 1; trap 'rm -rf "$$tmp" "$$tmp2"' EXIT; \
 	cp -R skills/ct-test-plan/. "$$tmp" && cp -R skills/ct-verify/. "$$tmp2" || { echo "install-skill: copying the skills failed" >&2; exit 1; }; \
-	for f in $(BUNDLE); do mkdir -p "$$tmp/ct/$$(dirname "$$f")" && cp "$$f" "$$tmp/ct/$$f" || { echo "install-skill: copying $$f failed" >&2; exit 1; }; done; \
-	for d in $(BUNDLE_DIR); do mkdir -p "$$tmp/ct/$$d" && cp -R "$$d/." "$$tmp/ct/$$d" || { echo "install-skill: copying $$d failed" >&2; exit 1; }; done; \
-	sed -n 's/^## Version: *//p' CheckThat/CheckThat_Vanilla.toc > "$$tmp/ct/VERSION" || exit 1; \
+	sh tools/bundle.sh "$$tmp/ct" "$(BUNDLE)" "$(BUNDLE_DIR)" || exit 1; \
 	if [ -z "$$SKILL_NO_VENV" ]; then \
 	  python3 -m venv "$$tmp/.venv" || { echo "install-skill: creating the Python environment failed (need python3 with venv)" >&2; exit 1; }; \
 	  "$$tmp/.venv/bin/python" -m pip install -q --disable-pip-version-check -r "$$tmp/ct/requirements.txt" || { echo "install-skill: installing PyYAML and jsonschema failed (need network access)" >&2; exit 1; }; \
@@ -68,12 +66,22 @@ build-plugin:
 	  cp -R "skills/$$src" "$(PLUGIN_DIR)/skills/$$dst" || { echo "build-plugin: copying $$src failed" >&2; exit 1; }; \
 	  sed -e 's/ct-test-plan/plan/g' -e 's/ct-verify/verify/g' "skills/$$src/SKILL.md" > "$(PLUGIN_DIR)/skills/$$dst/SKILL.md" || exit 1; \
 	done; \
-	for f in $(BUNDLE); do mkdir -p "$(PLUGIN_DIR)/skills/plan/ct/$$(dirname "$$f")" && cp "$$f" "$(PLUGIN_DIR)/skills/plan/ct/$$f" || { echo "build-plugin: copying $$f failed" >&2; exit 1; }; done; \
-	for d in $(BUNDLE_DIR); do mkdir -p "$(PLUGIN_DIR)/skills/plan/ct/$$d" && cp -R "$$d/." "$(PLUGIN_DIR)/skills/plan/ct/$$d" || { echo "build-plugin: copying $$d failed" >&2; exit 1; }; done; \
-	ver=$$(sed -n 's/^## Version: *//p' CheckThat/CheckThat_Vanilla.toc); [ -n "$$ver" ] || exit 1; \
-	echo "$$ver" > "$(PLUGIN_DIR)/skills/plan/ct/VERSION"; \
+	sh tools/bundle.sh "$(PLUGIN_DIR)/skills/plan/ct" "$(BUNDLE)" "$(BUNDLE_DIR)" || exit 1; \
+	ver=$$(cat "$(PLUGIN_DIR)/skills/plan/ct/VERSION"); sha=$$(git rev-parse --short=12 HEAD 2>/dev/null); ver="$$ver$${sha:++$$sha}"; \
 	printf '{\n  "name": "checkthat",\n  "version": "%s",\n  "description": "Draft CheckThat test plans and read finished runs back against them.",\n  "license": "MIT"\n}\n' "$$ver" > "$(PLUGIN_DIR)/.claude-plugin/plugin.json"; \
 	echo "built $(PLUGIN_DIR)"
+
+# Build the agent-neutral toolkit: ct-test-plan and ct-verify in the install-skill layout, without a private Python,
+# in build/toolkit, zipped to build/CheckThat-toolkit-<version>.zip (beside TOOLKIT_DIR). Unzip it into any skills folder.
+TOOLKIT_DIR ?= build/toolkit
+
+build-toolkit:
+	@rm -rf "$(TOOLKIT_DIR)" && mkdir -p "$(TOOLKIT_DIR)" || exit 1; \
+	cp -R skills/ct-test-plan "$(TOOLKIT_DIR)/ct-test-plan" && cp -R skills/ct-verify "$(TOOLKIT_DIR)/ct-verify" || { echo "build-toolkit: copying the skills failed" >&2; exit 1; }; \
+	sh tools/bundle.sh "$(TOOLKIT_DIR)/ct-test-plan/ct" "$(BUNDLE)" "$(BUNDLE_DIR)" || exit 1; \
+	ver=$$(cat "$(TOOLKIT_DIR)/ct-test-plan/ct/VERSION"); zip="$(dir $(TOOLKIT_DIR))CheckThat-toolkit-$$ver"; rm -f "$$zip.zip"; \
+	python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", sys.argv[2])' "$$zip" "$(TOOLKIT_DIR)" || { echo "build-toolkit: zipping failed" >&2; exit 1; }; \
+	echo "built $$zip.zip"
 
 # The same checks the release workflow runs.
 check:

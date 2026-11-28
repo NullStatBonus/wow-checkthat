@@ -2300,6 +2300,126 @@ class Doctor(unittest.TestCase):
             self.assertEqual(ct.main(["doctor", "--wow", self.game()]), 0)
         self.assertIn("collect would find nothing", out.getvalue())
 
+class ToolSetup(unittest.TestCase):
+    """ct setup, the per-user Python, the ct doctor tools section and the LuaJIT hint."""
+    def fake_run(self, venv_rc=0, pip_rc=0):
+        calls = []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            if cmd[1:3] == ["-m", "venv"]:
+                os.makedirs(os.path.join(cmd[3], "bin"))
+                return subprocess.CompletedProcess(cmd, venv_rc, "", "no venv module" if venv_rc else "")
+            return subprocess.CompletedProcess(cmd, pip_rc, "", "network down" if pip_rc else "")
+        return run, calls
+
+    def test_setup_builds_beside_the_target_and_renames_it_into_place(self):
+        with tempfile.TemporaryDirectory() as d:
+            venv = os.path.join(d, "checkthat", "venv")
+            run, calls = self.fake_run()
+            code, msg = ct.setup_env(venv, python="py", run=run, platform="linux")
+            self.assertEqual(code, 0, msg)
+            self.assertTrue(os.path.isdir(os.path.join(venv, "bin")))
+            self.assertEqual(os.listdir(os.path.dirname(venv)), ["venv"], "no temporary folder left")
+            self.assertEqual(calls[1][:4], [os.path.join(calls[0][3], "bin", "python"), "-m", "pip", "install"])
+            self.assertEqual(calls[1][-1], os.path.join(ct.ROOT, "requirements.txt"))
+
+    def test_a_failed_setup_keeps_the_earlier_environment_and_names_the_missing_piece(self):
+        with tempfile.TemporaryDirectory() as d:
+            venv = os.path.join(d, "venv")
+            os.makedirs(venv)
+            with open(os.path.join(venv, "marker"), "w") as f:
+                f.write("old")
+            for kw, want in (({"pip_rc": 1}, "network access"), ({"venv_rc": 1}, "venv")):
+                run, _ = self.fake_run(**kw)
+                code, msg = ct.setup_env(venv, python="py", run=run, platform="linux")
+                self.assertEqual(code, 1)
+                self.assertIn(want, msg)
+                self.assertTrue(os.path.exists(os.path.join(venv, "marker")), "earlier environment kept")
+                self.assertEqual(os.listdir(d), ["venv"])
+
+    def test_setup_replaces_an_earlier_environment(self):
+        with tempfile.TemporaryDirectory() as d:
+            venv = os.path.join(d, "venv")
+            os.makedirs(venv)
+            open(os.path.join(venv, "marker"), "w").close()
+            run, _ = self.fake_run()
+            self.assertEqual(ct.setup_env(venv, python="py", run=run, platform="linux")[0], 0)
+            self.assertFalse(os.path.exists(os.path.join(venv, "marker")))
+            self.assertEqual(os.listdir(d), ["venv"])
+
+    def test_the_user_environment_is_in_the_user_data_folder(self):
+        self.assertEqual(ct.user_venv({"XDG_DATA_HOME": "/x"}, "linux"), os.path.join("/x", "checkthat", "venv"))
+        self.assertEqual(ct.user_venv({"LOCALAPPDATA": "C:/L"}, "win32"), os.path.join("C:/L", "checkthat", "venv"))
+        self.assertEqual(ct.user_venv({}, "darwin"), os.path.join(os.path.expanduser("~"), ".local", "share", "checkthat", "venv"))
+        self.assertEqual(ct.venv_python("v", "win32"), os.path.join("v", "Scripts", "python.exe"))
+
+    def test_luajit_hint_names_the_platform_install(self):
+        self.assertEqual(ct.luajit_hint("darwin"), "brew install luajit")
+        self.assertEqual(ct.luajit_hint("win32"), "scoop install luajit")
+        self.assertEqual(ct.luajit_hint("linux", which=lambda n: "/usr/bin/apt-get"), "sudo apt install luajit")
+        self.assertIn("package manager", ct.luajit_hint("linux", which=lambda n: None))
+
+    def test_a_missing_luajit_names_its_install_and_doctor(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as empty, mock.patch.dict(os.environ, {"PATH": empty}):
+            with self.assertRaises(ValueError) as e:
+                ct.run_luajit(["-v"])
+        msg = str(e.exception)
+        self.assertTrue(msg.startswith("this command needs luajit, which is not installed"), msg)
+        self.assertIn(ct.luajit_hint(), msg)
+        self.assertIn("ct doctor", msg)
+
+    def test_doctor_tools_section_reports_each_miss_with_its_fix(self):
+        lines = "\n".join(ct.tools_lines(which=lambda n: None, find_spec=lambda m: None, platform="darwin"))
+        self.assertIn("tools: CheckThat %s" % ct.tools_version(), lines)
+        self.assertIn("missing Python packages: PyYAML, jsonschema. Run ct setup", lines)
+        self.assertIn("luajit: not found", lines)
+        self.assertIn("brew install luajit", lines)
+        lines = "\n".join(ct.tools_lines(which=lambda n: "/bin/luajit", find_spec=lambda m: object()))
+        self.assertIn("PyYAML and jsonschema found", lines)
+        self.assertIn("luajit: /bin/luajit", lines)
+
+    def test_doctor_exit_code_ignores_luajit(self):
+        with tempfile.TemporaryDirectory() as d:
+            sv = os.path.join(d, "WTF", "Account", "A", "SavedVariables")
+            os.makedirs(sv)
+            with open(os.path.join(sv, "CheckThat.lua"), "w") as f:
+                f.write("CheckThatDB = {}\n")
+            bin_ = os.path.join(d, "bin"); os.makedirs(bin_)
+            fake = os.path.join(bin_, "luajit")
+            with open(fake, "w") as f:
+                f.write("#!/bin/sh\n")
+            os.chmod(fake, 0o755)
+            empty = os.path.join(d, "empty"); os.makedirs(empty)
+            for src in (os.path.join(d, "WTF"), os.path.join(d, "missing")):
+                codes = []
+                for path in (bin_, empty):
+                    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ct.py"), "doctor", "--src", src], capture_output=True, text=True,
+                                       env=dict(os.environ, PATH=path, CT_WTF="", CT_WOW=""))
+                    codes.append(r.returncode)
+                    self.assertIn("luajit: " + (fake if path == bin_ else "not found"), r.stdout)
+                self.assertEqual(codes[0], codes[1], src)
+                self.assertEqual(codes[0], 0 if src.endswith("WTF") else 1)
+
+    def test_launcher_prefers_the_private_python_then_the_user_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = os.path.join(d, "ct-test-plan")
+            os.makedirs(os.path.join(skill, "ct", "tools"))
+            shutil.copy(os.path.join(ROOT, "tools", "ct"), os.path.join(skill, "ct", "tools", "ct"))
+            def fake(path, name):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    f.write("#!/bin/sh\necho %s\n" % name)
+                os.chmod(path, 0o755)
+            fake(os.path.join(skill, ".venv", "bin", "python"), "private")
+            fake(os.path.join(d, "data", "checkthat", "venv", "bin", "python"), "user")
+            def run():
+                return subprocess.run(["sh", os.path.join(skill, "ct", "tools", "ct")], capture_output=True, text=True,
+                                      env=dict(os.environ, XDG_DATA_HOME=os.path.join(d, "data"))).stdout.strip()
+            self.assertEqual(run(), "private")
+            shutil.rmtree(os.path.join(skill, ".venv"))
+            self.assertEqual(run(), "user")
+
 class Collect(unittest.TestCase):
     def test_sv2json_and_collect_dedupe(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2772,7 +2892,8 @@ class BuildPlugin(unittest.TestCase):
                 manifest = json.load(f)
             with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as f:
                 version = re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
-            self.assertEqual((manifest["name"], manifest["version"]), ("checkthat", version))
+            sha = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+            self.assertEqual((manifest["name"], manifest["version"]), ("checkthat", version + "+" + sha), "the addon version plus the commit, so each publish is an update")
             for src, dst in (("ct-test-plan", "plan"), ("ct-verify", "verify")):
                 with open(os.path.join(p, "skills", dst, "SKILL.md"), encoding="utf-8") as a, open(os.path.join(ROOT, "skills", src, "SKILL.md"), encoding="utf-8") as b:
                     want = b.read().replace("ct-test-plan", "plan").replace("ct-verify", "verify")
@@ -2813,13 +2934,150 @@ class BuildPlugin(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertTrue(os.path.exists(os.path.join(sib, "evidence", "runs", "Fx-1", "r2.json")))
 
+    def test_claude_validates_the_marketplace(self):
+        import shutil
+        if not shutil.which("claude"):
+            self.skipTest("claude is not installed")
+        r = subprocess.run(["claude", "plugin", "validate", ROOT], capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_marketplace_names_the_plugin_branch(self):
+        with open(os.path.join(ROOT, ".claude-plugin", "marketplace.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        self.assertEqual([(p["name"], p["source"]) for p in m["plugins"]],
+                         [("checkthat", {"source": "github", "repo": "NullStatBonus/wow-checkthat", "ref": "plugin"})])
+        self.assertTrue(m["owner"]["name"])
+
     def test_skills_state_the_python_fallback(self):
         for skill in ("ct-test-plan", "ct-verify"):
             with open(os.path.join(ROOT, "skills", skill, "SKILL.md"), encoding="utf-8") as f:
                 text = f.read()
-            for needle in ('python3 -c "import yaml, jsonschema"', "python3 -m venv", "pip install -r"):
+            for needle in ('python3 -c "import yaml, jsonschema"', "ct.py setup", "checkthat/venv/bin/python", "checkthat\\venv\\Scripts\\python.exe"):
                 self.assertIn(needle, text, skill)
 
+
+class BuildToolkit(unittest.TestCase):
+    def build(self, d):
+        return subprocess.run(["make", "build-toolkit", "TOOLKIT_DIR=" + os.path.join(d, "toolkit")], cwd=ROOT, capture_output=True, text=True)
+
+    def version(self):
+        with open(os.path.join(ROOT, "CheckThat", "CheckThat_Vanilla.toc"), encoding="utf-8") as f:
+            return re.search(r"^## Version:\s*(\S+)", f.read(), re.M).group(1)
+
+    def test_zip_unpacks_into_a_skills_folder_and_validates_a_plan(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as d:
+            r = self.build(d)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            path = os.path.join(d, "CheckThat-toolkit-%s.zip" % self.version())
+            skills = os.path.join(d, "skills")
+            with zipfile.ZipFile(path) as z:
+                names = z.namelist()
+                launcher = z.getinfo("ct-test-plan/ct/tools/ct")
+                self.assertTrue((launcher.external_attr >> 16) & 0o100, "the launcher keeps its exec bit")
+                z.extractall(skills)
+            self.assertFalse(any(n.split("/")[1:2] == [".venv"] for n in names), "no private Python")
+            self.assertEqual(sorted({n.split("/")[0] for n in names}), ["ct-test-plan", "ct-verify"])
+            ct = os.path.join(skills, "ct-test-plan", "ct")
+            with open(os.path.join(ct, "VERSION")) as f:
+                self.assertEqual(f.read().strip(), self.version())
+            for rel in InstallSkill.BUNDLE:
+                self.assertTrue(os.path.exists(os.path.join(ct, rel)), rel)
+            self.assertTrue(os.path.isfile(os.path.join(skills, "ct-verify", "..", "ct-test-plan", "ct", "tools", "ct.py")))
+            with open(os.path.join(skills, "ct-verify", "SKILL.md"), encoding="utf-8") as f:
+                self.assertIn("../ct-test-plan/ct", f.read())
+            r = subprocess.run([sys.executable, os.path.join(ct, "tools", "ct.py"), "validate", os.path.join(ROOT, "plans", "dontdothat.yaml")],
+                               capture_output=True, text=True, cwd=d)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_every_output_holds_the_same_bundle(self):
+        def tree(top):
+            out = {}
+            for base, _, files in os.walk(top):
+                for n in files:
+                    p = os.path.join(base, n)
+                    with open(p, "rb") as f:
+                        out[os.path.relpath(p, top)] = f.read()
+            return out
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, SKILL_NO_VENV="1")
+            runs = [["make", "install-skill", "SKILL_DIR=" + os.path.join(d, "skills")],
+                    ["make", "build-plugin", "PLUGIN_DIR=" + os.path.join(d, "plugin")],
+                    ["make", "build-toolkit", "TOOLKIT_DIR=" + os.path.join(d, "toolkit")]]
+            for cmd in runs:
+                r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            installed = tree(os.path.join(d, "skills", "ct-test-plan", "ct"))
+            self.assertTrue(installed)
+            for name, top in (("plugin", os.path.join(d, "plugin", "skills", "plan", "ct")), ("toolkit", os.path.join(d, "toolkit", "ct-test-plan", "ct"))):
+                got = tree(top)
+                self.assertEqual(sorted(got), sorted(installed), name)
+                self.assertEqual([k for k in sorted(got) if got[k] != installed[k]], [], name)
+
+class ReleaseWorkflow(unittest.TestCase):
+    """release.yml: the developer toolkit is validated before anything is published, and every publish step needs a tag."""
+    def workflow(self):
+        import yaml
+        with open(os.path.join(ROOT, ".github", "workflows", "release.yml"), encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def steps(self):
+        return {s.get("name") or s.get("uses"): s for s in self.workflow()["jobs"]["release"]["steps"]}
+
+    def test_publish_steps_need_a_tag_and_come_after_validation(self):
+        wf = self.workflow()
+        self.assertIn("workflow_dispatch", wf[True])   # PyYAML reads the key on as True
+        names = [s.get("name") or s.get("uses") for s in wf["jobs"]["release"]["steps"]]
+        steps = self.steps()
+        manual = "inputs.publish && github.ref == 'refs/heads/main'"
+        self.assertIs(wf[True]["workflow_dispatch"]["inputs"]["publish"]["default"], False)
+        for name, cond in (("BigWigsMods/packager@v2", "github.ref_type == 'tag'"), ("GitHub release", "github.ref_type == 'tag'"),
+                           ("Publish the plugin branch", "github.ref_type == 'tag' || (%s)" % manual),
+                           ("Replace the toolkit zip on the current release", "github.ref_type != 'tag' && " + manual)):
+            self.assertEqual(steps[name].get("if"), cond, name)
+            self.assertLess(names.index("Validate the plugin and the marketplace"), names.index(name), name)
+        self.assertIn("--clobber", steps["Replace the toolkit zip on the current release"]["run"])
+        self.assertNotIn("create", steps["Replace the toolkit zip on the current release"]["run"])
+        self.assertIn("claude plugin validate build/plugin", steps["Validate the plugin and the marketplace"]["run"])
+        self.assertIn("claude plugin validate .", steps["Validate the plugin and the marketplace"]["run"])
+        self.assertIn("build/CheckThat-toolkit-*.zip", steps["GitHub release"]["run"])
+        self.assertEqual(steps["Upload the dry-run outputs"].get("if"), "github.event_name == 'workflow_dispatch'")
+
+    def git(self, cwd, *args):
+        r = subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def test_plugin_branch_is_created_then_updated_without_a_force_push(self):
+        script = self.steps()["Publish the plugin branch"]["run"]
+        with tempfile.TemporaryDirectory() as d:
+            origin, work, home = os.path.join(d, "origin.git"), os.path.join(d, "work"), os.path.join(d, "home")
+            os.makedirs(home)
+            env = dict(os.environ, HOME=home, GIT_CONFIG_GLOBAL=os.path.join(home, ".gitconfig"), GIT_CONFIG_NOSYSTEM="1")
+            subprocess.run(["git", "init", "-q", "--bare", origin], check=True, env=env)
+            subprocess.run(["git", "symbolic-ref", "HEAD", "refs/heads/main"], cwd=origin, check=True, env=env)
+            subprocess.run(["git", "clone", "-q", origin, work], check=True, env=env, capture_output=True)
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "main"], cwd=work, check=True, env=env)
+            subprocess.run(["git", "push", "-q", "origin", "HEAD:main"], cwd=work, check=True, env=env, capture_output=True)
+            heads = []
+            for version, body in (("1.0.0+aaa", '{"version": "1.0.0+aaa"}'), ("1.0.0+bbb", '{"version": "1.0.0+bbb"}')):
+                work = os.path.join(d, "work-" + version)   # each release runs in a fresh checkout, as in CI
+                subprocess.run(["git", "clone", "-q", origin, work], check=True, env=env, capture_output=True)
+                plugin = os.path.join(work, "build", "plugin", ".claude-plugin")
+                os.makedirs(plugin, exist_ok=True)
+                with open(os.path.join(plugin, "plugin.json"), "w") as f:
+                    f.write(body)
+                tmp = os.path.join(d, "runner-" + version)
+                os.makedirs(tmp)
+                r = subprocess.run(["bash", "-e", "-c", script], cwd=work, capture_output=True, text=True,
+                                   env=dict(env, RUNNER_TEMP=tmp))
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                heads.append(self.git(origin, "rev-parse", "plugin").strip())
+                self.assertEqual(self.git(origin, "show", "plugin:.claude-plugin/plugin.json"), body)
+                self.assertEqual(self.git(origin, "ls-tree", "-r", "--name-only", "plugin").split(), [".claude-plugin/plugin.json"])
+            log = self.git(origin, "log", "--format=%s", "plugin").split("\n")
+            self.assertEqual(log[:2], ["checkthat 1.0.0+bbb", "checkthat 1.0.0+aaa"])
+            self.assertEqual(self.git(origin, "merge-base", "--is-ancestor", heads[0], heads[1]), "")
 
 class ReadmeSkills(unittest.TestCase):
     def test_readme_tells_how_to_install_both_skills_for_each_agent(self):

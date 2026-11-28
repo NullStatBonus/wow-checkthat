@@ -3,9 +3,21 @@ name: Release
 # Tag vX.Y.Z to test, package and publish. The tag must equal the version in both TOC files.
 # CurseForge and Wago uploads are skipped for a site whose project ID is missing from the TOCs
 # (## X-Curse-Project-ID, ## X-Wago-ID); see docs/publishing.md.
+# A tag also publishes the developer toolkit: the plugin to the plugin branch (the marketplace in
+# .claude-plugin/marketplace.json installs from it) and the toolkit zip on the GitHub release.
+# Run it by hand (workflow_dispatch) on main to check or publish the toolkit without a tag. It builds and
+# validates the plugin and the toolkit and uploads them as workflow artifacts. With publish ticked it also
+# commits the plugin to the plugin branch and replaces the toolkit zip on the release of the current version.
+# The addon package, CurseForge, Wago and a new GitHub release need a tag.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the plugin and the toolkit zip (main only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -26,12 +38,57 @@ jobs:
       - name: Checks
         run: |
           make check
-          sh tools/check-version.sh "$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then sh tools/check-version.sh "$GITHUB_REF_NAME"; fi
+      - name: Build the plugin and the toolkit
+        run: make build-plugin build-toolkit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate the plugin and the marketplace
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate build/plugin
+          claude plugin validate .
+      - name: Upload the dry-run outputs
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: developer-toolkit
+          path: |
+            build/plugin
+            build/CheckThat-toolkit-*.zip
       - uses: BigWigsMods/packager@v2
+        if: github.ref_type == 'tag'
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      - name: Publish the plugin branch
+        if: github.ref_type == 'tag' || (inputs.publish && github.ref == 'refs/heads/main')
+        run: |
+          wt="$RUNNER_TEMP/plugin-branch"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin plugin >/dev/null; then
+            git fetch -q origin plugin:plugin
+            git worktree add -q "$wt" plugin
+          else
+            git worktree add -q --detach "$wt"
+            git -C "$wt" checkout -q --orphan plugin
+          fi
+          find "$wt" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R build/plugin/. "$wt"
+          cd "$wt"
+          git add -A
+          if git diff --cached --quiet; then echo "plugin unchanged"; exit 0; fi
+          git commit -q -m "checkthat $(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' .claude-plugin/plugin.json)"
+          git push origin plugin
+      - name: Replace the toolkit zip on the current release
+        if: github.ref_type != 'tag' && inputs.publish && github.ref == 'refs/heads/main'
+        run: gh release upload "v$(cat build/toolkit/ct-test-plan/ct/VERSION)" build/CheckThat-toolkit-*.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: GitHub release
-        run: gh release create "$GITHUB_REF_NAME" .release/*.zip --title "$GITHUB_REF_NAME" --generate-notes
+        if: github.ref_type == 'tag'
+        run: gh release create "$GITHUB_REF_NAME" .release/*.zip build/CheckThat-toolkit-*.zip --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Runs ct.py with the right Python: the skill's private one when installed, this checkout's .venv, else python3.
+# Runs ct.py with the right Python: the skill's private one when installed, this checkout's .venv, the per-user one
+# from ct setup, else python3.
 # Use it as: ct validate plans/x.yaml    (make install-skill BIN_DIR=<folder on PATH> links it there)
 self=$0
 while [ -L "$self" ]; do   # followed through links, so a link on the PATH finds the real folder
@@ -8,7 +9,7 @@ while [ -L "$self" ]; do   # followed through links, so a link on the PATH finds
 done
 here=$(cd "$(dirname "$self")" && pwd -P)
 root=$(dirname "$here")
-for py in "$root/.venv/bin/python" "$(dirname "$root")/.venv/bin/python"; do
+for py in "$root/.venv/bin/python" "$(dirname "$root")/.venv/bin/python" "${XDG_DATA_HOME:-$HOME/.local/share}/checkthat/venv/bin/python"; do
     [ -x "$py" ] && exec "$py" "$here/ct.py" "$@"
 done
 exec python3 "$here/ct.py" "$@"

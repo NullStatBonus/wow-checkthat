@@ -12,7 +12,7 @@ Report what a run recorded against what its plan asked. Report only. Never edit 
 The tools root holds `tools/ct.py`, `tools/sv2json.lua`, `CheckThat/Model/Json.lua` and `CheckThat/Model/Plan.lua`. A path counts as the root only when all four exist under it.
 
 1. Try `ct/` beside this file.
-2. Else try `../ct-test-plan/ct`, the bundle `make install-skill` puts next to this skill. Use `../ct-test-plan/.venv/bin/python` as `$PY` if it exists. A plugin install has no private Python: use `python3` when `python3 -c "import yaml, jsonschema"` succeeds. If it fails, stop and tell the author to run `python3 -m venv <dir> && <dir>/bin/pip install -r $CT/requirements.txt`, and ask where to put the environment.
+2. Else try `../ct-test-plan/ct`, the bundle `make install-skill` puts next to this skill. Use `../ct-test-plan/.venv/bin/python` as `$PY` if it exists. A plugin or toolkit install has no private Python: use the per-user Python that `ct setup` creates when it exists: `$XDG_DATA_HOME/checkthat/venv/bin/python` (default `~/.local/share/checkthat/venv/bin/python`; on Windows `%LOCALAPPDATA%\checkthat\venv\Scripts\python.exe`), else `python3` when `python3 -c "import yaml, jsonschema"` succeeds. If neither works, stop and tell the author to run `python3 $CT/tools/ct.py setup` once.
 3. Else try two folders up from this file (the skill runs inside the checkout). Use `$CT/.venv/bin/python` as `$PY` if it exists, else `python3` under the same import check and stop rule as step 2.
 4. If none is a root, ask: "Where is your CheckThat checkout?" Say that `make install-skill` in it sets up both skills. Do not use the working directory.
 
