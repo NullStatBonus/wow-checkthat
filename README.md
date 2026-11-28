@@ -21,6 +21,7 @@ To turn the saved run into a report, see [Collect evidence](docs/harvesting.md).
 - **Card.** One step at a time: what to do (a checklist when a step lists several actions, with copy boxes), what to expect and what CheckThat checks. Setup folds away, and a note opens when you need one. Back, next and undo. [Details](docs/features.md#step-card)
 - **Run button.** Runs the step's allowed commands in order. It is hidden during combat. [Details](docs/features.md#run-button)
 - **Log evidence.** CheckThat reads the addon's debug log and marks each check met or not. A failed or unverified step keeps the first new log lines for the report. [Details](docs/features.md#saved-log-positions)
+- **Time between two lines.** A sequence check can require a line within a few seconds of the line before it, where the log keeps a time for each line. [Details](docs/features.md#time-between-two-lines)
 - **Automatic steps.** A step marked `auto` records its own result when the checks are met, and the card pauses 3 seconds on it. A step marked `async` is checked when the run starts. Your click still wins. [Details](docs/features.md#automatic-steps)
 - **Steps for one character.** A step can need a class or a profession. On another character it does not apply. [Details](docs/features.md#steps-for-one-character)
 - **Run start and end.** An addon can register `CheckThat.OnRun` to set up and restore its own test state when a run starts or stops. [Details](docs/features.md#run-start-and-end)
