@@ -166,6 +166,16 @@ A check that did not pass says what it looked at, so a reviewer or another tool 
 - **Privacy.** A results string names the character and realm (`character`), and the export window says so. Hit lines and values come from debug logs and can hold private data, as the excerpt can. A plan may read any global of any addon, and the `observed` value, the hits and the excerpts hold what it read. The start screen lists those variables before you start, and the debug report shows `Plan reads: <names>` for the run on the card (`none` when it reads none). Check a results string before you share it. `ct.py report --format json|junit` gives the `shape` as the rule, and leaves line text, values and the full rule out unless you add `--lines`.
 - **Contract.** `schema/run-results.schema.json` describes the run record. `tools/ct.py` rejects a revision whose hits are malformed and names it in `status`.
 
+## Time between two lines
+
+A `log-sequence` check matches lines in order. An item after the first can also give `within`: the whole seconds its line may come after the line of the item before it. The check then reads each line's time, which the `entries` format keeps; CheckThat's own debug log is one.
+
+Good to know:
+
+- A line that came too late, a line that did not come, and a source that keeps no time for its lines all leave the check unverified, never failed. The card gives the reason "sequence stopped at item N", where N is the item whose line it could not place.
+- `within` is 1 to 600 whole seconds, and only an item after the first may give it.
+- A plan that uses it needs plan revision 3. An older CheckThat refuses the plan and says so.
+
 ## Step card
 
 - **Title.** The step title is the strongest text: the game's large font, two points larger, with an outline. Without `CreateFont` the stock large font stays.

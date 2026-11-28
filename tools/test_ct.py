@@ -20,6 +20,22 @@ class Validate(unittest.TestCase):
     def test_good(self):
         self.assertEqual(ct.validate(good()), [])
 
+    def test_within_needs_a_whole_number_after_the_first_item(self):
+        def errors(items):
+            p = good()
+            p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log-sequence", "source": "debug", "sequence": items}]
+            return ct.validate(p)
+        self.assertEqual(errors([{"contains": "a"}, {"contains": "b", "within": 2}]), [])
+        self.assertTrue(any("the first sequence item has no earlier line, so within does not apply" in e
+                            for e in errors([{"contains": "a", "within": 2}, {"contains": "b"}])))
+        for wrong in (0, 1.5, 601, "2"):
+            self.assertTrue(errors([{"contains": "a"}, {"contains": "b", "within": wrong}]), wrong)
+        self.assertEqual(ct.plan_needs(good()), (1, None))
+        p = good()
+        p["sections"][0]["steps"][0]["assertions"] = [{"kind": "log-sequence", "source": "debug",
+                                                       "sequence": [{"contains": "a"}, {"contains": "b", "within": 2}]}]
+        self.assertEqual(ct.plan_needs(p), (3, "within"), "compile writes needs: 3 for within")
+
     def test_unknown_field(self):
         p = good(); p["sections"][0]["steps"][0]["bogus"] = 1
         self.assertTrue(ct.validate(p))

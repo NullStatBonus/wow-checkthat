@@ -46,14 +46,15 @@ end
 -- time, and a tail whose times are not all equal finds one place: a log's clock does not run back, so the same
 -- lines at the same times cannot be written again later. That boundary is exact even in a full ring with repeated
 -- blocks (#158). A tail written within one tick of the clock falls back to the rules without times.
+-- Returns the new lines, whether the boundary is exact, and the index in current of the first new line.
 function Evidence.NewLines(snapshot, current, cap, times)
     if not current then return nil end
     if snapshot and (snapshot.unavailable or snapshot.norun) then return nil end -- unreadable when the step (or run) opened, or no run position
-    if not snapshot then return current, true end
+    if not snapshot then return current, true, 1 end
     -- A position is { n = length, tail = last lines }; runs saved before it hold the whole log as an array.
     local n = snapshot.tail and snapshot.n or #snapshot
     local tail = snapshot.tail or snapshot
-    if not n or n == 0 then return current, true end
+    if not n or n == 0 then return current, true, 1 end
     local k = math.min(Evidence.TAIL, n) -- a long tail: startup blocks repeat every session, so a short one is ambiguous
     local tl = #tail
     local st = snapshot.tail and snapshot.times
@@ -87,7 +88,7 @@ function Evidence.NewLines(snapshot, current, cap, times)
         -- Timed: the place found is the only one, unless the clock ran back (two places found).
         local out = {}
         for i = last + 1, #current do out[#out + 1] = current[i] end
-        return out, found <= 1
+        return out, found <= 1, last + 1
     end
     -- A log that keeps cap lines and holds fewer has never dropped one, so a boundary at the snapshot position is
     -- certain, however alike the lines are.
@@ -97,7 +98,7 @@ function Evidence.NewLines(snapshot, current, cap, times)
     if cap and last == n and #current >= cap then exact = false end
     local out = {}
     for i = last + 1, #current do out[#out + 1] = current[i] end
-    return out, exact
+    return out, exact, last + 1
 end
 
 -- Where an assertion's window starts: the attempt's own position of the source, or for scope run a copy of the
@@ -416,8 +417,16 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
         local problem = positionProblem(a, snapshots)
         if problem then return bad(problem) end
     end
-    local lines = a.scope == "session" and current or Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times)
+    local lines, first
+    if a.scope == "session" then
+        lines, first = current, 1
+    else
+        lines, first = Evidence.NewLines(snapshots and snapshots[posKey(a)], current, src.cap, times)
+    end
     if not lines then return bad("log rolled over; evidence lost") end
+    for _, m in ipairs(type(a.sequence) == "table" and a.sequence or {}) do
+        if type(m) == "table" and m.within ~= nil then return Evidence.CheckTimedSequence(a, lines, first, times, wantDetail) end
+    end
     local want, lastAt = 1, nil
     local skipped, unchecked = nil, 0
     for i, l in ipairs(lines) do
@@ -437,6 +446,62 @@ function Evidence.CheckSequence(a, snapshots, plan, env, wantDetail)
     end
     if done then return "pass", nil, d end
     return "unverified", skipped and skipReason(skipped) or ("sequence stopped at item %d"):format(want), d
+end
+
+-- A timed log-sequence: an item's within (whole seconds) holds its line to at most that many seconds after the line of
+-- the item before it. The positions are chained from the last item back, so an early match of an item that leaves too
+-- little time is swapped for a later one, which leaves less. A log that keeps no time for every line of the window
+-- cannot judge the check: it is unverified, never a pass.
+function Evidence.CheckTimedSequence(a, lines, first, times, wantDetail)
+    local function detail(matched, stopped)
+        if not wantDetail then return nil end
+        local d = baseDetail(a)
+        d.window, d.matched = #lines, matched
+        if stopped then d.stoppedAt = stopped end
+        return d
+    end
+    local function bad(why) return "unverified", why, detail(0) end
+    local at
+    if times then
+        at = {}
+        for i = 1, #lines do
+            local t = times[(first or 1) + i - 1]
+            if type(t) ~= "number" then at = nil; break end
+            at[i] = t
+        end
+    end
+    if not at then return bad("this log keeps no time for these lines, so a within check cannot be judged") end
+    local hits = {}
+    for k, m in ipairs(a.sequence) do
+        local mine = {}
+        for i, line in ipairs(lines) do
+            if lineMatches(m, line) then mine[#mine + 1] = i end
+        end
+        hits[k] = mine
+    end
+    local last = #a.sequence
+    local ok = {}
+    for _, i in ipairs(hits[last]) do ok[i] = true end
+    if next(ok) == nil then return "unverified", ("sequence stopped at item %d"):format(last), detail(last - 1, last) end
+    local stopped
+    for k = last - 1, 1, -1 do
+        local gap = a.sequence[k + 1].within
+        local nexts = {}
+        for i in pairs(ok) do nexts[#nexts + 1] = i end
+        table.sort(nexts)
+        local now, j = {}, 1
+        for _, i in ipairs(hits[k]) do
+            while j <= #nexts and nexts[j] <= i do j = j + 1 end
+            if j > #nexts then break end
+            -- The first line after i gives the most time left; a later one gives less, so one answer per position.
+            if not gap or at[nexts[j]] - at[i] <= gap then now[i] = true end
+        end
+        ok = now
+        if next(ok) == nil then stopped = k; break end
+    end
+    if not stopped then return "pass", nil, detail(last) end
+    -- stopped is the item whose lines could not reach the item after it, so that item is the one it did not place.
+    return "unverified", ("sequence stopped at item %d"):format(stopped + 1), detail(stopped, stopped + 1)
 end
 
 -- A fact assertion. No fact is unverified, facts that break the operator fail. With count, the facts that pass
